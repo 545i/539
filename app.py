@@ -7,6 +7,7 @@
 """
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import pandas as pd
@@ -17,13 +18,42 @@ from core import backtest, constants, excel_report, kelly, picker, scraper, stat
 from core.loader import DataError, load_history, merge, save
 from ui import docs
 
+
+def _writable_base() -> Path:
+    """可寫入資料的根目錄。
+
+    PyInstaller 打包成單一 exe 後,__file__ 指向會被刪除的暫存解壓目錄;
+    frozen 模式改用 exe 所在資料夾,讓 data/history.csv 持久保存在 exe 旁邊。
+    """
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parent
+
+
+def _bundle_base() -> Path:
+    """唯讀資源(隨 exe 打包)的根目錄:frozen 時為 _MEIPASS,否則同專案目錄。"""
+    if getattr(sys, "frozen", False):
+        return Path(getattr(sys, "_MEIPASS", _writable_base()))
+    return Path(__file__).resolve().parent
+
+
 # ── 資料路徑與載入 ────────────────────────────────────────
-DATA_PATH = Path(__file__).resolve().parent / "data" / "history.csv"
+DATA_PATH = _writable_base() / "data" / "history.csv"
+_BUNDLED_DATA = _bundle_base() / "data" / "history.csv"
 
 
 @st.cache_data(show_spinner=False)
 def load_df() -> pd.DataFrame:
-    """讀取歷史開獎資料;若檔案不存在/格式錯誤,產生範例資料並存檔後回傳。"""
+    """讀取歷史開獎資料。
+
+    順序:exe 旁邊的 data/history.csv → 打包內附的種子資料 → 產生範例資料。
+    """
+    # 首次執行(exe 旁無資料)時,先把打包內附的歷史資料複製出來。
+    # 用純位元組複製而非 shutil.copyfile,避開某些 Windows 後端會呼叫的
+    # CopyFile2(在 Wine 9.0 下未實作會崩潰;一般複製不受影響)。
+    if not DATA_PATH.exists() and _BUNDLED_DATA.exists() and _BUNDLED_DATA != DATA_PATH:
+        DATA_PATH.parent.mkdir(parents=True, exist_ok=True)
+        DATA_PATH.write_bytes(_BUNDLED_DATA.read_bytes())
     try:
         return load_history(DATA_PATH)
     except DataError:

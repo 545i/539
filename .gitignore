@@ -5,3 +5,8 @@ __pycache__/
 venv/
 *.egg-info/
 .DS_Store
+
+# PyInstaller 打包產物(體積大,不入版控)
+build/
+dist/
+*.spec.bak

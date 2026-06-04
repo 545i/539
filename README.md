@@ -89,14 +89,40 @@ date,n1,n2,n3,n4,n5
 python -m pytest -q
 ```
 
+## 打包成 Windows 單一 exe(用 Wine 在 Linux 上)
+
+把 Web 版打包成單一 `lotto539.exe`(雙擊即啟動 Streamlit + 開瀏覽器):
+
+```bash
+bash packaging/build_windows_exe.sh
+# 產物:dist/lotto539.exe(約 159 MB,單檔)
+```
+
+打包機制與重點:
+
+- `packaging/launch_app.py` — exe 進入點,用內嵌的 Streamlit 跑 `app.py`。
+- `packaging/lotto539.spec` — PyInstaller 設定(`console=False` windowed、收集 streamlit/plotly 等資源、把 app/core/ui/data 一起打包)。
+- **NumPy 必須鎖 1.26.x**:Wine 9.0 的 ucrtbase 未實作 `crealf`,NumPy 2.x 會在 Wine 下崩潰(真 Windows 不受影響)。
+- `app.py` 為 frozen-aware:打包後 `data/history.csv` 讀寫在 exe 旁邊,並內附種子資料。
+
+> 真正在 Windows 上雙擊即可執行;若要在 Linux/Wine 測試,用 `wine start /unix dist/lotto539.exe` 模擬雙擊(直接從管線啟動會因 Wine 的 std handle 問題失敗)。
+
+## 測試
+
+```powershell
+python -m pytest -q
+```
+
 ## 專案結構
 
 ```
 lotto539/
-├── main.py            進入點
-├── core/              constants / loader / scraper / stats / picker / backtest
-├── ui/                menu(方向鍵選單)/ charts(終端圖表)
+├── main.py            TUI 進入點(舊版,仍可用)
+├── app.py             Streamlit Web 版進入點
+├── core/              constants / loader / scraper / stats / picker / backtest / kelly / excel_report
+├── ui/                menu(方向鍵選單)/ charts / docs(算式說明頁)
 ├── data/history.csv   開獎資料
+├── packaging/         launch_app.py / lotto539.spec / build_windows_exe.sh
 ├── tests/             pytest
 └── docs/superpowers/specs/  設計文件
 ```
