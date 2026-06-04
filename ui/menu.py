@@ -1,15 +1,30 @@
 """questionary 方向鍵選單流程:統計分析 / 選號 / 回測 / 更新資料 / 關於。"""
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
+import pandas as pd
 import questionary
 
 from core import constants as C
 from core import backtest, loader, picker, stats
 from ui import charts
 
-DATA_PATH = Path(__file__).resolve().parent.parent / "data" / "history.csv"
+
+def _base_dir() -> Path:
+    """資料根目錄。
+
+    PyInstaller 打包成單一 exe 後,__file__ 指向會被刪除的暫存解壓目錄,
+    寫進去的資料會在程式結束後消失。因此 frozen 模式改用 exe 所在資料夾,
+    讓 data/history.csv 持久保存在 exe 旁邊。
+    """
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parent.parent
+
+
+DATA_PATH = _base_dir() / "data" / "history.csv"
 
 
 # ── 資料載入 ─────────────────────────────────────────────
@@ -29,8 +44,63 @@ def _ensure_data():
         return None
 
 
+# ── 共用:日期/期數範圍篩選 ───────────────────────────────
+def _select_range(df):
+    """讓使用者選擇要分析的資料範圍,回傳篩選後的 df。
+
+    取消(選返回或按 Esc)時回傳 None;其餘情況一定回傳非空 df。
+    """
+    total = len(df)
+    dmin, dmax = df["date"].min().date(), df["date"].max().date()
+    mode = questionary.select(
+        f"選擇資料範圍(目前共 {total} 期,{dmin} ~ {dmax}):",
+        choices=[
+            questionary.Choice("全部期數", "all"),
+            questionary.Choice("最近 N 期", "recent"),
+            questionary.Choice("日期範圍(起 YYYY-MM-DD ~ 迄 YYYY-MM-DD)", "date"),
+            questionary.Choice("← 返回", "back"),
+        ],
+    ).ask()
+    if mode in (None, "back"):
+        return None
+    if mode == "all":
+        return df
+
+    sub = df.sort_values("date")
+    if mode == "recent":
+        n_str = questionary.text("要最近幾期?", default="100").ask()
+        if not n_str:
+            return None
+        try:
+            n = max(1, min(total, int(n_str)))
+        except ValueError:
+            charts.warn("期數格式錯誤,改用全部。")
+            return df
+        return sub.tail(n)
+
+    # mode == "date"
+    start = questionary.text(f"起始日期 (YYYY-MM-DD,留空=最早 {dmin}):").ask()
+    end = questionary.text(f"結束日期 (YYYY-MM-DD,留空=最新 {dmax}):").ask()
+    try:
+        if start:
+            sub = sub[sub["date"] >= pd.Timestamp(start)]
+        if end:
+            sub = sub[sub["date"] <= pd.Timestamp(end)]
+    except (ValueError, TypeError):
+        charts.warn("日期格式錯誤,改用全部。")
+        return df
+    if sub.empty:
+        charts.warn("該範圍內沒有資料,改用全部。")
+        return df
+    charts.info(f"已選取 {len(sub)} 期({sub['date'].min().date()} ~ {sub['date'].max().date()})。")
+    return sub
+
+
 # ── 1. 統計分析 ──────────────────────────────────────────
 def _analyze(df):
+    df = _select_range(df)
+    if df is None:
+        return
     choice = questionary.select(
         "選擇分析項目:",
         choices=[
@@ -103,6 +173,9 @@ def _analyze(df):
 
 # ── 2. 產生參考號碼 ──────────────────────────────────────
 def _pick(df):
+    df = _select_range(df)
+    if df is None:
+        return
     strategy = questionary.select(
         "選擇選號策略(各策略期望中獎率相同):",
         choices=[
@@ -131,6 +204,9 @@ def _pick(df):
 
 # ── 3. 策略回測 ──────────────────────────────────────────
 def _backtest(df):
+    df = _select_range(df)
+    if df is None:
+        return
     if len(df) < 120:
         charts.warn("資料期數偏少,回測結果波動大,僅供參考。")
     charts.info("正在回測 5 種策略(防 look-ahead:選號只用當期之前的資料)...")
@@ -158,17 +234,56 @@ def _backtest(df):
 
 
 # ── 4. 更新資料 ──────────────────────────────────────────
+def _parse_ym(text: str) -> tuple[int, int]:
+    """把 'YYYY-MM' 解析成 (year, month),格式不符丟 ValueError。"""
+    parts = text.strip().split("-")
+    if len(parts) != 2:
+        raise ValueError(f"年月格式錯誤:{text!r}(應為 YYYY-MM)")
+    year, month = int(parts[0]), int(parts[1])
+    if not (1 <= month <= 12):
+        raise ValueError(f"月份須在 1~12:{text!r}")
+    return year, month
+
+
 def _update(df):
     from core import scraper
-    ym = questionary.text("輸入要抓取的年月 (YYYY-MM,例如 2026-05):").ask()
-    if not ym:
+
+    mode = questionary.select(
+        "更新資料 — 選擇抓取方式(↑↓ 選擇):",
+        choices=[
+            questionary.Choice("單一月份(YYYY-MM)", "single"),
+            questionary.Choice("月份範圍(起 YYYY-MM ~ 迄 YYYY-MM)", "range"),
+            questionary.Choice("返回", "back"),
+        ],
+    ).ask()
+    if mode in (None, "back"):
         return
+
     try:
-        year, month = (int(x) for x in ym.split("-"))
-        new_rows = scraper.fetch_month(year, month)
+        if mode == "single":
+            ym = questionary.text("輸入要抓取的年月 (YYYY-MM,例如 2026-05):").ask()
+            if not ym:
+                return
+            year, month = _parse_ym(ym)
+            new_rows = scraper.fetch_month(year, month)
+            failures = []
+        else:  # range
+            start_text = questionary.text("起始年月 (YYYY-MM,例如 2026-01):").ask()
+            if not start_text:
+                return
+            end_text = questionary.text("結束年月 (YYYY-MM,例如 2026-05):").ask()
+            if not end_text:
+                return
+            start, end = _parse_ym(start_text), _parse_ym(end_text)
+            new_rows, failures = scraper.fetch_range(start, end)
+
         merged = loader.merge(df, new_rows)
         loader.save(merged, DATA_PATH)
         charts.info(f"已抓到 {len(new_rows)} 期,合併後共 {len(merged)} 期並存檔。")
+        if failures:
+            miss = ", ".join(f"{y}-{m:02d}" for y, m, _ in failures)
+            charts.warn(f"以下月份未抓到(已略過):{miss}")
+        charts.pause()
         return merged
     except (ValueError, scraper.ScrapeError) as e:
         charts.warn(f"更新失敗:{e}")
@@ -207,7 +322,9 @@ def run():
         elif action == "backtest":
             _backtest(df)
         elif action == "update":
-            df = _update(df) or df
+            result = _update(df)
+            if result is not None:
+                df = result
         elif action == "about":
             charts.banner(C.DISCLAIMER)
             charts.pause()

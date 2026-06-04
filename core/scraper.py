@@ -18,6 +18,32 @@ class ScrapeError(Exception):
     """爬蟲失敗(網路、API 改版等)。"""
 
 
+def _build_session():
+    """建立放寬「嚴格 X509 驗證」的 requests Session。
+
+    台灣彩券 API 伺服器憑證缺少 Subject Key Identifier 擴充欄位,
+    新版 OpenSSL(Python 3.12+)預設啟用 VERIFY_X509_STRICT 會拒絕它,
+    報 'Missing Subject Key Identifier'。這裡只關掉那條嚴格旗標,
+    仍完整驗證憑證的信任鏈(不是 verify=False 全關),兼顧連線成功與安全。
+    """
+    import ssl
+
+    import requests
+    from requests.adapters import HTTPAdapter
+    from urllib3.util.ssl_ import create_urllib3_context
+
+    class _RelaxedStrictAdapter(HTTPAdapter):
+        def init_poolmanager(self, *args, **kwargs):
+            ctx = create_urllib3_context()
+            ctx.verify_flags &= ~ssl.VERIFY_X509_STRICT  # 保留信任鏈驗證
+            kwargs["ssl_context"] = ctx
+            return super().init_poolmanager(*args, **kwargs)
+
+    session = requests.Session()
+    session.mount("https://", _RelaxedStrictAdapter())
+    return session
+
+
 def _parse_month(payload: dict) -> list[dict]:
     """把 API 回傳的某月資料轉成 [{date,n1..n5}, ...]。
 
@@ -55,7 +81,8 @@ def fetch_month(year: int, month: int, timeout: int = 10) -> list[dict]:
 
     params = {"period": "", "month": f"{year:04d}-{month:02d}", "pageNum": 1, "pageSize": 50}
     try:
-        resp = requests.get(API_URL, params=params, headers=HEADERS, timeout=timeout)
+        session = _build_session()
+        resp = session.get(API_URL, params=params, headers=HEADERS, timeout=timeout)
         resp.raise_for_status()
         payload = resp.json()
     except Exception as e:  # noqa: BLE001 — 網路/解析皆視為爬蟲失敗
@@ -67,6 +94,55 @@ def fetch_month(year: int, month: int, timeout: int = 10) -> list[dict]:
             f"{year}-{month:02d} 解析不到開獎號(API 可能已改版)。建議改用 CSV 匯入。"
         )
     return rows
+
+
+def iter_months(start: tuple[int, int], end: tuple[int, int]):
+    """產生 start 到 end(含)之間的 (year, month) 序列。
+
+    start/end 皆為 (year, month);若 start 晚於 end 會自動對調。
+    """
+    sy, sm = start
+    ey, em = end
+    if (sy, sm) > (ey, em):
+        sy, sm, ey, em = ey, em, sy, sm
+    y, m = sy, sm
+    while (y, m) <= (ey, em):
+        yield (y, m)
+        m += 1
+        if m > 12:
+            m = 1
+            y += 1
+
+
+def fetch_range(
+    start: tuple[int, int],
+    end: tuple[int, int],
+    timeout: int = 10,
+) -> tuple[list[dict], list[tuple[int, int, str]]]:
+    """抓取 start~end(含)區間每個月的開獎資料。
+
+    回傳 (rows, failures):
+      rows     — 合併後的所有 [{date,n1..n5}, ...](已照月份順序串接)。
+      failures — [(year, month, 錯誤訊息), ...],逐月失敗不會中斷整批抓取。
+
+    若整個區間一筆都抓不到,丟出 ScrapeError。
+    """
+    months = list(iter_months(start, end))
+    if not months:
+        raise ScrapeError("年月區間為空。")
+
+    rows: list[dict] = []
+    failures: list[tuple[int, int, str]] = []
+    for year, month in months:
+        try:
+            rows.extend(fetch_month(year, month, timeout=timeout))
+        except ScrapeError as e:
+            failures.append((year, month, str(e)))
+
+    if not rows:
+        detail = "; ".join(f"{y}-{m:02d}: {msg}" for y, m, msg in failures)
+        raise ScrapeError(f"區間內所有月份皆抓取失敗。{detail}")
+    return rows, failures
 
 
 def fetch_recent(months: int = 3) -> list[dict]:

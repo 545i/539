@@ -6,3 +6,6 @@ rich>=13.0
 requests>=2.31
 beautifulsoup4>=4.12
 pytest>=7.4
+streamlit>=1.40
+openpyxl>=3.1
+plotly>=5.20
