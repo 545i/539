@@ -207,8 +207,63 @@ def render() -> None:
         "翻倍加碼只會讓連敗時的下注額指數爆炸,在資金用盡前必然破產 —— 它改變不了期望值,只放大破產風險。"
     )
 
+    # ── 七、二合(策略1)買牌算式 ───────────────────────
+    st.subheader("七、二合(策略1)買牌算式(core/erhe.py)")
+    st.markdown(
+        "二合 / 二星:選 2 個號碼,當期開出的 5 個號碼若**同時包含**這 2 個即中。"
+    )
+    st.markdown("**二合單組中獎機率**(任一 2 碼組合都被開出;其餘 3 個開獎號從剩下 37 個中選):")
+    st.latex(r"P_{2} = \frac{\binom{37}{3}}{\binom{39}{5}} = \frac{7770}{575757} \approx \frac{1}{74.1}")
+    st.markdown("**公平賠率**(損益兩平的賠率):")
+    st.latex(r"R_{\text{公平}} = \frac{1}{P_2} \approx 74.1")
+    st.latex(r"\text{二合每注期望報酬率} = P_2 \times R - 1 \quad(R<74.1 \Rightarrow \text{負期望})")
+
+    st.markdown(
+        "**拖牌包車**:拖 1 個膽號配其餘 38 個號碼 = 1 車(38 注)。"
+        "整車「中」的條件是**膽號被開出**:"
+    )
+    st.latex(r"P_{\text{膽中}} = \frac{5}{39} \approx 12.82\%")
+    st.caption("膽號若在開出的 5 個內,其餘 4 個開獎號各與膽號組成一個中獎注(恰 4 注中)。")
+
+    st.markdown("**車級期望報酬率**(以每車成本與中獎金額直接計算):")
+    st.latex(
+        r"\text{報酬率}_{\text{車}} = \frac{P_{\text{膽中}}\times \text{中獎金額}}{\text{每車成本}} - 1"
+    )
+    st.markdown("**損益兩平中獎金額**(車級報酬率為 0 時):")
+    st.latex(r"\text{中獎金額}_{\text{平}} = \frac{\text{每車成本}}{P_{\text{膽中}}} = \text{每車成本}\times\frac{39}{5}")
+    st.caption(
+        "例:每車成本 2755、中獎可得 21200 → 報酬率 = (5/39 × 21200)/2755 − 1 ≈ −1.34%;"
+        "損益兩平中獎金額 = 2755 × 39/5 = 21,489。"
+    )
+
+    st.markdown("**二合凱莉**(車級二元賭局,$p=5/39$,淨賠率 $b=(\\text{中獎金額}-\\text{成本})/\\text{成本}$):")
+    st.latex(r"f^{*} = \frac{b\,p - (1-p)}{b}, \qquad f^{*}\le 0 \Rightarrow \text{建議 } 0")
+
+    st.markdown("**倍頭(Martingale)**:連敗時每局車數乘以倍頭 $m$,累積成本指數成長:")
+    st.latex(r"\text{第 } t \text{ 局車數} = \text{起始車數}\times m^{\,t-1}")
+    st.latex(r"\text{打平需中車數} = \frac{\text{累積成本}}{\text{中獎金額}}")
+    st.caption("在負期望下,累積成本與『打平需中車數』都快速膨脹到不可能,資金用盡前必然破產。")
+
+    # ── 八、雙遊戲與預估開機率 ──────────────────────────
+    st.subheader("八、雙遊戲與預估開機率(core/games.py / core/picker.py)")
+    st.markdown(
+        "今彩539 與 天天樂(加州 Fantasy 5)**玩法都是 39 選 5**,"
+        "所以組合數與機率(第一節)完全相同,差別只在票價與獎金結構:"
+    )
+    st.latex(r"\text{期望報酬率}_{\text{遊戲}} = \frac{\sum_{k} P(k)\cdot \text{獎金}_{\text{遊戲}}(k)}{\text{票價}_{\text{遊戲}}} - 1")
+    st.caption(
+        "今彩539 ≈ −44.16%(固定獎金);天天樂 ≈ −54.66%(pari-mutuel 平均估計)。"
+        "兩款各自獨立資料與統計。"
+    )
+    st.markdown("**預估開機率**:把各策略權重 $w(n)$ 正規化,使總和為每期開出的號碼數 5:")
+    st.latex(r"\hat{p}(n) = 5 \times \frac{w(n)}{\sum_{m} w(m)}")
+    st.caption(
+        "random 時每號 5/39 ≈ 12.8%(也是真實機率)。非 random 只是把歷史傾向視覺化,"
+        "**沒有預測下一期的能力** —— 每期獨立隨機,真實開機率永遠均勻。"
+    )
+
     # ── 539 即時結論 ────────────────────────────────────
-    st.subheader("七、今彩539 的實際結論(即時計算)")
+    st.subheader("九、今彩539 的實際結論(即時計算)")
     from core import kelly
 
     res = kelly.analyze_539()
