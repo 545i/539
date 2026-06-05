@@ -18,6 +18,38 @@ from core.stats import ALL_NUMS, SIZE_SPLIT, frequency, missing
 
 STRATEGIES = ["random", "hot", "cold", "frequency", "balanced"]
 
+# 策略中文標籤(供選單與報表顯示;內部仍以英文 key 運作)
+STRATEGY_LABELS = {
+    "random": "隨機(最誠實的基準)",
+    "hot": "熱號權重",
+    "cold": "冷號權重(賭徒謬誤)",
+    "frequency": "歷史頻率權重",
+    "balanced": "均衡(奇偶/和值落常見區間)",
+}
+
+
+def label(strategy: str) -> str:
+    """取得策略的中文標籤;未知策略回傳原字串。"""
+    return STRATEGY_LABELS.get(strategy, strategy)
+
+
+def draw_probabilities(df, strategy: str = "random", window: int = 30) -> dict[int, float]:
+    """各號碼「被開出(落在當期 5 個開獎號內)」的『預估』機率,依策略加權。
+
+    回傳 {號碼: 機率},全部加總為 PICK(=5,即每期開 5 個號的期望)。
+    - random / balanced:均勻,每號 5/39 ≈ 0.128(這也是『真實』機率)。
+    - hot / cold / frequency:依歷史加權的啟發式估計。
+
+    重要:每期開獎獨立隨機,真實開機率永遠是均勻的 5/39;
+    非 random 的『預估開機率』只是把歷史傾向視覺化,**沒有預測下一期的能力**。
+    """
+    if strategy in ("random", "balanced"):
+        weights = {n: 1.0 for n in ALL_NUMS}
+    else:
+        weights = _weights(df, strategy, window)
+    total = sum(weights.values()) or 1.0
+    return {n: PICK * weights[n] / total for n in ALL_NUMS}
+
 
 def _weighted_sample(weights: dict[int, float], rng: random.Random) -> list[int]:
     """依權重不放回抽 PICK 個號碼。"""

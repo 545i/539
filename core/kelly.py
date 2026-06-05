@@ -50,6 +50,18 @@ def outcomes_539(bet: int = constants.TICKET_PRICE) -> list[tuple[float, float]]
     ]
 
 
+def outcomes_for(game) -> list[tuple[float, float]]:
+    """任意遊戲的各結果(機率, 淨報酬倍率)清單。
+
+    net_multiple = 獎金/票價 - 1;依 GameConfig 的票價與獎金結構計算。
+    """
+    bet = game.ticket_price
+    return [
+        (game.prob(k), game.prize.get(k, 0) / bet - 1.0)
+        for k in range(constants.PICK + 1)
+    ]
+
+
 def _growth(f: float, outcomes: list[tuple[float, float]]) -> float:
     """對數成長率 g(f) = Σ prob_i * log(1 + f * r_i)。
 
@@ -84,34 +96,23 @@ def kelly_multi(outcomes: list[tuple[float, float]],
     return (left + right) / 2.0
 
 
-def analyze_539(bet: int = constants.TICKET_PRICE) -> KellyResult:
-    """完整分析今彩539 的凱莉投注建議。
-
-    結論:負期望值賭局,理論凱莉比例 < 0,實務建議下注比例為 0。
-    """
-    outcomes = outcomes_539(bet)
-
-    # 每注期望淨利與期望報酬率
+def _analyze_outcomes(outcomes, bet, label, currency):
+    """以 (機率, 淨倍率) 清單與票價計算 KellyResult(通用核心)。"""
     ev_return_rate = sum(prob * r for prob, r in outcomes)
     ev_per_bet = bet * ev_return_rate
-
-    # 理論凱莉比例與實務夾 0 後的比例
     raw_fraction = kelly_multi(outcomes)
     fraction = max(0.0, raw_fraction)
-
-    # 在實務比例下的對數成長率(fraction=0 → 不下注 → 成長率為 0)
     growth_rate = 0.0 if fraction == 0.0 else _growth(fraction, outcomes)
 
     recommendation = (
-        f"今彩539 每注 NT${bet} 的期望報酬率約 {ev_return_rate:.2%}"
-        f"(每注平均淨虧 NT${-ev_per_bet:.2f}),屬於負期望值賭局。\n"
+        f"{label} 每注 {currency}{bet:g} 的期望報酬率約 {ev_return_rate:.2%}"
+        f"(每注平均淨虧 {currency}{-ev_per_bet:.2f}),屬於負期望值賭局。\n"
         f"理論凱莉比例 f* = {raw_fraction:.4f} 為負數,"
         "代表數學上根本不該把資金投入這個賭局。\n"
         "因此凱莉準則建議的實務下注比例為 0(完全不下注),"
         "任何選號策略都改變不了這個負期望的結果。\n"
         "請理性娛樂、量力而為,切勿借貸或重押。"
     )
-
     return KellyResult(
         raw_fraction=raw_fraction,
         fraction=fraction,
@@ -119,6 +120,21 @@ def analyze_539(bet: int = constants.TICKET_PRICE) -> KellyResult:
         ev_return_rate=ev_return_rate,
         growth_rate=growth_rate,
         recommendation=recommendation,
+    )
+
+
+def analyze_539(bet: int = constants.TICKET_PRICE) -> KellyResult:
+    """完整分析今彩539 的凱莉投注建議。
+
+    結論:負期望值賭局,理論凱莉比例 < 0,實務建議下注比例為 0。
+    """
+    return _analyze_outcomes(outcomes_539(bet), bet, "今彩539", "NT$")
+
+
+def analyze(game) -> KellyResult:
+    """完整分析任意遊戲(GameConfig)的凱莉投注建議。"""
+    return _analyze_outcomes(
+        outcomes_for(game), game.ticket_price, game.name, game.currency
     )
 
 

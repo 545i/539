@@ -26,11 +26,19 @@ def _write_header(ws, headers: list[str], row: int = 1) -> None:
 
 
 # ── 1. 免責聲明 ──────────────────────────────────────────
-def _build_disclaimer_sheet(wb) -> None:
-    """把 constants.DISCLAIMER 逐行寫入「免責聲明」工作表。"""
+def _build_disclaimer_sheet(wb, game=None) -> None:
+    """把免責聲明逐行寫入「免責聲明」工作表;有 game 時加註該遊戲資訊。"""
     ws = wb.active
     ws.title = "免責聲明"
-    for i, line in enumerate(constants.DISCLAIMER.split("\n"), start=1):
+    lines = []
+    if game is not None:
+        lines.append(f"遊戲:{game.name}(票價 {game.currency}{game.ticket_price:g})")
+        lines.append(f"期望報酬率約 {game.expected_return():.2%}")
+        lines.append(f"獎金結構:{game.prize_note}")
+        lines.append(f"資料來源:{game.source_note}")
+        lines.append("")
+    lines.extend(constants.DISCLAIMER.split("\n"))
+    for i, line in enumerate(lines, start=1):
         ws.cell(row=i, column=1, value=line)
 
 
@@ -91,8 +99,8 @@ def _build_backtest_sheet(wb, backtest_results) -> None:
         ws.cell(row=r, column=4, value=int(hit.get(3, 0)))
         ws.cell(row=r, column=5, value=int(hit.get(4, 0)))
         ws.cell(row=r, column=6, value=int(hit.get(5, 0)))
-        ws.cell(row=r, column=7, value=int(res.total_bet))
-        ws.cell(row=r, column=8, value=int(res.total_return))
+        ws.cell(row=r, column=7, value=round(float(res.total_bet), 2))
+        ws.cell(row=r, column=8, value=round(float(res.total_return), 2))
         ws.cell(row=r, column=9, value=round(res.roi * 100, 4))
 
     last_row = 1 + len(backtest_results)
@@ -165,14 +173,15 @@ def _build_kelly_sheet(wb, kelly_result) -> None:
 
 
 # ── 對外主函式 ───────────────────────────────────────────
-def build_workbook(df, *, freq=None, backtest_results=None, kelly_result=None):
+def build_workbook(df, *, freq=None, backtest_results=None, kelly_result=None, game=None):
     """建立含原生 Excel 圖表的活頁簿並回傳(不存檔)。
 
     工作表順序:免責聲明、開獎資料、號碼頻率、(回測結果)、凱莉分析。
     backtest_results 為 None 或空時略過「回測結果」工作表。
+    game 為 GameConfig 時,免責聲明會加註該遊戲的票價/期望報酬/資料來源。
     """
     wb = openpyxl.Workbook()
-    _build_disclaimer_sheet(wb)
+    _build_disclaimer_sheet(wb, game)
     _build_draw_sheet(wb, df)
     _build_frequency_sheet(wb, df, freq)
     if backtest_results:

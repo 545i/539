@@ -179,8 +179,36 @@ def render() -> None:
     st.latex(r"B_{t+1} = B_t + f\,B_t\,r_t, \qquad r_t \sim \{(P(k),\, r_k)\}")
     st.caption("f=0 → 資金恆定;f>0 且為負 EV → 資金長期必然下滑(可在「凱莉投報計算」頁實際操作)。")
 
+    # ── 六、包牌 / 牌型 / 加碼 ───────────────────────────
+    st.subheader("六、包牌 / 牌型 / 加碼(core/wheel.py)")
+
+    st.markdown("**包牌車數**(圈選 $N$ 個號碼全包,即買下所有 5 碼組合):")
+    st.latex(r"\text{車數} = \binom{N}{5}, \qquad \text{資金} = \binom{N}{5}\times\text{票價}")
+    st.markdown("**包牌命中頭獎機率**(開出的 5 個號全落在你圈選的 $N$ 個之內):")
+    st.latex(r"P_{\text{頭獎}} = \frac{\binom{N}{5}}{\binom{39}{5}}")
+    st.caption(
+        "重點:包牌只是多買幾注,每注期望報酬率不變(仍為負)。"
+        "圈越多碼、命中頭獎機率等比例上升,但花的錢也等比例上升,長期期望不會變正。"
+    )
+
+    st.markdown("**牌型**:每期以 (奇數個數, 大數個數, 和值區間) 分類,統計歷史頻率。")
+    st.caption(
+        "這是描述歷史分布,**不能預測下一期**。每期獨立隨機,"
+        "歷史最常出現的牌型,下一期出現機率並不會比較高。"
+    )
+
+    st.markdown("**加碼回本(Martingale)為何破產**:輸了就把下注額翻倍想一次回本:")
+    st.latex(r"\text{第 } t \text{ 局下注} = b \times 2^{(\text{連敗局數})}")
+    st.latex(
+        r"\mathbb{E}[\text{總損益}] = (\text{總下注})\times(\text{期望報酬率}) < 0"
+    )
+    st.caption(
+        "在負期望賭局裡,任何下注序列的期望損益都是「總下注 × 負報酬率」,恆為負。"
+        "翻倍加碼只會讓連敗時的下注額指數爆炸,在資金用盡前必然破產 —— 它改變不了期望值,只放大破產風險。"
+    )
+
     # ── 539 即時結論 ────────────────────────────────────
-    st.subheader("六、今彩539 的實際結論(即時計算)")
+    st.subheader("七、今彩539 的實際結論(即時計算)")
     from core import kelly
 
     res = kelly.analyze_539()
