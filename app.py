@@ -94,23 +94,55 @@ def _range_label(fdf: pd.DataFrame) -> str:
 # ── 側邊欄:遊戲選擇 + 全域範圍選擇 + 導覽 ────────────────
 _DARK_CSS = """
 <style>
-.stApp, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {
+.stApp, [data-testid="stAppViewContainer"], [data-testid="stHeader"], section.main {
   background-color: #0e1117 !important; }
-[data-testid="stSidebar"] { background-color: #1b1f27 !important; }
-.stApp p, .stApp li, .stApp h1, .stApp h2, .stApp h3, .stApp h4, .stApp h5,
-.stApp h6, .stMarkdown, [data-testid="stWidgetLabel"] *, [data-testid="stMetricValue"],
-[data-testid="stMetricLabel"], button[data-baseweb="tab"], [data-testid="stSidebar"] * ,
-[data-testid="stCaptionContainer"] { color: #fafafa !important; }
+section[data-testid="stSidebar"], section[data-testid="stSidebar"] > div {
+  background-color: #1b1f27 !important; }
+/* 文字一律變白 */
+.stApp h1, .stApp h2, .stApp h3, .stApp h4, .stApp h5, .stApp h6,
+.stApp p, .stApp li, .stApp label, .stApp span,
+[data-testid="stMarkdownContainer"], [data-testid="stMarkdownContainer"] *,
+[data-testid="stWidgetLabel"] *, [data-testid="stMetricValue"], [data-testid="stMetricLabel"],
+[data-testid="stCaptionContainer"], button[data-baseweb="tab"],
+section[data-testid="stSidebar"] * { color: #e8e8e8 !important; }
+/* 按鈕變深 */
+.stButton button, [data-testid="stBaseButton-secondary"], [data-testid="baseButton-secondary"] {
+  background-color: #262730 !important; color: #e8e8e8 !important; border: 1px solid #3a3f4b !important; }
+/* 輸入框 / 下拉變深 */
+input, textarea, [data-baseweb="input"], [data-baseweb="base-input"],
+[data-baseweb="select"] > div, [data-testid="stNumberInputContainer"] {
+  background-color: #262730 !important; color: #e8e8e8 !important; }
+/* alert(info/warning/error/success)維持深字以保可讀 */
+[data-testid="stAlert"], [data-testid="stAlert"] * { color: #11151c !important; }
+/* 表格反白 */
 [data-testid="stDataFrame"], [data-testid="stTable"] {
   filter: invert(0.92) hue-rotate(180deg); }
 </style>
 """
 
 
+_MOBILE_CSS = """
+<style>
+@media (max-width: 640px) {
+  html, body, .stApp, .stMarkdown, .stApp p, .stApp li { font-size: 18px !important; }
+  .block-container { padding: 2.8rem 0.6rem 1rem 0.6rem !important; }
+  [data-testid="stMetricValue"] { font-size: 1.5rem !important; }
+  [data-testid="stMetricLabel"] { font-size: 1rem !important; }
+  [data-testid="stDataFrame"], [data-testid="stTable"] { font-size: 16px !important; }
+  button[data-baseweb="tab"] { font-size: 0.95rem !important; padding: 0.3rem 0.55rem !important; }
+  h1 { font-size: 1.7rem !important; } h2 { font-size: 1.4rem !important; }
+  h3 { font-size: 1.2rem !important; }
+  .stButton button { font-size: 1.05rem !important; padding: 0.55rem !important; }
+}
+</style>
+"""
+
+
 def _apply_theme():
-    """套用主題:預設亮色(原生);側邊欄開關開啟時注入深色 CSS + plotly 深色模板。"""
+    """套用主題:預設亮色(原生);深色模式開關;手機放大字級。"""
     import plotly.io as pio
 
+    st.markdown(_MOBILE_CSS, unsafe_allow_html=True)  # 手機放大,永遠套用
     dark = st.sidebar.toggle("🌙 深色模式", value=False, key="dark_mode")
     pio.templates.default = "plotly_dark" if dark else "plotly_white"
     if dark:
@@ -745,18 +777,25 @@ def page_erhe(fdf: pd.DataFrame, game):
 
             # 本局若中 k 顆各可得多少(以建議車數計;含機率)
             hd = erhe.hit_distribution(int(n_numbers))
+            this_cost = cur["next_cost"]
             payout_rows = []
             for k in range(1, int(n_numbers) + 1):
                 gross = k * int(cur_cars) * float(win_payout)
-                net = gross - cur["next_cost"]
+                net = gross - this_cost
+                after = cum + net
                 payout_rows.append({
                     "中幾顆": f"{k} 顆",
                     "本局機率": f"{hd.get(k, 0):.2%}",
+                    "本局成本": f"{this_cost:,.0f}",
                     "可得(總回收)": f"{gross:,.0f}",
                     "本局淨利": f"{net:+,.0f}",
-                    "中後累積損益": f"{cum + net:+,.0f}",
+                    "中後累積": f"{after:+,.0f}",
+                    "是否回本": "✅ 回本" if after >= 0 else f"還差 {-after:,.0f}",
                 })
-            st.markdown(f"**本局若中獎(下 {int(cur_cars)} 車、押 {int(n_numbers)} 顆)各可得:**")
+            st.markdown(
+                f"**本局若中獎(下 {int(cur_cars)} 車、押 {int(n_numbers)} 顆、"
+                f"成本 {this_cost:,.0f})各可得 vs 成本:**"
+            )
             st.dataframe(pd.DataFrame(payout_rows), width="stretch", hide_index=True)
 
         # 輸入方式:A 系統建議車數 / B 自己輸入車數
