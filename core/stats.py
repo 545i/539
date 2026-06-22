@@ -126,13 +126,18 @@ def _tens_index(n: int) -> int:
 
 
 def tens_band_stats(df: pd.DataFrame):
-    """星數統計(俗稱「4興」):把 1~39 依十位分成四組,看 5 個號碼怎麼分布。
+    """星數統計(俗稱「4興」):把 1~39 依十位分成四組,看每期 5 顆的星數。
 
-    回傳 (band_totals, pattern_dist):
+    星數 = 這 5 顆落在「幾個不同的十位區段」。同一段內重複(如 10、11 都在
+    10~19)只算 1 星,所以星數介於 1~4 星。
+
+    回傳 (star_dist, band_totals, pattern_dist):
+    - star_dist:{星數(1~4): 出現期數},每期落在幾個不同區段的分布。
     - band_totals:{組別標籤: 該組號碼歷史出現總次數}(共 期數×5 顆)。
     - pattern_dist:[(牌型, 次數, 比例), ...] 依次數由高到低。
       牌型 = 每期 5 號落在四組各幾顆,如 "1-2-1-1"(01~09 一顆、10~19 兩顆…)。
     """
+    star_counter = Counter()
     band_totals = Counter()
     pattern_counter = Counter()
     draws = draws_as_lists(df)
@@ -142,16 +147,19 @@ def tens_band_stats(df: pd.DataFrame):
             b = _tens_index(n)
             per_draw[b] += 1
             band_totals[b] += 1
+        stars = sum(1 for c in per_draw if c > 0)  # 有號碼的不同區段數
+        star_counter[stars] += 1
         pattern_counter[tuple(per_draw)] += 1
 
     total = len(draws)
+    star_out = {s: star_counter.get(s, 0) for s in range(1, len(TENS_BANDS) + 1)}
     band_out = {TENS_BANDS[i]: band_totals.get(i, 0) for i in range(len(TENS_BANDS))}
     patterns = sorted(pattern_counter.items(), key=lambda kv: (-kv[1], kv[0]))
     pattern_out = [
         ("-".join(str(x) for x in pat), cnt, cnt / total if total else 0.0)
         for pat, cnt in patterns
     ]
-    return band_out, pattern_out
+    return star_out, band_out, pattern_out
 
 
 # ── F. 卡方適合度檢定 ────────────────────────────────────

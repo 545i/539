@@ -320,36 +320,58 @@ def page_stats(fdf: pd.DataFrame):
     # 星數統計(俗稱 4 興:依十位分成 01~09 / 10~19 / 20~29 / 30~39 四組)
     with tabs[5]:
         st.caption(
-            "把 1~39 依十位分成四組(俗稱「4興」),看每期 5 個號碼怎麼落在這四組。"
+            "星數 = 每期開出的 5 顆落在「幾個不同的十位區段」(01~09 / 10~19 / "
+            "20~29 / 30~39)。同一段內重複(如 10、11 都在 10~19)只算 1 星,"
+            "所以星數介於 1~4 星。"
         )
-        band_totals, pattern_dist = stats.tens_band_stats(fdf)
+        star_dist, band_totals, pattern_dist = stats.tens_band_stats(fdf)
         n_draws = len(fdf)
 
-        # 各組號碼出現總次數(期數×5 顆的分配)
-        band_df = pd.DataFrame(
+        # 主角:星數分布(1~4 星各幾期)
+        star_df = pd.DataFrame(
             {
-                "組別(星數)": list(band_totals.keys()),
-                "出現總次數": list(band_totals.values()),
+                "星數": [f"{s} 星" for s in star_dist.keys()],
+                "出現期數": list(star_dist.values()),
             }
         )
-        band_df["每期平均顆數"] = (band_df["出現總次數"] / n_draws).round(2) if n_draws else 0
-        fig_band = px.bar(
-            band_df, x="組別(星數)", y="出現總次數", title="各組(星數)號碼出現總次數",
+        star_df["歷史比例"] = (
+            (star_df["出現期數"] / n_draws).map(lambda x: f"{x:.1%}") if n_draws else "—"
         )
-        st.plotly_chart(fig_band, theme=None, width="stretch")
-        st.dataframe(band_df, width="stretch", hide_index=True)
-        st.caption("每組各含 9~10 個號碼;均勻時每期平均約 1.15~1.28 顆,屬正常波動。")
+        fig_star = px.bar(
+            star_df, x="星數", y="出現期數", title="每期星數分布(落在幾個不同區段)",
+            text="出現期數",
+        )
+        st.plotly_chart(fig_star, theme=None, width="stretch")
+        st.dataframe(star_df, width="stretch", hide_index=True)
+        st.caption(
+            "5 顆分到 4 個區段,最常見是 3~4 星(分散);1 星(5 顆全擠同一段)極罕見。"
+        )
 
-        # 牌型分布:每期 5 號落在四組各幾顆,如 1-2-1-1
-        st.subheader("位數分布牌型(01~09 / 10~19 / 20~29 / 30~39 各幾顆)Top15")
-        pat_rows = [
-            {"牌型(四組顆數)": pat, "出現次數": cnt, "歷史比例": f"{ratio:.1%}"}
-            for pat, cnt, ratio in pattern_dist[:15]
-        ]
-        st.dataframe(pd.DataFrame(pat_rows), width="stretch", hide_index=True)
+        # 補充1:各組號碼出現總次數
+        with st.expander("各區段號碼出現總次數"):
+            band_df = pd.DataFrame(
+                {
+                    "區段": list(band_totals.keys()),
+                    "出現總次數": list(band_totals.values()),
+                }
+            )
+            band_df["每期平均顆數"] = (
+                (band_df["出現總次數"] / n_draws).round(2) if n_draws else 0
+            )
+            st.dataframe(band_df, width="stretch", hide_index=True)
+            st.caption("01~09 只有 9 個號碼、其餘各 10 個,故 01~09 略少屬正常。")
+
+        # 補充2:牌型分布(每期 5 號落在四組各幾顆,如 1-2-1-1)
+        with st.expander("位數分布牌型(四組各幾顆)Top15"):
+            pat_rows = [
+                {"牌型(四組顆數)": pat, "出現次數": cnt, "歷史比例": f"{ratio:.1%}"}
+                for pat, cnt, ratio in pattern_dist[:15]
+            ]
+            st.dataframe(pd.DataFrame(pat_rows), width="stretch", hide_index=True)
+
         st.error(
-            "誠實提醒:這是「描述過去」的位數分布,不是「預測未來」。每期開獎獨立隨機,"
-            "歷史最常出現的星數牌型,下一期出現的機率並不會比較高。"
+            "誠實提醒:這是「描述過去」的星數分布,不是「預測未來」。每期開獎獨立隨機,"
+            "歷史最常出現的星數,下一期出現的機率並不會比較高。"
         )
 
     # 卡方檢定
