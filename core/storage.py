@@ -29,6 +29,7 @@ def _conn() -> sqlite3.Connection:
             id         INTEGER PRIMARY KEY AUTOINCREMENT,
             game_key   TEXT NOT NULL,
             ts         TEXT DEFAULT (datetime('now', 'localtime')),
+            numbers    INTEGER NOT NULL DEFAULT 5,
             cars       INTEGER NOT NULL,
             hits       INTEGER NOT NULL,
             net        REAL NOT NULL,
@@ -36,16 +37,31 @@ def _conn() -> sqlite3.Connection:
         )
         """
     )
+    # 舊資料遷移:若無 numbers 欄則補上
+    cols = [r[1] for r in conn.execute("PRAGMA table_info(erhe_rounds)").fetchall()]
+    if "numbers" not in cols:
+        conn.execute("ALTER TABLE erhe_rounds ADD COLUMN numbers INTEGER NOT NULL DEFAULT 5")
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS erhe_settings (
+            game_key TEXT NOT NULL,
+            key      TEXT NOT NULL,
+            value    REAL NOT NULL,
+            PRIMARY KEY (game_key, key)
+        )
+        """
+    )
     return conn
 
 
-def add_round(game_key: str, cars: int, hits: int, net: float, cumulative: float) -> None:
-    """新增一局紀錄。"""
+def add_round(game_key: str, numbers: int, cars: int, hits: int,
+              net: float, cumulative: float) -> None:
+    """新增一局紀錄(numbers=每局押幾顆)。"""
     with _conn() as c:
         c.execute(
-            "INSERT INTO erhe_rounds (game_key, cars, hits, net, cumulative) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (game_key, int(cars), int(hits), float(net), float(cumulative)),
+            "INSERT INTO erhe_rounds (game_key, numbers, cars, hits, net, cumulative) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (game_key, int(numbers), int(cars), int(hits), float(net), float(cumulative)),
         )
 
 
@@ -53,11 +69,11 @@ def load_rounds(game_key: str) -> list[dict]:
     """讀取某遊戲的所有局數紀錄(依時間順序)。"""
     with _conn() as c:
         rows = c.execute(
-            "SELECT id, ts, cars, hits, net, cumulative FROM erhe_rounds "
+            "SELECT id, ts, numbers, cars, hits, net, cumulative FROM erhe_rounds "
             "WHERE game_key = ? ORDER BY id",
             (game_key,),
         ).fetchall()
-    cols = ["id", "ts", "cars", "hits", "net", "cumulative"]
+    cols = ["id", "ts", "numbers", "cars", "hits", "net", "cumulative"]
     return [dict(zip(cols, r)) for r in rows]
 
 
@@ -76,3 +92,23 @@ def reset(game_key: str) -> None:
     """清除某遊戲的所有紀錄。"""
     with _conn() as c:
         c.execute("DELETE FROM erhe_rounds WHERE game_key = ?", (game_key,))
+
+
+def get_setting(game_key: str, key: str, default: float) -> float:
+    """讀取某遊戲的設定值(無則回傳 default)。"""
+    with _conn() as c:
+        row = c.execute(
+            "SELECT value FROM erhe_settings WHERE game_key = ? AND key = ?",
+            (game_key, key),
+        ).fetchone()
+    return float(row[0]) if row else float(default)
+
+
+def set_setting(game_key: str, key: str, value: float) -> None:
+    """寫入/更新某遊戲的設定值。"""
+    with _conn() as c:
+        c.execute(
+            "INSERT INTO erhe_settings (game_key, key, value) VALUES (?, ?, ?) "
+            "ON CONFLICT(game_key, key) DO UPDATE SET value = excluded.value",
+            (game_key, key, float(value)),
+        )

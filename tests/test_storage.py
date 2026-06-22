@@ -15,17 +15,18 @@ def temp_db(tmp_path, monkeypatch):
 
 def test_add_and_load(temp_db):
     assert storage.current_cumulative("fantasy5") == 0.0
-    storage.add_round("fantasy5", 3, 0, -41325, -41325)
-    storage.add_round("fantasy5", 6, 1, 44550, 3225)
+    storage.add_round("fantasy5", 5, 3, 0, -41325, -41325)
+    storage.add_round("fantasy5", 5, 6, 1, 44550, 3225)
     rows = storage.load_rounds("fantasy5")
     assert len(rows) == 2
     assert rows[0]["cars"] == 3 and rows[1]["hits"] == 1
+    assert rows[0]["numbers"] == 5
     assert storage.current_cumulative("fantasy5") == 3225.0
 
 
 def test_games_separated(temp_db):
-    storage.add_round("fantasy5", 3, 0, -41325, -41325)
-    storage.add_round("lotto539", 5, 2, 1000, 1000)
+    storage.add_round("fantasy5", 5, 3, 0, -41325, -41325)
+    storage.add_round("lotto539", 5, 5, 2, 1000, 1000)
     assert len(storage.load_rounds("fantasy5")) == 1
     assert len(storage.load_rounds("lotto539")) == 1
     assert storage.current_cumulative("fantasy5") == -41325.0
@@ -33,14 +34,25 @@ def test_games_separated(temp_db):
 
 
 def test_reset(temp_db):
-    storage.add_round("fantasy5", 3, 0, -100, -100)
+    storage.add_round("fantasy5", 5, 3, 0, -100, -100)
     storage.reset("fantasy5")
     assert storage.load_rounds("fantasy5") == []
     assert storage.current_cumulative("fantasy5") == 0.0
 
 
+def test_settings_persist(temp_db):
+    assert storage.get_setting("fantasy5", "n_numbers", 5) == 5
+    storage.set_setting("fantasy5", "n_numbers", 4)
+    assert storage.get_setting("fantasy5", "n_numbers", 5) == 4
+    # 依遊戲分開
+    assert storage.get_setting("lotto539", "n_numbers", 5) == 5
+    # 覆寫
+    storage.set_setting("fantasy5", "n_numbers", 7)
+    assert storage.get_setting("fantasy5", "n_numbers", 5) == 7
+
+
 def test_persists_across_connections(temp_db):
-    storage.add_round("fantasy5", 3, 1, 22275, 22275)
+    storage.add_round("fantasy5", 5, 3, 1, 22275, 22275)
     # 直接用新連線讀,驗證真的寫入磁碟
     conn = sqlite3.connect(str(temp_db))
     n = conn.execute("SELECT COUNT(*) FROM erhe_rounds WHERE game_key='fantasy5'").fetchone()[0]

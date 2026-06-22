@@ -572,6 +572,11 @@ def page_wheel(fdf: pd.DataFrame, game):
 
 
 # ── 二合買牌(策略1)────────────────────────────────────
+def _persist_setting(game_key: str, setting_key: str, widget_key: str):
+    """on_change 回呼:把 number_input 的新值存進 SQLite。"""
+    storage.set_setting(game_key, setting_key, st.session_state[widget_key])
+
+
 def page_erhe(fdf: pd.DataFrame, game):
     from core import erhe
 
@@ -582,8 +587,16 @@ def page_erhe(fdf: pd.DataFrame, game):
     )
 
     c1, c2 = st.columns(2)
-    cost_per_car = c1.number_input("每車成本", min_value=1.0, max_value=1_000_000.0, value=2755.0, step=5.0)
-    win_payout = c2.number_input("中獎可得(每車中時)", min_value=1.0, max_value=10_000_000.0, value=21200.0, step=100.0)
+    kc = f"erhe_cost_{game.key}"
+    kw = f"erhe_pay_{game.key}"
+    cost_per_car = c1.number_input(
+        "每車成本", min_value=1.0, max_value=1_000_000.0,
+        value=storage.get_setting(game.key, "cost_per_car", 2755.0), step=5.0,
+        key=kc, on_change=_persist_setting, args=(game.key, "cost_per_car", kc))
+    win_payout = c2.number_input(
+        "中獎可得(每車中時)", min_value=1.0, max_value=10_000_000.0,
+        value=storage.get_setting(game.key, "win_payout", 21200.0), step=100.0,
+        key=kw, on_change=_persist_setting, args=(game.key, "win_payout", kw))
 
     ev = erhe.car_ev_rate(cost_per_car, win_payout)
     kf = erhe.car_kelly_fraction(cost_per_car, win_payout)
@@ -662,8 +675,16 @@ def page_erhe(fdf: pd.DataFrame, game):
             "(讓你中 1 顆即回本;有賺就自動降回低車階)。"
         )
         c1, c2 = st.columns(2)
-        n_numbers = c1.number_input("每局押幾顆", min_value=1, max_value=20, value=5, key="t3_n")
-        base = c2.number_input("回本後起始車數", min_value=1, max_value=20, value=3, key="t3_base")
+        kn = f"erhe_n_{game.key}"
+        kb = f"erhe_base_{game.key}"
+        n_numbers = c1.number_input(
+            "每局押幾顆", min_value=1, max_value=20,
+            value=int(storage.get_setting(game.key, "n_numbers", 5)),
+            key=kn, on_change=_persist_setting, args=(game.key, "n_numbers", kn))
+        base = c2.number_input(
+            "回本後起始車數", min_value=1, max_value=20,
+            value=int(storage.get_setting(game.key, "base", 3)),
+            key=kb, on_change=_persist_setting, args=(game.key, "base", kb))
 
         per1 = erhe.per_car_one_hit_net(int(n_numbers), float(cost_per_car), float(win_payout))
         st.caption(
@@ -729,7 +750,7 @@ def page_erhe(fdf: pd.DataFrame, game):
                 played = int(cur_cars)
                 net = erhe.round_net(played, int(this_hits), int(n_numbers),
                                      float(cost_per_car), float(win_payout))
-                storage.add_round(game.key, played, int(this_hits), net, cum + net)
+                storage.add_round(game.key, int(n_numbers), played, int(this_hits), net, cum + net)
                 st.rerun()
         else:  # 方案B:自己輸入車數
             f1, f2 = st.columns([1, 1])
@@ -742,7 +763,7 @@ def page_erhe(fdf: pd.DataFrame, game):
             if b1.button("送出結果 → 算下一局該回第幾車", type="primary"):
                 net = erhe.round_net(int(played_in), int(this_hits_b), int(n_numbers),
                                      float(cost_per_car), float(win_payout))
-                storage.add_round(game.key, int(played_in), int(this_hits_b), net, cum + net)
+                storage.add_round(game.key, int(n_numbers), int(played_in), int(this_hits_b), net, cum + net)
                 st.rerun()
         if b2.button("重置紀錄", key="t3_reset"):
             storage.reset(game.key)
@@ -752,7 +773,8 @@ def page_erhe(fdf: pd.DataFrame, game):
         if log_rows:
             log_df = pd.DataFrame([
                 {
-                    "局": i + 1, "時間": r["ts"], "車數": r["cars"], "重幾顆": r["hits"],
+                    "局": i + 1, "時間": r["ts"], "顆數": r.get("numbers", 5),
+                    "車數": r["cars"], "重幾顆": r["hits"],
                     "本局損益": f"{r['net']:+,.0f}", "累積損益": f"{r['cumulative']:+,.0f}",
                 }
                 for i, r in enumerate(log_rows)
