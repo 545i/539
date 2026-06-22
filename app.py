@@ -696,6 +696,22 @@ def page_erhe(fdf: pd.DataFrame, game):
             else:
                 st.success(f"目前已回本/獲利 → 本局回到起始 {int(base)} 車。")
 
+            # 本局若中 k 顆各可得多少(以建議車數計;含機率)
+            hd = erhe.hit_distribution(int(n_numbers))
+            payout_rows = []
+            for k in range(1, int(n_numbers) + 1):
+                gross = k * int(cur_cars) * float(win_payout)
+                net = gross - cur["next_cost"]
+                payout_rows.append({
+                    "中幾顆": f"{k} 顆",
+                    "本局機率": f"{hd.get(k, 0):.2%}",
+                    "可得(總回收)": f"{gross:,.0f}",
+                    "本局淨利": f"{net:+,.0f}",
+                    "中後累積損益": f"{cum + net:+,.0f}",
+                })
+            st.markdown(f"**本局若中獎(下 {int(cur_cars)} 車、押 {int(n_numbers)} 顆)各可得:**")
+            st.dataframe(pd.DataFrame(payout_rows), width="stretch", hide_index=True)
+
         # 輸入方式:A 系統建議車數 / B 自己輸入車數
         mode = st.radio(
             "輸入方式",
