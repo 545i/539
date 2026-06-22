@@ -14,7 +14,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from core import backtest, constants, excel_report, games, kelly, picker, scraper, stats
+from core import auth, backtest, constants, excel_report, games, kelly, picker, scraper, stats
 from core import scraper_fantasy5, storage
 from core.loader import DataError, load_history, merge, save
 from ui import docs
@@ -152,6 +152,11 @@ def _apply_theme():
 def sidebar_controls():
     """繪製側邊欄,回傳 (game 遊戲設定, fdf 篩選後資料, 導覽選項)。"""
     st.sidebar.title("彩券統計分析")
+    user = st.session_state.get("user", "")
+    if user:
+        uc1, uc2 = st.sidebar.columns([2, 1])
+        uc1.caption(f"👤 {user}")
+        uc2.button("登出", key="logout_btn", on_click=_logout)
     _apply_theme()
 
     # 遊戲選擇(兩款統計完全分開)
@@ -638,6 +643,10 @@ def _persist_setting(game_key: str, setting_key: str, widget_key: str):
 def page_erhe(fdf: pd.DataFrame, game):
     from core import erhe
 
+    # 帳號命名空間:把累積損益/設定以「帳號::遊戲」分開存,各帳號完全獨立。
+    user = st.session_state.get("user", "")
+    skey = f"{user}::{game.key}"
+
     st.header(f"二合買牌(策略1)— {game.name}")
     st.caption(
         "策略1 拖牌包車:拖 1 個膽號配其餘 38 號 = 1 車(38 注)。"
@@ -649,12 +658,12 @@ def page_erhe(fdf: pd.DataFrame, game):
     kw = f"erhe_pay_{game.key}"
     cost_per_car = c1.number_input(
         "每車成本", min_value=1.0, max_value=1_000_000.0,
-        value=storage.get_setting(game.key, "cost_per_car", 2755.0), step=5.0,
-        key=kc, on_change=_persist_setting, args=(game.key, "cost_per_car", kc))
+        value=storage.get_setting(skey, "cost_per_car", 2755.0), step=5.0,
+        key=kc, on_change=_persist_setting, args=(skey, "cost_per_car", kc))
     win_payout = c2.number_input(
         "中獎可得(每車中時)", min_value=1.0, max_value=10_000_000.0,
-        value=storage.get_setting(game.key, "win_payout", 21200.0), step=100.0,
-        key=kw, on_change=_persist_setting, args=(game.key, "win_payout", kw))
+        value=storage.get_setting(skey, "win_payout", 21200.0), step=100.0,
+        key=kw, on_change=_persist_setting, args=(skey, "win_payout", kw))
 
     ev = erhe.car_ev_rate(cost_per_car, win_payout)
     kf = erhe.car_kelly_fraction(cost_per_car, win_payout)
@@ -737,12 +746,12 @@ def page_erhe(fdf: pd.DataFrame, game):
         kb = f"erhe_base_{game.key}"
         n_numbers = c1.number_input(
             "每局押幾顆", min_value=1, max_value=20,
-            value=int(storage.get_setting(game.key, "n_numbers", 5)),
-            key=kn, on_change=_persist_setting, args=(game.key, "n_numbers", kn))
+            value=int(storage.get_setting(skey, "n_numbers", 5)),
+            key=kn, on_change=_persist_setting, args=(skey, "n_numbers", kn))
         base = c2.number_input(
             "回本後起始車數", min_value=1, max_value=20,
-            value=int(storage.get_setting(game.key, "base", 3)),
-            key=kb, on_change=_persist_setting, args=(game.key, "base", kb))
+            value=int(storage.get_setting(skey, "base", 3)),
+            key=kb, on_change=_persist_setting, args=(skey, "base", kb))
 
         per1 = erhe.per_car_one_hit_net(int(n_numbers), float(cost_per_car), float(win_payout))
         st.caption(
@@ -751,7 +760,7 @@ def page_erhe(fdf: pd.DataFrame, game):
         )
 
         # 累積損益狀態(SQLite 持久化,依遊戲分開;重整/重啟都保留)
-        cum = storage.current_cumulative(game.key)
+        cum = storage.current_cumulative(skey)
         st.caption(f"📀 紀錄已存於 SQLite,依遊戲分開(目前:{game.name})。重整頁面不會遺失。")
         # 本局建議車數:由目前累積損益直接算出(不需使用者輸入)
         cur = erhe.next_cars_for_recovery(cum, int(n_numbers), float(cost_per_car),
@@ -815,7 +824,7 @@ def page_erhe(fdf: pd.DataFrame, game):
                 played = int(cur_cars)
                 net = erhe.round_net(played, int(this_hits), int(n_numbers),
                                      float(cost_per_car), float(win_payout))
-                storage.add_round(game.key, int(n_numbers), played, int(this_hits), net, cum + net)
+                storage.add_round(skey, int(n_numbers), played, int(this_hits), net, cum + net)
                 st.rerun()
         else:  # 方案B:自己輸入車數
             f1, f2 = st.columns([1, 1])
@@ -828,13 +837,13 @@ def page_erhe(fdf: pd.DataFrame, game):
             if b1.button("送出結果 → 算下一局該回第幾車", type="primary"):
                 net = erhe.round_net(int(played_in), int(this_hits_b), int(n_numbers),
                                      float(cost_per_car), float(win_payout))
-                storage.add_round(game.key, int(n_numbers), int(played_in), int(this_hits_b), net, cum + net)
+                storage.add_round(skey, int(n_numbers), int(played_in), int(this_hits_b), net, cum + net)
                 st.rerun()
         if b2.button("重置紀錄", key="t3_reset"):
-            storage.reset(game.key)
+            storage.reset(skey)
             st.rerun()
 
-        log_rows = storage.load_rounds(game.key)
+        log_rows = storage.load_rounds(skey)
         if log_rows:
             log_df = pd.DataFrame([
                 {
@@ -933,9 +942,55 @@ def page_home(game, fdf):
     )
 
 
+# ── 帳號登入 / 註冊 ───────────────────────────────────────
+def _logout():
+    """登出:清除登入狀態(callback 後 Streamlit 會自動 rerun)。"""
+    st.session_state.pop("user", None)
+
+
+def _login_gate() -> bool:
+    """未登入時顯示登入/註冊表單;已登入回 True。
+
+    各帳號的二合累積損益、倍頭進程與凱莉對照設定完全獨立(以帳號命名空間隔離)。
+    """
+    if st.session_state.get("user"):
+        return True
+
+    st.title("🔐 彩券統計分析 — 登入")
+    st.caption("各帳號的二合累積損益、倍頭進程與凱莉對照完全獨立、互不干擾。")
+    tab_login, tab_reg = st.tabs(["登入", "註冊(需邀請碼)"])
+
+    with tab_login:
+        u = st.text_input("帳號", key="login_user")
+        p = st.text_input("密碼", type="password", key="login_pw")
+        if st.button("登入", type="primary", key="login_btn"):
+            if auth.verify(u, p):
+                st.session_state["user"] = u.strip()
+                st.rerun()
+            else:
+                st.error("帳號或密碼錯誤。")
+
+    with tab_reg:
+        st.caption("註冊需要邀請碼,取得後才能建立新帳號。")
+        ru = st.text_input("帳號(至少 2 字元)", key="reg_user")
+        rp = st.text_input("密碼(至少 4 字元)", type="password", key="reg_pw")
+        rp2 = st.text_input("確認密碼", type="password", key="reg_pw2")
+        code = st.text_input("邀請碼", key="reg_code")
+        if st.button("註冊", type="primary", key="reg_btn"):
+            if rp != rp2:
+                st.error("兩次輸入的密碼不一致。")
+            else:
+                ok, msg = auth.register(ru, rp, code)
+                (st.success if ok else st.error)(msg)
+
+    return False
+
+
 # ── 主程式 ────────────────────────────────────────────────
 def main():
     st.set_page_config(page_title="彩券統計分析(539 / 天天樂)", page_icon="🎰", layout="wide")
+    if not _login_gate():
+        return
     game, fdf, nav = sidebar_controls()
 
     # 說明 / 算式頁(由側邊欄按鈕觸發,覆蓋主畫面;點任一導覽即返回)
