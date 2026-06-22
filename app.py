@@ -15,7 +15,7 @@ import plotly.express as px
 import streamlit as st
 
 from core import backtest, constants, excel_report, games, kelly, picker, scraper, stats
-from core import scraper_fantasy5
+from core import scraper_fantasy5, storage
 from core.loader import DataError, load_history, merge, save
 from ui import docs
 
@@ -605,7 +605,9 @@ def page_erhe(fdf: pd.DataFrame, game):
             f"此時凱莉建議每次投入約 {kf:.2%} 的資金(而非無限加碼)。"
         )
 
-    tab1, tab2, tab3 = st.tabs(["選號 + 預估開機率", "拖牌包車(3車起)", "倍頭進程 + 凱莉對照"])
+    tab1, tab2, tab3, tab4 = st.tabs(
+        ["選號 + 預估開機率", "拖牌包車(3車起)", "倍頭進程 + 凱莉對照", "進程策略(中獎重置)"]
+    )
 
     # 1. 選號 + 預估開機率
     with tab1:
@@ -642,40 +644,147 @@ def page_erhe(fdf: pd.DataFrame, game):
             "只由每車成本與中獎金額決定(每車都是 −1.34% 這類固定值)。"
         )
 
-    # 3. 倍頭 + 凱莉
+    # 共用:顆數 + 進程 + 資金(放 session 供兩個 tab 用)
+    def _parse_prog(text, default):
+        try:
+            v = [float(x) for x in text.replace("，", ",").split(",") if x.strip()]
+            return [int(x) if x == int(x) else x for x in v] or default
+        except ValueError:
+            return default
+
+    # 3. 互動回本計算:輸入本局結果 → 算下一局車數
     with tab3:
-        st.caption("倍頭(Martingale):連敗時每局車數乘以倍頭,試圖一次回本。")
-        c1, c2, c3 = st.columns(3)
-        base = c1.number_input("起始車數", min_value=1, max_value=20, value=3, key="mg_base")
-        mult = c2.number_input("倍頭(每局乘以)", min_value=1.5, max_value=5.0, value=2.0, step=0.5)
-        cap = c3.number_input("資金", min_value=10000, max_value=100_000_000, value=100_000, step=10000)
-        table = erhe.martingale_table(
-            base_cars=int(base), multiplier=float(mult), rounds=10,
-            cost_per_car=float(cost_per_car), win_payout=float(win_payout), capital=float(cap),
+        st.caption(
+            "互動回本:輸入「本局下幾車、重了幾顆」,我算累積損益,並告訴你**下一局該下幾車**"
+            "(讓你中 1 顆即回本;有賺就自動降回低車階)。"
         )
-        rows = [
-            {
-                "局": s.round, "車數": s.cars,
-                "該局成本": f"{s.round_cost:,.0f}",
-                "累積成本": f"{s.cumulative_cost:,.0f}",
-                "打平需中幾車": f"{s.cars_to_break_even:,.1f}",
-            }
-            for s in table.steps
-        ]
-        st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
-        if table.bust_round:
-            st.error(
-                f"資金 {cap:,.0f} 在第 {table.bust_round} 局就被連敗的累積成本吃光(破產)。"
-                "倍頭讓車數指數膨脹,『打平需中幾車』也快速膨脹到不可能 —— "
-                "在負期望下倍投必然破產,不是回本方法。"
-            )
-        if kf > 0:
-            st.info(
-                f"對照凱莉:此設定為正期望,凱莉建議每次只投入約 {kf:.2%} 的資金"
-                f"(約 {cap * kf:,.0f}),而非倍投。凱莉控制風險,倍投放大破產。"
-            )
+        c1, c2 = st.columns(2)
+        n_numbers = c1.number_input("每局押幾顆", min_value=1, max_value=20, value=5, key="t3_n")
+        base = c2.number_input("回本後起始車數", min_value=1, max_value=20, value=3, key="t3_base")
+
+        per1 = erhe.per_car_one_hit_net(int(n_numbers), float(cost_per_car), float(win_payout))
+        st.caption(
+            f"中 1 顆每車淨利 = 中獎金額 {win_payout:,.0f} − {int(n_numbers)}顆×每車成本 {cost_per_car:,.0f} = "
+            f"**{per1:,.0f}/車**。回補虧損 L 的下一局車數 = ⌈L ÷ {per1:,.0f}⌉。"
+        )
+
+        # 累積損益狀態(SQLite 持久化,依遊戲分開;重整/重啟都保留)
+        cum = storage.current_cumulative(game.key)
+        st.caption(f"📀 紀錄已存於 SQLite,依遊戲分開(目前:{game.name})。重整頁面不會遺失。")
+        # 本局建議車數:由目前累積損益直接算出(不需使用者輸入)
+        cur = erhe.next_cars_for_recovery(cum, int(n_numbers), float(cost_per_car),
+                                          float(win_payout), base_cars=int(base))
+        cur_cars = cur["next_cars"]
+
+        m1, m2, m3 = st.columns(3)
+        m1.metric("目前累積損益", f"{cum:+,.0f}")
+        if cur_cars == float("inf"):
+            m2.metric("👉 本局建議下注", "無法回本")
+            st.error("此設定中 1 顆也無法回本(中獎金額 ≤ 顆數×每車成本),請調整中獎金額或顆數。")
         else:
-            st.info("對照凱莉:此設定為負期望,凱莉建議下注比例為 0 —— 最好的策略是不下注。")
+            m2.metric("👉 本局建議下注", f"{int(cur_cars)} 車")
+            m3.metric("本局成本", f"{cur['next_cost']:,.0f}")
+            if cum < 0:
+                st.warning(
+                    f"目前虧損 {-cum:,.0f} → 本局系統建議下 **{int(cur_cars)} 車**"
+                    f"(成本 {cur['next_cost']:,.0f}),中 1 顆即回本。"
+                    f"中 0 顆機率約 {erhe.hit_distribution(int(n_numbers))[0]:.0%}。"
+                )
+            else:
+                st.success(f"目前已回本/獲利 → 本局回到起始 {int(base)} 車。")
+
+        # 輸入方式:A 系統建議車數 / B 自己輸入車數
+        mode = st.radio(
+            "輸入方式",
+            ["方案A:用系統建議車數,只回報重幾顆", "方案B:自己輸入下了幾車 + 重幾顆"],
+            horizontal=True, key="t3_mode",
+        )
+        disabled = cur_cars == float("inf")
+
+        if mode.startswith("方案A"):
+            f1, _ = st.columns([1, 1])
+            this_hits = f1.number_input("本局重了幾顆", min_value=0, max_value=int(n_numbers),
+                                        value=0, key="t3_hits_a")
+            b1, b2 = st.columns([1, 1])
+            if b1.button("回報結果 → 算下一局", type="primary", disabled=disabled):
+                played = int(cur_cars)
+                net = erhe.round_net(played, int(this_hits), int(n_numbers),
+                                     float(cost_per_car), float(win_payout))
+                storage.add_round(game.key, played, int(this_hits), net, cum + net)
+                st.rerun()
+        else:  # 方案B:自己輸入車數
+            f1, f2 = st.columns([1, 1])
+            played_in = f1.number_input("我這局下了幾車", min_value=1, max_value=100000,
+                                        value=int(cur_cars) if cur_cars != float("inf") else 3,
+                                        key="t3_cars_b")
+            this_hits_b = f2.number_input("重了幾顆", min_value=0, max_value=int(n_numbers),
+                                          value=0, key="t3_hits_b")
+            b1, b2 = st.columns([1, 1])
+            if b1.button("送出結果 → 算下一局該回第幾車", type="primary"):
+                net = erhe.round_net(int(played_in), int(this_hits_b), int(n_numbers),
+                                     float(cost_per_car), float(win_payout))
+                storage.add_round(game.key, int(played_in), int(this_hits_b), net, cum + net)
+                st.rerun()
+        if b2.button("重置紀錄", key="t3_reset"):
+            storage.reset(game.key)
+            st.rerun()
+
+        log_rows = storage.load_rounds(game.key)
+        if log_rows:
+            log_df = pd.DataFrame([
+                {
+                    "局": i + 1, "時間": r["ts"], "車數": r["cars"], "重幾顆": r["hits"],
+                    "本局損益": f"{r['net']:+,.0f}", "累積損益": f"{r['cumulative']:+,.0f}",
+                }
+                for i, r in enumerate(log_rows)
+            ])
+            st.dataframe(log_df, width="stretch", hide_index=True)
+            st.download_button(
+                "下載紀錄 CSV",
+                data=pd.DataFrame(log_rows).to_csv(index=False).encode("utf-8-sig"),
+                file_name=f"erhe_log_{game.key}.csv", mime="text/csv",
+            )
+
+        st.error(
+            "誠實提醒:這只是『回本所需車數』的算術,改變不了每局 −1.34% 的負期望。"
+            "中 1 顆回本的設計,代價是中 0 顆時要一直加碼;長期(含偶爾連敗)仍是淨輸,且有破產風險。"
+        )
+
+    # 4. 進程策略(中獎重置)— 蒙地卡羅 + 資金破產率
+    with tab4:
+        st.caption("策略:每局押 N 顆,連敗加碼,**中 ≥1 號就重置回進程起點**。設定資金額看破產率。")
+        c1, c2 = st.columns(2)
+        n2 = c1.number_input("每局押幾顆", min_value=1, max_value=20, value=5, key="t4_n")
+        prog_text2 = c2.text_input("車數進程(逗號分隔)", value="3, 5, 7, 10, 13", key="t4_prog")
+        c3, c4 = st.columns(2)
+        cap2 = c3.number_input("資金額", min_value=10000, max_value=1_000_000_000, value=500_000, step=50_000, key="t4_cap")
+        rounds_n = c4.number_input("模擬局數", min_value=20, max_value=2000, value=200, step=20, key="t4_rounds")
+        if st.button("用此資金模擬", type="primary"):
+            progression2 = _parse_prog(prog_text2, [3, 5, 7, 10, 13])
+            res = erhe.progression_sim_multi(
+                progression=progression2, n_numbers=int(n2),
+                cost_per_car=float(cost_per_car), win_payout=float(win_payout),
+                capital=float(cap2), rounds=int(rounds_n), trials=500,
+            )
+            a1, a2, a3 = st.columns(3)
+            a1.metric("每局期望報酬率", f"{res.per_round_ev:+.2%}")
+            a2.metric("每局輸(全沒中)機率", f"{res.p_lose_round:.1%}")
+            a3.metric(f"{int(rounds_n)} 局後破產率", f"{res.ruin_rate:.0%}")
+            b1, b2 = st.columns(2)
+            b1.metric("平均最終資金", f"{res.avg_final_capital:,.0f}")
+            b2.metric("代表路徑最終資金", f"{res.final_capital:,.0f}")
+            st.line_chart(pd.DataFrame({"資金": res.curve}))
+            if res.per_round_ev < 0:
+                st.error(
+                    f"每局期望為負({res.per_round_ev:+.2%}),中獎重置改變不了。"
+                    f"資金 {cap2:,.0f} 的破產率 {res.ruin_rate:.0%};平均最終資金 {res.avg_final_capital:,.0f}"
+                    f"(< 起始 {cap2:,.0f},長期淨流失)。加大資金只是降低破產率,改變不了負期望。"
+                )
+            else:
+                st.warning(
+                    f"即使每局正期望({res.per_round_ev:+.2%}),固定進程加碼仍有 {res.ruin_rate:.0%} 破產率"
+                    "(過度下注)。唯有凱莉式按比例下注才能在正期望下長期存活。"
+                )
 
 
 # ── 主程式 ────────────────────────────────────────────────

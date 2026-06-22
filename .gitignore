@@ -10,3 +10,7 @@ venv/
 build/
 dist/
 *.spec.bak
+
+# SQLite 執行期狀態(下注紀錄,不入版控)
+*.db
+*.db-journal
