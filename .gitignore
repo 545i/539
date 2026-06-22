@@ -14,3 +14,6 @@ dist/
 # SQLite 執行期狀態(下注紀錄,不入版控)
 *.db
 *.db-journal
+
+# 部署紀錄(含連線憑證/內網資訊,不入公開版控)
+CLAUDE.md
