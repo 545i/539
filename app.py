@@ -155,6 +155,7 @@ def sidebar_controls():
     nav = st.sidebar.radio(
         "功能選單",
         [
+            "🏠 首頁",
             "統計分析",
             "產生參考號碼",
             "二合買牌(策略1)",
@@ -164,6 +165,7 @@ def sidebar_controls():
             "更新資料",
             "Excel 匯出",
         ],
+        key="nav",
         label_visibility="collapsed",
         on_change=lambda: st.session_state.update(show_docs=False),
     )
@@ -605,8 +607,9 @@ def page_erhe(fdf: pd.DataFrame, game):
             f"此時凱莉建議每次投入約 {kf:.2%} 的資金(而非無限加碼)。"
         )
 
-    tab1, tab2, tab3, tab4 = st.tabs(
-        ["選號 + 預估開機率", "拖牌包車(3車起)", "倍頭進程 + 凱莉對照", "進程策略(中獎重置)"]
+    # 順序調整:把「倍頭進程 + 凱莉對照」(互動回本)放第一個 tab,首頁快捷直接進入
+    tab3, tab1, tab2, tab4 = st.tabs(
+        ["倍頭進程 + 凱莉對照", "選號 + 預估開機率", "拖牌包車(3車起)", "進程策略(中獎重置)"]
     )
 
     # 1. 選號 + 預估開機率
@@ -787,6 +790,46 @@ def page_erhe(fdf: pd.DataFrame, game):
                 )
 
 
+# ── 首頁儀表板 ────────────────────────────────────────────
+def _goto(target: str):
+    """快捷按鈕:切換導覽到指定功能。"""
+    st.session_state.nav = target
+
+
+def page_home(game, fdf):
+    st.header("🎰 彩券統計分析儀表板")
+    st.info(
+        f"目前遊戲:**{game.name}**|票價 {game.currency}{game.ticket_price:g}|"
+        f"期望報酬率約 **{game.expected_return():.2%}**(資料 {len(fdf)} 期)。"
+        "  左側可切換遊戲與分析範圍。"
+    )
+    st.caption("點下方快捷直接進入功能:")
+
+    c1, c2 = st.columns(2)
+    c1.button("📊 統計分析", width="stretch", type="primary",
+              on_click=_goto, args=("統計分析",),
+              help="頻率/冷熱/遺漏/卡方/共現等;依目前遊戲與範圍。")
+    c2.button("🎯 倍頭進程 + 凱莉對照", width="stretch", type="primary",
+              on_click=_goto, args=("二合買牌(策略1)",),
+              help="二合買牌互動回本計算(系統算車數、SQLite 紀錄)+ 凱莉對照。")
+
+    c3, c4, c5 = st.columns(3)
+    c3.button("🎲 產生參考號碼", width="stretch", on_click=_goto, args=("產生參考號碼",))
+    c4.button("📈 策略回測", width="stretch", on_click=_goto, args=("策略回測",))
+    c5.button("💰 凱莉投報計算", width="stretch", on_click=_goto, args=("凱莉投報計算",))
+
+    c6, c7, c8 = st.columns(3)
+    c6.button("🃏 包牌 / 牌型 / 加碼", width="stretch", on_click=_goto, args=("包牌 / 牌型 / 加碼",))
+    c7.button("🔄 更新資料", width="stretch", on_click=_goto, args=("更新資料",))
+    c8.button("📑 Excel 匯出", width="stretch", on_click=_goto, args=("Excel 匯出",))
+
+    st.divider()
+    st.warning(
+        "誠實聲明:本工具僅供統計學習與娛樂。每期獨立隨機、數學上無法預測,"
+        "任何選號/加碼/回本法長期期望皆為負,凱莉公式對負期望賭局的建議始終是「不下注」。"
+    )
+
+
 # ── 主程式 ────────────────────────────────────────────────
 def main():
     st.set_page_config(page_title="彩券統計分析(539 / 天天樂)", page_icon="🎰", layout="wide")
@@ -797,7 +840,9 @@ def main():
         docs.render()
         return
 
-    if nav == "統計分析":
+    if nav == "🏠 首頁":
+        page_home(game, fdf)
+    elif nav == "統計分析":
         page_stats(fdf)
     elif nav == "產生參考號碼":
         page_picker(fdf, game)
