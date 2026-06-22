@@ -243,7 +243,8 @@ def page_stats(fdf: pd.DataFrame):
         return
 
     tabs = st.tabs(
-        ["號碼頻率", "冷熱號", "遺漏值", "間隔/連號", "奇偶/大小/和值", "卡方檢定", "共現配對"]
+        ["號碼頻率", "冷熱號", "遺漏值", "間隔/連號", "奇偶/大小/和值",
+         "星數統計(4興)", "卡方檢定", "共現配對"]
     )
 
     # 號碼頻率
@@ -316,8 +317,43 @@ def page_stats(fdf: pd.DataFrame):
         sum_fig = px.histogram(pd.DataFrame({"和值": sums}), x="和值", nbins=30, title="和值直方圖")
         st.plotly_chart(sum_fig, theme=None, width='stretch')
 
-    # 卡方檢定
+    # 星數統計(俗稱 4 興:依十位分成 01~09 / 10~19 / 20~29 / 30~39 四組)
     with tabs[5]:
+        st.caption(
+            "把 1~39 依十位分成四組(俗稱「4興」),看每期 5 個號碼怎麼落在這四組。"
+        )
+        band_totals, pattern_dist = stats.tens_band_stats(fdf)
+        n_draws = len(fdf)
+
+        # 各組號碼出現總次數(期數×5 顆的分配)
+        band_df = pd.DataFrame(
+            {
+                "組別(星數)": list(band_totals.keys()),
+                "出現總次數": list(band_totals.values()),
+            }
+        )
+        band_df["每期平均顆數"] = (band_df["出現總次數"] / n_draws).round(2) if n_draws else 0
+        fig_band = px.bar(
+            band_df, x="組別(星數)", y="出現總次數", title="各組(星數)號碼出現總次數",
+        )
+        st.plotly_chart(fig_band, theme=None, width="stretch")
+        st.dataframe(band_df, width="stretch", hide_index=True)
+        st.caption("每組各含 9~10 個號碼;均勻時每期平均約 1.15~1.28 顆,屬正常波動。")
+
+        # 牌型分布:每期 5 號落在四組各幾顆,如 1-2-1-1
+        st.subheader("位數分布牌型(01~09 / 10~19 / 20~29 / 30~39 各幾顆)Top15")
+        pat_rows = [
+            {"牌型(四組顆數)": pat, "出現次數": cnt, "歷史比例": f"{ratio:.1%}"}
+            for pat, cnt, ratio in pattern_dist[:15]
+        ]
+        st.dataframe(pd.DataFrame(pat_rows), width="stretch", hide_index=True)
+        st.error(
+            "誠實提醒:這是「描述過去」的位數分布,不是「預測未來」。每期開獎獨立隨機,"
+            "歷史最常出現的星數牌型,下一期出現的機率並不會比較高。"
+        )
+
+    # 卡方檢定
+    with tabs[6]:
         chi = stats.chi_square(fdf)
         chi_df = pd.DataFrame(
             {
@@ -335,7 +371,7 @@ def page_stats(fdf: pd.DataFrame):
         st.warning(chi.conclusion)
 
     # 共現配對
-    with tabs[6]:
+    with tabs[7]:
         pairs = stats.top_pairs(fdf, 10)
         pair_rows = [
             {"配對": f"{a} - {b}", "一起出現次數": cnt} for (a, b), cnt in pairs

@@ -116,6 +116,44 @@ def parity_size_sum(df: pd.DataFrame):
     return odd_full, big_full, sums
 
 
+# ── E2. 星數統計(十位分組,俗稱「4興」)──────────────────
+TENS_BANDS = ["01~09", "10~19", "20~29", "30~39"]
+
+
+def _tens_index(n: int) -> int:
+    """號碼所屬的十位分組索引:1~9→0、10~19→1、20~29→2、30~39→3。"""
+    return min(n // 10, len(TENS_BANDS) - 1)
+
+
+def tens_band_stats(df: pd.DataFrame):
+    """星數統計(俗稱「4興」):把 1~39 依十位分成四組,看 5 個號碼怎麼分布。
+
+    回傳 (band_totals, pattern_dist):
+    - band_totals:{組別標籤: 該組號碼歷史出現總次數}(共 期數×5 顆)。
+    - pattern_dist:[(牌型, 次數, 比例), ...] 依次數由高到低。
+      牌型 = 每期 5 號落在四組各幾顆,如 "1-2-1-1"(01~09 一顆、10~19 兩顆…)。
+    """
+    band_totals = Counter()
+    pattern_counter = Counter()
+    draws = draws_as_lists(df)
+    for draw in draws:
+        per_draw = [0] * len(TENS_BANDS)
+        for n in draw:
+            b = _tens_index(n)
+            per_draw[b] += 1
+            band_totals[b] += 1
+        pattern_counter[tuple(per_draw)] += 1
+
+    total = len(draws)
+    band_out = {TENS_BANDS[i]: band_totals.get(i, 0) for i in range(len(TENS_BANDS))}
+    patterns = sorted(pattern_counter.items(), key=lambda kv: (-kv[1], kv[0]))
+    pattern_out = [
+        ("-".join(str(x) for x in pat), cnt, cnt / total if total else 0.0)
+        for pat, cnt in patterns
+    ]
+    return band_out, pattern_out
+
+
 # ── F. 卡方適合度檢定 ────────────────────────────────────
 @dataclass
 class ChiSquareResult:
