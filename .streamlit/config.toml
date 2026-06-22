@@ -4,7 +4,7 @@ headless = true
 # 預設亮色主題(原生,涵蓋所有元件含 plotly);側邊欄可切深色模式
 [theme]
 base = "light"
-primaryColor = "#c9a227"
+primaryColor = "#e63946"
 backgroundColor = "#ffffff"
 secondaryBackgroundColor = "#f3f4f6"
 textColor = "#1a1a1a"
