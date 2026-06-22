@@ -92,9 +92,35 @@ def _range_label(fdf: pd.DataFrame) -> str:
 
 
 # ── 側邊欄:遊戲選擇 + 全域範圍選擇 + 導覽 ────────────────
+_DARK_CSS = """
+<style>
+.stApp, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {
+  background-color: #0e1117 !important; }
+[data-testid="stSidebar"] { background-color: #1b1f27 !important; }
+.stApp p, .stApp li, .stApp h1, .stApp h2, .stApp h3, .stApp h4, .stApp h5,
+.stApp h6, .stMarkdown, [data-testid="stWidgetLabel"] *, [data-testid="stMetricValue"],
+[data-testid="stMetricLabel"], button[data-baseweb="tab"], [data-testid="stSidebar"] * ,
+[data-testid="stCaptionContainer"] { color: #fafafa !important; }
+[data-testid="stDataFrame"], [data-testid="stTable"] {
+  filter: invert(0.92) hue-rotate(180deg); }
+</style>
+"""
+
+
+def _apply_theme():
+    """套用主題:預設亮色(原生);側邊欄開關開啟時注入深色 CSS + plotly 深色模板。"""
+    import plotly.io as pio
+
+    dark = st.sidebar.toggle("🌙 深色模式", value=False, key="dark_mode")
+    pio.templates.default = "plotly_dark" if dark else "plotly_white"
+    if dark:
+        st.markdown(_DARK_CSS, unsafe_allow_html=True)
+
+
 def sidebar_controls():
     """繪製側邊欄,回傳 (game 遊戲設定, fdf 篩選後資料, 導覽選項)。"""
     st.sidebar.title("彩券統計分析")
+    _apply_theme()
 
     # 遊戲選擇(兩款統計完全分開)
     game_name = st.sidebar.radio(
@@ -188,7 +214,7 @@ def page_stats(fdf: pd.DataFrame):
         freq = stats.frequency(fdf)
         fdf_freq = pd.DataFrame({"號碼": list(freq.keys()), "出現次數": list(freq.values())})
         fig = px.bar(fdf_freq, x="號碼", y="出現次數", title="各號碼出現次數")
-        st.plotly_chart(fig, width='stretch')
+        st.plotly_chart(fig, theme=None, width='stretch')
         ranked = stats.frequency_ranked(fdf)[:10]
         st.subheader("出現次數 Top10")
         st.dataframe(
@@ -230,7 +256,7 @@ def page_stats(fdf: pd.DataFrame):
         gaps, ratio = stats.gaps_consecutive(fdf)
         gap_df = pd.DataFrame({"相鄰間隔": list(gaps.keys()), "次數": list(gaps.values())})
         fig = px.bar(gap_df, x="相鄰間隔", y="次數", title="相鄰號碼間隔分布")
-        st.plotly_chart(fig, width='stretch')
+        st.plotly_chart(fig, theme=None, width='stretch')
         st.metric("含連號(相鄰差=1)的期數比例", f"{ratio:.1%}")
 
     # 奇偶 / 大小 / 和值
@@ -251,7 +277,7 @@ def page_stats(fdf: pd.DataFrame):
             )
         st.subheader("每期 5 號總和分布")
         sum_fig = px.histogram(pd.DataFrame({"和值": sums}), x="和值", nbins=30, title="和值直方圖")
-        st.plotly_chart(sum_fig, width='stretch')
+        st.plotly_chart(sum_fig, theme=None, width='stretch')
 
     # 卡方檢定
     with tabs[5]:
@@ -347,7 +373,7 @@ def page_backtest(fdf: pd.DataFrame, game):
         res_df, x="策略", y="報酬率%", title="各策略 ROI%",
         color="報酬率%", color_continuous_scale=["#e63946", "#457b9d"],
     )
-    st.plotly_chart(fig, width='stretch')
+    st.plotly_chart(fig, theme=None, width='stretch')
 
     st.warning(
         f"結果說明:無論哪種策略,長期報酬率都收斂到約 {game.expected_return():.0%},"
