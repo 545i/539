@@ -8,25 +8,73 @@
 """
 from __future__ import annotations
 
+import base64
 import hashlib
 import hmac
 import secrets
 import sqlite3
 import sys
+import time
 from pathlib import Path
 
 # 註冊邀請碼:沒有此碼無法註冊新帳號。
 INVITE_CODE = "055574471"
 _ITERATIONS = 200_000
+# 登入 token 預設有效天數(讓使用者「一直登入」,不必重複輸入)。
+TOKEN_DAYS = 30
 
 
-def _db_path() -> Path:
-    """使用者資料庫路徑(frozen 時位於 exe 旁邊,否則專案 data/)。"""
+def _data_dir() -> Path:
+    """資料目錄(frozen 時位於 exe 旁邊,否則專案 data/)。"""
     if getattr(sys, "frozen", False):
         base = Path(sys.executable).resolve().parent
     else:
         base = Path(__file__).resolve().parent.parent
-    return base / "data" / "users.db"
+    return base / "data"
+
+
+def _db_path() -> Path:
+    """使用者資料庫路徑。"""
+    return _data_dir() / "users.db"
+
+
+def _secret() -> bytes:
+    """伺服器簽章密鑰(首次自動產生並存檔,用來簽 / 驗登入 token)。"""
+    path = _data_dir() / ".session_secret"
+    if path.exists():
+        return path.read_bytes()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    s = secrets.token_bytes(32)
+    path.write_bytes(s)
+    return s
+
+
+def make_token(username: str, days: int = TOKEN_DAYS) -> str:
+    """簽發登入 token(帶過期時間,HMAC-SHA256 簽章,無法偽造)。"""
+    username = (username or "").strip()
+    exp = int(time.time()) + days * 86400
+    msg = f"{username}|{exp}"
+    sig = hmac.new(_secret(), msg.encode("utf-8"), hashlib.sha256).hexdigest()
+    return base64.urlsafe_b64encode(f"{msg}|{sig}".encode("utf-8")).decode("ascii")
+
+
+def verify_token(token: str) -> str | None:
+    """驗證 token;有效則回傳帳號,過期 / 竄改 / 損壞回 None。"""
+    if not token:
+        return None
+    try:
+        raw = base64.urlsafe_b64decode(token.encode("ascii")).decode("utf-8")
+        username, exp, sig = raw.rsplit("|", 2)
+        expected = hmac.new(
+            _secret(), f"{username}|{exp}".encode("utf-8"), hashlib.sha256
+        ).hexdigest()
+        if not hmac.compare_digest(sig, expected):
+            return None
+        if int(exp) < int(time.time()):
+            return None
+        return username
+    except (ValueError, TypeError, UnicodeDecodeError):
+        return None
 
 
 def _conn() -> sqlite3.Connection:

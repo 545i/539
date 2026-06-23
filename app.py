@@ -13,6 +13,7 @@ from pathlib import Path
 import pandas as pd
 import plotly.express as px
 import streamlit as st
+import streamlit.components.v1 as components
 
 from core import auth, backtest, constants, excel_report, games, kelly, picker, scraper, stats
 from core import scraper_fantasy5, storage
@@ -1000,19 +1001,72 @@ def page_home(game, fdf):
     )
 
 
-# ── 帳號登入 / 註冊 ───────────────────────────────────────
+# ── 帳號登入 / 註冊(cookie 持久登入)──────────────────────
+_COOKIE_NAME = "auth_token"
+_COOKIE_PATH = "/539"
+
+
+def _write_auth_cookie(token: str):
+    """把登入 token 寫進瀏覽器 cookie(預設 30 天),重整後自動還原登入。"""
+    max_age = 60 * 60 * 24 * auth.TOKEN_DAYS
+    cookie = (
+        f"{_COOKIE_NAME}={token}; path={_COOKIE_PATH}; "
+        f"max-age={max_age}; samesite=lax"
+    )
+    components.html(
+        f"<script>var c={cookie!r};"
+        "try{window.parent.document.cookie=c;}catch(e){document.cookie=c;}</script>",
+        height=0,
+    )
+
+
+def _clear_auth_cookie():
+    """清除登入 cookie(登出時)。"""
+    cookie = f"{_COOKIE_NAME}=; path={_COOKIE_PATH}; max-age=0"
+    components.html(
+        f"<script>var c={cookie!r};"
+        "try{window.parent.document.cookie=c;}catch(e){document.cookie=c;}</script>",
+        height=0,
+    )
+
+
+def _restore_login_from_cookie():
+    """重整 / 重開分頁時,從 cookie 還原登入狀態(無須重新輸入)。
+
+    注意:st.context.cookies 取自連線當下的請求標頭,同一個 session 內登出後
+    它仍會看到舊 cookie,故以 _logged_out 旗標避免登出後又被自動還原。
+    """
+    if st.session_state.get("user") or st.session_state.get("_logged_out"):
+        return
+    try:
+        token = st.context.cookies.get(_COOKIE_NAME)
+    except Exception:
+        token = None
+    user = auth.verify_token(token) if token else None
+    if user:
+        st.session_state["user"] = user
+
+
 def _logout():
-    """登出:清除登入狀態(callback 後 Streamlit 會自動 rerun)。"""
+    """登出:清除登入狀態 + 標記清除 cookie,並抑制本 session 的自動還原。"""
     st.session_state.pop("user", None)
+    st.session_state["_logged_out"] = True
+    st.session_state["_logout_pending"] = True
 
 
 def _login_gate() -> bool:
     """未登入時顯示登入/註冊表單;已登入回 True。
 
     各帳號的二合累積損益、倍頭進程與凱莉對照設定完全獨立(以帳號命名空間隔離)。
+    登入狀態以 cookie 持久保存,重整頁面 / 重開分頁都不必再輸入。
     """
+    _restore_login_from_cookie()
     if st.session_state.get("user"):
         return True
+
+    # 登出後清除瀏覽器 cookie
+    if st.session_state.pop("_logout_pending", False):
+        _clear_auth_cookie()
 
     st.title("🔐 彩券統計分析 — 登入")
     st.caption("各帳號的二合累積損益、倍頭進程與凱莉對照完全獨立、互不干擾。")
@@ -1024,6 +1078,9 @@ def _login_gate() -> bool:
         if st.button("登入", type="primary", key="login_btn"):
             if auth.verify(u, p):
                 st.session_state["user"] = u.strip()
+                st.session_state.pop("_logged_out", None)  # 解除登出抑制
+                # 標記待寫入 cookie,登入後保持 30 天免重複輸入
+                st.session_state["_login_token"] = auth.make_token(u.strip())
                 st.rerun()
             else:
                 st.error("帳號或密碼錯誤。")
@@ -1049,6 +1106,10 @@ def main():
     st.set_page_config(page_title="彩券統計分析(539 / 天天樂)", page_icon="🎰", layout="wide")
     if not _login_gate():
         return
+    # 剛登入:把 token 寫進 cookie(重整 / 重開分頁自動保持登入)
+    token = st.session_state.pop("_login_token", None)
+    if token:
+        _write_auth_cookie(token)
     game, fdf, nav = sidebar_controls()
 
     # 說明 / 算式頁(由側邊欄按鈕觸發,覆蓋主畫面;點任一導覽即返回)

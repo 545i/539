@@ -15,5 +15,8 @@ dist/
 *.db
 *.db-journal
 
+# 登入 token 簽章密鑰(機密,不入版控)
+.session_secret
+
 # 部署紀錄(含連線憑證/內網資訊,不入公開版控)
 CLAUDE.md
