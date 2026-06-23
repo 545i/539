@@ -968,13 +968,26 @@ def _goto(target: str):
 
 
 def page_home(game, fdf):
-    st.header("🎰 彩券統計分析儀表板")
-    st.info(
-        f"目前遊戲:**{game.name}**|票價 {game.currency}{game.ticket_price:g}|"
-        f"期望報酬率約 **{game.expected_return():.2%}**(資料 {len(fdf)} 期)。"
-        "  左側可切換遊戲與分析範圍。"
+    # 專屬色橫幅:每款遊戲不同底色 + 圖示 + 地區,一眼分得出在哪一款
+    st.markdown(
+        f"""
+        <div style="background:{game.accent};padding:16px 22px;border-radius:12px;
+                    margin-bottom:14px;border-left:10px solid rgba(0,0,0,0.25);">
+          <div style="font-size:1.9rem;font-weight:800;color:#fff;line-height:1.2;">
+            {game.emoji} {game.name}
+          </div>
+          <div style="font-size:1.02rem;color:#fff;opacity:0.95;margin-top:5px;">
+            {game.region}・{game.tagline}
+          </div>
+          <div style="font-size:0.95rem;color:#fff;opacity:0.9;margin-top:3px;">
+            票價 {game.currency}{game.ticket_price:g}|期望報酬率約
+            {game.expected_return():.2%}|資料 {len(fdf)} 期
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
-    st.caption("點下方快捷直接進入功能:")
+    st.caption(f"目前在 **{game.name}**;左側可切換遊戲與分析範圍。點下方快捷進入功能:")
 
     c1, c2 = st.columns(2)
     c1.button("📊 統計分析", width="stretch", type="primary",
