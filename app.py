@@ -221,13 +221,8 @@ def sidebar_controls():
         [
             "🏠 首頁",
             "統計分析",
-            "產生參考號碼",
             "二合買牌(策略1)",
-            "包牌 / 牌型 / 加碼",
-            "策略回測",
-            "凱莉投報計算",
-            "更新資料",
-            "Excel 匯出",
+            "🏆 排行榜",
         ],
         key="nav",
         label_visibility="collapsed",
@@ -989,28 +984,90 @@ def page_home(game, fdf):
     )
     st.caption(f"目前在 **{game.name}**;左側可切換遊戲與分析範圍。點下方快捷進入功能:")
 
-    c1, c2 = st.columns(2)
+    c1, c2, c3 = st.columns(3)
     c1.button("📊 統計分析", width="stretch", type="primary",
               on_click=_goto, args=("統計分析",),
-              help="頻率/冷熱/遺漏/卡方/共現等;依目前遊戲與範圍。")
+              help="頻率/冷熱/遺漏/星數/卡方/共現等;依目前遊戲與範圍。")
     c2.button("🎯 倍頭進程 + 凱莉對照", width="stretch", type="primary",
               on_click=_goto, args=("二合買牌(策略1)",),
               help="二合買牌互動回本計算(系統算車數、SQLite 紀錄)+ 凱莉對照。")
-
-    c3, c4, c5 = st.columns(3)
-    c3.button("🎲 產生參考號碼", width="stretch", on_click=_goto, args=("產生參考號碼",))
-    c4.button("📈 策略回測", width="stretch", on_click=_goto, args=("策略回測",))
-    c5.button("💰 凱莉投報計算", width="stretch", on_click=_goto, args=("凱莉投報計算",))
-
-    c6, c7, c8 = st.columns(3)
-    c6.button("🃏 包牌 / 牌型 / 加碼", width="stretch", on_click=_goto, args=("包牌 / 牌型 / 加碼",))
-    c7.button("🔄 更新資料", width="stretch", on_click=_goto, args=("更新資料",))
-    c8.button("📑 Excel 匯出", width="stretch", on_click=_goto, args=("Excel 匯出",))
+    c3.button("🏆 排行榜", width="stretch", type="primary",
+              on_click=_goto, args=("🏆 排行榜",),
+              help="彙整各帳號二合累積損益,排出誰賺最多。")
 
     st.divider()
     st.warning(
         "誠實聲明:本工具僅供統計學習與娛樂。每期獨立隨機、數學上無法預測,"
         "任何選號/加碼/回本法長期期望皆為負,凱莉公式對負期望賭局的建議始終是「不下注」。"
+    )
+
+
+# ── 排行榜:彙整各帳號二合累積損益 ────────────────────────
+def page_leaderboard(current_user: str):
+    st.header("🏆 排行榜 — 誰賺最多")
+    st.caption(
+        "彙整所有帳號在「二合買牌(策略1)」的累積損益(取每位帳號的最新累積值,"
+        "即完整歷史結果)。兩款遊戲幣別不同,故分開排名。"
+    )
+
+    rows = storage.latest_cumulatives()
+    # 依遊戲分組:game_key 形如「帳號::遊戲代號」
+    by_game: dict[str, list[dict]] = {}
+    for r in rows:
+        gk = r["game_key"]
+        if "::" not in gk:
+            continue  # 舊資料(未綁定帳號)略過
+        user, game_key = gk.split("::", 1)
+        if not user:
+            continue
+        by_game.setdefault(game_key, []).append(
+            {"user": user, "cumulative": r["cumulative"], "rounds": r["rounds"]}
+        )
+
+    if not by_game:
+        st.info("目前還沒有任何帳號的二合下注紀錄。到「二合買牌(策略1)」回報幾局後就會出現排名。")
+        return
+
+    # 依遊戲分頁顯示(只顯示有資料的遊戲)
+    game_keys = [g.key for g in games.GAMES.values() if g.key in by_game]
+    tabs = st.tabs([games.get(k).name for k in game_keys])
+    medals = {0: "🥇", 1: "🥈", 2: "🥉"}
+
+    for tab, gk in zip(tabs, game_keys):
+        with tab:
+            game = games.get(gk)
+            entries = sorted(
+                by_game[gk], key=lambda d: d["cumulative"], reverse=True
+            )
+            table_rows = []
+            for i, e in enumerate(entries):
+                name = e["user"]
+                if name == current_user:
+                    name = f"⭐ {name}(你)"
+                table_rows.append({
+                    "名次": medals.get(i, f"{i + 1}"),
+                    "帳號": name,
+                    f"累積損益({game.currency})": f"{e['cumulative']:+,.0f}",
+                    "局數": e["rounds"],
+                })
+            st.dataframe(pd.DataFrame(table_rows), width="stretch", hide_index=True)
+
+            # 冠軍長條圖(前 10 名)
+            top = entries[:10]
+            chart_df = pd.DataFrame({
+                "帳號": [e["user"] for e in top],
+                "累積損益": [e["cumulative"] for e in top],
+            })
+            fig = px.bar(
+                chart_df, x="帳號", y="累積損益",
+                title=f"{game.name} 累積損益排名(前 {len(top)} 名)",
+                color="累積損益", color_continuous_scale=["#e63946", "#457b9d"],
+            )
+            st.plotly_chart(fig, theme=None, width="stretch")
+
+    st.error(
+        "誠實提醒:排行榜只是「過去結果」的比較,二合長期期望為負,排名高僅代表運氣好,"
+        "不代表方法有效或未來會繼續贏。"
     )
 
 
@@ -1134,20 +1191,10 @@ def main():
         page_home(game, fdf)
     elif nav == "統計分析":
         page_stats(fdf)
-    elif nav == "產生參考號碼":
-        page_picker(fdf, game)
     elif nav == "二合買牌(策略1)":
         page_erhe(fdf, game)
-    elif nav == "包牌 / 牌型 / 加碼":
-        page_wheel(fdf, game)
-    elif nav == "策略回測":
-        page_backtest(fdf, game)
-    elif nav == "凱莉投報計算":
-        page_kelly(game)
-    elif nav == "更新資料":
-        page_update(game)
-    elif nav == "Excel 匯出":
-        page_export(fdf, game)
+    elif nav == "🏆 排行榜":
+        page_leaderboard(st.session_state.get("user", ""))
 
 
 if __name__ == "__main__":

@@ -94,6 +94,25 @@ def reset(game_key: str) -> None:
         c.execute("DELETE FROM erhe_rounds WHERE game_key = ?", (game_key,))
 
 
+def latest_cumulatives() -> list[dict]:
+    """每個 game_key 的「最新累積損益」與「總局數」(供排行榜彙整)。
+
+    game_key 由上層以「帳號::遊戲代號」命名空間寫入;本函式只回傳原始字串,
+    由呼叫端解析帳號與遊戲。回傳 [{game_key, cumulative, rounds}, ...]。
+    """
+    with _conn() as c:
+        rows = c.execute(
+            "SELECT e.game_key, e.cumulative, "
+            "  (SELECT COUNT(*) FROM erhe_rounds x WHERE x.game_key = e.game_key) AS rounds "
+            "FROM erhe_rounds e "
+            "WHERE e.id IN (SELECT MAX(id) FROM erhe_rounds GROUP BY game_key)",
+        ).fetchall()
+    return [
+        {"game_key": r[0], "cumulative": float(r[1]), "rounds": int(r[2])}
+        for r in rows
+    ]
+
+
 def get_setting(game_key: str, key: str, default: float) -> float:
     """讀取某遊戲的設定值(無則回傳 default)。"""
     with _conn() as c:
