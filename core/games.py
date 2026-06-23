@@ -67,14 +67,14 @@ FANTASY5 = GameConfig(
     name="天天樂(加州 Fantasy 5)",
     data_file="history_fantasy5.csv",
     ticket_price=1,
-    currency="US$",
+    currency="NT$",
     prize={5: 73_000, 4: 309, 3: 13.49, 2: 1, 1: 0, 0: 0},
     prize_note="加州 Fantasy 5 為 pari-mutuel 浮動獎金,此為歷史平均估計值(中2碼贈免費彩券,以 $1 計)。",
     source_note="加州官方開獎結果(經 lottolyzer.com 彙整;官網 calottery.com 以 WAF 封鎖直連)。",
     emoji="🐻",
     region="美國・加州",
     accent="#1f7a4d",  # 加州熊旗綠
-    tagline="每注 US$1・浮動彩池獎金・每日開獎",
+    tagline="浮動彩池獎金・每日開獎",
 )
 
 GAMES: dict[str, GameConfig] = {g.key: g for g in (LOTTO539, FANTASY5)}
