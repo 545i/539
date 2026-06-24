@@ -222,6 +222,7 @@ def sidebar_controls():
             "🏠 首頁",
             "統計分析",
             "二合買牌(策略1)",
+            "連碰/立柱(策略2)",
             "🏆 排行榜",
         ],
         key="nav",
@@ -956,6 +957,206 @@ def page_erhe(fdf: pd.DataFrame, game):
                 )
 
 
+# ── 連碰 / 立柱(策略2)────────────────────────────────────
+def page_lianpeng(fdf, game):
+    from core import lianpeng as L
+
+    user = st.session_state.get("user", "")
+    skey2 = f"{user}::{game.key}::s2"  # 帳號 + 遊戲 + 策略2 命名空間
+
+    st.header(f"連碰 / 立柱(策略2)— {game.name}")
+    st.caption(
+        "連碰=選 N 碼全互碰 C(N,r);立柱=分柱、同柱不碰跨柱碰 e_r。"
+        "一注 r 星 = 指定 r 碼,當期 5 碼全包含才中(各星獎金疊加)。"
+    )
+
+    DEF_ODDS = {2: 55.0, 3: 700.0, 4: 8000.0}
+
+    play = st.radio("玩法", ["連碰", "立柱"], horizontal=True, key="s2_play")
+    stars_sel = st.multiselect(
+        "星別(可複選,獎金疊加)", [2, 3, 4],
+        default=[2, 3], format_func=lambda r: f"{r}星", key="s2_stars",
+    )
+    if not stars_sel:
+        st.warning("請至少選一個星別。")
+        return
+    stars = tuple(sorted(stars_sel))
+
+    # 每注金額 + 各星賠率(SQLite 持久化)
+    kp = f"s2_price_{game.key}"
+    price = st.number_input(
+        "每注金額", min_value=1.0, max_value=100000.0,
+        value=storage.get_setting(skey2, "price", 50.0), step=5.0,
+        key=kp, on_change=_persist_setting, args=(skey2, "price", kp))
+    ocols = st.columns(len(stars))
+    odds = {}
+    for i, r in enumerate(stars):
+        ko = f"s2_odds{r}_{game.key}"
+        odds[r] = ocols[i].number_input(
+            f"{r}星賠率", min_value=1.0, max_value=1_000_000.0,
+            value=storage.get_setting(skey2, f"odds{r}", DEF_ODDS[r]), step=1.0,
+            key=ko, on_change=_persist_setting, args=(skey2, f"odds{r}", ko))
+
+    # 建立投注計畫
+    n_for_dist = None
+    if play == "連碰":
+        n = st.number_input("連碰碼數 N", min_value=max(stars), max_value=20,
+                            value=max(7, max(stars)), key="s2_n")
+        plan = L.plan_lianpeng(int(n), stars, price, odds)
+        n_for_dist = int(n)
+        st.caption("連碰 " + "、".join(
+            f"{r}星 C({int(n)},{r})={plan.notes[r]}注" for r in stars))
+    else:
+        sizes_txt = st.text_input("各柱碼數(逗號分隔,如 3,3 或 2,2,2)", value="3,3", key="s2_sizes")
+        try:
+            sizes = [int(x) for x in sizes_txt.replace("，", ",").split(",") if x.strip()]
+        except ValueError:
+            sizes = []
+        if len([s for s in sizes if s > 0]) < min(stars):
+            st.warning(f"立柱至少需要 {min(stars)} 柱(才湊得出 {min(stars)} 星)。")
+            return
+        plan = L.plan_lizhu(sizes, stars, price, odds)
+        st.caption(f"立柱 {len([s for s in sizes if s > 0])} 柱 {sizes}:" + "、".join(
+            f"{r}星 e{r}={plan.notes[r]}注" for r in stars))
+
+    # 計畫指標
+    m1, m2, m3 = st.columns(3)
+    m1.metric("總注數", f"{plan.total_notes:,}")
+    m2.metric("總成本", f"{plan.cost:,.0f}")
+    m3.metric("整體期望報酬率", f"{plan.ev_rate:+.2%}")
+    star_rows = []
+    for r in stars:
+        star_rows.append({
+            "星別": f"{r}星", "注數": plan.notes[r],
+            "單注機率": f"1/{1 / L.star_prob(r):,.0f}",
+            "公平賠率": f"{L.BREAKEVEN_ODDS[r]:,.1f}",
+            "你的賠率": f"{odds[r]:,.0f}",
+            "每注期望": f"{L.ev_rate(r, odds[r]):+.1%}",
+            "凱莉比例": f"{L.kelly_fraction(r, odds[r]):.3%}",
+        })
+    st.dataframe(pd.DataFrame(star_rows), width="stretch", hide_index=True)
+    if plan.ev_rate < 0:
+        st.error(f"整體期望為負({plan.ev_rate:+.2%})—— 賠率低於公平值,倍頭只會加速破產。")
+    else:
+        st.success(f"整體期望為正({plan.ev_rate:+.2%})—— 唯有凱莉式按比例下注才能長期存活。")
+
+    tab1, tab2 = st.tabs(["互動回本(累積損益)", "進程模擬(破產率)"])
+
+    with tab1:
+        cum = storage.current_cumulative(skey2)
+        st.caption("📀 累積損益存於 SQLite(帳號+遊戲+策略2 分開),重整不遺失,並計入排行榜。")
+        c1, c2 = st.columns(2)
+        c1.metric("目前累積損益", f"{cum:+,.0f}")
+
+        if play == "連碰":
+            target = st.number_input(
+                "回本目標:命中幾碼即回本", min_value=min(stars), max_value=5,
+                value=min(3, 5), key="s2_target")
+            rec = L.next_mult_for_recovery(cum, plan, int(target), base_mult=1)
+            nm = rec["next_mult"]
+            if nm == float("inf"):
+                c2.metric("👉 本局建議", "無法回本")
+                st.error(
+                    f"命中 {int(target)} 碼每倍淨利 {rec['per_mult_net']:+,.0f} ≤ 0,"
+                    "此設定無法靠中目標碼回本(請提高賠率或調整星別/碼數)。")
+            else:
+                c2.metric("👉 本局建議倍數", f"{int(nm)} 倍")
+                st.caption(
+                    f"命中 {int(target)} 碼每 1 倍淨利 {rec['per_mult_net']:+,.0f};"
+                    f"本局成本 {rec['next_cost']:,.0f}。")
+
+            disp_mult = int(nm) if nm != float("inf") else 1
+            hd = L.hit_distribution(n_for_dist)
+            rows = []
+            for m in range(min(stars), min(n_for_dist, 5) + 1):
+                wn = L.lianpeng_win_notes(m, stars)
+                net = L.round_net(plan, wn, disp_mult)
+                rows.append({
+                    "命中碼數": f"{m} 碼",
+                    "機率": f"{hd.get(m, 0):.2%}",
+                    "中獎注": " + ".join(f"{r}星×{wn[r]}" for r in stars if wn[r]) or "—",
+                    f"淨利(×{disp_mult}倍)": f"{net:+,.0f}",
+                    "中後累積": f"{cum + net:+,.0f}",
+                })
+            st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
+
+            f1, f2 = st.columns(2)
+            played_mult = f1.number_input("本局實下倍數", min_value=1, max_value=100000,
+                                          value=disp_mult, key="s2_mult_in")
+            this_hits = f2.number_input("本局命中幾碼", min_value=0, max_value=min(n_for_dist, 5),
+                                        value=0, key="s2_hits_in")
+            if st.button("回報結果 → 記錄並算下一局", type="primary", key="s2_report"):
+                wn = L.lianpeng_win_notes(int(this_hits), stars)
+                net = L.round_net(plan, wn, int(played_mult))
+                storage.add_round(skey2, plan.total_notes, int(played_mult),
+                                  int(this_hits), net, cum + net)
+                st.rerun()
+        else:
+            st.caption("立柱回報:輸入各柱命中碼數(逗號),系統算中獎注與淨利。")
+            f1, f2 = st.columns(2)
+            played_mult = f1.number_input("本局倍數", min_value=1, max_value=100000,
+                                          value=1, key="s2_lz_mult")
+            chits_txt = f2.text_input("各柱命中碼數(逗號)", value="0,0", key="s2_lz_hits")
+            if st.button("回報結果 → 記錄", type="primary", key="s2_lz_report"):
+                try:
+                    chits = [int(x) for x in chits_txt.replace("，", ",").split(",") if x.strip()]
+                except ValueError:
+                    chits = []
+                wn = L.lizhu_win_notes(chits, stars)
+                net = L.round_net(plan, wn, int(played_mult))
+                storage.add_round(skey2, plan.total_notes, int(played_mult),
+                                  sum(chits), net, cum + net)
+                st.rerun()
+
+        if st.button("重置紀錄", key="s2_reset"):
+            storage.reset(skey2)
+            st.rerun()
+
+        logs = storage.load_rounds(skey2)
+        if logs:
+            log_df = pd.DataFrame([{
+                "局": i + 1, "時間": r["ts"], "總注": r.get("numbers", 0),
+                "倍數": r["cars"], "命中碼": r["hits"],
+                "本局損益": f"{r['net']:+,.0f}", "累積": f"{r['cumulative']:+,.0f}",
+            } for i, r in enumerate(logs)])
+            st.dataframe(log_df, width="stretch", hide_index=True)
+
+        st.error(
+            "誠實提醒:連碰/立柱多買只是命中率與成本同步上升,賠率 < 公平值時長期期望仍為負,"
+            "倍頭(加倍數)有破產風險。")
+
+    with tab2:
+        if play != "連碰":
+            st.info("進程模擬目前支援連碰(以命中碼數超幾何分布)。立柱請用上方試算與互動回本。")
+        else:
+            st.caption("模擬『連敗加倍數、單局淨利>0 就重置』,看資金破產率。")
+            c1, c2 = st.columns(2)
+            prog_txt = c1.text_input("倍數進程(逗號)", value="1,2,3,5,8", key="s2_prog")
+            cap = c2.number_input("資金額", min_value=10000, max_value=1_000_000_000,
+                                  value=500_000, step=50_000, key="s2_cap")
+            rounds_n = st.number_input("模擬局數", min_value=20, max_value=2000,
+                                       value=200, step=20, key="s2_rounds")
+            if st.button("用此資金模擬", type="primary", key="s2_sim"):
+                try:
+                    prog = [int(x) for x in prog_txt.replace("，", ",").split(",") if x.strip()] or [1, 2, 3, 5, 8]
+                except ValueError:
+                    prog = [1, 2, 3, 5, 8]
+                res = L.progression_sim(plan, n_for_dist, progression=prog,
+                                        capital=float(cap), rounds=int(rounds_n), trials=500)
+                a1, a2, a3 = st.columns(3)
+                a1.metric("單局期望報酬率", f"{res.per_round_ev:+.2%}")
+                a2.metric("單局獲利機率", f"{res.p_profit_round:.1%}")
+                a3.metric(f"{int(rounds_n)}局後破產率", f"{res.ruin_rate:.0%}")
+                b1, b2 = st.columns(2)
+                b1.metric("平均最終資金", f"{res.avg_final_capital:,.0f}")
+                b2.metric("代表路徑最終資金", f"{res.final_capital:,.0f}")
+                st.line_chart(pd.DataFrame({"資金": res.curve}))
+                st.error(
+                    f"單局期望 {res.per_round_ev:+.2%};加大資金只降破產率,改變不了負期望。"
+                    if res.per_round_ev < 0 else
+                    f"即使單局正期望 {res.per_round_ev:+.2%},固定倍數進程仍有 {res.ruin_rate:.0%} 破產率。")
+
+
 # ── 首頁儀表板 ────────────────────────────────────────────
 def _goto(target: str):
     """快捷按鈕:切換導覽到指定功能。"""
@@ -984,16 +1185,20 @@ def page_home(game, fdf):
     )
     st.caption(f"目前在 **{game.name}**;左側可切換遊戲與分析範圍。點下方快捷進入功能:")
 
-    c1, c2, c3 = st.columns(3)
-    c1.button("📊 統計分析", width="stretch", type="primary",
-              on_click=_goto, args=("統計分析",),
-              help="頻率/冷熱/遺漏/星數/卡方/共現等;依目前遊戲與範圍。")
-    c2.button("🎯 倍頭進程 + 凱莉對照", width="stretch", type="primary",
-              on_click=_goto, args=("二合買牌(策略1)",),
-              help="二合買牌互動回本計算(系統算車數、SQLite 紀錄)+ 凱莉對照。")
-    c3.button("🏆 排行榜", width="stretch", type="primary",
-              on_click=_goto, args=("🏆 排行榜",),
-              help="彙整各帳號二合累積損益,排出誰賺最多。")
+    r1c1, r1c2 = st.columns(2)
+    r1c1.button("📊 統計分析", width="stretch", type="primary",
+                on_click=_goto, args=("統計分析",),
+                help="頻率/冷熱/遺漏/星數/卡方/共現等;依目前遊戲與範圍。")
+    r1c2.button("🎯 二合買牌(策略1)", width="stretch", type="primary",
+                on_click=_goto, args=("二合買牌(策略1)",),
+                help="二合拖牌互動回本(系統算車數、SQLite 紀錄)+ 倍頭 + 凱莉對照。")
+    r2c1, r2c2 = st.columns(2)
+    r2c1.button("🎴 連碰/立柱(策略2)", width="stretch", type="primary",
+                on_click=_goto, args=("連碰/立柱(策略2)",),
+                help="連碰(全互碰)/ 立柱(分柱)二三四星試算 + 互動回本 + 進程模擬。")
+    r2c2.button("🏆 排行榜", width="stretch", type="primary",
+                on_click=_goto, args=("🏆 排行榜",),
+                help="彙整各帳號策略1+策略2 累積損益,排出誰賺最多。")
 
     st.divider()
     st.warning(
@@ -1006,30 +1211,28 @@ def page_home(game, fdf):
 def page_leaderboard(current_user: str):
     st.header("🏆 排行榜 — 誰賺最多")
     st.caption(
-        "彙整所有帳號在「二合買牌(策略1)」的累積損益(取每位帳號的最新累積值,"
-        "即完整歷史結果)。兩款遊戲幣別不同,故分開排名。"
+        "彙整所有帳號在「二合買牌(策略1)」+「連碰/立柱(策略2)」的累積損益"
+        "(取每位帳號各策略最新累積值合計,即完整歷史結果)。兩款遊戲幣別不同,故分開排名。"
     )
 
     rows = storage.latest_cumulatives()
-    # 依遊戲分組:game_key 形如「帳號::遊戲代號」
-    by_game: dict[str, list[dict]] = {}
+    # game_key 形如「帳號::遊戲代號[::策略]」;彙整成 遊戲 → 帳號 → 累積/局數合計
+    agg: dict[str, dict[str, dict]] = {}
     for r in rows:
-        gk = r["game_key"]
-        if "::" not in gk:
+        parts = r["game_key"].split("::")
+        if len(parts) < 2 or not parts[0]:
             continue  # 舊資料(未綁定帳號)略過
-        user, game_key = gk.split("::", 1)
-        if not user:
-            continue
-        by_game.setdefault(game_key, []).append(
-            {"user": user, "cumulative": r["cumulative"], "rounds": r["rounds"]}
-        )
+        user, game_key = parts[0], parts[1]
+        d = agg.setdefault(game_key, {}).setdefault(user, {"cumulative": 0.0, "rounds": 0})
+        d["cumulative"] += r["cumulative"]
+        d["rounds"] += r["rounds"]
 
-    if not by_game:
-        st.info("目前還沒有任何帳號的二合下注紀錄。到「二合買牌(策略1)」回報幾局後就會出現排名。")
+    if not agg:
+        st.info("目前還沒有任何帳號的下注紀錄。到「二合買牌(策略1)」或「連碰/立柱(策略2)」回報幾局後就會出現排名。")
         return
 
     # 依遊戲分頁顯示(只顯示有資料的遊戲)
-    game_keys = [g.key for g in games.GAMES.values() if g.key in by_game]
+    game_keys = [g.key for g in games.GAMES.values() if g.key in agg]
     tabs = st.tabs([games.get(k).name for k in game_keys])
     medals = {0: "🥇", 1: "🥈", 2: "🥉"}
 
@@ -1037,7 +1240,8 @@ def page_leaderboard(current_user: str):
         with tab:
             game = games.get(gk)
             entries = sorted(
-                by_game[gk], key=lambda d: d["cumulative"], reverse=True
+                [{"user": u, **v} for u, v in agg[gk].items()],
+                key=lambda d: d["cumulative"], reverse=True,
             )
             table_rows = []
             for i, e in enumerate(entries):
@@ -1193,6 +1397,8 @@ def main():
         page_stats(fdf)
     elif nav == "二合買牌(策略1)":
         page_erhe(fdf, game)
+    elif nav == "連碰/立柱(策略2)":
+        page_lianpeng(fdf, game)
     elif nav == "🏆 排行榜":
         page_leaderboard(st.session_state.get("user", ""))
 
