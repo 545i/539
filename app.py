@@ -223,6 +223,7 @@ def sidebar_controls():
             "統計分析",
             "二合買牌(策略1)",
             "🏆 排行榜",
+            "🔄 更新資料",
         ],
         key="nav",
         label_visibility="collapsed",
@@ -1194,6 +1195,8 @@ def main():
         page_erhe(fdf, game)
     elif nav == "🏆 排行榜":
         page_leaderboard(st.session_state.get("user", ""))
+    elif nav == "🔄 更新資料":
+        page_update(game)
 
 
 if __name__ == "__main__":
