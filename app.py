@@ -523,6 +523,16 @@ def page_update(game):
     path = game_data_path(game)
     df = load_df(game.key)
 
+    # 匯出目前歷史開獎數據 CSV(兩款遊戲皆可)
+    st.download_button(
+        f"📥 匯出歷史開獎數據 CSV(目前 {len(df)} 期)",
+        data=df.sort_values("date").to_csv(index=False).encode("utf-8-sig"),
+        file_name=f"{game.key}_history.csv",
+        mime="text/csv",
+        width="stretch",
+    )
+    st.divider()
+
     if game.key == "fantasy5":
         # 天天樂(加州 Fantasy 5):從 lottolyzer 彙整站抓取
         st.caption("從公開彙整站抓取加州官方 Fantasy 5 開獎(官網 calottery 以 WAF 封鎖直連)。")
