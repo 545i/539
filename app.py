@@ -16,7 +16,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 from core import auth, backtest, constants, excel_report, games, kelly, picker, scraper, stats
-from core import scraper_fantasy5, storage
+from core import autoupdate, scraper_fantasy5, storage
 from core.loader import DataError, load_history, merge, save
 from ui import docs
 
@@ -708,6 +708,12 @@ def _persist_setting(game_key: str, setting_key: str, widget_key: str):
 def page_erhe(fdf: pd.DataFrame, game):
     from core import erhe
 
+    def _kick_autoupdate():
+        """回報結果時觸發背景補抓:資料日期==系統日期則跳過;有落差至少重抓 7 期。"""
+        full_df = load_df(game.key)
+        latest = full_df["date"].max() if not full_df.empty else None
+        autoupdate.kick(game.key, game_data_path(game), latest, on_done=load_df.clear)
+
     # 帳號命名空間:把累積損益/設定以「帳號::遊戲」分開存,各帳號完全獨立。
     user = st.session_state.get("user", "")
     skey = f"{user}::{game.key}"
@@ -891,6 +897,7 @@ def page_erhe(fdf: pd.DataFrame, game):
                 net = erhe.round_net(played, int(this_hits), int(n_numbers),
                                      float(cost_per_car), float(win_payout))
                 storage.add_round(skey, int(n_numbers), played, int(this_hits), net, cum + net)
+                _kick_autoupdate()
                 st.rerun()
         else:  # 方案B:自己輸入車數
             f1, f2 = st.columns([1, 1])
@@ -904,6 +911,7 @@ def page_erhe(fdf: pd.DataFrame, game):
                 net = erhe.round_net(int(played_in), int(this_hits_b), int(n_numbers),
                                      float(cost_per_car), float(win_payout))
                 storage.add_round(skey, int(n_numbers), int(played_in), int(this_hits_b), net, cum + net)
+                _kick_autoupdate()
                 st.rerun()
         if b2.button("↩️ 撤銷上一局", key="t3_undo", disabled=not log_rows,
                      help="刪除最後一筆回報,累積損益還原到前一局 — 可放心回報→看建議→撤銷,反覆試算。"):
@@ -913,6 +921,15 @@ def page_erhe(fdf: pd.DataFrame, game):
             storage.reset(skey)
             st.rerun()
         st.caption("💡 試算:先回報一個假設結果看「下一局建議車數」,再按「撤銷上一局」還原,不影響真實紀錄。")
+
+        # 背景自動補抓狀態(回報結果時觸發;資料日期==今天則不補)
+        au = autoupdate.status(game.key)
+        if au.get("running"):
+            st.info("🔄 開獎資料背景補抓中…(關閉網頁也會繼續,完成後自動套用)")
+        elif au.get("error"):
+            st.caption(f"⚠️ {au.get('msg', '')}")
+        elif au.get("msg"):
+            st.caption(f"✅ {au['msg']}")
 
         if log_rows:
             log_df = pd.DataFrame([
