@@ -879,12 +879,13 @@ def page_erhe(fdf: pd.DataFrame, game):
             horizontal=True, key="t3_mode",
         )
         disabled = cur_cars == float("inf")
+        log_rows = storage.load_rounds(skey)
 
         if mode.startswith("方案A"):
             f1, _ = st.columns([1, 1])
             this_hits = f1.number_input("本局重了幾顆", min_value=0, max_value=int(n_numbers),
                                         value=0, key="t3_hits_a")
-            b1, b2 = st.columns([1, 1])
+            b1, b2, b3 = st.columns([1, 1, 1])
             if b1.button("回報結果 → 算下一局", type="primary", disabled=disabled):
                 played = int(cur_cars)
                 net = erhe.round_net(played, int(this_hits), int(n_numbers),
@@ -898,17 +899,21 @@ def page_erhe(fdf: pd.DataFrame, game):
                                         key="t3_cars_b")
             this_hits_b = f2.number_input("重了幾顆", min_value=0, max_value=int(n_numbers),
                                           value=0, key="t3_hits_b")
-            b1, b2 = st.columns([1, 1])
+            b1, b2, b3 = st.columns([1, 1, 1])
             if b1.button("送出結果 → 算下一局該回第幾車", type="primary"):
                 net = erhe.round_net(int(played_in), int(this_hits_b), int(n_numbers),
                                      float(cost_per_car), float(win_payout))
                 storage.add_round(skey, int(n_numbers), int(played_in), int(this_hits_b), net, cum + net)
                 st.rerun()
-        if b2.button("重置紀錄", key="t3_reset"):
+        if b2.button("↩️ 撤銷上一局", key="t3_undo", disabled=not log_rows,
+                     help="刪除最後一筆回報,累積損益還原到前一局 — 可放心回報→看建議→撤銷,反覆試算。"):
+            storage.undo_last_round(skey)
+            st.rerun()
+        if b3.button("重置紀錄", key="t3_reset"):
             storage.reset(skey)
             st.rerun()
+        st.caption("💡 試算:先回報一個假設結果看「下一局建議車數」,再按「撤銷上一局」還原,不影響真實紀錄。")
 
-        log_rows = storage.load_rounds(skey)
         if log_rows:
             log_df = pd.DataFrame([
                 {

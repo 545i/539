@@ -88,6 +88,23 @@ def current_cumulative(game_key: str) -> float:
     return float(row[0]) if row else 0.0
 
 
+def undo_last_round(game_key: str) -> bool:
+    """撤銷最後一局紀錄(刪除該 game_key 最大 id 那筆);無紀錄回 False。
+
+    累積損益不需重算:每局的 cumulative 都存在各自那筆,刪掉最後一筆後,
+    current_cumulative() 自然回到前一局的值。
+    """
+    with _conn() as c:
+        row = c.execute(
+            "SELECT id FROM erhe_rounds WHERE game_key = ? ORDER BY id DESC LIMIT 1",
+            (game_key,),
+        ).fetchone()
+        if row is None:
+            return False
+        c.execute("DELETE FROM erhe_rounds WHERE id = ?", (row[0],))
+    return True
+
+
 def reset(game_key: str) -> None:
     """清除某遊戲的所有紀錄。"""
     with _conn() as c:
