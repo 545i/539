@@ -1,12 +1,14 @@
-"""今彩539 統計分析 Streamlit Web 應用。
+"""彩券統計分析 Streamlit Web 應用(今彩539 / 天天樂 / 六合彩)。
 
-把原本的 TUI 介面改造成網頁版,所有分析皆吃側邊欄「全域範圍選擇」篩選後的 fdf。
+沒有全域的「遊戲模式」:三款的開獎資料一律同時維護,
+二合買牌(策略1)三款共用同一個損益池,統計分析則在頁內切換要看哪一款。
 
-重要提醒(與 core 模組一致):今彩539 每期為獨立隨機事件,數學上無法預測,
-長期期望報酬率約 -44%。本工具僅供統計學習與娛樂用途。
+重要提醒(與 core 模組一致):每期開獎為獨立隨機事件,數學上無法預測,
+長期期望報酬率為負。本工具僅供統計學習與娛樂用途。
 """
 from __future__ import annotations
 
+import datetime as dt
 import sys
 from pathlib import Path
 
@@ -15,8 +17,8 @@ import plotly.express as px
 import streamlit as st
 import streamlit.components.v1 as components
 
-from core import auth, backtest, constants, excel_report, games, kelly, picker, scraper, stats
-from core import autoupdate, scraper_fantasy5, scraper_marksix, storage
+from core import auth, backtest, constants, erhe, excel_report, games, kelly, picker
+from core import autoupdate, scraper, scraper_fantasy5, scraper_marksix, stats, storage
 from core.loader import DataError, load_history, merge, save
 from ui import docs
 
@@ -37,6 +39,15 @@ def _bundle_base() -> Path:
     if getattr(sys, "frozen", False):
         return Path(getattr(sys, "_MEIPASS", _writable_base()))
     return Path(__file__).resolve().parent
+
+
+# ── 導覽(不再有全域遊戲切換)──────────────────────────────
+NAV_ITEMS = [
+    "🎯 二合買牌(策略1)",
+    "📊 統計分析",
+    "🏆 排行榜",
+    "🔄 更新資料",
+]
 
 
 # ── 資料路徑與載入(依遊戲分檔)────────────────────────────
@@ -151,8 +162,8 @@ def _apply_theme():
         st.markdown(_DARK_CSS, unsafe_allow_html=True)
 
 
-def sidebar_controls():
-    """繪製側邊欄,回傳 (game 遊戲設定, fdf 篩選後資料, 導覽選項)。"""
+def sidebar_controls() -> str:
+    """繪製側邊欄(不再有全域遊戲切換),回傳目前的導覽選項。"""
     st.sidebar.title("彩券統計分析")
     user = st.session_state.get("user", "")
     if user:
@@ -161,24 +172,24 @@ def sidebar_controls():
         uc2.button("登出", key="logout_btn", on_click=_logout)
     _apply_theme()
 
-    # 遊戲選擇(各遊戲統計完全分開)
-    game_name = st.sidebar.radio(
-        "選擇遊戲",
-        [g.name for g in games.GAMES.values()],
-        help="今彩539(39選5)、天天樂(加州 Fantasy 5,39選5)、六合彩(49選6,依香港開獎)"
-             "各自獨立資料與統計。",
+    st.sidebar.markdown("### 導覽")
+    nav = st.sidebar.radio(
+        "功能選單", NAV_ITEMS, key="nav", label_visibility="collapsed",
+        on_change=lambda: st.session_state.update(show_docs=False),
     )
-    game = games.by_name(game_name)
-    df = load_df(game.key)
-    st.sidebar.caption(
-        f"票價 {game.currency}{game.ticket_price:g}|期望報酬率約 "
-        f"{game.expected_return():.2%}"
-    )
+
+    # 三款開獎資料一律同時維護,這裡顯示各自的期數與最新日期
+    st.sidebar.markdown("### 開獎資料")
+    for g in games.GAMES.values():
+        d = load_df(g.key)
+        latest = _date_str(d["date"].max()) if not d.empty else "無資料"
+        st.sidebar.caption(f"{g.emoji} {g.name} — {len(d)} 期,最新 {latest}")
 
     with st.sidebar.expander("免責聲明(必讀)", expanded=False):
         st.write(constants.DISCLAIMER)
-        st.caption(f"{game.name}:{game.prize_note}")
-        st.caption(f"資料來源:{game.source_note}")
+        for g in games.GAMES.values():
+            st.caption(f"**{g.name}**({g.num_max}選{g.pick}):{g.prize_note}")
+            st.caption(f"　來源:{g.source_note}")
 
     # 說明 / 算式按鈕:供他人研究與驗算所有統計與凱莉公式
     st.sidebar.button(
@@ -187,58 +198,58 @@ def sidebar_controls():
         on_click=lambda: st.session_state.update(show_docs=True),
         help="列出所有統計算式與凱莉公式,連同實際常數值供研究驗算。",
     )
+    return nav
 
-    st.sidebar.markdown("### 全域範圍選擇")
-    mode = st.sidebar.radio(
-        "分析範圍",
-        ["全部", "最近 N 期", "日期範圍"],
-        help="所有分析(統計、回測、匯出)都會套用此範圍。",
-    )
 
+def _range_selector(df: pd.DataFrame, key: str) -> pd.DataFrame:
+    """頁內的分析範圍選擇(全部 / 最近 N 期 / 日期範圍),回傳篩選後資料。"""
     sorted_df = df.sort_values("date").reset_index(drop=True)
-
-    if mode == "全部":
-        fdf = sorted_df
-    elif mode == "最近 N 期":
-        n = st.sidebar.number_input(
-            "最近期數 N", min_value=1, max_value=len(sorted_df),
-            value=min(100, len(sorted_df)), step=10,
-        )
-        fdf = sorted_df.tail(int(n))
-    else:  # 日期範圍
-        dmin = sorted_df["date"].iloc[0].date()
-        dmax = sorted_df["date"].iloc[-1].date()
-        start = st.sidebar.date_input("起始日", value=dmin, min_value=dmin, max_value=dmax)
-        end = st.sidebar.date_input("結束日", value=dmax, min_value=dmin, max_value=dmax)
-        lo, hi = (start, end) if start <= end else (end, start)
-        mask = (sorted_df["date"].dt.date >= lo) & (sorted_df["date"].dt.date <= hi)
-        fdf = sorted_df.loc[mask]
-
+    if sorted_df.empty:
+        return sorted_df
+    c1, c2 = st.columns([1, 2])
+    mode = c1.radio("分析範圍", ["全部", "最近 N 期", "日期範圍"], key=f"{key}_mode")
+    with c2:
+        if mode == "最近 N 期":
+            n = st.number_input("最近期數 N", min_value=1, max_value=len(sorted_df),
+                                value=min(100, len(sorted_df)), step=10, key=f"{key}_n")
+            fdf = sorted_df.tail(int(n))
+        elif mode == "日期範圍":
+            dmin = sorted_df["date"].iloc[0].date()
+            dmax = sorted_df["date"].iloc[-1].date()
+            d1, d2 = st.columns(2)
+            start = d1.date_input("起始日", value=dmin, min_value=dmin, max_value=dmax,
+                                  key=f"{key}_s")
+            end = d2.date_input("結束日", value=dmax, min_value=dmin, max_value=dmax,
+                                key=f"{key}_e")
+            lo, hi = (start, end) if start <= end else (end, start)
+            mask = (sorted_df["date"].dt.date >= lo) & (sorted_df["date"].dt.date <= hi)
+            fdf = sorted_df.loc[mask]
+        else:
+            fdf = sorted_df
     fdf = fdf.reset_index(drop=True)
-    st.sidebar.info(_range_label(fdf))
-
-    st.sidebar.markdown("### 導覽")
-    nav = st.sidebar.radio(
-        "功能選單",
-        [
-            "🏠 首頁",
-            "統計分析",
-            "二合買牌(策略1)",
-            "🏆 排行榜",
-            "🔄 更新資料",
-        ],
-        key="nav",
-        label_visibility="collapsed",
-        on_change=lambda: st.session_state.update(show_docs=False),
-    )
-    return game, fdf, nav
+    st.caption(_range_label(fdf))
+    return fdf
 
 
 # ── 1. 統計分析 ───────────────────────────────────────────
-def page_stats(fdf: pd.DataFrame, game):
+def page_stats():
+    """統計分析:三款資料都在,頁內選要看哪一款(號碼統計本來就只能一次看一款)。"""
+    st.header("📊 統計分析")
+    gkey = st.segmented_control(
+        "看哪一款", [g.key for g in games.GAMES.values()],
+        default=games.DEFAULT_GAME.key,
+        format_func=lambda k: f"{games.get(k).emoji} {games.get(k).name}",
+        key="stats_game",
+    ) or games.DEFAULT_GAME.key
+    game = games.get(gkey)
+    fdf = _range_selector(load_df(gkey), f"stats_{gkey}")
+    _render_stats(fdf, game)
+
+
+def _render_stats(fdf: pd.DataFrame, game):
     nmax = game.num_max
     n_bands = len(stats.tens_bands(nmax))
-    st.header(f"統計分析 — {game.name}")
+    st.subheader(f"{game.emoji} {game.name}")
     st.caption(f"玩法規格:{nmax} 選 {game.pick};以下統計皆依此規格計算。")
     if fdf.empty:
         st.warning("目前範圍沒有資料,請調整側邊欄的範圍選擇。")
@@ -526,98 +537,81 @@ def _parse_ym(text: str) -> tuple[int, int]:
     return int(parts[0]), int(parts[1])
 
 
-def page_update(game):
-    st.header(f"更新資料 — {game.name}")
+def _update_one_game(game):
+    """單一遊戲的抓取 / 匯出區塊(三款各一段)。"""
     path = game_data_path(game)
     df = load_df(game.key)
+    latest = _date_str(df["date"].max()) if not df.empty else "無資料"
+    st.markdown(f"**{game.emoji} {game.name}** — {game.num_max}選{game.pick}|"
+                f"目前 {len(df)} 期,最新 {latest}")
+    st.caption(f"來源:{game.source_note}")
 
-    # 匯出目前歷史開獎數據 CSV(所有遊戲皆可)
-    st.download_button(
-        f"📥 匯出歷史開獎數據 CSV(目前 {len(df)} 期)",
-        data=df.sort_values("date").to_csv(index=False).encode("utf-8-sig"),
-        file_name=f"{game.key}_history.csv",
-        mime="text/csv",
-        width="stretch",
-    )
-    st.divider()
+    c1, c2 = st.columns([2, 1])
+    with c2:
+        st.download_button(
+            f"📥 匯出 CSV({len(df)} 期)",
+            data=df.sort_values("date").to_csv(index=False).encode("utf-8-sig"),
+            file_name=f"{game.key}_history.csv", mime="text/csv",
+            width="stretch", key=f"dl_{game.key}",
+        )
 
-    if game.key == "fantasy5":
-        # 天天樂(加州 Fantasy 5):從 lottolyzer 彙整站抓取
-        st.caption("從公開彙整站抓取加州官方 Fantasy 5 開獎(官網 calottery 以 WAF 封鎖直連)。")
-        pages = st.slider("抓取頁數(每頁約 50 期)", min_value=1, max_value=60, value=40)
-        if st.button("抓取並更新", type="primary"):
-            try:
-                with st.spinner(f"抓取最近約 {pages * 50} 期中…"):
-                    new_rows = scraper_fantasy5.fetch_history(pages=int(pages))
-                merged = merge(df, new_rows)
-                save(merged, path)
-                st.success(f"已更新天天樂,合併後共 {len(merged)} 期。")
-                st.cache_data.clear()
-                st.info("資料已更新,請重新整理頁面(F5)以套用最新資料。")
-            except scraper_fantasy5.ScrapeError as e:
-                st.error(f"更新失敗:{e}")
-        return
+    with c1:
+        if game.key == "fantasy5":
+            pages = st.slider("抓取頁數(每頁約 50 期)", 1, 60, 40, key=f"pg_{game.key}")
+            if st.button("抓取並更新", type="primary", key=f"go_{game.key}"):
+                _fetch_and_merge(
+                    game, df, path,
+                    lambda: scraper_fantasy5.fetch_history(pages=int(pages)),
+                    scraper_fantasy5.ScrapeError, f"最近約 {pages * 50} 期")
+        elif game.key == "marksix":
+            pages = st.slider("抓取頁數(每頁約 23 期)", 1, 146, 5, key=f"pg_{game.key}")
+            if st.button("抓取並更新", type="primary", key=f"go_{game.key}"):
+                _fetch_and_merge(
+                    game, df, path,
+                    lambda: scraper_marksix.fetch_history(pages=int(pages)),
+                    scraper_marksix.ScrapeError, f"最近約 {pages * 23} 期")
+        else:  # 今彩539:台灣彩券官方 API,依月份抓
+            d1, d2 = st.columns(2)
+            start_ym = d1.text_input("起始月份(YYYY-MM)", value="2026-01",
+                                     key=f"s_{game.key}")
+            end_ym = d2.text_input("結束月份(YYYY-MM)", value="2026-07",
+                                   key=f"e_{game.key}")
+            if st.button("抓取並更新", type="primary", key=f"go_{game.key}"):
+                def _fetch539():
+                    rows, failures = scraper.fetch_range(_parse_ym(start_ym),
+                                                         _parse_ym(end_ym))
+                    if failures:
+                        st.warning("以下月份抓取失敗:\n" + "\n".join(
+                            f"- {y}-{m:02d}: {msg}" for y, m, msg in failures))
+                    return rows
+                _fetch_and_merge(game, df, path, _fetch539,
+                                 (scraper.ScrapeError, ValueError),
+                                 f"{start_ym} ~ {end_ym}")
 
-    if game.key == "marksix":
-        # 六合彩(香港):從 pilio.idv.tw 彙整站抓取(每頁約 23 期,可回溯到 2002 年)
-        st.caption("從公開彙整站抓取六合彩開獎號(49 選 6,每週二/四/六,依香港開獎)。")
-        pages = st.slider("抓取頁數(每頁約 23 期)", min_value=1, max_value=146, value=5)
-        if st.button("抓取並更新", type="primary"):
-            try:
-                with st.spinner(f"抓取最近約 {pages * 23} 期中…"):
-                    new_rows = scraper_marksix.fetch_history(pages=int(pages))
-                merged = merge(df, new_rows)
-                save(merged, path)
-                st.success(f"已更新六合彩,合併後共 {len(merged)} 期。")
-                st.cache_data.clear()
-                st.info("資料已更新,請重新整理頁面(F5)以套用最新資料。")
-            except scraper_marksix.ScrapeError as e:
-                st.error(f"更新失敗:{e}")
-        return
 
-    # 今彩539:台灣彩券官方 API,單月 / 月份範圍
-    st.caption("從台灣彩券 API 抓取開獎資料並合併進歷史檔。")
-    sub = st.radio("更新模式", ["單月", "月份範圍"], horizontal=True)
+def _fetch_and_merge(game, df, path, fetch, err_types, what: str):
+    """共用的抓取→合併→存檔流程。"""
+    try:
+        with st.spinner(f"抓取 {game.name} {what} 中…"):
+            new_rows = fetch()
+        merged = merge(df, new_rows)
+        save(merged, path)
+        added = len(merged) - len(df)
+        st.success(f"{game.name} 已更新:抓到 {len(new_rows)} 期、新增 {added} 期,"
+                   f"目前共 {len(merged)} 期。")
+        st.cache_data.clear()
+        st.info("資料已更新,請重新整理頁面(F5)以套用。")
+    except err_types as e:
+        st.error(f"{game.name} 更新失敗:{e}")
 
-    if sub == "單月":
-        ym = st.text_input("月份(YYYY-MM)", value="2026-05")
-        if st.button("抓取並更新", type="primary"):
-            try:
-                year, month = _parse_ym(ym)
-                with st.spinner(f"抓取 {ym} 中…"):
-                    new_rows = scraper.fetch_month(year, month)
-                merged = merge(df, new_rows)
-                save(merged, path)
-                st.success(f"已更新 {ym},新增/合併 {len(new_rows)} 筆,目前共 {len(merged)} 期。")
-                st.cache_data.clear()
-                st.info("資料已更新,請重新整理頁面(F5)以套用最新資料。")
-            except (scraper.ScrapeError, ValueError) as e:
-                st.error(f"更新失敗:{e}")
-    else:
-        c1, c2 = st.columns(2)
-        start_ym = c1.text_input("起始月份(YYYY-MM)", value="2026-01")
-        end_ym = c2.text_input("結束月份(YYYY-MM)", value="2026-05")
-        if st.button("抓取並更新", type="primary"):
-            try:
-                start = _parse_ym(start_ym)
-                end = _parse_ym(end_ym)
-                with st.spinner(f"抓取 {start_ym} ~ {end_ym} 中…"):
-                    new_rows, failures = scraper.fetch_range(start, end)
-                merged = merge(df, new_rows)
-                save(merged, path)
-                st.success(
-                    f"已更新 {start_ym} ~ {end_ym},新增/合併 {len(new_rows)} 筆,"
-                    f"目前共 {len(merged)} 期。"
-                )
-                if failures:
-                    st.warning(
-                        "以下月份抓取失敗:\n"
-                        + "\n".join(f"- {y}-{m:02d}: {msg}" for y, m, msg in failures)
-                    )
-                st.cache_data.clear()
-                st.info("資料已更新,請重新整理頁面(F5)以套用最新資料。")
-            except (scraper.ScrapeError, ValueError) as e:
-                st.error(f"更新失敗:{e}")
+
+def page_update():
+    st.header("🔄 更新資料")
+    st.caption("三款開獎資料各自獨立維護;回報下注時也會在背景自動補抓。")
+    for i, game in enumerate(games.GAMES.values()):
+        _update_one_game(game)
+        if i < len(games.GAMES) - 1:
+            st.divider()
 
 
 # ── 6. Excel 匯出 ─────────────────────────────────────────
@@ -724,503 +718,491 @@ def page_wheel(fdf: pd.DataFrame, game):
             )
 
 
-# ── 二合買牌(策略1)────────────────────────────────────
-def _persist_setting(game_key: str, setting_key: str, widget_key: str):
+# ── 二合買牌(策略1):三款共用一個損益池 ──────────────────
+GAME_LIST = list(games.GAMES.values())
+
+
+def _persist_setting(skey: str, setting_key: str, widget_key: str):
     """on_change 回呼:把 number_input 的新值存進 SQLite。"""
-    storage.set_setting(game_key, setting_key, st.session_state[widget_key])
+    storage.set_setting(skey, setting_key, st.session_state[widget_key])
 
 
-def page_erhe(fdf: pd.DataFrame, game):
-    from core import erhe
-
-    def _kick_autoupdate():
-        """回報結果時觸發背景補抓:資料日期==系統日期則跳過;有落差至少重抓 7 期。"""
-        full_df = load_df(game.key)
-        latest = full_df["date"].max() if not full_df.empty else None
-        autoupdate.kick(game.key, game_data_path(game), latest, on_done=load_df.clear)
-
-    # 帳號命名空間:把累積損益/設定以「帳號::遊戲」分開存,各帳號完全獨立。
-    user = st.session_state.get("user", "")
-    skey = f"{user}::{game.key}"
-    dan = game.dan_prob  # 膽中機率:539/天天樂 5/39、六合彩 6/49
-
-    st.header(f"二合買牌(策略1)— {game.name}")
-    st.caption(
-        f"策略1 拖牌包車:拖 1 個膽號配其餘 {game.notes_per_car} 號 = 1 車"
-        f"({game.notes_per_car} 注)。膽號被開出"
-        f"(機率 {game.pick}/{game.num_max} ≈ {dan:.1%})時整車中獎。"
-    )
-
-    c1, c2 = st.columns(2)
-    kc = f"erhe_cost_{game.key}"
-    kw = f"erhe_pay_{game.key}"
-    cost_per_car = c1.number_input(
-        "每車成本", min_value=1.0, max_value=1_000_000.0,
-        value=storage.get_setting(skey, "cost_per_car", game.default_cost_per_car), step=5.0,
-        key=kc, on_change=_persist_setting, args=(skey, "cost_per_car", kc))
-    win_payout = c2.number_input(
-        "中獎可得(每車中時)", min_value=1.0, max_value=10_000_000.0,
-        value=storage.get_setting(skey, "win_payout", game.default_win_payout), step=100.0,
-        key=kw, on_change=_persist_setting, args=(skey, "win_payout", kw))
-
-    ev = erhe.car_ev_rate(cost_per_car, win_payout, dan)
-    kf = erhe.car_kelly_fraction(cost_per_car, win_payout, dan)
-    fair_payout = cost_per_car / dan  # 損益兩平所需中獎金額
-    m1, m2, m3 = st.columns(3)
-    m1.metric("期望報酬率/車", f"{ev:+.2%}")
-    m2.metric("損益兩平中獎金額", f"{fair_payout:,.0f}")
-    m3.metric("凱莉建議下注比例", f"{kf:.4%}")
-    st.caption(
-        f"膽中機率 {dan:.4%};期望回收/車 = {dan:.4f} × {win_payout:,.0f} "
-        f"= {dan * win_payout:,.0f}。"
-    )
-    if ev < 0:
-        st.error(
-            f"中獎金額 {win_payout:,.0f} < 損益兩平 {fair_payout:,.0f} → 期望值為負({ev:+.2%})。"
-            "凱莉建議下注比例為 0(不該下注),倍頭(倍投)只會加速破產。"
-        )
-    else:
-        st.success(
-            f"中獎金額 {win_payout:,.0f} > 損益兩平 {fair_payout:,.0f} → 期望值為正({ev:+.2%})。"
-            f"此時凱莉建議每次投入約 {kf:.2%} 的資金(而非無限加碼)。"
-        )
-
-    # 順序調整:把「倍頭進程 + 凱莉對照」(互動回本)放第一個 tab,首頁快捷直接進入
-    tab3, tab1, tab2, tab4 = st.tabs(
-        ["倍頭進程 + 凱莉對照", "選號 + 預估開機率", "拖牌包車(3車起)", "進程策略(中獎重置)"]
-    )
-
-    # 1. 選號 + 預估開機率
-    with tab1:
-        st.caption("各號碼『被開出』的預估機率;可依不同加權檢視(用來挑膽號)。")
-        strat = st.selectbox(
-            "預估開機率的加權方式", picker.STRATEGIES, format_func=picker.label, key="erhe_strat"
-        )
-        if fdf.empty:
-            st.warning("目前範圍沒有資料。")
-        else:
-            probs = picker.draw_probabilities(
-                fdf, strategy=strat, num_max=game.num_max, pick=game.pick)
-            prob_df = pd.DataFrame(
-                [{"號碼": n, "預估開機率": p} for n, p in probs.items()]
-            ).sort_values("預估開機率", ascending=False)
-            prob_df["預估開機率"] = prob_df["預估開機率"].map(lambda x: f"{x:.2%}")
-            st.dataframe(prob_df.head(15), width="stretch", hide_index=True)
-        st.error(
-            f"誠實提醒:每期開獎獨立隨機,真實膽中機率每個號碼都是 "
-            f"{game.pick}/{game.num_max} ≈ {dan:.1%}。"
-            "非『隨機』的預估開機率只是歷史傾向,**沒有預測下一期的能力**,"
-            "也不會改變二合的期望報酬率(那只由成本與中獎金額決定)。"
-        )
-
-    # 2. 拖牌包車
-    with tab2:
-        cars = st.number_input("買幾車(從 3 車起)", min_value=1, max_value=100, value=3)
-        total_cost = cars * cost_per_car
-        exp_return = cars * dan * win_payout
-        x1, x2, x3 = st.columns(3)
-        x1.metric("每車成本", f"{cost_per_car:,.0f}")
-        x2.metric(f"{int(cars)} 車 總成本", f"{total_cost:,.0f}")
-        x3.metric("期望回收 / 報酬率", f"{exp_return:,.0f} ({ev:+.1%})")
-        st.caption(
-            "注:多買幾車是多押幾個膽號;期望報酬率與買幾車、選哪些膽號無關,"
-            f"只由每車成本與中獎金額決定(本設定下每車都是 {ev:+.2%})。"
-        )
-
-    # 共用:顆數 + 進程 + 資金(放 session 供兩個 tab 用)
-    def _parse_prog(text, default):
-        try:
-            v = [float(x) for x in text.replace("，", ",").split(",") if x.strip()]
-            return [int(x) if x == int(x) else x for x in v] or default
-        except ValueError:
-            return default
-
-    # 3. 互動回本計算:輸入本局結果 → 算下一局車數
-    with tab3:
-        st.caption(
-            "互動回本:輸入「本局下幾車、重了幾顆」,我算累積損益,並告訴你**下一局該下幾車**"
-            "(讓你中 1 顆即回本;有賺就自動降回低車階)。"
-        )
-        c1, c2 = st.columns(2)
-        kn = f"erhe_n_{game.key}"
-        kb = f"erhe_base_{game.key}"
-        n_numbers = c1.number_input(
-            "每局押幾顆", min_value=1, max_value=20,
-            value=int(storage.get_setting(skey, "n_numbers", 5)),
-            key=kn, on_change=_persist_setting, args=(skey, "n_numbers", kn))
-        base = c2.number_input(
-            "回本後起始車數", min_value=1, max_value=20,
-            value=int(storage.get_setting(skey, "base", 3)),
-            key=kb, on_change=_persist_setting, args=(skey, "base", kb))
-
-        per1 = erhe.per_car_one_hit_net(int(n_numbers), float(cost_per_car), float(win_payout))
-        st.caption(
-            f"中 1 顆每車淨利 = 中獎金額 {win_payout:,.0f} − {int(n_numbers)}顆×每車成本 {cost_per_car:,.0f} = "
-            f"**{per1:,.0f}/車**。回補虧損 L 的下一局車數 = ⌈L ÷ {per1:,.0f}⌉。"
-        )
-
-        # 累積損益狀態(SQLite 持久化,依遊戲分開;重整/重啟都保留)
-        cum = storage.current_cumulative(skey)
-        st.caption(f"📀 紀錄已存於 SQLite,依遊戲分開(目前:{game.name})。重整頁面不會遺失。")
-        # 本局建議車數:由目前累積損益直接算出(不需使用者輸入)
-        cur = erhe.next_cars_for_recovery(cum, int(n_numbers), float(cost_per_car),
-                                          float(win_payout), base_cars=int(base))
-        cur_cars = cur["next_cars"]
-
-        m1, m2, m3 = st.columns(3)
-        m1.metric("目前累積損益", f"{cum:+,.0f}")
-        if cur_cars == float("inf"):
-            m2.metric("👉 本局建議下注", "無法回本")
-            st.error("此設定中 1 顆也無法回本(中獎金額 ≤ 顆數×每車成本),請調整中獎金額或顆數。")
-        else:
-            m2.metric("👉 本局建議下注", f"{int(cur_cars)} 車")
-            m3.metric("本局成本", f"{cur['next_cost']:,.0f}")
-            if cum < 0:
-                st.warning(
-                    f"目前虧損 {-cum:,.0f} → 本局系統建議下 **{int(cur_cars)} 車**"
-                    f"(成本 {cur['next_cost']:,.0f}),中 1 顆即回本。"
-                    f"中 0 顆機率約 "
-                    f"{erhe.hit_distribution(int(n_numbers), game.pick, game.num_max)[0]:.0%}。"
-                )
-            else:
-                st.success(f"目前已回本/獲利 → 本局回到起始 {int(base)} 車。")
-
-            # 本局若中 k 顆各可得多少(以建議車數計;含機率)
-            hd = erhe.hit_distribution(int(n_numbers), game.pick, game.num_max)
-            this_cost = cur["next_cost"]
-            payout_rows = []
-            for k in range(1, int(n_numbers) + 1):
-                gross = k * int(cur_cars) * float(win_payout)
-                net = gross - this_cost
-                after = cum + net
-                payout_rows.append({
-                    "中幾顆": f"{k} 顆",
-                    "本局機率": f"{hd.get(k, 0):.2%}",
-                    "本局成本": f"{this_cost:,.0f}",
-                    "可得(總回收)": f"{gross:,.0f}",
-                    "本局淨利": f"{net:+,.0f}",
-                    "中後累積": f"{after:+,.0f}",
-                    "是否回本": "✅ 回本" if after >= 0 else f"還差 {-after:,.0f}",
-                })
-            st.markdown(
-                f"**本局若中獎(下 {int(cur_cars)} 車、押 {int(n_numbers)} 顆、"
-                f"成本 {this_cost:,.0f})各可得 vs 成本:**"
-            )
-            st.dataframe(pd.DataFrame(payout_rows), width="stretch", hide_index=True)
-
-        # 輸入方式:A 系統建議車數 / B 自己輸入車數
-        mode = st.radio(
-            "輸入方式",
-            ["方案A:用系統建議車數,只回報重幾顆", "方案B:自己輸入下了幾車 + 重幾顆"],
-            horizontal=True, key="t3_mode",
-        )
-        disabled = cur_cars == float("inf")
-        log_rows = storage.load_rounds(skey)
-
-        if mode.startswith("方案A"):
-            f1, _ = st.columns([1, 1])
-            this_hits = f1.number_input("本局重了幾顆", min_value=0, max_value=int(n_numbers),
-                                        value=0, key="t3_hits_a")
-            b1, b2, b3 = st.columns([1, 1, 1])
-            if b1.button("回報結果 → 算下一局", type="primary", disabled=disabled):
-                played = int(cur_cars)
-                net = erhe.round_net(played, int(this_hits), int(n_numbers),
-                                     float(cost_per_car), float(win_payout))
-                storage.add_round(skey, int(n_numbers), played, int(this_hits), net, cum + net)
-                _kick_autoupdate()
-                st.rerun()
-        else:  # 方案B:自己輸入車數
-            f1, f2 = st.columns([1, 1])
-            played_in = f1.number_input("我這局下了幾車", min_value=1, max_value=100000,
-                                        value=int(cur_cars) if cur_cars != float("inf") else 3,
-                                        key="t3_cars_b")
-            this_hits_b = f2.number_input("重了幾顆", min_value=0, max_value=int(n_numbers),
-                                          value=0, key="t3_hits_b")
-            b1, b2, b3 = st.columns([1, 1, 1])
-            if b1.button("送出結果 → 算下一局該回第幾車", type="primary"):
-                net = erhe.round_net(int(played_in), int(this_hits_b), int(n_numbers),
-                                     float(cost_per_car), float(win_payout))
-                storage.add_round(skey, int(n_numbers), int(played_in), int(this_hits_b), net, cum + net)
-                _kick_autoupdate()
-                st.rerun()
-        if b2.button("↩️ 撤銷上一局", key="t3_undo", disabled=not log_rows,
-                     help="刪除最後一筆回報,累積損益還原到前一局 — 可放心回報→看建議→撤銷,反覆試算。"):
-            storage.undo_last_round(skey)
-            st.rerun()
-        if b3.button("重置紀錄", key="t3_reset"):
-            storage.reset(skey)
-            st.rerun()
-        st.caption("💡 試算:先回報一個假設結果看「下一局建議車數」,再按「撤銷上一局」還原,不影響真實紀錄。")
-
-        # 背景自動補抓狀態(回報結果時觸發;資料日期==今天則不補)
-        au = autoupdate.status(game.key)
-        if au.get("running"):
-            st.info("🔄 開獎資料背景補抓中…(關閉網頁也會繼續,完成後自動套用)")
-        elif au.get("error"):
-            st.caption(f"⚠️ {au.get('msg', '')}")
-        elif au.get("msg"):
-            st.caption(f"✅ {au['msg']}")
-
-        if log_rows:
-            log_df = pd.DataFrame([
-                {
-                    "局": i + 1, "時間": r["ts"], "顆數": r.get("numbers", 5),
-                    "車數": r["cars"], "重幾顆": r["hits"],
-                    "本局損益": f"{r['net']:+,.0f}", "累積損益": f"{r['cumulative']:+,.0f}",
-                }
-                for i, r in enumerate(log_rows)
-            ])
-            st.dataframe(log_df, width="stretch", hide_index=True)
-            st.download_button(
-                "下載紀錄 CSV",
-                data=pd.DataFrame(log_rows).to_csv(index=False).encode("utf-8-sig"),
-                file_name=f"erhe_log_{game.key}.csv", mime="text/csv",
-            )
-
-        st.error(
-            f"誠實提醒:這只是『回本所需車數』的算術,改變不了每局 {ev:+.2%} 的期望值。"
-            "中 1 顆回本的設計,代價是中 0 顆時要一直加碼;長期(含偶爾連敗)仍是淨輸,且有破產風險。"
-        )
-
-    # 4. 進程策略(中獎重置)— 蒙地卡羅 + 資金破產率
-    with tab4:
-        st.caption("策略:每局押 N 顆,連敗加碼,**中 ≥1 號就重置回進程起點**。設定資金額看破產率。")
-        c1, c2 = st.columns(2)
-        n2 = c1.number_input("每局押幾顆", min_value=1, max_value=20, value=5, key="t4_n")
-        prog_text2 = c2.text_input("車數進程(逗號分隔)", value="3, 5, 7, 10, 13", key="t4_prog")
-        c3, c4 = st.columns(2)
-        cap2 = c3.number_input("資金額", min_value=10000, max_value=1_000_000_000, value=500_000, step=50_000, key="t4_cap")
-        rounds_n = c4.number_input("模擬局數", min_value=20, max_value=2000, value=200, step=20, key="t4_rounds")
-        if st.button("用此資金模擬", type="primary"):
-            progression2 = _parse_prog(prog_text2, [3, 5, 7, 10, 13])
-            res = erhe.progression_sim_multi(
-                progression=progression2, n_numbers=int(n2),
-                cost_per_car=float(cost_per_car), win_payout=float(win_payout),
-                capital=float(cap2), rounds=int(rounds_n), trials=500,
-                pick=game.pick, num_max=game.num_max,
-            )
-            a1, a2, a3 = st.columns(3)
-            a1.metric("每局期望報酬率", f"{res.per_round_ev:+.2%}")
-            a2.metric("每局輸(全沒中)機率", f"{res.p_lose_round:.1%}")
-            a3.metric(f"{int(rounds_n)} 局後破產率", f"{res.ruin_rate:.0%}")
-            b1, b2 = st.columns(2)
-            b1.metric("平均最終資金", f"{res.avg_final_capital:,.0f}")
-            b2.metric("代表路徑最終資金", f"{res.final_capital:,.0f}")
-            st.line_chart(pd.DataFrame({"資金": res.curve}))
-            if res.per_round_ev < 0:
-                st.error(
-                    f"每局期望為負({res.per_round_ev:+.2%}),中獎重置改變不了。"
-                    f"資金 {cap2:,.0f} 的破產率 {res.ruin_rate:.0%};平均最終資金 {res.avg_final_capital:,.0f}"
-                    f"(< 起始 {cap2:,.0f},長期淨流失)。加大資金只是降低破產率,改變不了負期望。"
-                )
-            else:
-                st.warning(
-                    f"即使每局正期望({res.per_round_ev:+.2%}),固定進程加碼仍有 {res.ruin_rate:.0%} 破產率"
-                    "(過度下注)。唯有凱莉式按比例下注才能在正期望下長期存活。"
-                )
-
-    # 頁面最下方:三款遊戲的總覽(總損益 + 各遊戲本局該下幾車)
-    _render_all_games_overview(user, game.key)
-
-
-# ── 三款遊戲總覽(策略1 頁面下方)──────────────────────────
-def _game_snapshot(user: str, g) -> dict:
-    """單一遊戲的策略1 現況:累積損益 + 依目前設定算出的本局建議下注。
-
-    設定(每車成本 / 中獎可得 / 押幾顆 / 起始車數)各遊戲分開存;
-    尚未設定過的遊戲用該遊戲的預設盤口,結果仍可參考。
-    """
-    from core import erhe
-
+def _game_settings(user: str, g) -> dict:
+    """讀出某遊戲的盤口設定(每車成本 / 中獎可得 / 押幾顆 / 回本後起始車數)。"""
     skey = f"{user}::{g.key}"
-    cost = storage.get_setting(skey, "cost_per_car", g.default_cost_per_car)
-    payout = storage.get_setting(skey, "win_payout", g.default_win_payout)
-    n_numbers = int(storage.get_setting(skey, "n_numbers", 5))
-    base = int(storage.get_setting(skey, "base", 3))
-    cum = storage.current_cumulative(skey)
-    rec = erhe.next_cars_for_recovery(cum, n_numbers, cost, payout, base_cars=base)
-    cars = rec["next_cars"]
-    playable = cars != float("inf")
-    # 中 1 顆的總回收與該局淨利(以建議車數計)
-    gross = cars * payout if playable else float("inf")
-    net = gross - rec["next_cost"] if playable else float("-inf")
     return {
         "game": g,
-        "cumulative": cum,
-        "n_numbers": n_numbers,
-        "cars": cars,
-        "cost": rec["next_cost"],
-        "gross_1hit": gross,
-        "net_1hit": net,
-        "after_1hit": cum + net if playable else float("-inf"),
-        "playable": playable,
-        "rounds": len(storage.load_rounds(skey)),
+        "skey": skey,
+        "cost_per_car": storage.get_setting(skey, "cost_per_car", g.default_cost_per_car),
+        "win_payout": storage.get_setting(skey, "win_payout", g.default_win_payout),
+        "n_numbers": int(storage.get_setting(skey, "n_numbers", 5)),
+        "base": int(storage.get_setting(skey, "base", 3)),
     }
 
 
-def _render_all_games_overview(user: str, current_key: str):
-    """列出全部遊戲的累積損益合計,以及各遊戲本局建議車數 / 成本 / 中 1 顆可得。"""
-    st.divider()
-    st.subheader("📊 三款遊戲總覽")
+def _kick_autoupdate(game):
+    """背景補抓該遊戲的開獎資料(資料日期==系統日期則跳過)。"""
+    full_df = load_df(game.key)
+    latest = full_df["date"].max() if not full_df.empty else None
+    autoupdate.kick(game.key, game_data_path(game), latest, on_done=load_df.clear)
+
+
+def _label(g) -> str:
+    return f"{g.emoji} {g.name}"
+
+
+# ── 1. 合併戰績 ──────────────────────────────────────────
+def _render_scoreboard(tot: dict):
+    """頂部 KPI:整個帳號(三款合計)的成本、回收、損益。"""
+    c1, c2, c3, c4, c5 = st.columns(5)
+    c1.metric(
+        "累積損益", f"{tot['net']:+,.0f}",
+        delta="虧損中" if tot["net"] < 0 else "獲利中",
+        delta_color="inverse" if tot["net"] < 0 else "normal",
+    )
+    c2.metric("總投入成本", f"{tot['cost']:,.0f}")
+    c3.metric("總回收", f"{tot['payout']:,.0f}")
+    c4.metric("報酬率", f"{tot['roi']:+.1%}" if tot["cost"] else "—")
+    c5.metric(
+        "局數 / 勝率",
+        f"{tot['rounds']} 局",
+        delta=f"中獎 {tot['wins']} 局({tot['win_rate']:.0%})" if tot["settled"] else "尚未對獎",
+        delta_color="off",
+    )
+    if tot["pending"]:
+        st.info(
+            f"其中 {tot['pending']} 筆還沒回填中獎顆數 —— 成本已計入累積損益,"
+            "回填後回收才會加回來。"
+        )
+
+
+# ── 2. 待回填中獎顆數 ─────────────────────────────────────
+def _render_pending(rows: list[dict]):
+    pend = [r for r in rows if r["pending"]]
+    if not pend:
+        return
+    with st.expander(f"⏳ 待回填中獎顆數({len(pend)} 筆)", expanded=True):
+        st.caption("開獎後回來把「重幾顆」填上,回收會依當初下注的盤口自動結算。")
+        for r in pend:
+            g = games.get(r["game"])
+            c1, c2, c3 = st.columns([5, 2, 1.4])
+            c1.markdown(
+                f"**{r['draw_date']}** · {_label(g)} · {int(r['cars'])} 車 × 押 "
+                f"{int(r['numbers'])} 顆 · 成本 {r['cost']:,.0f} · "
+                f"每中 1 顆 +{int(r['cars']) * float(r['payout_rate'] or 0):,.0f}"
+            )
+            hit = c2.number_input(
+                "重幾顆", min_value=0, max_value=int(r["numbers"]), value=0,
+                key=f"fill_hits_{r['id']}", label_visibility="collapsed",
+            )
+            if c3.button("回填", key=f"fill_btn_{r['id']}", type="primary"):
+                storage.update_round_result(int(r["id"]), int(hit))
+                st.rerun()
+
+
+# ── 3. 本局建議下注 ───────────────────────────────────────
+def _render_suggestion(user: str, cfgs: dict, cum: float) -> dict:
+    """依合併累積損益算本局建議;回傳 {遊戲代號: 建議車數} 供回報表單帶入預設值。"""
+    st.subheader("📌 本局建議下注")
     st.caption(
-        "彙整本帳號在所有遊戲的二合累積損益,並依「各遊戲自己存的設定」"
-        "算出本局建議下注車數、成本與中 1 顆可得金額(未設定過的遊戲用預設盤口試算)。"
+        "車數目標:**中 1 顆就把「合併累積虧損 + 本局成本」全部拿回來**。"
+        "已回本時回到各款設定的起始車數。"
+    )
+    mode = st.radio(
+        "下注方式",
+        ["🎯 今天只打一款", "🧮 今天同時打多款"],
+        horizontal=True, key="sug_mode",
+        help="兩者的車數算法不同:只打一款時本局成本只有那一款;"
+             "同時打多款時,任何一款中獎都要先扣掉當天全部的下注成本。",
     )
 
-    snaps = [_game_snapshot(user, g) for g in games.GAMES.values()]
-    total_cum = sum(s["cumulative"] for s in snaps)
-    total_cost = sum(s["cost"] for s in snaps if s["playable"])
-    total_rounds = sum(s["rounds"] for s in snaps)
+    if mode.startswith("🎯"):
+        rows, suggest = [], {}
+        for g in GAME_LIST:
+            cfg = cfgs[g.key]
+            rec = erhe.next_cars_for_recovery(
+                cum, cfg["n_numbers"], cfg["cost_per_car"], cfg["win_payout"],
+                base_cars=cfg["base"])
+            cars, ok = rec["next_cars"], rec["next_cars"] != float("inf")
+            suggest[g.key] = int(cars) if ok else cfg["base"]
+            gross = cars * cfg["win_payout"] if ok else 0.0
+            after = cum + gross - rec["next_cost"] if ok else float("-inf")
+            hd = erhe.hit_distribution(cfg["n_numbers"], g.pick, g.num_max)
+            rows.append({
+                "遊戲": _label(g),
+                "玩法": f"{g.num_max}選{g.pick}",
+                "押幾顆": cfg["n_numbers"],
+                "建議車數": f"{int(cars)} 車" if ok else "無法回本",
+                "本局成本": f"{rec['next_cost']:,.0f}" if ok else "—",
+                "中1顆可得": f"{gross:,.0f}" if ok else "—",
+                "中後累積": f"{after:+,.0f}" if ok else "—",
+                "中0顆機率": f"{hd.get(0, 0):.0%}",
+            })
+        st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
+        st.caption(
+            "⚠️ 這三列是**各自獨立**的試算 —— 每一列都假設「今天只打這一款」。"
+            "若你三款都下,任何一款中 1 顆都不足以回本(成本是三份、回收只有一份),"
+            "請改用上面的「今天同時打多款」。"
+        )
+        return suggest
 
+    # 同時打多款:聯立求解
+    picked = st.multiselect(
+        "今天要打哪幾款", [g.key for g in GAME_LIST],
+        default=[g.key for g in GAME_LIST],
+        format_func=lambda k: _label(games.get(k)), key="sug_combo",
+    )
+    if not picked:
+        st.info("請至少選一款。")
+        return {g.key: cfgs[g.key]["base"] for g in GAME_LIST}
+
+    plans = {k: (cfgs[k]["n_numbers"], cfgs[k]["cost_per_car"], cfgs[k]["win_payout"])
+             for k in picked}
+    base = max(cfgs[k]["base"] for k in picked)
+    res = erhe.simultaneous_recovery(cum, plans, base_cars=base)
+
+    k_val = res["k"]
+    st.caption(
+        f"成本係數 k = Σ(押幾顆 × 每車成本 ÷ 中獎可得) = **{k_val:.3f}**"
+        "(k ≥ 1 就無解:本局成本永遠追不上單一款的回收)。"
+    )
+    if not res["feasible"]:
+        odds = {k: (cfgs[k]["cost_per_car"], cfgs[k]["win_payout"]) for k in picked}
+        n_max = erhe.max_numbers_for_combo(odds)
+        st.error(
+            f"**k = {k_val:.3f} ≥ 1 → 這個組合無解。**"
+            f"同時下這 {len(picked)} 款、每款各押目前的顆數,不管加到幾車,"
+            "「中 1 顆」的回收都追不回當天的總成本。"
+        )
+        if n_max >= 1:
+            st.warning(
+                f"要讓「任一款中 1 顆即回本」成立,這 {len(picked)} 款**每款最多押 "
+                f"{n_max} 顆**(到下方「三款盤口設定」把押幾顆改小),"
+                "或是改成今天只打一款。"
+            )
+        else:
+            st.warning("這個組合連每款押 1 顆都無解,今天請只打一款。")
+        return {g.key: cfgs[g.key]["base"] for g in GAME_LIST}
+
+    cars = res["cars"]
     m1, m2, m3 = st.columns(3)
-    m1.metric(
-        "三款合計累積損益", f"{total_cum:+,.0f}",
-        delta=("目前虧損" if total_cum < 0 else "目前獲利"),
-        delta_color=("inverse" if total_cum < 0 else "normal"),
-    )
-    m2.metric("三款本局總成本(若全下)", f"{total_cost:,.0f}")
-    m3.metric("已回報總局數", f"{total_rounds}")
+    m1.metric("本局總成本(全下)", f"{res['total_cost']:,.0f}")
+    m2.metric("最壞情況中後累積", f"{res['worst_after']:+,.0f}",
+              delta="任一款中 1 顆都回本 ✅" if res["worst_after"] >= 0 else "仍未回本",
+              delta_color="normal" if res["worst_after"] >= 0 else "inverse")
+    m3.metric("目前累積損益", f"{cum:+,.0f}")
 
     rows = []
-    for s in snaps:
-        g = s["game"]
-        mark = "👉 " if g.key == current_key else ""
+    for k in picked:
+        g, cfg = games.get(k), cfgs[k]
+        cost = cfg["n_numbers"] * cars[k] * cfg["cost_per_car"]
+        gross = cars[k] * cfg["win_payout"]
         rows.append({
-            "遊戲": f"{mark}{g.emoji} {g.name}",
-            "玩法": f"{g.num_max}選{g.pick}",
-            "累積損益": f"{s['cumulative']:+,.0f}",
-            "押幾顆": s["n_numbers"],
-            "本局建議車數": f"{int(s['cars'])} 車" if s["playable"] else "無法回本",
-            "本局成本": f"{s['cost']:,.0f}" if s["playable"] else "—",
-            "中1顆可得": f"{s['gross_1hit']:,.0f}" if s["playable"] else "—",
-            "中1顆後累積": f"{s['after_1hit']:+,.0f}" if s["playable"] else "—",
-            "局數": s["rounds"],
+            "遊戲": _label(g),
+            "押幾顆": cfg["n_numbers"],
+            "建議車數": f"{cars[k]} 車",
+            "該款成本": f"{cost:,.0f}",
+            "中1顆可得": f"{gross:,.0f}",
+            "扣全部成本後累積": f"{cum + gross - res['total_cost']:+,.0f}",
         })
     st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
+    st.caption(
+        "「扣全部成本後累積」= 目前累積 + 該款中 1 顆的回收 − 當天三款的總成本。"
+        "全部 ≥ 0 才代表不管中哪一款都回本。"
+    )
+    out = {g.key: cfgs[g.key]["base"] for g in GAME_LIST}
+    out.update({k: int(v) for k, v in cars.items()})
+    return out
 
-    bad = [s["game"].name for s in snaps if not s["playable"]]
-    if bad:
-        st.warning(
-            f"以下遊戲在目前設定下「中 1 顆也回不了本」(中獎可得 ≤ 押幾顆 × 每車成本):"
-            f"{'、'.join(bad)}。請到該遊戲的策略頁調整中獎金額或押的顆數。"
+
+# ── 4. 回報下注 ──────────────────────────────────────────
+def _render_report_form(user: str, cfgs: dict, suggest: dict, has_rows: bool):
+    st.subheader("📝 回報下注")
+    gkey = st.segmented_control(
+        "遊戲", [g.key for g in GAME_LIST], default=GAME_LIST[0].key,
+        format_func=lambda k: _label(games.get(k)), key="rep_game",
+    ) or GAME_LIST[0].key
+    g, cfg = games.get(gkey), cfgs[gkey]
+    st.caption(
+        f"{_label(g)} — 每車成本 {cfg['cost_per_car']:,.0f}、中獎可得 "
+        f"{cfg['win_payout']:,.0f}、1 車 = {g.notes_per_car} 注"
+    )
+
+    with st.form("report_form", clear_on_submit=False):
+        c1, c2, c3, c4 = st.columns([1.4, 1, 1, 1])
+        draw_date = c1.date_input("下注日期", value=dt.date.today(), format="YYYY-MM-DD")
+        cars = c2.number_input("下注車數", min_value=1, max_value=100_000,
+                               value=int(suggest.get(gkey, cfg["base"])), step=1)
+        n_numbers = c3.number_input("押幾顆", min_value=1, max_value=20,
+                                    value=int(cfg["n_numbers"]), step=1)
+        hits = c4.number_input("中獎顆數(可留空)", min_value=0, max_value=20,
+                               value=None, step=1,
+                               placeholder="還沒開獎就留空")
+        cost = float(n_numbers) * float(cars) * cfg["cost_per_car"]
+        st.caption(
+            f"本局成本 = {int(n_numbers)} 顆 × {int(cars)} 車 × {cfg['cost_per_car']:,.0f} "
+            f"= **{cost:,.0f}**;每中 1 顆回收 {cars * cfg['win_payout']:,.0f}。"
         )
-    st.caption(
-        "「中1顆可得」= 建議車數 × 中獎可得(總回收,尚未扣本局成本);"
-        "「中1顆後累積」= 目前累積 + 本局淨利,≥ 0 即代表該局回本。"
-    )
+        submitted = st.form_submit_button("✅ 送出這一筆", type="primary", width="stretch")
+
+    if submitted:
+        if hits is not None and int(hits) > int(n_numbers):
+            st.error(f"中獎顆數 {int(hits)} 不可能大於押的顆數 {int(n_numbers)},請確認後再送出。")
+            return
+        if int(n_numbers) != cfg["n_numbers"]:
+            # 記住新顆數;丟掉盤口設定 widget 的舊狀態,讓它下次從資料庫重新初始化
+            storage.set_setting(cfg["skey"], "n_numbers", int(n_numbers))
+            st.session_state.pop(f"set_n_{gkey}", None)
+        storage.add_round(
+            user, gkey, draw_date.isoformat(), int(n_numbers), int(cars),
+            None if hits is None else int(hits), cost, cfg["win_payout"],
+        )
+        _kick_autoupdate(g)
+        st.rerun()
+
+    b1, b2 = st.columns(2)
+    if b1.button("↩️ 撤銷剛剛輸入的那筆", disabled=not has_rows, width="stretch",
+                 help="刪除最後寫入的一筆(不論日期),累積損益自動重算 —— 可放心試算。"):
+        storage.undo_last_round(user)
+        st.rerun()
+    if b2.button("🗑️ 重置全部紀錄", disabled=not has_rows, width="stretch"):
+        st.session_state["confirm_reset"] = True
+    if st.session_state.get("confirm_reset"):
+        st.warning("確定要清除這個帳號**全部三款**的下注紀錄嗎?此動作無法復原。")
+        r1, r2 = st.columns(2)
+        if r1.button("確定清除", type="primary"):
+            storage.reset(user)
+            st.session_state.pop("confirm_reset", None)
+            st.rerun()
+        if r2.button("取消"):
+            st.session_state.pop("confirm_reset", None)
+            st.rerun()
 
 
-# ── 首頁儀表板 ────────────────────────────────────────────
-def _goto(target: str):
-    """快捷按鈕:切換導覽到指定功能。"""
-    st.session_state.nav = target
+# ── 5. 盤口設定 ──────────────────────────────────────────
+def _render_odds_settings(cfgs: dict):
+    with st.expander("⚙️ 三款盤口設定(每車成本 / 中獎可得 / 押幾顆 / 起始車數)"):
+        for g in GAME_LIST:
+            cfg = cfgs[g.key]
+            skey = cfg["skey"]
+            dan = g.dan_prob
+            ev = erhe.car_ev_rate(cfg["cost_per_car"], cfg["win_payout"], dan)
+            st.markdown(
+                f"**{_label(g)}** — {g.num_max}選{g.pick},1 膽拖 {g.notes_per_car} 號 = 1 車"
+                f"({g.notes_per_car} 注),膽中機率 {dan:.2%}"
+            )
+            c1, c2, c3, c4 = st.columns(4)
+            kc, kw = f"set_cost_{g.key}", f"set_pay_{g.key}"
+            kn, kb = f"set_n_{g.key}", f"set_base_{g.key}"
+            c1.number_input("每車成本", min_value=1.0, max_value=1_000_000.0,
+                            value=cfg["cost_per_car"], step=5.0, key=kc,
+                            on_change=_persist_setting, args=(skey, "cost_per_car", kc))
+            c2.number_input("中獎可得(每車中時)", min_value=1.0, max_value=10_000_000.0,
+                            value=cfg["win_payout"], step=100.0, key=kw,
+                            on_change=_persist_setting, args=(skey, "win_payout", kw))
+            c3.number_input("押幾顆", min_value=1, max_value=20,
+                            value=cfg["n_numbers"], step=1, key=kn,
+                            on_change=_persist_setting, args=(skey, "n_numbers", kn))
+            c4.number_input("回本後起始車數", min_value=1, max_value=20,
+                            value=cfg["base"], step=1, key=kb,
+                            on_change=_persist_setting, args=(skey, "base", kb))
+            fair = cfg["cost_per_car"] / dan
+            (st.success if ev >= 0 else st.caption)(
+                f"期望報酬率/車 {ev:+.2%};損益兩平中獎金額 {fair:,.0f}"
+                f"(目前 {cfg['win_payout']:,.0f})"
+            )
+            st.divider()
 
 
-def page_home(game, fdf):
-    # 專屬色橫幅:每款遊戲不同底色 + 圖示 + 地區,一眼分得出在哪一款
-    st.markdown(
-        f"""
-        <div style="background:{game.accent};padding:16px 22px;border-radius:12px;
-                    margin-bottom:14px;border-left:10px solid rgba(0,0,0,0.25);">
-          <div style="font-size:1.9rem;font-weight:800;color:#fff;line-height:1.2;">
-            {game.emoji} {game.name}
-          </div>
-          <div style="font-size:1.02rem;color:#fff;opacity:0.95;margin-top:5px;">
-            {game.region}・{game.tagline}
-          </div>
-          <div style="font-size:0.95rem;color:#fff;opacity:0.9;margin-top:3px;">
-            票價 {game.currency}{game.ticket_price:g}|期望報酬率約
-            {game.expected_return():.2%}|資料 {len(fdf)} 期
-          </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    st.caption(f"目前在 **{game.name}**;左側可切換遊戲與分析範圍。點下方快捷進入功能:")
-
-    c1, c2, c3 = st.columns(3)
-    c1.button("📊 統計分析", width="stretch", type="primary",
-              on_click=_goto, args=("統計分析",),
-              help="頻率/冷熱/遺漏/星數/卡方/共現等;依目前遊戲與範圍。")
-    c2.button("🎯 二合買牌(策略1)", width="stretch", type="primary",
-              on_click=_goto, args=("二合買牌(策略1)",),
-              help="二合拖牌互動回本(系統算車數、SQLite 紀錄)+ 倍頭 + 凱莉對照。")
-    c3.button("🏆 排行榜", width="stretch", type="primary",
-              on_click=_goto, args=("🏆 排行榜",),
-              help="彙整各帳號二合累積損益,排出誰賺最多。")
-
-    st.divider()
-    st.warning(
-        "誠實聲明:本工具僅供統計學習與娛樂。每期獨立隨機、數學上無法預測,"
-        "任何選號/加碼/回本法長期期望皆為負,凱莉公式對負期望賭局的建議始終是「不下注」。"
-    )
-
-
-# ── 排行榜:彙整各帳號二合累積損益 ────────────────────────
-def page_leaderboard(current_user: str):
-    st.header("🏆 排行榜 — 誰賺最多")
-    st.caption(
-        "彙整所有帳號在「二合買牌(策略1)」的累積損益(取每位帳號的最新累積值,"
-        "即完整歷史結果)。各遊戲盤口與幣別不同,故分開排名。"
-    )
-
-    rows = storage.latest_cumulatives()
-    # game_key 形如「帳號::遊戲代號[::策略]」;彙整成 遊戲 → 帳號 → 累積/局數合計
-    agg: dict[str, dict[str, dict]] = {}
-    for r in rows:
-        parts = r["game_key"].split("::")
-        if len(parts) < 2 or not parts[0]:
-            continue  # 舊資料(未綁定帳號)略過
-        user, game_key = parts[0], parts[1]
-        d = agg.setdefault(game_key, {}).setdefault(user, {"cumulative": 0.0, "rounds": 0})
-        d["cumulative"] += r["cumulative"]
-        d["rounds"] += r["rounds"]
-
-    if not agg:
-        st.info("目前還沒有任何帳號的二合下注紀錄。到「二合買牌(策略1)」回報幾局後就會出現排名。")
+# ── 6. 流水帳 ────────────────────────────────────────────
+def _render_ledger(user: str, rows: list[dict]):
+    st.subheader("📒 下注流水")
+    if not rows:
+        st.info("還沒有任何紀錄。用上面的「回報下注」送出第一筆吧。")
         return
 
-    # 依遊戲分頁顯示(只顯示有資料的遊戲)
-    game_keys = [g.key for g in games.GAMES.values() if g.key in agg]
-    tabs = st.tabs([games.get(k).name for k in game_keys])
-    medals = {0: "🥇", 1: "🥈", 2: "🥉"}
+    tab_day, tab_all, tab_game = st.tabs(["每日彙總", "逐筆明細", "分款統計"])
 
-    for tab, gk in zip(tabs, game_keys):
-        with tab:
-            game = games.get(gk)
-            entries = sorted(
-                [{"user": u, **v} for u, v in agg[gk].items()],
-                key=lambda d: d["cumulative"], reverse=True,
+    with tab_day:
+        daily = storage.totals_by_date(user)
+        day_df = pd.DataFrame([{
+            "日期": d["draw_date"],
+            "筆數": d["rounds"],
+            "當日成本": f"{d['cost']:,.0f}",
+            "當日回收": f"{d['payout']:,.0f}",
+            "當日損益": f"{d['net']:+,.0f}",
+            "累積損益": f"{d['cumulative']:+,.0f}",
+        } for d in daily])
+        st.dataframe(day_df, width="stretch", hide_index=True)
+        if len(daily) >= 2:
+            fig = px.line(
+                pd.DataFrame({"日期": [d["draw_date"] for d in daily],
+                              "累積損益": [d["cumulative"] for d in daily]}),
+                x="日期", y="累積損益", markers=True, title="累積損益走勢(三款合併)",
             )
-            table_rows = []
-            for i, e in enumerate(entries):
-                name = e["user"]
-                if name == current_user:
-                    name = f"⭐ {name}(你)"
-                table_rows.append({
-                    "名次": medals.get(i, f"{i + 1}"),
-                    "帳號": name,
-                    f"累積損益({game.currency})": f"{e['cumulative']:+,.0f}",
-                    "局數": e["rounds"],
-                })
-            st.dataframe(pd.DataFrame(table_rows), width="stretch", hide_index=True)
-
-            # 冠軍長條圖(前 10 名)
-            top = entries[:10]
-            chart_df = pd.DataFrame({
-                "帳號": [e["user"] for e in top],
-                "累積損益": [e["cumulative"] for e in top],
-            })
-            fig = px.bar(
-                chart_df, x="帳號", y="累積損益",
-                title=f"{game.name} 累積損益排名(前 {len(top)} 名)",
-                color="累積損益", color_continuous_scale=["#e63946", "#457b9d"],
-            )
+            fig.add_hline(y=0, line_dash="dash", line_color="#888")
             st.plotly_chart(fig, theme=None, width="stretch")
 
+    with tab_all:
+        detail = pd.DataFrame([{
+            "#": i + 1,
+            "日期": r["draw_date"],
+            "遊戲": _label(games.get(r["game"])),
+            "車數": int(r["cars"]),
+            "押幾顆": int(r["numbers"]),
+            "重幾顆": "⏳ 待回填" if r["pending"] else f"{int(r['hits'])} 顆",
+            "成本": f"{r['cost']:,.0f}",
+            "回收": f"{r['payout']:,.0f}",
+            "本局損益": f"{r['net']:+,.0f}",
+            "累積損益": f"{r['cumulative']:+,.0f}",
+        } for i, r in enumerate(rows)])
+        st.dataframe(detail, width="stretch", hide_index=True)
+        st.download_button(
+            "📥 下載流水 CSV",
+            data=pd.DataFrame(rows).to_csv(index=False).encode("utf-8-sig"),
+            file_name="erhe_ledger.csv", mime="text/csv",
+        )
+        with st.expander("✏️ 修改 / 刪除指定的一筆"):
+            opts = {
+                f"#{i + 1} {r['draw_date']} {games.get(r['game']).name} "
+                f"{int(r['cars'])}車 損益{r['net']:+,.0f}": r
+                for i, r in enumerate(rows)
+            }
+            choice = st.selectbox("選一筆", list(opts), key="edit_pick")
+            row = opts[choice]
+            e1, e2, e3 = st.columns([1.4, 1, 1])
+            new_date = e1.date_input(
+                "改日期", value=dt.date.fromisoformat(row["draw_date"]),
+                format="YYYY-MM-DD", key="edit_date")
+            new_hits = e2.number_input(
+                "改中獎顆數", min_value=0, max_value=int(row["numbers"]),
+                value=0 if row["pending"] else int(row["hits"]), key="edit_hits")
+            e3.markdown("&nbsp;", unsafe_allow_html=True)
+            if e3.button("💾 套用", key="edit_apply", width="stretch"):
+                storage.update_round_result(int(row["id"]), int(new_hits))
+                storage.set_round_date(int(row["id"]), new_date.isoformat())
+                st.rerun()
+            if st.button("🗑️ 刪除這一筆", key="edit_del"):
+                storage.delete_round(int(row["id"]))
+                st.rerun()
+
+    with tab_game:
+        by_game = storage.totals_by_game(user)
+        gm_rows = []
+        for g in GAME_LIST:
+            t = by_game.get(g.key)
+            if not t:
+                continue
+            settled = t["rounds"] - t["pending"]
+            gm_rows.append({
+                "遊戲": _label(g),
+                "局數": t["rounds"],
+                "中獎局": t["wins"],
+                "勝率": f"{t['wins'] / settled:.0%}" if settled else "—",
+                "投入成本": f"{t['cost']:,.0f}",
+                "回收": f"{t['payout']:,.0f}",
+                "損益": f"{t['net']:+,.0f}",
+                "報酬率": f"{t['net'] / t['cost']:+.1%}" if t["cost"] else "—",
+            })
+        if gm_rows:
+            st.dataframe(pd.DataFrame(gm_rows), width="stretch", hide_index=True)
+            chart = pd.DataFrame({
+                "遊戲": [r["遊戲"] for r in gm_rows],
+                "損益": [by_game[g.key]["net"] for g in GAME_LIST if g.key in by_game],
+            })
+            fig = px.bar(chart, x="遊戲", y="損益", title="各款累積損益", color="損益",
+                         color_continuous_scale=["#e63946", "#457b9d"])
+            st.plotly_chart(fig, theme=None, width="stretch")
+        else:
+            st.info("還沒有分款資料。")
+
+
+# ── 策略頁主體 ───────────────────────────────────────────
+def page_strategy(user: str):
+    st.header("🎯 二合買牌(策略1)")
+    st.caption(
+        "三款遊戲共用**同一個損益池**:不管今天打哪一款,盈虧都累加在一起,"
+        "建議車數也依「合併累積虧損」計算。"
+    )
+
+    cfgs = {g.key: _game_settings(user, g) for g in GAME_LIST}
+    tot = storage.totals(user)
+    rows = storage.load_rounds(user)
+    cum = storage.current_cumulative(user)
+
+    _render_scoreboard(tot)
+    _render_pending(rows)
+    st.divider()
+    suggest = _render_suggestion(user, cfgs, cum)
+    st.divider()
+    _render_report_form(user, cfgs, suggest, bool(rows))
+    _render_odds_settings(cfgs)
+    st.divider()
+    _render_ledger(user, rows)
+
+    au_msgs = [autoupdate.status(g.key) for g in GAME_LIST]
+    if any(a.get("running") for a in au_msgs):
+        st.caption("🔄 開獎資料背景補抓中…(關閉網頁也會繼續)")
+
     st.error(
-        "誠實提醒:排行榜只是「過去結果」的比較,二合長期期望為負,排名高僅代表運氣好,"
-        "不代表方法有效或未來會繼續贏。"
+        "誠實提醒:合併損益池與回本車數都只是**算術**,改變不了每局的負期望。"
+        "「中 1 顆回本」的代價是沒中時要一直加碼,連敗時下注額指數成長,"
+        "長期(含偶爾連敗)仍是淨輸,且有破產風險。"
+    )
+
+
+# ── 排行榜:各帳號的合併損益 ──────────────────────────────
+def page_leaderboard(current_user: str):
+    st.header("🏆 排行榜 — 誰賺最多")
+    st.caption("彙整各帳號在「二合買牌(策略1)」三款合併後的累積損益。")
+
+    entries = [e for e in storage.latest_cumulatives() if e["account"]]
+    if not entries:
+        st.info("目前還沒有任何帳號的下注紀錄。到「二合買牌(策略1)」回報幾筆後就會出現排名。")
+        return
+
+    entries.sort(key=lambda d: d["cumulative"], reverse=True)
+    medals = {0: "🥇", 1: "🥈", 2: "🥉"}
+    table_rows = []
+    for i, e in enumerate(entries):
+        name = e["account"]
+        if name == current_user:
+            name = f"⭐ {name}(你)"
+        table_rows.append({
+            "名次": medals.get(i, f"{i + 1}"),
+            "帳號": name,
+            "累積損益": f"{e['cumulative']:+,.0f}",
+            "投入成本": f"{e['cost']:,.0f}",
+            "報酬率": f"{e['cumulative'] / e['cost']:+.1%}" if e["cost"] else "—",
+            "局數": e["rounds"],
+        })
+    st.dataframe(pd.DataFrame(table_rows), width="stretch", hide_index=True)
+
+    top = entries[:10]
+    fig = px.bar(
+        pd.DataFrame({"帳號": [e["account"] for e in top],
+                      "累積損益": [e["cumulative"] for e in top]}),
+        x="帳號", y="累積損益", title=f"合併累積損益排名(前 {len(top)} 名)",
+        color="累積損益", color_continuous_scale=["#e63946", "#457b9d"],
+    )
+    st.plotly_chart(fig, theme=None, width="stretch")
+
+    with st.expander("我的分款戰績"):
+        by_game = storage.totals_by_game(current_user)
+        if by_game:
+            st.dataframe(pd.DataFrame([{
+                "遊戲": _label(g),
+                "局數": by_game[g.key]["rounds"],
+                "投入": f"{by_game[g.key]['cost']:,.0f}",
+                "回收": f"{by_game[g.key]['payout']:,.0f}",
+                "損益": f"{by_game[g.key]['net']:+,.0f}",
+            } for g in GAME_LIST if g.key in by_game]), width="stretch", hide_index=True)
+        else:
+            st.caption("你還沒有任何紀錄。")
+
+    st.error(
+        "誠實提醒:排行榜只是「過去結果」的比較,二合長期期望為負,"
+        "排名高僅代表運氣好,不代表方法有效或未來會繼續贏。"
     )
 
 
@@ -1326,30 +1308,30 @@ def _login_gate() -> bool:
 
 # ── 主程式 ────────────────────────────────────────────────
 def main():
-    st.set_page_config(page_title="彩券統計分析(539 / 天天樂 / 六合彩)", page_icon="🎰", layout="wide")
+    st.set_page_config(page_title="彩券統計分析(539 / 天天樂 / 六合彩)",
+                       page_icon="🎰", layout="wide")
     if not _login_gate():
         return
     # 剛登入:把 token 寫進 cookie(重整 / 重開分頁自動保持登入)
     token = st.session_state.pop("_login_token", None)
     if token:
         _write_auth_cookie(token)
-    game, fdf, nav = sidebar_controls()
+    user = st.session_state.get("user", "")
+    nav = sidebar_controls()
 
     # 說明 / 算式頁(由側邊欄按鈕觸發,覆蓋主畫面;點任一導覽即返回)
     if st.session_state.get("show_docs"):
         docs.render()
         return
 
-    if nav == "🏠 首頁":
-        page_home(game, fdf)
-    elif nav == "統計分析":
-        page_stats(fdf, game)
-    elif nav == "二合買牌(策略1)":
-        page_erhe(fdf, game)
+    if nav == "🎯 二合買牌(策略1)":
+        page_strategy(user)
+    elif nav == "📊 統計分析":
+        page_stats()
     elif nav == "🏆 排行榜":
-        page_leaderboard(st.session_state.get("user", ""))
+        page_leaderboard(user)
     elif nav == "🔄 更新資料":
-        page_update(game)
+        page_update()
 
 
 if __name__ == "__main__":

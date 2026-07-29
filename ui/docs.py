@@ -250,6 +250,31 @@ def render() -> None:
     st.markdown("**二合凱莉**(車級二元賭局,$p=P_{\\text{膽中}}$,淨賠率 $b=(\\text{中獎金額}-\\text{成本})/\\text{成本}$):")
     st.latex(r"f^{*} = \frac{b\,p - (1-p)}{b}, \qquad f^{*}\le 0 \Rightarrow \text{建議 } 0")
 
+    st.markdown("**回本車數(只打一款)**:設目前合併累積虧損 $L>0$、押 $n$ 顆、"
+                "每車成本 $c$、中獎可得 $w$。下 $x$ 車時,本局成本 $=n x c$,"
+                "中 1 顆回收 $=x w$,要求回本:")
+    st.latex(r"x\,w - n\,x\,c \ge L \quad\Rightarrow\quad x \ge \frac{L}{w - n c}")
+    st.caption("分母 $w-nc$ 就是「中 1 顆每車淨利」;它 ≤ 0 時中 1 顆永遠回不了本。")
+
+    st.markdown(
+        "**同一天同時下多款**:任何一款中獎,都要先扣掉**當天全部**的下注成本。"
+        "設第 $i$ 款下 $x_i$ 車、本局總成本 $T=\\sum_i n_i x_i c_i$,要求「任一款中 1 顆即回本」:"
+    )
+    st.latex(r"x_i\,w_i \ge L + T \quad (\forall i)")
+    st.markdown("取等號代回 $T$,得成本係數 $k$ 與閉解:")
+    st.latex(r"k = \sum_i \frac{n_i c_i}{w_i}, \qquad L+T = \frac{L}{1-k},"
+             r"\qquad x_i = \frac{L}{(1-k)\,w_i}")
+    st.error(
+        "**關鍵結論:$k \\ge 1$ 時無解** —— 不管每款加到幾車,本局總成本永遠追不上"
+        "單一款中 1 顆的回收。因為 $k$ 對顆數是線性的,可押顆數上限為 "
+        "$n_{\\max}=\\lfloor 1 \\big/ \\sum_i (c_i/w_i)\\rfloor$。"
+    )
+    st.caption(
+        "以本工具的預設盤口(539/天天樂 2755→21200、六合彩 3528→28500)實算:"
+        "單押一款 k=0.65(每款最多 7 顆);兩款同下每款最多 3 顆;"
+        "三款同下每款最多 2 顆 —— 三款各押 5 顆時 k=1.92,數學上無解。"
+    )
+
     st.markdown("**倍頭(Martingale)**:連敗時每局車數乘以倍頭 $m$,累積成本指數成長:")
     st.latex(r"\text{第 } t \text{ 局車數} = \text{起始車數}\times m^{\,t-1}")
     st.latex(r"\text{打平需中車數} = \frac{\text{累積成本}}{\text{中獎金額}}")

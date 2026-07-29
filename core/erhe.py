@@ -206,6 +206,76 @@ def next_cars_for_recovery(cumulative_net: float, n_numbers: int,
     }
 
 
+# ── 同一局同時下多款的回本試算 ────────────────────────────
+def combo_cost_ratio(plans: dict) -> float:
+    """同時下多款時的「成本吃掉回收」係數 k = Σ (押幾顆 × 每車成本) ÷ 中獎可得。
+
+    plans:{遊戲代號: (押幾顆, 每車成本, 中獎可得)}。
+
+    推導:設第 i 款下 xᵢ 車,本局總成本 T = Σ nᵢ·xᵢ·cᵢ,虧損 L。
+    要求「任一款中 1 顆就回本」→ 對每個 i:xᵢ·wᵢ ≥ L + T。
+    取等號代回得 T = (L+T)·k,故 L+T = L/(1−k)。
+    **k ≥ 1 時無解** —— 不管下多少車,本局成本永遠追不上單一款的回收。
+    """
+    return sum(n * c / w for n, c, w in plans.values() if w > 0)
+
+
+def max_numbers_for_combo(odds: dict, margin: float = 0.999) -> int:
+    """同時下這幾款、每款都押相同顆數時,最多能押幾顆仍讓「中 1 顆回本」有解。
+
+    odds:{遊戲代號: (每車成本, 中獎可得)}。
+    k(n) = n × Σ(cᵢ/wᵢ) 對顆數是線性的,所以 n_max = ⌊margin ÷ Σ(cᵢ/wᵢ)⌋。
+    回傳 0 代表連押 1 顆都無解。
+    """
+    ratio = sum(c / w for c, w in odds.values() if w > 0)
+    if ratio <= 0:
+        return 0
+    return int(margin / ratio)
+
+
+def simultaneous_recovery(cumulative_net: float, plans: dict,
+                          base_cars: int = 3, max_iter: int = 64) -> dict:
+    """同一局同時下多款,且要求「任一款中 1 顆即回本」時,各款該下幾車。
+
+    回傳 dict:
+      k             成本係數(見 combo_cost_ratio);>= 1 代表無解
+      feasible      是否有解
+      cars          {遊戲代號: 車數}(無解時為空)
+      total_cost    本局總成本
+      worst_after   最壞情況(只中 1 顆、且中的是回收最少那款)的中後累積
+      recovered     目前是否已回本
+
+    作法:先用閉解 xᵢ = L/((1−k)·wᵢ) 起步,再因為車數必須取整而向上迭代到不動點。
+    """
+    recovered = cumulative_net >= 0
+    loss = max(0.0, -cumulative_net)
+    k = combo_cost_ratio(plans)
+    if not plans:
+        return {"k": 0.0, "feasible": True, "cars": {}, "total_cost": 0.0,
+                "worst_after": cumulative_net, "recovered": recovered}
+    if recovered:
+        cars = {g: base_cars for g in plans}
+        total = sum(n * cars[g] * c for g, (n, c, _w) in plans.items())
+        after = min(cars[g] * w - total for g, (_n, _c, w) in plans.items())
+        return {"k": k, "feasible": True, "cars": cars, "total_cost": total,
+                "worst_after": cumulative_net + after, "recovered": True}
+    if k >= 1.0:
+        return {"k": k, "feasible": False, "cars": {}, "total_cost": float("inf"),
+                "worst_after": float("-inf"), "recovered": False}
+
+    cars = {g: max(base_cars, ceil(loss / ((1.0 - k) * w))) for g, (_n, _c, w) in plans.items()}
+    for _ in range(max_iter):  # 取整會墊高總成本,迭代到所有款都達標
+        total = sum(n * cars[g] * c for g, (n, c, _w) in plans.items())
+        need = {g: max(base_cars, ceil((loss + total) / w)) for g, (_n, _c, w) in plans.items()}
+        if all(cars[g] >= need[g] for g in plans):
+            break
+        cars = {g: max(cars[g], need[g]) for g in plans}
+    total = sum(n * cars[g] * c for g, (n, c, _w) in plans.items())
+    after = min(cars[g] * w - total for g, (_n, _c, w) in plans.items())
+    return {"k": k, "feasible": True, "cars": cars, "total_cost": total,
+            "worst_after": cumulative_net + after, "recovered": False}
+
+
 # ── 多顆數進程(每局押 N 顆、車數依進程加碼)──────────────
 def hit_distribution(n_numbers: int, pick: int = constants.PICK,
                      num_max: int = constants.NUM_MAX) -> dict[int, float]:
