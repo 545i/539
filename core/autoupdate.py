@@ -16,10 +16,12 @@ from pathlib import Path
 
 import pandas as pd
 
-from core import loader, scraper, scraper_fantasy5
+from core import games, loader, scraper, scraper_fantasy5, scraper_marksix
 
 MIN_DRAWS = 7        # 每次補抓至少涵蓋的期數(去重合併,不會重複寫入)
 _MIN_SPAN_DAYS = 9   # 今彩539 週一~六開獎:9 個日曆天必含 >=7 個開獎日
+_MARKSIX_PER_PAGE = 23   # 六合彩來源站每頁期數
+_MARKSIX_PER_WEEK = 3    # 六合彩每週開獎次數(二/四/六)
 _COOLDOWN_OK = 600   # 補抓成功後的冷卻秒數(避免每回報一局就打一次 API)
 _COOLDOWN_ERR = 60   # 補抓失敗後的冷卻秒數
 
@@ -50,8 +52,9 @@ def _months_between(start: dt.date, end: dt.date):
 
 def _run(game_key: str, data_path: Path, on_done) -> None:
     today = dt.date.today()
+    game = games.get(game_key)
     try:
-        df = loader.load_history(data_path)
+        df = loader.load_history(data_path, game.pick, game.num_max)
         latest = pd.to_datetime(df["date"]).max().date()
         # 從資料最新日與「今天 − 9 天」較早者開始抓,保證至少重抓 7 期
         start = min(latest, today - dt.timedelta(days=_MIN_SPAN_DAYS))
@@ -61,6 +64,11 @@ def _run(game_key: str, data_path: Path, on_done) -> None:
             gap_days = (today - start).days
             pages = min(60, max(1, -(-(gap_days + MIN_DRAWS) // 50)))
             new_rows = scraper_fantasy5.fetch_history(pages=pages)
+        elif game_key == "marksix":
+            # 六合彩每週開三次:把落差天數換算成期數,再換算頁數
+            gap_draws = (today - start).days * _MARKSIX_PER_WEEK / 7
+            pages = min(20, max(1, -(-int(gap_draws + MIN_DRAWS) // _MARKSIX_PER_PAGE)))
+            new_rows = scraper_marksix.fetch_history(pages=pages)
         else:
             new_rows, failures = [], []
             for y, m in _months_between(start, today):

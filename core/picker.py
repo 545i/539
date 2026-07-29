@@ -14,7 +14,7 @@ import random
 import pandas as pd
 
 from core.constants import NUM_MAX, NUM_MIN, PICK
-from core.stats import ALL_NUMS, SIZE_SPLIT, frequency, missing
+from core.stats import ALL_NUMS, SIZE_SPLIT, all_nums, frequency, missing
 
 STRATEGIES = ["random", "hot", "cold", "frequency", "balanced"]
 
@@ -33,22 +33,24 @@ def label(strategy: str) -> str:
     return STRATEGY_LABELS.get(strategy, strategy)
 
 
-def draw_probabilities(df, strategy: str = "random", window: int = 30) -> dict[int, float]:
-    """各號碼「被開出(落在當期 5 個開獎號內)」的『預估』機率,依策略加權。
+def draw_probabilities(df, strategy: str = "random", window: int = 30,
+                       num_max: int = NUM_MAX, pick: int = PICK) -> dict[int, float]:
+    """各號碼「被開出(落在當期開獎號內)」的『預估』機率,依策略加權。
 
-    回傳 {號碼: 機率},全部加總為 PICK(=5,即每期開 5 個號的期望)。
-    - random / balanced:均勻,每號 5/39 ≈ 0.128(這也是『真實』機率)。
+    回傳 {號碼: 機率},全部加總為 pick(即每期開 pick 個號的期望)。
+    - random / balanced:均勻,每號 pick/num_max(這也是『真實』機率)。
     - hot / cold / frequency:依歷史加權的啟發式估計。
 
-    重要:每期開獎獨立隨機,真實開機率永遠是均勻的 5/39;
+    重要:每期開獎獨立隨機,真實開機率永遠是均勻的 pick/num_max;
     非 random 的『預估開機率』只是把歷史傾向視覺化,**沒有預測下一期的能力**。
     """
+    nums = all_nums(num_max)
     if strategy in ("random", "balanced"):
-        weights = {n: 1.0 for n in ALL_NUMS}
+        weights = {n: 1.0 for n in nums}
     else:
-        weights = _weights(df, strategy, window)
+        weights = _weights(df, strategy, window, num_max)
     total = sum(weights.values()) or 1.0
-    return {n: PICK * weights[n] / total for n in ALL_NUMS}
+    return {n: pick * weights[n] / total for n in nums}
 
 
 def _weighted_sample(weights: dict[int, float], rng: random.Random) -> list[int]:
@@ -70,18 +72,20 @@ def _weighted_sample(weights: dict[int, float], rng: random.Random) -> list[int]
     return sorted(chosen)
 
 
-def _weights(df: pd.DataFrame, strategy: str, window: int = 30) -> dict[int, float]:
+def _weights(df: pd.DataFrame, strategy: str, window: int = 30,
+             num_max: int = NUM_MAX) -> dict[int, float]:
+    nums = all_nums(num_max)
     if strategy == "random":
-        return {n: 1.0 for n in ALL_NUMS}
+        return {n: 1.0 for n in nums}
     if strategy == "frequency":
-        freq = frequency(df)
-        return {n: freq[n] + 1.0 for n in ALL_NUMS}  # +1 平滑,避免 0 權重
+        freq = frequency(df, num_max)
+        return {n: freq[n] + 1.0 for n in nums}  # +1 平滑,避免 0 權重
     if strategy == "hot":
-        freq = frequency(df.tail(window))
-        return {n: freq[n] + 0.5 for n in ALL_NUMS}
+        freq = frequency(df.tail(window), num_max)
+        return {n: freq[n] + 0.5 for n in nums}
     if strategy == "cold":
-        miss = missing(df)
-        return {n: miss[n]["current"] + 1.0 for n in ALL_NUMS}
+        miss = missing(df, num_max)
+        return {n: miss[n]["current"] + 1.0 for n in nums}
     raise ValueError(f"未知策略:{strategy}")
 
 

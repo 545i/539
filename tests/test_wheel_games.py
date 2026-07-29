@@ -1,4 +1,4 @@
-"""包牌/牌型/加碼(core.wheel)與雙遊戲設定(core.games)測試。"""
+"""包牌/牌型/加碼(core.wheel)與多遊戲設定(core.games)測試。"""
 from math import comb
 
 import pytest
@@ -8,22 +8,44 @@ from core import games, kelly, loader, wheel
 
 # ── games ────────────────────────────────────────────────
 def test_games_registry():
-    assert set(games.GAMES) == {"lotto539", "fantasy5"}
+    assert set(games.GAMES) == {"lotto539", "fantasy5", "marksix"}
     assert games.get("lotto539").name == "今彩539"
     assert games.by_name("今彩539").key == "lotto539"
     # 找不到回預設
     assert games.get("nope").key == games.DEFAULT_GAME.key
 
 
-def test_both_games_negative_ev():
+def test_all_games_negative_ev():
     for g in games.GAMES.values():
-        assert g.expected_return() < 0          # 兩款都是負期望
+        assert g.expected_return() < 0          # 三款都是負期望
         assert kelly.analyze(g).fraction == 0.0  # 凱莉建議皆為 0
 
 
 def test_539_numbers_unchanged():
     g = games.LOTTO539
     assert abs(g.expected_return() - (-0.4416)) < 1e-3
+
+
+# ── 六合彩(49 選 6)規格 ─────────────────────────────────
+def test_marksix_spec():
+    g = games.MARKSIX
+    assert (g.num_max, g.pick) == (49, 6)
+    assert g.total_comb == comb(49, 6) == 13_983_816
+    assert g.notes_per_car == 48                      # 1 膽拖 48 號 = 1 車
+    assert abs(g.dan_prob - 6 / 49) < 1e-12           # 膽中機率 6/49
+    # 使用者指定的盤口:每車成本 3528(= 48 注 × 73.5)、中獎可得 28500
+    assert g.default_cost_per_car == 3528.0
+    assert g.default_win_payout == 28500.0
+    # 中 k 碼組合數應與超幾何一致,且機率總和為 1
+    assert g.ways(6) == 1 and g.ways(0) == comb(43, 6)
+    assert abs(sum(g.prob(k) for k in range(7)) - 1.0) < 1e-12
+
+
+def test_539_and_fantasy5_still_5_of_39():
+    for g in (games.LOTTO539, games.FANTASY5):
+        assert (g.num_max, g.pick) == (39, 5)
+        assert g.notes_per_car == 38
+        assert abs(g.dan_prob - 5 / 39) < 1e-12
 
 
 # ── wheel:包牌 ───────────────────────────────────────────

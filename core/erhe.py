@@ -3,6 +3,9 @@
 二合玩法(以今彩539 的 39 選 5 開獎為基礎):
   選 2 個號碼,當期開出的 5 個號碼若同時包含這 2 個,即中獎。
 
+模組常數(PAIR_PROB / DAN_PROB)是今彩539 的值;六合彩(49 選 6)等其他玩法,
+呼叫端傳入 dan_prob / pick / num_max 即可(GameConfig 有對應欄位)。
+
 誠實前提:
   - 二合單組中獎機率固定為 C(37,3)/C(39,5) ≈ 1/74.1,且每號真實開機率相同。
   - 期望報酬率 = 中獎機率 × 賠率 − 1,只由「賠率」決定,與選哪些號碼無關。
@@ -32,24 +35,27 @@ def ev_rate(odds: float) -> float:
 
 
 # ── 車級模型(以「每車成本 + 中獎可得」直接計算)──────────
-def car_ev_rate(cost_per_car: float, win_payout: float) -> float:
+def car_ev_rate(cost_per_car: float, win_payout: float,
+                dan_prob: float = DAN_PROB) -> float:
     """拖牌車的期望報酬率。
 
-    車「中」(膽號被開出,機率 5/39)時收到 win_payout,否則 0。
-    期望報酬率 = 5/39 × win_payout / cost_per_car − 1。
+    車「中」(膽號被開出,機率 dan_prob = pick/num_max)時收到 win_payout,否則 0。
+    期望報酬率 = dan_prob × win_payout / cost_per_car − 1。
     """
-    return DAN_PROB * win_payout / cost_per_car - 1.0
+    return dan_prob * win_payout / cost_per_car - 1.0
 
 
-def car_kelly_fraction(cost_per_car: float, win_payout: float) -> float:
+def car_kelly_fraction(cost_per_car: float, win_payout: float,
+                       dan_prob: float = DAN_PROB) -> float:
     """拖牌車的凱莉建議下注比例(車級二元賭局)。
 
-    勝率 p = 5/39;淨賠率 b = (win_payout − cost)/cost。負期望時為 0。
+    勝率 p = dan_prob(539 為 5/39、六合彩為 6/49);
+    淨賠率 b = (win_payout − cost)/cost。負期望時為 0。
     """
     b = (win_payout - cost_per_car) / cost_per_car
     if b <= 0:
         return 0.0
-    return max(0.0, kelly.kelly_binary(DAN_PROB, b))
+    return max(0.0, kelly.kelly_binary(dan_prob, b))
 
 
 def kelly_fraction(odds: float) -> float:
@@ -201,21 +207,23 @@ def next_cars_for_recovery(cumulative_net: float, n_numbers: int,
 
 
 # ── 多顆數進程(每局押 N 顆、車數依進程加碼)──────────────
-def hit_distribution(n_numbers: int) -> dict[int, float]:
+def hit_distribution(n_numbers: int, pick: int = constants.PICK,
+                     num_max: int = constants.NUM_MAX) -> dict[int, float]:
     """每局押 n_numbers 顆,中 k 顆的機率(超幾何分布)。
 
-    P(中k顆) = C(n,k)·C(39-n, 5-k) / C(39,5),k = 0..min(n,5)。
+    P(中k顆) = C(n,k)·C(num_max−n, pick−k) / C(num_max, pick),k = 0..min(n, pick)。
     """
+    total = comb(num_max, pick)
     out = {}
-    for k in range(0, min(n_numbers, constants.PICK) + 1):
-        out[k] = (comb(n_numbers, k) * comb(constants.NUM_MAX - n_numbers, constants.PICK - k)
-                  / constants.TOTAL_COMB)
+    for k in range(0, min(n_numbers, pick) + 1):
+        out[k] = comb(n_numbers, k) * comb(num_max - n_numbers, pick - k) / total
     return out
 
 
-def per_round_ev_rate(cost_per_car: float, win_payout: float) -> float:
+def per_round_ev_rate(cost_per_car: float, win_payout: float,
+                      dan_prob: float = DAN_PROB) -> float:
     """每局(任一車級)期望報酬率;與顆數、車數無關,恆為單號 EV。"""
-    return DAN_PROB * win_payout / cost_per_car - 1.0
+    return dan_prob * win_payout / cost_per_car - 1.0
 
 
 @dataclass
@@ -263,7 +271,9 @@ class ProgMultiResult:
 def progression_sim_multi(progression=(3, 5, 7, 10, 13), n_numbers: int = 5,
                           cost_per_car: float = 2755.0, win_payout: float = 21200.0,
                           capital: float = 500000.0, rounds: int = 200,
-                          trials: int = 500, seed: int = 539) -> ProgMultiResult:
+                          trials: int = 500, seed: int = 539,
+                          pick: int = constants.PICK,
+                          num_max: int = constants.NUM_MAX) -> ProgMultiResult:
     """蒙地卡羅模擬「每局押 N 顆、輸了加碼、中獎重置」策略。
 
     每局押 n_numbers 顆,車級取自 progression(連敗格 index,超出停最後一格);
@@ -272,7 +282,7 @@ def progression_sim_multi(progression=(3, 5, 7, 10, 13), n_numbers: int = 5,
     """
     prog = list(progression)
     nlen = len(prog)
-    dist = hit_distribution(n_numbers)
+    dist = hit_distribution(n_numbers, pick, num_max)
     cum_dist = []
     acc = 0.0
     for k in sorted(dist):
@@ -315,7 +325,7 @@ def progression_sim_multi(progression=(3, 5, 7, 10, 13), n_numbers: int = 5,
     return ProgMultiResult(
         progression=prog,
         n_numbers=n_numbers,
-        per_round_ev=per_round_ev_rate(cost_per_car, win_payout),
+        per_round_ev=per_round_ev_rate(cost_per_car, win_payout, pick / num_max),
         p_lose_round=p_lose,
         p_win_round=1.0 - p_lose,
         ruin_rate=ruined / trials,
