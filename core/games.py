@@ -113,7 +113,7 @@ FANTASY5 = GameConfig(
 # 二合買牌(策略1)用的是台灣組頭盤口(每車成本 / 中獎可得),與官方派彩無關。
 MARKSIX = GameConfig(
     key="marksix",
-    name="六合彩(香港)",
+    name="六合彩",
     data_file="history_marksix.csv",
     ticket_price=40,
     currency="NT$",
@@ -125,8 +125,8 @@ MARKSIX = GameConfig(
         "且未計入「特別號」加成獎項,實際派彩每期不同。"
     ),
     source_note="樂透彩幸運發財網(pilio.idv.tw)彙整的香港六合彩開獎結果。",
-    emoji="🇭🇰",
-    region="香港",
+    emoji="🎱",
+    region="香港開獎",
     accent="#6a1b9a",  # 紫,與 539 紅 / 天天樂綠明顯區隔
     tagline="49 選 6・每週二/四/六開獎",
     default_cost_per_car=3528.0,   # 1 膽拖 48 號 = 48 注 × 73.5

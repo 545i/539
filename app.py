@@ -165,7 +165,7 @@ def sidebar_controls():
     game_name = st.sidebar.radio(
         "選擇遊戲",
         [g.name for g in games.GAMES.values()],
-        help="今彩539(39選5)、天天樂(加州 Fantasy 5,39選5)、六合彩(香港,49選6)"
+        help="今彩539(39選5)、天天樂(加州 Fantasy 5,39選5)、六合彩(49選6,依香港開獎)"
              "各自獨立資料與統計。",
     )
     game = games.by_name(game_name)
@@ -560,7 +560,7 @@ def page_update(game):
 
     if game.key == "marksix":
         # 六合彩(香港):從 pilio.idv.tw 彙整站抓取(每頁約 23 期,可回溯到 2002 年)
-        st.caption("從公開彙整站抓取香港六合彩開獎(49 選 6,每週二/四/六開獎)。")
+        st.caption("從公開彙整站抓取六合彩開獎號(49 選 6,每週二/四/六,依香港開獎)。")
         pages = st.slider("抓取頁數(每頁約 23 期)", min_value=1, max_value=146, value=5)
         if st.button("抓取並更新", type="primary"):
             try:
