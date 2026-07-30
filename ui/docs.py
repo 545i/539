@@ -275,6 +275,19 @@ def render() -> None:
         "三款同下每款最多 2 顆 —— 三款各押 5 顆時 k=1.92,數學上無解。"
     )
 
+    st.markdown(
+        "**自己指定部分款的車數**:設 $F$ 為你已經自己填好車數的款、$V$ 為其餘交給系統算的款。"
+        "固定款的成本 $T_F=\\sum_{i\\in F} n_i x_i c_i$ 是已知數,只有 $V$ 裡的款會進係數:"
+    )
+    st.latex(r"k_V = \sum_{i \in V} \frac{n_i c_i}{w_i}, \qquad "
+             r"L + T = \frac{L + T_F}{1 - k_V}, \qquad "
+             r"x_i = \frac{L + T_F}{(1-k_V)\,w_i}\ \ (i \in V)")
+    st.caption(
+        "所以你把某一款的車數調低,當天總成本變小,其餘款的建議車數會跟著變少;調高則相反。"
+        "固定款不會讓組合變成無解(它不進 $k_V$),但它自己可能中 1 顆也回不了本 —— "
+        "此時介面會單獨把那一款標出來。"
+    )
+
     st.markdown("**倍頭(Martingale)**:連敗時每局車數乘以倍頭 $m$,累積成本指數成長:")
     st.latex(r"\text{第 } t \text{ 局車數} = \text{起始車數}\times m^{\,t-1}")
     st.latex(r"\text{打平需中車數} = \frac{\text{累積成本}}{\text{中獎金額}}")

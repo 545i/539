@@ -233,47 +233,64 @@ def max_numbers_for_combo(odds: dict, margin: float = 0.999) -> int:
     return int(margin / ratio)
 
 
-def simultaneous_recovery(cumulative_net: float, plans: dict,
-                          base_cars: int = 3, max_iter: int = 64) -> dict:
+def simultaneous_recovery(cumulative_net: float, plans: dict, base_cars: int = 3,
+                          fixed: dict | None = None, max_iter: int = 64) -> dict:
     """同一局同時下多款,且要求「任一款中 1 顆即回本」時,各款該下幾車。
 
+    plans:{遊戲代號: (押幾顆, 每車成本, 中獎可得)}
+    fixed:{遊戲代號: 車數} —— 使用者已經自己決定車數的款。這些款的成本變成已知,
+          其餘款要在「扣掉這些固定成本」的前提下重解,所以填了一款會影響其他款的建議。
+
     回傳 dict:
-      k             成本係數(見 combo_cost_ratio);>= 1 代表無解
+      k             未固定那些款的成本係數;>= 1 代表無解
       feasible      是否有解
-      cars          {遊戲代號: 車數}(無解時為空)
+      cars          {遊戲代號: 車數}(含固定的與解出來的)
       total_cost    本局總成本
       worst_after   最壞情況(只中 1 顆、且中的是回收最少那款)的中後累積
+      short         中 1 顆仍回不了本的款(通常是使用者自己把車數填太少)
       recovered     目前是否已回本
 
-    作法:先用閉解 xᵢ = L/((1−k)·wᵢ) 起步,再因為車數必須取整而向上迭代到不動點。
+    推導:設固定款的成本 T_F、未固定款的成本係數 k_V = Σ_{i∈未固定} nᵢcᵢ/wᵢ,
+    則 L + T = (L + T_F)/(1 − k_V),xᵢ = (L + T_F)/((1 − k_V)·wᵢ)。
+    只有「未固定」的款會進 k_V —— 固定款不管下多少,都不會讓組合變成無解,
+    但可能自己回不了本(列在 short)。
     """
+    fixed = {g: int(v) for g, v in (fixed or {}).items() if g in plans}
     recovered = cumulative_net >= 0
     loss = max(0.0, -cumulative_net)
-    k = combo_cost_ratio(plans)
+    free = {g: v for g, v in plans.items() if g not in fixed}
+    k = combo_cost_ratio(free)
+
+    def _wrap(cars):
+        total = sum(n * cars[g] * c for g, (n, c, _w) in plans.items())
+        gains = {g: cars[g] * w for g, (_n, _c, w) in plans.items()}
+        after = min(gains.values()) - total if gains else 0.0
+        return {
+            "k": k, "feasible": True, "cars": cars, "total_cost": total,
+            "worst_after": cumulative_net + after, "recovered": recovered,
+            "short": sorted(g for g in plans if cumulative_net + gains[g] - total < 0),
+        }
+
     if not plans:
         return {"k": 0.0, "feasible": True, "cars": {}, "total_cost": 0.0,
-                "worst_after": cumulative_net, "recovered": recovered}
+                "worst_after": cumulative_net, "recovered": recovered, "short": []}
     if recovered:
-        cars = {g: base_cars for g in plans}
-        total = sum(n * cars[g] * c for g, (n, c, _w) in plans.items())
-        after = min(cars[g] * w - total for g, (_n, _c, w) in plans.items())
-        return {"k": k, "feasible": True, "cars": cars, "total_cost": total,
-                "worst_after": cumulative_net + after, "recovered": True}
-    if k >= 1.0:
+        return _wrap({**{g: base_cars for g in free}, **fixed})
+    if free and k >= 1.0:
         return {"k": k, "feasible": False, "cars": {}, "total_cost": float("inf"),
-                "worst_after": float("-inf"), "recovered": False}
+                "worst_after": float("-inf"), "recovered": False, "short": []}
 
-    cars = {g: max(base_cars, ceil(loss / ((1.0 - k) * w))) for g, (_n, _c, w) in plans.items()}
-    for _ in range(max_iter):  # 取整會墊高總成本,迭代到所有款都達標
+    fixed_cost = sum(plans[g][0] * fixed[g] * plans[g][1] for g in fixed)
+    cars = {g: max(base_cars, ceil((loss + fixed_cost) / ((1.0 - k) * w)))
+            for g, (_n, _c, w) in free.items()}
+    cars.update(fixed)
+    for _ in range(max_iter):  # 取整會墊高總成本,迭代到所有未固定的款都達標
         total = sum(n * cars[g] * c for g, (n, c, _w) in plans.items())
-        need = {g: max(base_cars, ceil((loss + total) / w)) for g, (_n, _c, w) in plans.items()}
-        if all(cars[g] >= need[g] for g in plans):
+        need = {g: max(base_cars, ceil((loss + total) / w)) for g, (_n, _c, w) in free.items()}
+        if all(cars[g] >= need[g] for g in free):
             break
-        cars = {g: max(cars[g], need[g]) for g in plans}
-    total = sum(n * cars[g] * c for g, (n, c, _w) in plans.items())
-    after = min(cars[g] * w - total for g, (_n, _c, w) in plans.items())
-    return {"k": k, "feasible": True, "cars": cars, "total_cost": total,
-            "worst_after": cumulative_net + after, "recovered": False}
+        cars.update({g: max(cars[g], need[g]) for g in free})
+    return _wrap(cars)
 
 
 # ── 多顆數進程(每局押 N 顆、車數依進程加碼)──────────────

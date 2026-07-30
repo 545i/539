@@ -108,3 +108,74 @@ def test_real_game_defaults_are_wired_up():
     res = erhe.simultaneous_recovery(-52920, plans, base_cars=3)
     assert res["feasible"] is True
     assert set(res["cars"]) == {"lotto539", "fantasy5", "marksix"}
+
+
+# ── 固定部分款的車數(使用者自己填)後重解 ──────────────────
+def test_fixed_game_lowers_others_cost():
+    """把一款的車數壓低,當天總成本變小,其餘款的建議車數也跟著變少。"""
+    plans = _plans(2, S539, S539, SHK)
+    auto = erhe.simultaneous_recovery(-135_570, plans, base_cars=3)
+    low = erhe.simultaneous_recovery(-135_570, plans, base_cars=3,
+                                     fixed={"g0": 5})
+    assert low["cars"]["g0"] == 5
+    assert low["cars"]["g1"] < auto["cars"]["g1"]
+    assert low["cars"]["g2"] < auto["cars"]["g2"]
+    assert low["total_cost"] < auto["total_cost"]
+
+
+def test_fixed_game_raises_others_cost():
+    """把一款的車數拉高,當天成本變大,其餘款必須跟著加碼才追得回來。"""
+    plans = _plans(2, S539, S539, SHK)
+    auto = erhe.simultaneous_recovery(-135_570, plans, base_cars=3)
+    high = erhe.simultaneous_recovery(-135_570, plans, base_cars=3,
+                                      fixed={"g0": auto["cars"]["g0"] * 2})
+    assert high["cars"]["g1"] > auto["cars"]["g1"]
+    assert high["cars"]["g2"] > auto["cars"]["g2"]
+    assert high["short"] == []          # 加碼後所有款仍都回得了本
+
+
+def test_underfunded_fixed_game_reported_in_short():
+    """自己把車數填太少的那款會被列進 short,其他款不受影響仍達標。"""
+    plans = _plans(2, S539, S539, SHK)
+    res = erhe.simultaneous_recovery(-135_570, plans, base_cars=3, fixed={"g0": 5})
+    assert res["feasible"] is True
+    assert res["short"] == ["g0"]
+    for g in ("g1", "g2"):
+        after = -135_570 + res["cars"][g] * plans[g][2] - res["total_cost"]
+        assert after >= 0
+
+
+def test_all_fixed_just_evaluates():
+    """三款全部自己填時不需要解方程,只回報結果與哪幾款回不了本。"""
+    plans = _plans(2, S539, S539, SHK)
+    fixed = {"g0": 20, "g1": 20, "g2": 20}
+    res = erhe.simultaneous_recovery(-135_570, plans, base_cars=3, fixed=fixed)
+    assert res["feasible"] is True and res["cars"] == fixed
+    assert res["total_cost"] == pytest.approx(
+        sum(n * 20 * c for n, c, _w in plans.values()))
+    assert set(res["short"]) == {"g0", "g1"}     # 539 兩款回收較低,回不了本
+
+
+def test_fixed_game_does_not_make_combo_infeasible():
+    """只有「未固定」的款才算進 k;把兩款固定住,剩一款就有解了。"""
+    plans = _plans(5, S539, S539, SHK)           # 全自動時 k=1.92 無解
+    assert erhe.simultaneous_recovery(-52_920, plans)["feasible"] is False
+    res = erhe.simultaneous_recovery(-52_920, plans, fixed={"g0": 3, "g1": 3})
+    assert res["feasible"] is True
+    assert res["k"] == pytest.approx(5 * 3528 / 28500)   # 只剩六合彩進 k
+
+
+def test_fixed_solution_still_recovers_free_games():
+    """固定幾款之後,解出來的那些款仍必須真的回本。"""
+    plans = _plans(2, S539, S539, SHK)
+    for loss in (-10_000, -135_570, -800_000):
+        res = erhe.simultaneous_recovery(loss, plans, base_cars=3, fixed={"g2": 7})
+        total = res["total_cost"]
+        for g in ("g0", "g1"):
+            assert loss + res["cars"][g] * plans[g][2] - total >= 0
+
+
+def test_fixed_ignores_unknown_keys():
+    plans = _plans(2, S539)
+    res = erhe.simultaneous_recovery(-50_000, plans, fixed={"不存在": 99})
+    assert set(res["cars"]) == {"g0"}
