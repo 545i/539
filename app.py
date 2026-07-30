@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import datetime as dt
 import sys
+from math import ceil
 from pathlib import Path
 
 import pandas as pd
@@ -769,21 +770,50 @@ def _record(user: str, cfgs: dict, picks: list[str], cars: dict,
             hits.get(k), cost, cfg["win_payout"],
         )
         _kick_autoupdate(games.get(k))
-    _reset_car_inputs(picks)
+    _reset_car_inputs()
     st.rerun()
 
 
-def _mark_manual(gkey: str):
-    """使用者動了某款的車數 → 該款改為自訂,其餘款的建議會依它重算。"""
-    st.session_state[f"cars_auto_{gkey}"] = False
+def _reset_car_inputs(keys=()):
+    """把車數欄位交還給系統建議(清掉自訂值與表格的編輯狀態)。"""
+    st.session_state.pop("today_editor", None)
+    st.session_state["today_fixed_cars"] = {}
+    st.session_state["today_hits"] = {}
 
 
-def _reset_car_inputs(keys):
-    """把車數欄位交還給系統建議(並清掉已填的中獎顆數)。"""
-    for k in keys:
-        st.session_state[f"cars_auto_{k}"] = True
-        st.session_state.pop(f"cars_{k}", None)
-        st.session_state.pop(f"hits_{k}", None)
+@st.dialog("中更多顆的金額", width="large")
+def _hits_payout_dialog(rows: list[dict], cum: float, total: float):
+    """依你填的車數,列出各款中 1 顆、2 顆…各能拿多少、扣掉當天總成本後累積變多少。"""
+    st.caption(
+        f"以下都用你在表格裡填的車數計算。當天總成本 {total:,.0f} 是三款一起算的 —— "
+        f"所以「中後累積」= 目前累積 {cum:+,.0f} + 該款回收 − {total:,.0f}。"
+    )
+    for r in rows:
+        st.markdown(
+            f"**{r['name']}** — {r['cars']} 車 × 押 {r['n']} 顆,"
+            f"該款成本 {r['cost']:,.0f},每中 1 顆 +{r['cars'] * r['payout']:,.0f}"
+        )
+        table = []
+        for k in range(1, r["n"] + 1):
+            gross = k * r["cars"] * r["payout"]
+            after = cum + gross - total
+            table.append({
+                "中幾顆": f"{k} 顆",
+                "機率": f"{r['dist'].get(k, 0):.2%}",
+                "可得(總回收)": f"{gross:,.0f}",
+                "扣當天總成本後": f"{gross - total:+,.0f}",
+                "中後累積": f"{after:+,.0f}",
+                "是否回本": "回本" if after >= 0 else f"還差 {-after:,.0f}",
+            })
+        st.dataframe(pd.DataFrame(table), width="stretch", hide_index=True)
+        st.caption(f"這款全沒中(0 顆)的機率 {r['dist'].get(0, 0):.1%}")
+        st.divider()
+
+
+def _parse_hits(raw) -> int | None:
+    """把表格裡的「中獎顆數」字串轉成整數;空白或非數字視為還沒填。"""
+    text = str(raw or "").strip()
+    return int(text) if text.isdigit() else None
 
 
 def _render_today(user: str, cfgs: dict, cum: float):
@@ -794,18 +824,19 @@ def _render_today(user: str, cfgs: dict, cum: float):
         default=[g.key for g in GAME_LIST],
         format_func=lambda k: games.get(k).name, key="today_games",
     )
+    # 換了勾選的組合就把表格編輯狀態清掉(列序號會對不上)
+    if st.session_state.get("today_picks") != list(picks):
+        _reset_car_inputs()
+        st.session_state["today_picks"] = list(picks)
     if not picks:
         st.info("勾選至少一款,系統就會算出今天各要下幾車。")
         return
 
+    fixed = {k: v for k, v in st.session_state.get("today_fixed_cars", {}).items()
+             if k in picks}
+    hits_state = {k: v for k, v in st.session_state.get("today_hits", {}).items()
+                  if k in picks}
     plans = _plans_of(cfgs, picks)
-    # 使用者自己填過車數的款 → 視為固定,其餘款在扣掉這些成本後重解
-    fixed = {
-        k: int(st.session_state[f"cars_{k}"])
-        for k in picks
-        if not st.session_state.get(f"cars_auto_{k}", True)
-        and st.session_state.get(f"cars_{k}")
-    }
     res = erhe.simultaneous_recovery(
         cum, plans, base_cars=max(cfgs[k]["base"] for k in picks), fixed=fixed)
 
@@ -817,7 +848,7 @@ def _render_today(user: str, cfgs: dict, cum: float):
             f"這樣下,**中 1 顆回本是做不到的**(成本係數 k = {res['k']:.2f},必須小於 1)。"
             "因為任何一款中獎,都要先扣掉當天全部的下注成本 —— 成本是好幾份、回收只有一份。"
         )
-        targets = [k for k in picks if k not in fixed] or picks
+        targets = [k for k in picks if k not in fixed] or list(picks)
         if n_max >= 1:
             st.warning(f"把這幾款的「押幾顆」降到 **{n_max} 顆以內**就有解,或今天少下幾款。")
             if st.button(f"把這 {len(targets)} 款的押幾顆都改成 {n_max} 顆", type="primary"):
@@ -832,35 +863,62 @@ def _render_today(user: str, cfgs: dict, cum: float):
     d1, _ = st.columns([1, 3])
     draw_date = d1.date_input("下注日期", value=dt.date.today(), format="YYYY-MM-DD",
                               key="bet_date")
+    st.caption("「下幾車」與「中獎顆數」可以直接在表格裡改;改了車數,其他款的建議會跟著重算。")
 
-    widths = [2.4, 1, 1.3, 1.3, 1.1]
-    head = st.columns(widths)
-    for col, txt in zip(head, ["遊戲", "下幾車", "本局成本", "中1顆可得", "中獎顆數"]):
-        col.caption(txt)
+    # 「回本需要」:以目前這個總成本,該款要幾車才能中 1 顆就把虧損 + 當天成本拿回
+    need_base = max(0.0, -cum) + res["total_cost"]
+    table = pd.DataFrame([{
+        "遊戲": games.get(k).name,
+        "押幾顆": f"{cfgs[k]['n_numbers']} 顆",
+        "下幾車": int(res["cars"][k]),
+        "回本需要": f"{ceil(need_base / cfgs[k]['win_payout'])} 車",
+        "車數來源": "自訂" if k in fixed else "系統建議",
+        "本局成本": f"{cfgs[k]['n_numbers'] * res['cars'][k] * cfgs[k]['cost_per_car']:,.0f}",
+        "中1顆可得": f"{res['cars'][k] * cfgs[k]['win_payout']:,.0f}",
+        # 用字串欄:Streamlit 的數字欄空值會顯示灰色 "None",文字欄空字串才是真的空白
+        "中獎顆數": "" if hits_state.get(k) is None else str(hits_state[k]),
+    } for k in picks], index=list(picks))
 
-    cars, hits = {}, {}
-    for k in picks:
-        cfg, g = cfgs[k], games.get(k)
-        auto = st.session_state.get(f"cars_auto_{k}", True)
-        if auto:
-            st.session_state.pop(f"cars_{k}", None)   # 丟掉舊值,讓系統建議生效
-        row = st.columns(widths)
-        row[0].markdown(
-            f"**{g.name}**  \n押 {cfg['n_numbers']} 顆"
-            + ("" if auto else " · <span style='color:#c1272d'>自訂車數</span>"),
-            unsafe_allow_html=True,
+    edited = st.data_editor(
+        table, key="today_editor", hide_index=True, width="stretch",
+        disabled=["遊戲", "押幾顆", "回本需要", "車數來源", "本局成本", "中1顆可得"],
+        column_config={
+            "下幾車": st.column_config.NumberColumn(
+                "下幾車", min_value=1, max_value=100_000, step=1, required=True,
+                help="可直接修改;改完其他款的建議車數會跟著重算。"),
+            "中獎顆數": st.column_config.TextColumn(
+                "中獎顆數", max_chars=2,
+                help="中了幾顆就填幾;還沒開獎就留空,之後在「二、開獎後回填」補。"),
+        },
+    )
+
+    # 比對「送進表格的值」與「改完的值」,不同的就是使用者手動指定的,
+    # 存進 session 後重跑一次,讓其他款的建議車數依它重算。
+    # (不依賴 data_editor 的 edited_rows 內部結構,單純比值,行為穩定。)
+    changed = False
+    for k in picks:                      # 以遊戲代號取值,排序過也不會對錯行
+        v = edited.loc[k, "下幾車"]
+        if v and int(v) != int(table.loc[k, "下幾車"]):
+            fixed[k] = int(v)
+            changed = True
+        hv = _parse_hits(edited.loc[k, "中獎顆數"])
+        if hv != hits_state.get(k):
+            hits_state[k] = hv
+            changed = True
+    if changed:
+        st.session_state["today_fixed_cars"] = fixed
+        st.session_state["today_hits"] = hits_state
+        st.rerun()
+
+    # 合計一律用表格上真正的數字重算,保證跟每一列對得起來
+    cars = {k: int(edited.loc[k, "下幾車"]) for k in picks}
+    hits = {k: v for k, v in hits_state.items() if v is not None}
+    bad_hits = [games.get(k).name for k, v in hits.items() if v > cfgs[k]["n_numbers"]]
+    if bad_hits:
+        st.error(
+            f"**{'、'.join(bad_hits)}** 的中獎顆數超過押的顆數了,不可能發生。"
+            "請改小後再記帳。"
         )
-        cars[k] = int(row[1].number_input(
-            "車數", min_value=1, max_value=100_000, value=int(res["cars"][k]),
-            key=f"cars_{k}", label_visibility="collapsed",
-            on_change=_mark_manual, args=(k,)))
-        row[2].markdown(f"{cfg['n_numbers'] * cars[k] * cfg['cost_per_car']:,.0f}")
-        row[3].markdown(f"{cars[k] * cfg['win_payout']:,.0f}")
-        hits[k] = row[4].number_input(
-            "重幾顆", min_value=0, max_value=int(cfg["n_numbers"]), value=None,
-            key=f"hits_{k}", label_visibility="collapsed", placeholder="待開獎")
-
-    # 合計一律用「畫面上真正的車數」重算,保證跟上面每一列對得起來
     total = sum(cfgs[k]["n_numbers"] * cars[k] * cfgs[k]["cost_per_car"] for k in picks)
     gains = {k: cars[k] * cfgs[k]["win_payout"] for k in picks}
     worst = cum + min(gains.values()) - total
@@ -892,13 +950,24 @@ def _render_today(user: str, cfgs: dict, cum: float):
     else:
         st.success("目前沒有虧損要追,車數用各款設定的起始值。")
 
-    b1, b2 = st.columns([2, 1])
-    if b1.button("記帳(中獎顆數留空的就當作待開獎)", type="primary", width="stretch"):
-        _record(user, cfgs, picks, cars, draw_date,
-                {k: v for k, v in hits.items() if v is not None})
-    if b2.button("車數重設為系統建議", width="stretch",
-                 disabled=not fixed, help="把你手動改過的車數還原,交還給系統計算。"):
-        _reset_car_inputs(picks)
+    b1, b2, b3 = st.columns([2, 1.2, 1])
+    if b1.button("記帳(中獎顆數留空的就當作待開獎)", type="primary", width="stretch",
+                 disabled=bool(bad_hits)):
+        _record(user, cfgs, picks, cars, draw_date, hits)
+    if b2.button("查看中更多顆的金額", width="stretch",
+                 help="依你填的車數,列出中 1 顆、2 顆…各拿多少、累積會變多少。"):
+        _hits_payout_dialog([{
+            "name": games.get(k).name,
+            "cars": cars[k],
+            "n": cfgs[k]["n_numbers"],
+            "payout": cfgs[k]["win_payout"],
+            "cost": cfgs[k]["n_numbers"] * cars[k] * cfgs[k]["cost_per_car"],
+            "dist": erhe.hit_distribution(cfgs[k]["n_numbers"],
+                                          games.get(k).pick, games.get(k).num_max),
+        } for k in picks], cum, total)
+    if b3.button("車數重設為建議", width="stretch", disabled=not fixed,
+                 help="把你手動改過的車數還原,交還給系統計算。"):
+        _reset_car_inputs()
         st.rerun()
 
 
