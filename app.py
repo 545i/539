@@ -819,58 +819,77 @@ def _parse_hits(raw) -> int | None:
 def _render_today(user: str, cfgs: dict, cum: float):
     st.subheader("一、今天下哪幾款")
     picks = st.segmented_control(
-        "勾選今天要下注的遊戲(可複選)",
+        "今天要下注的遊戲(預設一款;要下多款就多勾)",
         [g.key for g in GAME_LIST], selection_mode="multi",
-        default=[g.key for g in GAME_LIST],
+        default=[GAME_LIST[0].key],
         format_func=lambda k: games.get(k).name, key="today_games",
     )
-    # 換了勾選的組合就把表格編輯狀態清掉(列序號會對不上)
+    # 換了勾選的組合就把表格編輯狀態清掉(避免舊的自訂值套到別款)
     if st.session_state.get("today_picks") != list(picks):
         _reset_car_inputs()
         st.session_state["today_picks"] = list(picks)
     if not picks:
-        st.info("勾選至少一款,系統就會算出今天各要下幾車。")
+        st.info("勾選至少一款,系統就會算出今天要下幾車。")
         return
 
     fixed = {k: v for k, v in st.session_state.get("today_fixed_cars", {}).items()
              if k in picks}
     hits_state = {k: v for k, v in st.session_state.get("today_hits", {}).items()
                   if k in picks}
+
+    # 下多款時要先決定「回本責任」怎麼算(只下一款時兩者是同一條式子,不用問)
+    n_games = len(picks)
+    if n_games >= 2:
+        mode = st.radio(
+            "多款一起下時,怎麼算才算回本?",
+            ["平攤:每款各負擔 1/N", "嚴格:任一款中 1 顆就全部回本"],
+            horizontal=True, key="share_mode",
+            help="平攤比較便宜,但要每一款都中才完全回本;"
+                 "嚴格是任何一款中 1 顆就回本,但成本高很多,而且 k ≥ 1 時無解。",
+        )
+        share = n_games if mode.startswith("平攤") else 1
+    else:
+        share = 1
+
     plans = _plans_of(cfgs, picks)
     res = erhe.simultaneous_recovery(
-        cum, plans, base_cars=max(cfgs[k]["base"] for k in picks), fixed=fixed)
+        cum, plans, base_cars=max(cfgs[k]["base"] for k in picks),
+        fixed=fixed, share=share)
 
     if not res["feasible"]:
         odds = {k: (cfgs[k]["cost_per_car"], cfgs[k]["win_payout"])
                 for k in picks if k not in fixed}
-        n_max = erhe.max_numbers_for_combo(odds)
+        n_max = erhe.max_numbers_for_combo(odds, margin=share * 0.999)
         st.error(
-            f"這樣下,**中 1 顆回本是做不到的**(成本係數 k = {res['k']:.2f},必須小於 1)。"
+            f"這樣下算不出車數:成本係數 k = {res['k']:.2f},必須小於 {share:g} 才有解。"
             "因為任何一款中獎,都要先扣掉當天全部的下注成本 —— 成本是好幾份、回收只有一份。"
         )
+        c1, c2 = st.columns(2)
+        if share == 1 and n_games >= 2:
+            c1.warning("改用「平攤」就會有解(但要每一款都中才完全回本)。")
         targets = [k for k in picks if k not in fixed] or list(picks)
         if n_max >= 1:
-            st.warning(f"把這幾款的「押幾顆」降到 **{n_max} 顆以內**就有解,或今天少下幾款。")
-            if st.button(f"把這 {len(targets)} 款的押幾顆都改成 {n_max} 顆", type="primary"):
+            c2.warning(f"或把這幾款的「押幾顆」降到 {n_max} 顆以內。")
+            if c2.button(f"把這 {len(targets)} 款的押幾顆都改成 {n_max} 顆", type="primary"):
                 for k in targets:
                     storage.set_setting(cfgs[k]["skey"], "n_numbers", n_max)
                     st.session_state.pop(f"set_n_{k}", None)
                 st.rerun()
         else:
-            st.warning("這個組合連每款押 1 顆都無解,今天請只下一款。")
+            c2.warning("這個組合連每款押 1 顆都無解,今天請少下幾款。")
         return
 
     d1, _ = st.columns([1, 3])
     draw_date = d1.date_input("下注日期", value=dt.date.today(), format="YYYY-MM-DD",
                               key="bet_date")
     st.caption(
-        "「下幾車」與「中獎顆數」可以直接在表格裡改。"
+        "「押幾顆」「下幾車」「中獎顆數」都可以直接在表格裡改。"
         "「單押回本」是固定參考值(只看上一筆下注後的累積虧損),不會隨你輸入變動;"
-        "「下幾車」則是系統依今天要花的總成本算出來的,改了一款,其餘款會跟著重算。"
+        "「下幾車」則是依今天要花的總成本算出來的建議,改了一款,其餘款會跟著重算。"
     )
 
-    # 「單押回本」是固定的參考值:只用「上一筆下注後的累積虧損」計算,
-    # 不含今天正在填的成本 —— 否則你每改一次車數,目標就跟著往上跑,永遠追不到。
+    # 「單押回本」:固定參考值,只用上一筆下注後的累積虧損算,
+    # 不含今天正在填的成本 —— 否則每改一次車數,目標就跟著往上跑。
     loss = max(0.0, -cum)
 
     def _solo_need(k: str) -> str:
@@ -884,10 +903,10 @@ def _render_today(user: str, cfgs: dict, cum: float):
 
     table = pd.DataFrame([{
         "遊戲": games.get(k).name,
-        "押幾顆": f"{cfgs[k]['n_numbers']} 顆",
+        "押幾顆": int(cfgs[k]["n_numbers"]),
         "下幾車": int(res["cars"][k]),
         "單押回本": _solo_need(k),
-        "車數來源": "自訂" if k in fixed else "系統建議",
+        "來源": "自訂" if k in fixed else "系統建議",
         "本局成本": f"{cfgs[k]['n_numbers'] * res['cars'][k] * cfgs[k]['cost_per_car']:,.0f}",
         "中1顆可得": f"{res['cars'][k] * cfgs[k]['win_payout']:,.0f}",
         # 用字串欄:Streamlit 的數字欄空值會顯示灰色 "None",文字欄空字串才是真的空白
@@ -896,11 +915,14 @@ def _render_today(user: str, cfgs: dict, cum: float):
 
     edited = st.data_editor(
         table, key="today_editor", hide_index=True, width="stretch",
-        disabled=["遊戲", "押幾顆", "單押回本", "車數來源", "本局成本", "中1顆可得"],
+        disabled=["遊戲", "單押回本", "來源", "本局成本", "中1顆可得"],
         column_config={
+            "押幾顆": st.column_config.NumberColumn(
+                "押幾顆", min_value=1, max_value=20, step=1, required=True,
+                help="今天這款要押幾個號碼。改了會一併更新「設定」頁的盤口。"),
             "下幾車": st.column_config.NumberColumn(
                 "下幾車", min_value=1, max_value=100_000, step=1, required=True,
-                help="可直接修改。你改過的那款會固定住,其餘款會依剩下的成本重算。"),
+                help="可直接修改。你改過的那款會固定住,其餘款依剩下的成本重算。"),
             "單押回本": st.column_config.TextColumn(
                 "單押回本",
                 help="固定參考值:以上一筆下注後的累積虧損計算,今天『只打這一款』"
@@ -911,11 +933,15 @@ def _render_today(user: str, cfgs: dict, cum: float):
         },
     )
 
-    # 比對「送進表格的值」與「改完的值」,不同的就是使用者手動指定的,
-    # 存進 session 後重跑一次,讓其他款的建議車數依它重算。
-    # (不依賴 data_editor 的 edited_rows 內部結構,單純比值,行為穩定。)
+    # 比對「送進表格的值」與「改完的值」,不同的就是使用者手動指定的。
+    # 押幾顆存進設定,車數/顆數存進 session,再重跑一次讓建議依它重算。
     changed = False
     for k in picks:                      # 以遊戲代號取值,排序過也不會對錯行
+        n_new = edited.loc[k, "押幾顆"]
+        if n_new and int(n_new) != int(table.loc[k, "押幾顆"]):
+            storage.set_setting(cfgs[k]["skey"], "n_numbers", int(n_new))
+            st.session_state.pop(f"set_n_{k}", None)
+            changed = True
         v = edited.loc[k, "下幾車"]
         if v and int(v) != int(table.loc[k, "下幾車"]):
             fixed[k] = int(v)
@@ -941,30 +967,53 @@ def _render_today(user: str, cfgs: dict, cum: float):
     total = sum(cfgs[k]["n_numbers"] * cars[k] * cfgs[k]["cost_per_car"] for k in picks)
     gains = {k: cars[k] * cfgs[k]["win_payout"] for k in picks}
     worst = cum + min(gains.values()) - total
-    p_all_miss = 1.0
+    all_hit = cum + sum(gains.values()) - total
+    p_miss = {}
     for k in picks:
         g = games.get(k)
-        p_all_miss *= erhe.hit_distribution(cfgs[k]["n_numbers"], g.pick, g.num_max)[0]
+        p_miss[k] = erhe.hit_distribution(cfgs[k]["n_numbers"], g.pick, g.num_max)[0]
+    p_all_miss = 1.0
+    p_all_hit = 1.0
+    for k in picks:
+        p_all_miss *= p_miss[k]
+        p_all_hit *= (1.0 - p_miss[k])
 
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("目前累積", f"{cum:+,.0f}")
     m2.metric("今天總成本", f"{total:,.0f}")
-    m3.metric("中任一款 1 顆後的累積", f"{worst:+,.0f}",
+    m3.metric("只中一款 1 顆後", f"{worst:+,.0f}",
               delta="不再虧損" if worst >= 0 else "仍是虧的",
               delta_color="normal" if worst >= 0 else "inverse")
-    m4.metric("今天全部槓龜的機率", f"{p_all_miss:.0%}")
+    if n_games >= 2:
+        m4.metric(f"{n_games} 款都中 1 顆後", f"{all_hit:+,.0f}",
+                  delta=f"發生機率 {p_all_hit:.0%}", delta_color="off")
+    else:
+        m4.metric("這款全沒中的機率", f"{p_all_miss:.0%}")
 
-    short = [games.get(k).name for k in picks if cum + gains[k] - total < 0]
+    if n_games >= 2:
+        st.caption(
+            f"今天全部槓龜的機率 {p_all_miss:.0%};至少中一款的機率 {1 - p_all_miss:.0%};"
+            f"{n_games} 款都中的機率 {p_all_hit:.0%}。"
+        )
+        if share > 1:
+            st.warning(
+                f"**平攤的代價**:只有一款中 1 顆時,累積會變成 {worst:+,.0f}"
+                f"(比現在的 {cum:+,.0f} 更差);要 {n_games} 款都中 1 顆才回到 "
+                f"{all_hit:+,.0f},而那只有 {p_all_hit:.0%} 的機率。"
+                "想「中任何一款就回本」請改選「嚴格」。"
+            )
+
+    short = [games.get(k).name for k in picks if k in res["short"]]
     if short:
         st.warning(
-            f"這樣下的話,**{'、'.join(short)}** 就算中 1 顆也回不了本"
-            f"(要中 1 顆就回本,該款的回收得 ≥ {-cum + total:,.0f})。"
-            "把它的車數調高,或把別款的車數調低。"
+            f"**{'、'.join(short)}** 的車數不夠 —— 中 1 顆也達不到它該負擔的回收額 "
+            f"{(loss + total) / share:,.0f}。把它的車數調高,或把別款調低。"
         )
     elif cum < 0:
         st.caption(
-            f"車數是這樣來的:目前虧 {-cum:,.0f},今天要再花 {total:,.0f},"
-            f"所以任一款中 1 顆時的回收必須 ≥ {-cum + total:,.0f}。"
+            f"車數是這樣來的:目前虧 {loss:,.0f},今天要再花 {total:,.0f},"
+            f"所以每款中 1 顆的回收必須 ≥ {(loss + total) / share:,.0f}"
+            + (f"(= 總額 {loss + total:,.0f} ÷ {n_games} 款)。" if share > 1 else "。")
         )
     else:
         st.success("目前沒有虧損要追,車數用各款設定的起始值。")

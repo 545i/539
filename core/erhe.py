@@ -221,9 +221,11 @@ def combo_cost_ratio(plans: dict) -> float:
 
 
 def max_numbers_for_combo(odds: dict, margin: float = 0.999) -> int:
-    """同時下這幾款、每款都押相同顆數時,最多能押幾顆仍讓「中 1 顆回本」有解。
+    """同時下這幾款、每款都押相同顆數時,最多能押幾顆仍有解。
 
     odds:{遊戲代號: (每車成本, 中獎可得)}。
+    margin:要壓在哪個上限之下 —— 嚴格模式是 1(略減以避開等號),
+           平攤模式是責任分母 m(= 款數)。
     k(n) = n × Σ(cᵢ/wᵢ) 對顆數是線性的,所以 n_max = ⌊margin ÷ Σ(cᵢ/wᵢ)⌋。
     回傳 0 代表連押 1 顆都無解。
     """
@@ -234,28 +236,36 @@ def max_numbers_for_combo(odds: dict, margin: float = 0.999) -> int:
 
 
 def simultaneous_recovery(cumulative_net: float, plans: dict, base_cars: int = 3,
-                          fixed: dict | None = None, max_iter: int = 64) -> dict:
-    """同一局同時下多款,且要求「任一款中 1 顆即回本」時,各款該下幾車。
+                          fixed: dict | None = None, share: float = 1.0,
+                          max_iter: int = 64) -> dict:
+    """同一局同時下多款時,各款該下幾車。
 
     plans:{遊戲代號: (押幾顆, 每車成本, 中獎可得)}
     fixed:{遊戲代號: 車數} —— 使用者已經自己決定車數的款。這些款的成本變成已知,
-          其餘款要在「扣掉這些固定成本」的前提下重解,所以填了一款會影響其他款的建議。
+          其餘款要在「扣掉這些固定成本」的前提下重解。
+    share:每款要負擔的「回本責任分母」m —— 該款中 1 顆要能拿回 (L+T)/m。
+          m = 1  嚴格:**任一款**中 1 顆就把虧損 + 當天總成本全部拿回(需 k < 1)
+          m = N  平攤:每款只負擔 1/N,要 **N 款都**中 1 顆才完全回本(需 k < N)
+          只下一款時 N = 1,兩者是同一條式子。
 
     回傳 dict:
-      k             未固定那些款的成本係數;>= 1 代表無解
+      k             未固定那些款的成本係數;>= share 代表無解
+      share         使用的責任分母 m
       feasible      是否有解
       cars          {遊戲代號: 車數}(含固定的與解出來的)
       total_cost    本局總成本
       worst_after   最壞情況(只中 1 顆、且中的是回收最少那款)的中後累積
-      short         中 1 顆仍回不了本的款(通常是使用者自己把車數填太少)
+      all_hit_after 每款都中 1 顆時的中後累積
+      short         沒達到自己那份責任的款(通常是使用者把車數填太少)
       recovered     目前是否已回本
 
-    推導:設固定款的成本 T_F、未固定款的成本係數 k_V = Σ_{i∈未固定} nᵢcᵢ/wᵢ,
-    則 L + T = (L + T_F)/(1 − k_V),xᵢ = (L + T_F)/((1 − k_V)·wᵢ)。
-    只有「未固定」的款會進 k_V —— 固定款不管下多少,都不會讓組合變成無解,
-    但可能自己回不了本(列在 short)。
+    推導:設固定款成本 T_F、未固定款係數 k_V = Σ_{i∈未固定} nᵢcᵢ/wᵢ,
+      xᵢ·wᵢ ≥ (L+T)/m,  T = T_F + (L+T)·k_V/m
+      ⇒ L + T = m(L + T_F)/(m − k_V),  xᵢ = (L + T_F)/((m − k_V)·wᵢ)
+    m = 1 時退化成「任一款中 1 顆全回本」;固定款不進 k_V,所以不會害組合無解。
     """
     fixed = {g: int(v) for g, v in (fixed or {}).items() if g in plans}
+    m = max(1.0, float(share))
     recovered = cumulative_net >= 0
     loss = max(0.0, -cumulative_net)
     free = {g: v for g, v in plans.items() if g not in fixed}
@@ -264,29 +274,34 @@ def simultaneous_recovery(cumulative_net: float, plans: dict, base_cars: int = 3
     def _wrap(cars):
         total = sum(n * cars[g] * c for g, (n, c, _w) in plans.items())
         gains = {g: cars[g] * w for g, (_n, _c, w) in plans.items()}
-        after = min(gains.values()) - total if gains else 0.0
+        quota = (loss + total) / m          # 每款該負擔的回收額
         return {
-            "k": k, "feasible": True, "cars": cars, "total_cost": total,
-            "worst_after": cumulative_net + after, "recovered": recovered,
-            "short": sorted(g for g in plans if cumulative_net + gains[g] - total < 0),
+            "k": k, "share": m, "feasible": True, "cars": cars, "total_cost": total,
+            "worst_after": cumulative_net + (min(gains.values()) - total if gains else 0.0),
+            "all_hit_after": cumulative_net + sum(gains.values()) - total,
+            "recovered": recovered,
+            "short": sorted(g for g in plans if gains[g] < quota - 1e-6),
         }
 
     if not plans:
-        return {"k": 0.0, "feasible": True, "cars": {}, "total_cost": 0.0,
-                "worst_after": cumulative_net, "recovered": recovered, "short": []}
+        return {"k": 0.0, "share": m, "feasible": True, "cars": {}, "total_cost": 0.0,
+                "worst_after": cumulative_net, "all_hit_after": cumulative_net,
+                "recovered": recovered, "short": []}
     if recovered:
         return _wrap({**{g: base_cars for g in free}, **fixed})
-    if free and k >= 1.0:
-        return {"k": k, "feasible": False, "cars": {}, "total_cost": float("inf"),
-                "worst_after": float("-inf"), "recovered": False, "short": []}
+    if free and k >= m:
+        return {"k": k, "share": m, "feasible": False, "cars": {},
+                "total_cost": float("inf"), "worst_after": float("-inf"),
+                "all_hit_after": float("-inf"), "recovered": False, "short": []}
 
     fixed_cost = sum(plans[g][0] * fixed[g] * plans[g][1] for g in fixed)
-    cars = {g: max(base_cars, ceil((loss + fixed_cost) / ((1.0 - k) * w)))
+    cars = {g: max(base_cars, ceil((loss + fixed_cost) / ((m - k) * w)))
             for g, (_n, _c, w) in free.items()}
     cars.update(fixed)
     for _ in range(max_iter):  # 取整會墊高總成本,迭代到所有未固定的款都達標
         total = sum(n * cars[g] * c for g, (n, c, _w) in plans.items())
-        need = {g: max(base_cars, ceil((loss + total) / w)) for g, (_n, _c, w) in free.items()}
+        need = {g: max(base_cars, ceil((loss + total) / (m * w)))
+                for g, (_n, _c, w) in free.items()}
         if all(cars[g] >= need[g] for g in free):
             break
         cars.update({g: max(cars[g], need[g]) for g in free})

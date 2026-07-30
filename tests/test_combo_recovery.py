@@ -179,3 +179,87 @@ def test_fixed_ignores_unknown_keys():
     plans = _plans(2, S539)
     res = erhe.simultaneous_recovery(-50_000, plans, fixed={"不存在": 99})
     assert set(res["cars"]) == {"g0"}
+
+
+# ── 責任分母 share:嚴格(m=1)vs 平攤(m=N)──────────────
+def test_share_one_equals_strict():
+    """share=1 就是原本的嚴格模式,結果必須完全相同。"""
+    plans = _plans(2, S539, S539, SHK)
+    a = erhe.simultaneous_recovery(-135_570, plans, base_cars=1)
+    b = erhe.simultaneous_recovery(-135_570, plans, base_cars=1, share=1)
+    assert a["cars"] == b["cars"] and a["total_cost"] == b["total_cost"]
+
+
+def test_single_game_share_is_identical():
+    """只下一款時 N=1,平攤與嚴格是同一條式子,也等於「單押回本」。"""
+    plans = _plans(5, S539)
+    strict = erhe.simultaneous_recovery(-41_325, plans, base_cars=1, share=1)
+    share = erhe.simultaneous_recovery(-41_325, plans, base_cars=1, share=1)
+    assert strict["cars"] == share["cars"]
+    # 對照封閉解 ⌈L / (w − n·c)⌉
+    per1 = erhe.per_car_one_hit_net(5, 2755.0, 21200.0)
+    assert strict["cars"]["g0"] == -(-41_325 // int(per1))
+
+
+def test_share_makes_infeasible_combo_solvable():
+    """三款各押 5 顆時 k=1.92:嚴格無解,平攤(m=3)有解。"""
+    plans = _plans(5, S539, S539, SHK)
+    assert erhe.simultaneous_recovery(-135_570, plans, share=1)["feasible"] is False
+    res = erhe.simultaneous_recovery(-135_570, plans, base_cars=1, share=3)
+    assert res["feasible"] is True and res["k"] > 1.0
+    assert res["share"] == 3
+
+
+@pytest.mark.parametrize("loss", [-10_000, -135_570, -900_000])
+def test_share_solution_meets_each_quota(loss):
+    """平攤解出來的車數,每款中 1 顆都必須拿回自己那份 (L+T)/N。"""
+    plans = _plans(2, S539, S539, SHK)
+    n = len(plans)
+    res = erhe.simultaneous_recovery(loss, plans, base_cars=1, share=n)
+    quota = (-loss + res["total_cost"]) / n
+    for g, (_n, _c, w) in plans.items():
+        assert res["cars"][g] * w >= quota - 1e-6
+    assert res["short"] == []
+
+
+def test_share_all_hit_recovers_but_single_hit_does_not():
+    """平攤的代價:全中才回本,只中一款會更慘 —— 這正是要誠實顯示的數字。"""
+    plans = _plans(5, S539, S539, SHK)
+    res = erhe.simultaneous_recovery(-135_570, plans, base_cars=1, share=3)
+    assert res["all_hit_after"] >= 0          # 三款都中 1 顆 → 回本
+    assert res["worst_after"] < -135_570      # 只中一款 → 比原本更差
+
+
+def test_share_is_cheaper_than_strict():
+    """平攤的總成本必定低於嚴格(責任被拆開了)。"""
+    plans = _plans(2, S539, S539, SHK)
+    strict = erhe.simultaneous_recovery(-135_570, plans, base_cars=1, share=1)
+    share = erhe.simultaneous_recovery(-135_570, plans, base_cars=1, share=3)
+    assert share["total_cost"] < strict["total_cost"]
+
+
+def test_share_infeasible_when_k_exceeds_m():
+    """k 大到超過款數時,連平攤都無解。"""
+    plans = _plans(8, S539, S539, SHK)        # k = 8×0.384 ≈ 3.07 > 3
+    res = erhe.simultaneous_recovery(-50_000, plans, share=3)
+    assert res["feasible"] is False and res["k"] >= 3
+
+
+def test_max_numbers_margin_follows_share():
+    """可押顆數上限要跟著責任分母放寬。"""
+    odds = {"a": S539, "b": S539, "c": SHK}
+    assert erhe.max_numbers_for_combo(odds) == 2                    # 嚴格
+    assert erhe.max_numbers_for_combo(odds, margin=3 * 0.999) == 7  # 平攤(m=3)
+    plans = {k: (7,) + v for k, v in odds.items()}
+    assert erhe.simultaneous_recovery(-50_000, plans, share=3)["feasible"] is True
+
+
+def test_share_with_fixed_cars():
+    """平攤時也能固定某幾款的車數,其餘款照樣重解。"""
+    plans = _plans(2, S539, S539, SHK)
+    res = erhe.simultaneous_recovery(-135_570, plans, base_cars=1, share=3,
+                                     fixed={"g0": 30})
+    assert res["cars"]["g0"] == 30
+    quota = (135_570 + res["total_cost"]) / 3
+    for g in ("g1", "g2"):
+        assert res["cars"][g] * plans[g][2] >= quota - 1e-6
