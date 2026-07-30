@@ -23,11 +23,6 @@ class GameConfig:
     prize: dict = field(default_factory=dict)  # {中k碼: 獎金}
     prize_note: str = ""     # 獎金結構說明
     source_note: str = ""    # 資料來源說明
-    # ── 首頁辨識用(讓各遊戲一眼分得出來)──
-    emoji: str = "🎰"        # 專屬圖示
-    region: str = ""         # 地區標籤(台灣 / 美國加州 / 香港)
-    accent: str = "#e63946"  # 專屬主色(橫幅底色)
-    tagline: str = ""        # 一句話特色
     # ── 二合買牌(策略1)的盤口預設值(新帳號第一次進頁面時的初值)──
     default_cost_per_car: float = 2755.0   # 每車成本
     default_win_payout: float = 21200.0    # 每車中獎可得
@@ -83,10 +78,6 @@ LOTTO539 = GameConfig(
     prize={5: 8_000_000, 4: 20_000, 3: 300, 2: 50, 1: 0, 0: 0},
     prize_note="台灣彩券固定獎金(頭獎全期上限均分,單注回測不觸發)。",
     source_note="台灣彩券官方 API(api.taiwanlottery.com)。",
-    emoji="🇹🇼",
-    region="台灣彩券",
-    accent="#c1272d",  # 台灣紅
-    tagline="每注 NT$50・固定獎金・每週一至六開獎",
 )
 
 # ── 天天樂 / 加州 Fantasy 5(pari-mutuel 浮動獎金)─────────
@@ -101,10 +92,6 @@ FANTASY5 = GameConfig(
     prize={5: 73_000, 4: 309, 3: 13.49, 2: 1, 1: 0, 0: 0},
     prize_note="加州 Fantasy 5 為 pari-mutuel 浮動獎金,此為歷史平均估計值(中2碼贈免費彩券,以 $1 計)。",
     source_note="加州官方開獎結果(經 lottolyzer.com 彙整;官網 calottery.com 以 WAF 封鎖直連)。",
-    emoji="🐻",
-    region="美國・加州",
-    accent="#1f7a4d",  # 加州熊旗綠
-    tagline="浮動彩池獎金・每日開獎",
 )
 
 # ── 六合彩(香港,49 選 6)────────────────────────────────
@@ -125,10 +112,6 @@ MARKSIX = GameConfig(
         "且未計入「特別號」加成獎項,實際派彩每期不同。"
     ),
     source_note="樂透彩幸運發財網(pilio.idv.tw)彙整的香港六合彩開獎結果。",
-    emoji="🎱",
-    region="香港開獎",
-    accent="#6a1b9a",  # 紫,與 539 紅 / 天天樂綠明顯區隔
-    tagline="49 選 6・每週二/四/六開獎",
     default_cost_per_car=3528.0,   # 1 膽拖 48 號 = 48 注 × 73.5
     default_win_payout=28500.0,
 )
