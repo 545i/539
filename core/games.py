@@ -1,7 +1,7 @@
-"""遊戲設定中心:今彩539、天天樂(加州 Fantasy 5)與六合彩(香港)。
+"""遊戲設定中心:天天樂(加州 Fantasy 5)與六合彩(香港)。
 
-今彩539 與天天樂都是「39 選 5」,組合數與機率完全相同,差別只在票價與獎金結構;
-六合彩(香港)則是「49 選 6」,連號碼範圍與每期開幾顆都不同。
+天天樂是「39 選 5」;六合彩(香港)則是「49 選 6」,連號碼範圍與每期開幾顆都不同。
+今彩539(同為 39 選 5)已停用,設定保留在 RETIRED 供舊紀錄顯示名稱用。
 本模組把這些差異集中成 GameConfig(num_max / pick / 票價 / 獎金 / 策略1 預設值),
 讓資料驗證、統計、選號與二合買牌都能依所選遊戲套用對應規格。
 """
@@ -116,13 +116,24 @@ MARKSIX = GameConfig(
     default_win_payout=28500.0,
 )
 
-GAMES: dict[str, GameConfig] = {g.key: g for g in (LOTTO539, FANTASY5, MARKSIX)}
-DEFAULT_GAME = LOTTO539
+# 目前啟用的遊戲(下注、統計、資料更新都只跑這些)
+GAMES: dict[str, GameConfig] = {g.key: g for g in (FANTASY5, MARKSIX)}
+DEFAULT_GAME = FANTASY5
+
+# 已停用、但歷史下注紀錄還在的遊戲。
+# 不放進 GAMES(所以不會出現在下注/統計介面),但 get() 仍查得到 —— 
+# 這樣舊紀錄在流水與分款統計裡才會顯示正確的名稱,而不是被誤標成別款。
+RETIRED: dict[str, GameConfig] = {LOTTO539.key: LOTTO539}
 
 
 def get(key: str) -> GameConfig:
-    """以代號取得 GameConfig,找不到回傳預設(今彩539)。"""
-    return GAMES.get(key, DEFAULT_GAME)
+    """以代號取得 GameConfig(含已停用的遊戲);找不到回傳預設。"""
+    return GAMES.get(key) or RETIRED.get(key, DEFAULT_GAME)
+
+
+def is_active(key: str) -> bool:
+    """該遊戲目前是否可以下注。"""
+    return key in GAMES
 
 
 def by_name(name: str) -> GameConfig:

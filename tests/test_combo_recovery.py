@@ -100,14 +100,17 @@ def test_max_numbers_is_actually_feasible():
 
 
 def test_real_game_defaults_are_wired_up():
-    """用 GameConfig 的實際預設盤口跑一次,確認接線正確。"""
+    """用啟用中兩款的實際預設盤口跑一次,確認接線正確。"""
     odds = {g.key: (g.default_cost_per_car, g.default_win_payout)
             for g in games.GAMES.values()}
-    assert erhe.max_numbers_for_combo(odds) == 2
-    plans = {k: (2,) + v for k, v in odds.items()}
+    assert set(odds) == {"fantasy5", "marksix"}
+    n = len(odds)
+    assert erhe.max_numbers_for_combo(odds) == 3                       # 嚴格
+    assert erhe.max_numbers_for_combo(odds, margin=n * 0.999) == 7      # 平攤(m=2)
+    plans = {k: (3,) + v for k, v in odds.items()}
     res = erhe.simultaneous_recovery(-52920, plans, base_cars=3)
     assert res["feasible"] is True
-    assert set(res["cars"]) == {"lotto539", "fantasy5", "marksix"}
+    assert set(res["cars"]) == {"fantasy5", "marksix"}
 
 
 # ── 固定部分款的車數(使用者自己填)後重解 ──────────────────

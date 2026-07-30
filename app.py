@@ -706,7 +706,14 @@ def page_wheel(fdf: pd.DataFrame, game):
 
 
 # ── 二合買牌(策略1):三款共用一個損益池 ──────────────────
-GAME_LIST = list(games.GAMES.values())
+GAME_LIST = list(games.GAMES.values())          # 目前可下注的遊戲
+
+
+def _history_games(by_game: dict) -> list:
+    """歷史統計要顯示的遊戲:目前啟用的 + 已停用但還有紀錄的。"""
+    keys = [g.key for g in GAME_LIST]
+    keys += [k for k in by_game if k not in keys]
+    return [games.get(k) for k in keys if k in by_game]
 RECENT_N = 8          # 主畫面「最近紀錄」顯示幾筆
 
 
@@ -1162,13 +1169,13 @@ def _render_full_ledger(user: str, rows: list[dict]):
     with tab_game:
         by_game = storage.totals_by_game(user)
         gm_rows = []
-        for g in GAME_LIST:
-            t = by_game.get(g.key)
-            if not t:
-                continue
+        shown = _history_games(by_game)
+        for g in shown:
+            t = by_game[g.key]
             settled = t["rounds"] - t["pending"]
             gm_rows.append({
-                "遊戲": g.name, "局數": t["rounds"], "中獎局": t["wins"],
+                "遊戲": g.name + ("(已停用)" if not games.is_active(g.key) else ""),
+                "局數": t["rounds"], "中獎局": t["wins"],
                 "勝率": f"{t['wins'] / settled:.0%}" if settled else "—",
                 "投入": f"{t['cost']:,.0f}", "回收": f"{t['payout']:,.0f}",
                 "損益": f"{t['net']:+,.0f}",
@@ -1178,8 +1185,7 @@ def _render_full_ledger(user: str, rows: list[dict]):
             st.dataframe(pd.DataFrame(gm_rows), width="stretch", hide_index=True)
             fig = px.bar(
                 pd.DataFrame({"遊戲": [r["遊戲"] for r in gm_rows],
-                              "損益": [by_game[g.key]["net"]
-                                       for g in GAME_LIST if g.key in by_game]}),
+                              "損益": [by_game[g.key]["net"] for g in shown]}),
                 x="遊戲", y="損益", title="各款累積損益", color="損益",
                 color_continuous_scale=["#e63946", "#457b9d"])
             st.plotly_chart(fig, theme=None, width="stretch")
@@ -1244,11 +1250,12 @@ def page_leaderboard(current_user: str):
         by_game = storage.totals_by_game(current_user)
         if by_game:
             st.dataframe(pd.DataFrame([{
-                "遊戲": g.name, "局數": by_game[g.key]["rounds"],
+                "遊戲": g.name + ("(已停用)" if not games.is_active(g.key) else ""),
+                "局數": by_game[g.key]["rounds"],
                 "投入": f"{by_game[g.key]['cost']:,.0f}",
                 "回收": f"{by_game[g.key]['payout']:,.0f}",
                 "損益": f"{by_game[g.key]['net']:+,.0f}",
-            } for g in GAME_LIST if g.key in by_game]), width="stretch", hide_index=True)
+            } for g in _history_games(by_game)]), width="stretch", hide_index=True)
         else:
             st.caption("你還沒有任何紀錄。")
 
@@ -1300,10 +1307,14 @@ def page_settings(user: str):
 
         odds = {g.key: (cfgs[g.key]["cost_per_car"], cfgs[g.key]["win_payout"])
                 for g in GAME_LIST}
+        n = len(GAME_LIST)
         st.info(
-            "以目前盤口,「中 1 顆就回本」的押顆數上限:"
-            f"只下一款 {erhe.max_numbers_for_combo({GAME_LIST[0].key: odds[GAME_LIST[0].key]})} 顆、"
-            f"三款同下每款 {erhe.max_numbers_for_combo(odds)} 顆。"
+            "以目前盤口,「中 1 顆就回本」(嚴格)的押顆數上限:"
+            + "、".join(
+                f"只下{g.name} {erhe.max_numbers_for_combo({g.key: odds[g.key]})} 顆"
+                for g in GAME_LIST)
+            + f";{n} 款同下每款 {erhe.max_numbers_for_combo(odds)} 顆"
+            + f"(改用平攤則放寬到 {erhe.max_numbers_for_combo(odds, margin=n * 0.999)} 顆)。"
         )
 
     with tab_data:
