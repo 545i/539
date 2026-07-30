@@ -863,15 +863,30 @@ def _render_today(user: str, cfgs: dict, cum: float):
     d1, _ = st.columns([1, 3])
     draw_date = d1.date_input("下注日期", value=dt.date.today(), format="YYYY-MM-DD",
                               key="bet_date")
-    st.caption("「下幾車」與「中獎顆數」可以直接在表格裡改;改了車數,其他款的建議會跟著重算。")
+    st.caption(
+        "「下幾車」與「中獎顆數」可以直接在表格裡改。"
+        "「單押回本」是固定參考值(只看上一筆下注後的累積虧損),不會隨你輸入變動;"
+        "「下幾車」則是系統依今天要花的總成本算出來的,改了一款,其餘款會跟著重算。"
+    )
 
-    # 「回本需要」:以目前這個總成本,該款要幾車才能中 1 顆就把虧損 + 當天成本拿回
-    need_base = max(0.0, -cum) + res["total_cost"]
+    # 「單押回本」是固定的參考值:只用「上一筆下注後的累積虧損」計算,
+    # 不含今天正在填的成本 —— 否則你每改一次車數,目標就跟著往上跑,永遠追不到。
+    loss = max(0.0, -cum)
+
+    def _solo_need(k: str) -> str:
+        per1 = erhe.per_car_one_hit_net(
+            cfgs[k]["n_numbers"], cfgs[k]["cost_per_car"], cfgs[k]["win_payout"])
+        if loss <= 0:
+            return "已回本"
+        if per1 <= 0:
+            return "無法回本"
+        return f"{ceil(loss / per1)} 車"
+
     table = pd.DataFrame([{
         "遊戲": games.get(k).name,
         "押幾顆": f"{cfgs[k]['n_numbers']} 顆",
         "下幾車": int(res["cars"][k]),
-        "回本需要": f"{ceil(need_base / cfgs[k]['win_payout'])} 車",
+        "單押回本": _solo_need(k),
         "車數來源": "自訂" if k in fixed else "系統建議",
         "本局成本": f"{cfgs[k]['n_numbers'] * res['cars'][k] * cfgs[k]['cost_per_car']:,.0f}",
         "中1顆可得": f"{res['cars'][k] * cfgs[k]['win_payout']:,.0f}",
@@ -881,11 +896,15 @@ def _render_today(user: str, cfgs: dict, cum: float):
 
     edited = st.data_editor(
         table, key="today_editor", hide_index=True, width="stretch",
-        disabled=["遊戲", "押幾顆", "回本需要", "車數來源", "本局成本", "中1顆可得"],
+        disabled=["遊戲", "押幾顆", "單押回本", "車數來源", "本局成本", "中1顆可得"],
         column_config={
             "下幾車": st.column_config.NumberColumn(
                 "下幾車", min_value=1, max_value=100_000, step=1, required=True,
-                help="可直接修改;改完其他款的建議車數會跟著重算。"),
+                help="可直接修改。你改過的那款會固定住,其餘款會依剩下的成本重算。"),
+            "單押回本": st.column_config.TextColumn(
+                "單押回本",
+                help="固定參考值:以上一筆下注後的累積虧損計算,今天『只打這一款』"
+                     "時中 1 顆就回本所需的車數。不會因為你在表格裡改車數而變動。"),
             "中獎顆數": st.column_config.TextColumn(
                 "中獎顆數", max_chars=2,
                 help="中了幾顆就填幾;還沒開獎就留空,之後在「二、開獎後回填」補。"),
