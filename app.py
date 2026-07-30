@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import datetime as dt
 import sys
-from math import ceil
 from pathlib import Path
 
 import pandas as pd
@@ -817,6 +816,11 @@ def _hits_payout_dialog(rows: list[dict], cum: float, total: float):
         st.divider()
 
 
+def _after_label(after: float) -> str:
+    """中 1 顆之後的累積損益,直接標明夠不夠回本。"""
+    return f"{after:+,.0f}" + ("(回本)" if after >= 0 else "(不足)")
+
+
 def _parse_hits(raw) -> int | None:
     """把表格裡的「中獎顆數」字串轉成整數;空白或非數字視為還沒填。"""
     text = str(raw or "").strip()
@@ -890,39 +894,30 @@ def _render_today(user: str, cfgs: dict, cum: float):
     draw_date = d1.date_input("下注日期", value=dt.date.today(), format="YYYY-MM-DD",
                               key="bet_date")
     st.caption(
-        "「押幾顆」「下幾車」「中獎顆數」都可以直接在表格裡改。"
-        "「單押回本」是固定參考值(只看上一筆下注後的累積虧損),不會隨你輸入變動;"
-        "「下幾車」則是依今天要花的總成本算出來的建議,改了一款,其餘款會跟著重算。"
+        "「押幾顆」「下幾車」「中獎顆數」可以直接在表格裡改。"
+        "**「建議車數」已經把當天所有款的成本算進去了** —— 照它下,"
+        + ("中任何一款 1 顆就回本;" if share == 1 else f"{n_games} 款都中 1 顆就回本;")
+        + "「中1顆後累積」那欄會直接告訴你每一款中 1 顆之後會變成多少。"
     )
 
-    # 「單押回本」:固定參考值,只用上一筆下注後的累積虧損算,
-    # 不含今天正在填的成本 —— 否則每改一次車數,目標就跟著往上跑。
     loss = max(0.0, -cum)
-
-    def _solo_need(k: str) -> str:
-        per1 = erhe.per_car_one_hit_net(
-            cfgs[k]["n_numbers"], cfgs[k]["cost_per_car"], cfgs[k]["win_payout"])
-        if loss <= 0:
-            return "已回本"
-        if per1 <= 0:
-            return "無法回本"
-        return f"{ceil(loss / per1)} 車"
-
+    suggest_total = res["total_cost"]
     table = pd.DataFrame([{
         "遊戲": games.get(k).name,
         "押幾顆": int(cfgs[k]["n_numbers"]),
         "下幾車": int(res["cars"][k]),
-        "單押回本": _solo_need(k),
-        "來源": "自訂" if k in fixed else "系統建議",
+        "建議車數": f"{int(res['cars'][k])} 車",
         "本局成本": f"{cfgs[k]['n_numbers'] * res['cars'][k] * cfgs[k]['cost_per_car']:,.0f}",
         "中1顆可得": f"{res['cars'][k] * cfgs[k]['win_payout']:,.0f}",
+        "中1顆後累積": _after_label(
+            cum + res["cars"][k] * cfgs[k]["win_payout"] - suggest_total),
         # 用字串欄:Streamlit 的數字欄空值會顯示灰色 "None",文字欄空字串才是真的空白
         "中獎顆數": "" if hits_state.get(k) is None else str(hits_state[k]),
     } for k in picks], index=list(picks))
 
     edited = st.data_editor(
         table, key="today_editor", hide_index=True, width="stretch",
-        disabled=["遊戲", "單押回本", "來源", "本局成本", "中1顆可得"],
+        disabled=["遊戲", "建議車數", "本局成本", "中1顆可得", "中1顆後累積"],
         column_config={
             "押幾顆": st.column_config.NumberColumn(
                 "押幾顆", min_value=1, max_value=20, step=1, required=True,
@@ -930,10 +925,14 @@ def _render_today(user: str, cfgs: dict, cum: float):
             "下幾車": st.column_config.NumberColumn(
                 "下幾車", min_value=1, max_value=100_000, step=1, required=True,
                 help="可直接修改。你改過的那款會固定住,其餘款依剩下的成本重算。"),
-            "單押回本": st.column_config.TextColumn(
-                "單押回本",
-                help="固定參考值:以上一筆下注後的累積虧損計算,今天『只打這一款』"
-                     "時中 1 顆就回本所需的車數。不會因為你在表格裡改車數而變動。"),
+            "建議車數": st.column_config.TextColumn(
+                "建議車數",
+                help="系統算出來的答案,已把當天所有款的成本一起算進去。"
+                     "你在「下幾車」填別的數字時,這欄會依剩下的成本重算。"),
+            "中1顆後累積": st.column_config.TextColumn(
+                "中1顆後累積",
+                help="這款中 1 顆、扣掉當天全部成本之後,累積損益會變成多少。"
+                     "只要顯示「不足」,就代表這樣下中了也還是虧。"),
             "中獎顆數": st.column_config.TextColumn(
                 "中獎顆數", max_chars=2,
                 help="中了幾顆就填幾;還沒開獎就留空,之後在「二、開獎後回填」補。"),
