@@ -131,8 +131,19 @@ input, textarea, [data-baseweb="input"], [data-baseweb="base-input"],
 
 _MOBILE_CSS = """
 <style>
-/* 手機:橫向欄位自動換行成兩欄,不要硬擠成一條而把數字折成好幾行 */
+/* 全域:任何時候都不該出現「整頁可以左右拖」的情況 */
+html, body { overflow-x: hidden !important; max-width: 100% !important; }
+[data-testid="stAppViewContainer"] { overflow-x: hidden !important; }
+.block-container { max-width: 100% !important; }
+/* 表格(canvas 元件)自己捲,不要把橫向手勢鏈給整頁 —— 手勢卡死的元凶 */
+[data-testid="stDataFrame"], [data-testid="stDataFrameResizable"],
+[data-testid="stDataEditor"] {
+  max-width: 100% !important;
+  overscroll-behavior: contain !important;
+}
+
 @media (max-width: 640px) {
+  /* 橫向欄位自動換行成兩欄,不要硬擠成一條而把數字折成好幾行 */
   [data-testid="stHorizontalBlock"] {
     flex-wrap: wrap !important;
     gap: 0.35rem !important;
@@ -140,18 +151,24 @@ _MOBILE_CSS = """
   [data-testid="stColumn"] {
     flex: 1 1 calc(50% - 0.35rem) !important;
     min-width: calc(50% - 0.35rem) !important;
+    max-width: 100% !important;
+    overflow-x: hidden !important;
   }
-  /* 指標:字縮小且不折行 */
+  /* 指標:縮小字級 + 等寬數字。不用 nowrap —— 那會讓長數字撐破版面造成左右漂移 */
   [data-testid="stMetric"] {
     padding: 0.35rem 0.5rem !important;
     border: 1px solid rgba(128,128,128,0.22);
     border-radius: 8px;
+    overflow: hidden !important;
   }
   [data-testid="stMetricValue"] {
-    font-size: 1.15rem !important; white-space: nowrap !important; }
+    font-size: 1.05rem !important;
+    font-variant-numeric: tabular-nums;
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+  }
   [data-testid="stMetricLabel"] p { font-size: 0.78rem !important; }
-  [data-testid="stMetricDelta"] { font-size: 0.72rem !important; }
-  [data-testid="stMetricDelta"] div { white-space: nowrap !important; }
+  [data-testid="stMetricDelta"] { font-size: 0.7rem !important; }
 
   html, body, .stApp, .stMarkdown, .stApp p, .stApp li { font-size: 16px !important; }
   .block-container { padding: 2.6rem 0.5rem 1rem 0.5rem !important; }
@@ -160,10 +177,10 @@ _MOBILE_CSS = """
   h1 { font-size: 1.5rem !important; } h2 { font-size: 1.25rem !important; }
   h3 { font-size: 1.08rem !important; }
   .stButton button { font-size: 1rem !important; padding: 0.5rem !important; }
-  /* 說明類文字收小,別佔掉半個畫面 */
+  /* 說明類文字收小,別佔掉半個畫面;長字串一律可斷,避免撐寬 */
   [data-testid="stCaptionContainer"] p { font-size: 0.78rem !important; line-height: 1.45 !important; }
   [data-testid="stAlert"] p { font-size: 0.82rem !important; line-height: 1.5 !important; }
-  /* 折疊標題壓扁一點 */
+  [data-testid="stMarkdownContainer"] * { overflow-wrap: anywhere !important; }
   [data-testid="stExpander"] summary { padding: 0.3rem 0.6rem !important; }
 }
 </style>
