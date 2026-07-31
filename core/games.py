@@ -21,11 +21,17 @@ class GameConfig:
     num_max: int = 39        # 號碼範圍上限(1 ~ num_max)
     pick: int = 5            # 每期開出幾顆號碼
     prize: dict = field(default_factory=dict)  # {中k碼: 獎金}
+    short_name: str = ""     # 表格用的短名稱(手機版避免被長名撐開)
     prize_note: str = ""     # 獎金結構說明
     source_note: str = ""    # 資料來源說明
     # ── 二合買牌(策略1)的盤口預設值(新帳號第一次進頁面時的初值)──
     default_cost_per_car: float = 2755.0   # 每車成本
     default_win_payout: float = 21200.0    # 每車中獎可得
+
+    @property
+    def label(self) -> str:
+        """表格/選單用的簡短名稱;沒設就用完整名稱。"""
+        return self.short_name or self.name
 
     # ── 玩法衍生規格 ──────────────────────────────────────
     @property
@@ -72,6 +78,7 @@ class GameConfig:
 LOTTO539 = GameConfig(
     key="lotto539",
     name="今彩539",
+    short_name="今彩539",
     data_file="history.csv",
     ticket_price=50,
     currency="NT$",
@@ -86,6 +93,7 @@ LOTTO539 = GameConfig(
 FANTASY5 = GameConfig(
     key="fantasy5",
     name="天天樂(加州 Fantasy 5)",
+    short_name="天天樂",
     data_file="history_fantasy5.csv",
     ticket_price=1,
     currency="NT$",
@@ -101,6 +109,7 @@ FANTASY5 = GameConfig(
 MARKSIX = GameConfig(
     key="marksix",
     name="六合彩",
+    short_name="六合彩",
     data_file="history_marksix.csv",
     ticket_price=40,
     currency="NT$",
