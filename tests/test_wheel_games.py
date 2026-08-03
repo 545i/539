@@ -8,24 +8,28 @@ from core import games, kelly, loader, wheel
 
 # ── games ────────────────────────────────────────────────
 def test_games_registry():
-    assert set(games.GAMES) == {"fantasy5", "marksix"}          # 目前啟用的兩款
-    assert games.get("fantasy5").key == "fantasy5"
+    assert set(games.GAMES) == {"lotto539", "fantasy5", "marksix"}   # 三款都啟用
+    assert games.get("lotto539").name == "今彩539"
     assert games.by_name("六合彩").key == "marksix"
     # 找不到回預設
     assert games.get("nope").key == games.DEFAULT_GAME.key
-    assert games.DEFAULT_GAME.key == "fantasy5"
+    assert games.DEFAULT_GAME.key == "lotto539"
+    assert all(games.is_active(k) for k in games.GAMES)
 
 
-def test_retired_game_still_resolvable():
-    """今彩539 已停用,但舊下注紀錄要能顯示正確名稱,不能被誤標成別款。"""
+def test_retired_lookup_mechanism(monkeypatch):
+    """停用機制:移到 RETIRED 的遊戲不出現在下注介面,但舊紀錄仍顯示正確名稱。"""
+    active = {k: v for k, v in games.GAMES.items() if k != "lotto539"}
+    monkeypatch.setattr(games, "GAMES", active)
+    monkeypatch.setattr(games, "RETIRED", {"lotto539": games.LOTTO539})
     assert "lotto539" not in games.GAMES
-    assert games.get("lotto539").name == "今彩539"
+    assert games.get("lotto539").name == "今彩539"      # 不會被誤標成別款
     assert games.is_active("lotto539") is False
     assert games.is_active("marksix") is True
 
 
 def test_all_games_negative_ev():
-    for g in list(games.GAMES.values()) + list(games.RETIRED.values()):
+    for g in games.GAMES.values():
         assert g.expected_return() < 0          # 三款都是負期望
         assert kelly.analyze(g).fraction == 0.0  # 凱莉建議皆為 0
 
