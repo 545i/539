@@ -153,6 +153,48 @@ _MOBILE_CSS = """
   [data-testid="stMetricDelta"] { font-size: 0.72rem !important; }
   [data-testid="stMetricDelta"] div { white-space: nowrap !important; }
 
+  /* 指標列是要「一眼橫向比較」的,所以強迫並排:寧可縮字也不換行。
+     字級用 vw 讓它跟著螢幕寬縮放,窄機也塞得下 4~5 欄。 */
+  [data-testid="stHorizontalBlock"]:has([data-testid="stMetric"]) {
+    flex-wrap: nowrap !important;
+    gap: 0.2rem !important;
+  }
+  [data-testid="stHorizontalBlock"]:has([data-testid="stMetric"]) > [data-testid="stColumn"] {
+    flex: 1 1 0 !important;
+    min-width: 0 !important;
+    width: auto !important;
+  }
+  [data-testid="stHorizontalBlock"]:has([data-testid="stMetric"]) [data-testid="stMetric"] {
+    padding: 0.3rem 0.25rem !important;
+  }
+  [data-testid="stHorizontalBlock"]:has([data-testid="stMetric"]) [data-testid="stMetricValue"] {
+    font-size: clamp(0.6rem, 3.4vw, 1.15rem) !important;
+    line-height: 1.25 !important;
+    overflow: hidden !important;
+  }
+  [data-testid="stHorizontalBlock"]:has([data-testid="stMetric"]) [data-testid="stMetricLabel"] p {
+    font-size: clamp(0.5rem, 2.3vw, 0.78rem) !important;
+    line-height: 1.2 !important;
+    white-space: normal !important;
+  }
+  [data-testid="stHorizontalBlock"]:has([data-testid="stMetric"]) [data-testid="stMetricDelta"] {
+    font-size: clamp(0.45rem, 2vw, 0.72rem) !important;
+    padding: 0 !important;
+  }
+  [data-testid="stHorizontalBlock"]:has([data-testid="stMetric"]) [data-testid="stMetricDelta"] svg {
+    width: 0.9em !important; height: 0.9em !important;
+  }
+  /* delta 的字被 .stApp p 的 16px !important 蓋掉,而且自帶 nowrap + ellipsis,
+     所以要直接指到 p 上,並解掉截字才不會出現「中獎 0(…」。 */
+  [data-testid="stHorizontalBlock"]:has([data-testid="stMetric"]) [data-testid="stMetricDelta"] div,
+  [data-testid="stHorizontalBlock"]:has([data-testid="stMetric"]) [data-testid="stMetricDelta"] p {
+    font-size: clamp(0.45rem, 2vw, 0.72rem) !important;
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+    line-height: 1.2 !important;
+  }
+
   html, body, .stApp, .stMarkdown, .stApp p, .stApp li { font-size: 16px !important; }
   .block-container { padding: 2.6rem 0.5rem 1rem 0.5rem !important; }
   [data-testid="stDataFrame"], [data-testid="stTable"] { font-size: 14px !important; }
@@ -794,7 +836,7 @@ def _plans_of(cfgs: dict, keys: list[str]) -> dict:
 
 
 def _record(user: str, cfgs: dict, picks: list[str], cars: dict,
-            draw_date, hits: dict | None = None):
+            draw_date, hits: dict | None = None, prefix: str = "multi"):
     """把選定的幾款一次記進流水;hits 沒填的款視為待開獎。記完把車數欄位還原成自動。"""
     hits = hits or {}
     for k in picks:
@@ -805,15 +847,18 @@ def _record(user: str, cfgs: dict, picks: list[str], cars: dict,
             hits.get(k), cost, cfg["win_payout"],
         )
         _kick_autoupdate(games.get(k))
-    _reset_car_inputs()
+    _reset_car_inputs(prefix)
     st.rerun()
 
 
-def _reset_car_inputs(keys=()):
-    """把車數欄位交還給系統建議(清掉自訂值與表格的編輯狀態)。"""
-    st.session_state.pop("today_editor", None)
-    st.session_state["today_fixed_cars"] = {}
-    st.session_state["today_hits"] = {}
+def _reset_car_inputs(prefix: str = "multi"):
+    """把車數欄位交還給系統建議(清掉自訂值與表格的編輯狀態)。
+
+    prefix 區隔「多顆 / 單顆」兩個 tab 的輸入狀態,兩邊互不干擾。
+    """
+    st.session_state.pop(f"{prefix}_today_editor", None)
+    st.session_state[f"{prefix}_today_fixed_cars"] = {}
+    st.session_state[f"{prefix}_today_hits"] = {}
 
 
 @st.dialog("中更多顆的金額", width="large")
@@ -861,25 +906,77 @@ def _parse_hits(raw) -> int | None:
     return int(text) if text.isdigit() else None
 
 
-def _render_today(user: str, cfgs: dict, cum: float):
-    st.subheader("一、今天下哪幾款")
+# 單顆模式的「中獎顆數」只有三種可能,用下拉選單比填數字直覺
+SINGLE_HITS = {"待開獎": None, "中了": 1, "沒中": 0}
+SINGLE_HITS_REV = {None: "待開獎", 1: "中了", 0: "沒中"}
+
+
+def _single_intro(cfgs: dict):
+    """單顆 tab 開頭:說清楚它跟多顆差在哪,並用目前盤口把數字算出來。"""
+    st.caption(
+        "每款固定押 1 顆,只調車數。中的機率低很多,但中了的淨利大很多 —— "
+        "連敗時虧損成長慢,同樣的資金撐得比較久。"
+        "**兩個 tab 請當成今天二選一**,同一天兩邊都記帳的話成本會互相吃掉。"
+    )
+    rows = []
+    for k, cfg in cfgs.items():
+        g = games.get(k)
+        c, w = cfg["cost_per_car"], cfg["win_payout"]
+        for label, n in (("單顆", 1), (f"多顆({int(cfg['n_numbers'])} 顆)",
+                                       int(cfg["n_numbers"]))):
+            if n < 1 or w <= 0:
+                continue
+            ratio = n * c / w
+            p_hit = 1.0 - erhe.hit_distribution(n, g.pick, g.num_max)[0]
+            rows.append({
+                "遊戲": g.label, "下法": label,
+                "成本係數 k": f"{ratio:.3f}",
+                "至少中 1 顆": f"{p_hit:.1%}",
+                "每車中 1 顆淨利": f"{w - n * c:+,.0f}",
+                "連敗虧損放大": (f"{1 / (1 - ratio):.2f}×" if ratio < 1 else "無解"),
+            })
+        if int(cfg["n_numbers"]) == 1:
+            rows.pop()          # 這款本來就設 1 顆,兩列一樣就不重複列
+    with st.expander("單顆 vs 多顆:用你現在的盤口比一比"):
+        st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
+        st.caption(
+            "k = 押幾顆 × 每車成本 ÷ 中獎可得,決定連敗時虧損的成長速度"
+            "(每敗一局,追平所需的金額乘以 1/(1−k))。k 越小撐越久,"
+            "但每局中獎機率也越低。**兩種下法的期望值完全一樣**,都是負的;"
+            "單顆只是把破產風險往後推,不會讓你變成正期望。"
+        )
+
+
+def _render_today(user: str, cfgs: dict, cum: float, mode: str = "multi"):
+    """今天要下哪幾款的輸入 + 試算。
+
+    mode="multi"  每款可自訂押幾顆(現行玩法)。
+    mode="single" 每款固定押 1 顆,只能改車數 —— 成本係數 k 小很多,
+                  連敗時虧損成長慢,但中獎頻率也低。
+    """
+    single = mode == "single"
+    if single:
+        # 顆數鎖 1:只覆寫這次試算用的值,不動「設定」頁存的多顆顆數
+        cfgs = {k: {**v, "n_numbers": 1} for k, v in cfgs.items()}
+
+    st.subheader("一、今天下哪幾款" + ("(每款固定押 1 顆)" if single else ""))
     picks = st.segmented_control(
         "今天要下注的遊戲(預設一款;要下多款就多勾)",
         [g.key for g in GAME_LIST], selection_mode="multi",
         default=[GAME_LIST[0].key],
-        format_func=lambda k: games.get(k).name, key="today_games",
+        format_func=lambda k: games.get(k).name, key=f"{mode}_today_games",
     )
     # 換了勾選的組合就把表格編輯狀態清掉(避免舊的自訂值套到別款)
-    if st.session_state.get("today_picks") != list(picks):
-        _reset_car_inputs()
-        st.session_state["today_picks"] = list(picks)
+    if st.session_state.get(f"{mode}_today_picks") != list(picks):
+        _reset_car_inputs(mode)
+        st.session_state[f"{mode}_today_picks"] = list(picks)
     if not picks:
         st.info("勾選至少一款,系統就會算出今天要下幾車。")
         return
 
-    fixed = {k: v for k, v in st.session_state.get("today_fixed_cars", {}).items()
+    fixed = {k: v for k, v in st.session_state.get(f"{mode}_today_fixed_cars", {}).items()
              if k in picks}
-    hits_state = {k: v for k, v in st.session_state.get("today_hits", {}).items()
+    hits_state = {k: v for k, v in st.session_state.get(f"{mode}_today_hits", {}).items()
                   if k in picks}
 
     # 下多款時要先決定「回本責任」怎麼算(只下一款時兩者是同一條式子,不用問)
@@ -888,7 +985,7 @@ def _render_today(user: str, cfgs: dict, cum: float):
         mode = st.radio(
             "多款一起下時,怎麼算才算回本?",
             ["平攤:每款各負擔 1/N", "嚴格:任一款中 1 顆就全部回本"],
-            horizontal=True, key="share_mode",
+            horizontal=True, key=f"{mode}_share_mode",
             help="平攤比較便宜,但要每一款都中才完全回本;"
                  "嚴格是任何一款中 1 顆就回本,但成本高很多,而且 k ≥ 1 時無解。",
         )
@@ -913,9 +1010,15 @@ def _render_today(user: str, cfgs: dict, cum: float):
         if share == 1 and n_games >= 2:
             c1.warning("改用「平攤」就會有解(但要每一款都中才完全回本)。")
         targets = [k for k in picks if k not in fixed] or list(picks)
-        if n_max >= 1:
+        if single:
+            # 顆數已經是最小的 1 了,只剩盤口本身太差(每車成本相對中獎金額過高)
+            c2.warning(
+                "單顆已經是最省的下法,還是無解就代表盤口的「每車成本 ÷ 中獎可得」太高;"
+                "請到「設定」確認金額,或今天少下幾款。")
+        elif n_max >= 1:
             c2.warning(f"或把這幾款的「押幾顆」降到 {n_max} 顆以內。")
-            if c2.button(f"把這 {len(targets)} 款的押幾顆都改成 {n_max} 顆", type="primary"):
+            if c2.button(f"把這 {len(targets)} 款的押幾顆都改成 {n_max} 顆",
+                         key=f"{mode}_fix_n", type="primary"):
                 for k in targets:
                     storage.set_setting(cfgs[k]["skey"], "n_numbers", n_max)
                     st.session_state.pop(f"set_n_{k}", None)
@@ -926,32 +1029,47 @@ def _render_today(user: str, cfgs: dict, cum: float):
 
     d1, _ = st.columns([1, 3])
     draw_date = d1.date_input("下注日期", value=dt.date.today(), format="YYYY-MM-DD",
-                              key="bet_date")
+                              key=f"{mode}_bet_date")
     _note(
-        "- **押幾顆 / 下幾車 / 中獎顆數** 這三欄可以直接在表格裡改。\n"
-        "- **建議車數** 已經把當天所有款的成本算進去了 —— 照它下,"
+        ("- 這個 tab **固定每款押 1 顆**,顆數不能改,只能改 **下幾車**。\n"
+         if single else
+         "- **押幾顆 / 下幾車 / 中獎顆數** 這三欄可以直接在表格裡改。\n")
+        + "- **建議車數** 已經把當天所有款的成本算進去了 —— 照它下,"
         + ("中任何一款 1 顆就回本。\n" if share == 1
            else f"{n_games} 款都中 1 顆才完全回本。\n")
         + "- **中1顆後累積** 是那一款中 1 顆、扣掉當天全部成本後的累積損益;"
         "顯示「不足」就代表這樣下中了也還是虧。\n"
-        "- 中獎顆數留空 = 還沒開獎,之後在「二、開獎後回填」補。"
+        + ("- 中了就選「中了」、槓龜選「沒中」;還沒開獎留「待開獎」,"
+           "之後在「二、開獎後回填」補。"
+           if single else
+           "- 中獎顆數留空 = 還沒開獎,之後在「二、開獎後回填」補。")
     )
 
     loss = max(0.0, -cum)
-    # 輸入表:只放可以改的四欄,手機不必左右滑
-    table = pd.DataFrame([{
-        "遊戲": games.get(k).label,
-        "押幾顆": int(cfgs[k]["n_numbers"]),
-        "下幾車": int(res["cars"][k]),
-        # 用字串欄:Streamlit 的數字欄空值會顯示灰色 "None",文字欄空字串才是真的空白
-        "中獎顆數": "" if hits_state.get(k) is None else str(hits_state[k]),
-    } for k in picks], index=list(picks))
-
-    st.markdown("**填這裡**")
-    edited = st.data_editor(
-        table, key="today_editor", hide_index=True, width="stretch",
-        disabled=["遊戲"],
-        column_config={
+    # 輸入表:只放可以改的欄,手機不必左右滑。單顆模式連「押幾顆」都不放。
+    if single:
+        table = pd.DataFrame([{
+            "遊戲": games.get(k).label,
+            "下幾車": int(res["cars"][k]),
+            "開獎結果": SINGLE_HITS_REV[hits_state.get(k)],
+        } for k in picks], index=list(picks))
+        col_cfg = {
+            "下幾車": st.column_config.NumberColumn(
+                "下幾車", min_value=1, max_value=100_000, step=1, required=True,
+                help="這個 tab 唯一能改的欄位。你改過的那款會固定住,其餘款依剩下的成本重算。"),
+            "開獎結果": st.column_config.SelectboxColumn(
+                "開獎結果", options=list(SINGLE_HITS), required=True,
+                help="押 1 顆只有中或沒中兩種結果;還沒開獎就留「待開獎」。"),
+        }
+    else:
+        table = pd.DataFrame([{
+            "遊戲": games.get(k).label,
+            "押幾顆": int(cfgs[k]["n_numbers"]),
+            "下幾車": int(res["cars"][k]),
+            # 用字串欄:Streamlit 的數字欄空值會顯示灰色 "None",文字欄空字串才是真的空白
+            "中獎顆數": "" if hits_state.get(k) is None else str(hits_state[k]),
+        } for k in picks], index=list(picks))
+        col_cfg = {
             "押幾顆": st.column_config.NumberColumn(
                 "押幾顆", min_value=1, max_value=20, step=1, required=True,
                 help="今天這款要押幾個號碼。改了會一併更新「設定」頁的盤口。"),
@@ -961,29 +1079,36 @@ def _render_today(user: str, cfgs: dict, cum: float):
             "中獎顆數": st.column_config.TextColumn(
                 "中獎顆數", max_chars=2,
                 help="中了幾顆就填幾;還沒開獎就留空,之後在「二、開獎後回填」補。"),
-        },
+        }
+
+    st.markdown("**填這裡**")
+    edited = st.data_editor(
+        table, key=f"{mode}_today_editor", hide_index=True, width="stretch",
+        disabled=["遊戲"], column_config=col_cfg,
     )
 
     # 比對「送進表格的值」與「改完的值」,不同的就是使用者手動指定的。
     # 押幾顆存進設定,車數/顆數存進 session,再重跑一次讓建議依它重算。
     changed = False
     for k in picks:                      # 以遊戲代號取值,排序過也不會對錯行
-        n_new = edited.loc[k, "押幾顆"]
-        if n_new and int(n_new) != int(table.loc[k, "押幾顆"]):
-            storage.set_setting(cfgs[k]["skey"], "n_numbers", int(n_new))
-            st.session_state.pop(f"set_n_{k}", None)
-            changed = True
+        if not single:
+            n_new = edited.loc[k, "押幾顆"]
+            if n_new and int(n_new) != int(table.loc[k, "押幾顆"]):
+                storage.set_setting(cfgs[k]["skey"], "n_numbers", int(n_new))
+                st.session_state.pop(f"set_n_{k}", None)
+                changed = True
         v = edited.loc[k, "下幾車"]
         if v and int(v) != int(table.loc[k, "下幾車"]):
             fixed[k] = int(v)
             changed = True
-        hv = _parse_hits(edited.loc[k, "中獎顆數"])
+        hv = (SINGLE_HITS[edited.loc[k, "開獎結果"]] if single
+              else _parse_hits(edited.loc[k, "中獎顆數"]))
         if hv != hits_state.get(k):
             hits_state[k] = hv
             changed = True
     if changed:
-        st.session_state["today_fixed_cars"] = fixed
-        st.session_state["today_hits"] = hits_state
+        st.session_state[f"{mode}_today_fixed_cars"] = fixed
+        st.session_state[f"{mode}_today_hits"] = hits_state
         st.rerun()
 
     # 合計一律用表格上真正的數字重算,保證跟每一列對得起來
@@ -1010,26 +1135,29 @@ def _render_today(user: str, cfgs: dict, cum: float):
         p_all_miss *= p_miss[k]
         p_all_hit *= (1.0 - p_miss[k])
 
+    hit_word = "中了" if single else "中 1 顆"
     st.markdown("**試算結果**")
     st.dataframe(pd.DataFrame([{
         "遊戲": games.get(k).label,
         "建議車數": f"{int(res['cars'][k])} 車",
         "本局成本": f"{cfgs[k]['n_numbers'] * cars[k] * cfgs[k]['cost_per_car']:,.0f}",
-        "中1顆後累積": _after_label(
+        ("中了拿多少" if single else "每中1顆拿多少"): f"{gains[k]:,.0f}",
+        f"{hit_word}後累積": _after_label(
             cum + gains[k] - total, gains[k] >= quota - 1e-6, share == 1),
     } for k in picks]), width="stretch", hide_index=True)
 
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("目前累積", f"{cum:+,.0f}")
     m2.metric("今天總成本", f"{total:,.0f}")
-    m3.metric("只中一款 1 顆後", f"{worst:+,.0f}",
+    m3.metric(f"只中一款{'' if single else ' 1 顆'}後", f"{worst:+,.0f}",
               delta="不再虧損" if worst >= 0 else "仍是虧的",
               delta_color="normal" if worst >= 0 else "inverse")
     if n_games >= 2:
-        m4.metric(f"{n_games} 款都中 1 顆後", f"{all_hit:+,.0f}",
+        m4.metric(f"{n_games} 款都{hit_word}後", f"{all_hit:+,.0f}",
                   delta=f"發生機率 {p_all_hit:.0%}", delta_color="off")
     else:
-        m4.metric("這款全沒中的機率", f"{p_all_miss:.0%}")
+        m4.metric("這款沒中的機率" if single else "這款全沒中的機率",
+                  f"{p_all_miss:.0%}")
 
     short = [games.get(k).name for k in picks if k in res["short"]]
     if short:
@@ -1061,12 +1189,18 @@ def _render_today(user: str, cfgs: dict, cum: float):
     if detail:
         _note("\n".join(detail), "這些數字怎麼來的")
 
-    b1, b2, b3 = st.columns([2, 1.2, 1])
-    if b1.button("記帳(中獎顆數留空的就當作待開獎)", type="primary", width="stretch",
-                 disabled=bool(bad_hits)):
-        _record(user, cfgs, picks, cars, draw_date, hits)
-    if b2.button("查看中更多顆的金額", width="stretch",
-                 help="依你填的車數,列出中 1 顆、2 顆…各拿多少、累積會變多少。"):
+    # 單顆只有中/沒中兩種結果,沒有「中更多顆」可看,那顆按鈕就不放了
+    cols = st.columns([2, 1] if single else [2, 1.2, 1])
+    b1, b_last = cols[0], cols[-1]
+    if b1.button(
+            "記帳" + ("(留「待開獎」的就當作還沒對獎)" if single
+                      else "(中獎顆數留空的就當作待開獎)"),
+            key=f"{mode}_record", type="primary", width="stretch",
+            disabled=bool(bad_hits)):
+        _record(user, cfgs, picks, cars, draw_date, hits, prefix=mode)
+    if not single and cols[1].button(
+            "查看中更多顆的金額", key=f"{mode}_more", width="stretch",
+            help="依你填的車數,列出中 1 顆、2 顆…各拿多少、累積會變多少。"):
         _hits_payout_dialog([{
             "name": games.get(k).name,
             "cars": cars[k],
@@ -1076,9 +1210,10 @@ def _render_today(user: str, cfgs: dict, cum: float):
             "dist": erhe.hit_distribution(cfgs[k]["n_numbers"],
                                           games.get(k).pick, games.get(k).num_max),
         } for k in picks], cum, total)
-    if b3.button("車數重設為建議", width="stretch", disabled=not fixed,
-                 help="把你手動改過的車數還原,交還給系統計算。"):
-        _reset_car_inputs()
+    if b_last.button("車數重設為建議", key=f"{mode}_reset", width="stretch",
+                     disabled=not fixed,
+                     help="把你手動改過的車數還原,交還給系統計算。"):
+        _reset_car_inputs(mode)
         st.rerun()
 
 
@@ -1231,7 +1366,10 @@ def _render_full_ledger(user: str, rows: list[dict]):
 def page_strategy(user: str):
     st.header("二合買牌")
     _note(
-        "- 所有遊戲**共用同一個損益池**:不管下哪一款,盈虧都累加在一起。\n"
+        "- 所有遊戲**共用同一個損益池**:不管下哪一款、用哪種下法,"
+        "盈虧都累加在一起。\n"
+        "- **多顆 / 單顆是兩種下法**,共用同一個損益池與紀錄:多顆中得勤但回本慢,"
+        "單顆中得少但一中就整碗端回去。同一天請只用其中一個 tab 記帳。\n"
         "- 建議車數依「合併累積虧損 + 今天要花的總成本」計算 —— "
         "所以多下一款,大家的車數都會變多。\n"
         "- 中獎顆數可以先填,也可以開獎後再回填。",
@@ -1242,7 +1380,14 @@ def page_strategy(user: str):
     st.divider()
 
     rows = storage.load_rounds(user)
-    _render_today(user, cfgs, storage.current_cumulative(user))
+    cum = storage.current_cumulative(user)
+
+    tab_multi, tab_single = st.tabs(["多顆下注", "單顆下注"])
+    with tab_multi:
+        _render_today(user, cfgs, cum, mode="multi")
+    with tab_single:
+        _single_intro(cfgs)
+        _render_today(user, cfgs, cum, mode="single")
     st.divider()
     _render_pending(rows)
     _render_records(user, rows)

@@ -3,6 +3,8 @@
 核心結論:要求「任一款中 1 顆就把虧損 + 本局總成本全部拿回」時,
 成本係數 k = Σ(押幾顆 × 每車成本 ÷ 中獎可得) 必須 < 1,否則無解。
 """
+from math import ceil
+
 import pytest
 
 from core import erhe, games
@@ -266,3 +268,48 @@ def test_share_with_fixed_cars():
     quota = (135_570 + res["total_cost"]) / 3
     for g in ("g1", "g2"):
         assert res["cars"][g] * plans[g][2] >= quota - 1e-6
+
+
+# ── 單顆下注(策略 tab「單顆」= 每款固定押 1 顆)────────────
+def test_single_number_costs_far_less_than_multi():
+    """同樣的虧損下,單顆要花的錢遠少於押 5 顆 —— 這是單顆 tab 的存在理由。"""
+    one = erhe.simultaneous_recovery(-135_570, _plans(1, S539), base_cars=1)
+    five = erhe.simultaneous_recovery(-135_570, _plans(5, S539), base_cars=1)
+    assert one["feasible"] and five["feasible"]
+    assert one["total_cost"] < five["total_cost"] / 5
+
+
+def test_single_number_recovers_on_a_hit():
+    """單顆照建議車數下,中 1 顆就把虧損連同本局成本一起拿回來。"""
+    loss = -135_570.0
+    res = erhe.simultaneous_recovery(loss, _plans(1, S539), base_cars=1)
+    cars = res["cars"]["g0"]
+    assert cars == ceil(-loss / (21200.0 - 2755.0))        # ceil(虧損 ÷ 每車淨利)
+    assert loss + cars * 21200.0 - res["total_cost"] >= 0
+    assert res["worst_after"] >= 0 and not res["short"]
+
+
+def test_single_number_three_games_strict_is_feasible():
+    """三款都押 1 顆時 k < 1,連最嚴格的「任一款中就全回本」都有解。"""
+    plans = _plans(1, S539, S539, SHK)
+    res = erhe.simultaneous_recovery(-135_570, plans, base_cars=1, share=1)
+    assert res["k"] < 1 and res["feasible"]
+    assert res["worst_after"] >= 0                          # 任一款中 1 顆都回本
+    # 同樣三款、押 5 顆時 k > 1,嚴格模式無解 —— 兩者的差別就在這
+    assert erhe.simultaneous_recovery(
+        -135_570, _plans(5, S539, S539, SHK), share=1)["feasible"] is False
+
+
+def test_single_number_loss_grows_slower_than_multi():
+    """連敗時虧損的成長倍率 1/(1−k):單顆遠小於多顆。"""
+    k1 = erhe.combo_cost_ratio(_plans(1, S539))
+    k5 = erhe.combo_cost_ratio(_plans(5, S539))
+    assert 1 / (1 - k1) < 1.2 < 2.5 < 1 / (1 - k5)
+
+
+def test_single_number_hit_distribution_is_binary():
+    """押 1 顆只有中或沒中兩種結果,中的機率 = pick/num_max。"""
+    g = games.get("lotto539")
+    dist = erhe.hit_distribution(1, g.pick, g.num_max)
+    assert set(dist) == {0, 1}
+    assert dist[1] == pytest.approx(g.dan_prob)
