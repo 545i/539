@@ -43,7 +43,7 @@ def _bundle_base() -> Path:
 
 
 # ── 導覽(不再有全域遊戲切換)──────────────────────────────
-NAV_ITEMS = ["二合買牌", "統計分析", "排行榜", "設定"]
+NAV_ITEMS = ["二合買牌", "統計分析", "匯出", "排行榜", "設定"]
 
 
 # ── 資料路徑與載入(依遊戲分檔)────────────────────────────
@@ -269,6 +269,44 @@ def sidebar_controls() -> str:
     return nav
 
 
+_N_PRESETS = (30, 50, 100, 200, 500, 1000)
+
+
+def _apply_preset(pkey: str, skey: str):
+    """點了常用期數 → 把滑桿設到該值(on_change 會在重跑前先執行)。"""
+    v = st.session_state.get(pkey)
+    if v is not None:
+        st.session_state[skey] = int(v)
+
+
+def _recent_n(key: str, total: int) -> int:
+    """最近 N 期:滑桿 + 常用期數快捷選項,回傳要取幾期。
+
+    滑桿拖一下就換區間,不必像 number_input 那樣一格一格點或打字;
+    常用期數用 pills 排成一列,手機上不會被撐成好幾列按鈕。
+    """
+    skey = f"{key}_n"
+    if total <= 1:
+        return total
+    # 值一律走 session_state:快捷選項要能改它,而同時傳 value= 會被 Streamlit 警告。
+    # 換遊戲時總期數會變(539 八百多期、天天樂三千多期),舊值要夾回合法範圍,
+    # 否則 slider 會因為值超出 max 而報錯。
+    cur = min(max(1, int(st.session_state.get(skey, min(100, total)))), total)
+    st.session_state[skey] = cur
+
+    presets = [p for p in _N_PRESETS if p < total] + [total]
+    # 選中狀態跟著滑桿走:剛好停在某個常用值就亮起來,自己拖到別的值就都不亮
+    pkey = f"{key}_preset"
+    st.session_state[pkey] = cur if cur in presets else None
+    st.pills(
+        "常用期數", presets, key=pkey, label_visibility="collapsed",
+        format_func=lambda p: "全部" if p == total else str(p),
+        on_change=_apply_preset, args=(pkey, skey),
+    )
+    return int(st.slider("最近期數", min_value=1, max_value=total, step=1, key=skey,
+                         help="往右拖看更長期間;最右邊就是全部資料。"))
+
+
 def _range_selector(df: pd.DataFrame, key: str) -> pd.DataFrame:
     """頁內的分析範圍選擇(全部 / 最近 N 期 / 日期範圍),回傳篩選後資料。"""
     sorted_df = df.sort_values("date").reset_index(drop=True)
@@ -278,9 +316,7 @@ def _range_selector(df: pd.DataFrame, key: str) -> pd.DataFrame:
     mode = c1.radio("分析範圍", ["全部", "最近 N 期", "日期範圍"], key=f"{key}_mode")
     with c2:
         if mode == "最近 N 期":
-            n = st.number_input("最近期數 N", min_value=1, max_value=len(sorted_df),
-                                value=min(100, len(sorted_df)), step=10, key=f"{key}_n")
-            fdf = sorted_df.tail(int(n))
+            fdf = sorted_df.tail(_recent_n(key, len(sorted_df)))
         elif mode == "日期範圍":
             dmin = sorted_df["date"].iloc[0].date()
             dmax = sorted_df["date"].iloc[-1].date()
@@ -677,16 +713,26 @@ _FMT_REPORT = "一般報表(Excel)"
 _FMT_WIDE = "二元虛擬變數寬表(CSV)"
 
 
-def page_export(fdf: pd.DataFrame, game):
-    st.header(f"匯出 — {game.name}")
+def page_export():
+    """匯出頁:選遊戲 → 選範圍 → 選格式。"""
+    st.header("匯出")
+    gkey = st.segmented_control(
+        "匯出哪一款", [g.key for g in games.GAMES.values()],
+        default=games.DEFAULT_GAME.key,
+        format_func=lambda k: games.get(k).name,
+        key="export_game",
+    ) or games.DEFAULT_GAME.key
+    game = games.get(gkey)
+    fdf = _range_selector(load_df(gkey), f"export_{gkey}")
+
+    st.subheader(game.name)
     if fdf.empty:
         st.warning("目前範圍沒有資料,無法匯出。")
         return
 
     fmt = st.radio("匯出格式", [_FMT_REPORT, _FMT_WIDE], horizontal=True,
                    key="export_fmt")
-    st.caption(f"匯出範圍跟著側邊欄的日期選擇走,目前是 {len(fdf)} 期"
-               f"({_range_label(fdf)})。要換遊戲請用左側的遊戲選單。")
+    st.caption(f"匯出的是上面選的範圍,目前 {len(fdf)} 期({_range_label(fdf)})。")
 
     if fmt == _FMT_WIDE:
         _export_binary_wide(fdf, game)
@@ -1676,6 +1722,8 @@ def main():
         page_strategy(user)
     elif nav == "統計分析":
         page_stats()
+    elif nav == "匯出":
+        page_export()
     elif nav == "排行榜":
         page_leaderboard(user)
     elif nav == "設定":
