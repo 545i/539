@@ -20,6 +20,12 @@ from pathlib import Path
 # 用 -1 而非 NULL,是因為舊資料庫的 hits 欄位有 NOT NULL 約束,SQLite 無法事後移除。
 PENDING = -1
 
+# 下注模式:單顆(每款固定押 1 顆)/ 多顆。兩者共用同一個損益池,但紀錄與重置分開。
+SINGLE = "single"
+MULTI = "multi"
+MODES = (SINGLE, MULTI)
+MODE_NAMES = {SINGLE: "單顆", MULTI: "多顆"}
+
 # v1 舊資料遷移時,推不出成本的紀錄用的每車成本(僅供回填,不影響損益)
 _FALLBACK_COST_PER_CAR = {"lotto539": 2755.0, "fantasy5": 2755.0, "marksix": 3528.0}
 _FALLBACK_PAYOUT = {"lotto539": 21200.0, "fantasy5": 21200.0, "marksix": 28500.0}
@@ -67,7 +73,8 @@ def _conn() -> sqlite3.Connection:
             draw_date  TEXT,
             cost       REAL,
             payout     REAL,
-            payout_rate REAL
+            payout_rate REAL,
+            mode       TEXT NOT NULL DEFAULT 'multi'
         )
         """
     )
@@ -94,6 +101,18 @@ def _migrate(conn: sqlite3.Connection, path: Path) -> None:
     cols = [r[1] for r in conn.execute("PRAGMA table_info(erhe_rounds)").fetchall()]
     if "numbers" not in cols:  # v0 → v1
         conn.execute("ALTER TABLE erhe_rounds ADD COLUMN numbers INTEGER NOT NULL DEFAULT 5")
+    if "mode" not in cols:     # v2 → v3:單顆 / 多顆分流
+        if path.exists():
+            bak = path.with_name(path.name + ".bak_v2")
+            if not bak.exists():
+                shutil.copy2(path, bak)
+        conn.execute("ALTER TABLE erhe_rounds ADD COLUMN mode TEXT")
+        # 舊紀錄沒有模式欄:押 1 顆的就是單顆下法,其餘歸多顆
+        conn.execute(
+            f"UPDATE erhe_rounds SET mode = CASE WHEN numbers = 1 THEN '{SINGLE}' "
+            f"ELSE '{MULTI}' END WHERE mode IS NULL"
+        )
+        cols.append("mode")
     missing = [c for c in _V2_COLUMNS if c not in cols]
     legacy = conn.execute(
         "SELECT COUNT(*) FROM erhe_rounds WHERE account IS NULL" if not missing else
@@ -172,9 +191,56 @@ def _recompute(conn: sqlite3.Connection, account: str) -> None:
         conn.execute("UPDATE erhe_rounds SET cumulative=? WHERE id=?", (running, rid))
 
 
+# ── 模式過濾 / 備份 ──────────────────────────────────────
+def _mode_clause(mode: str | None) -> tuple[str, tuple]:
+    """回傳 (附加的 SQL 條件, 參數);mode 傳 None 代表單顆多顆都要。"""
+    if mode is None:
+        return "", ()
+    if mode not in MODES:
+        raise ValueError(f"未知的下注模式:{mode}")
+    return " AND mode = ?", (mode,)
+
+
+BACKUP_KEEP = 30          # 自動備份保留幾份(超過就砍最舊的)
+
+
+def backup(tag: str = "manual") -> Path | None:
+    """把資料庫另存一份到 data/backups/,回傳備份路徑(沒有資料庫則回 None)。
+
+    刪除類操作前一定會呼叫它 —— 誤刪時可以直接把檔案複製回去,
+    不必再從磁碟殘骸雕紀錄。
+    """
+    path = _db_path()
+    if not path.exists():
+        return None
+    out_dir = path.parent / "backups"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    stamp = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
+    dest = out_dir / f"erhe_state.{stamp}.{tag}.db"
+    shutil.copy2(path, dest)
+    olds = sorted(out_dir.glob("erhe_state.*.db"))
+    for stale in olds[:-BACKUP_KEEP]:
+        stale.unlink(missing_ok=True)
+    return dest
+
+
+def list_backups() -> list[dict]:
+    """現有的自動備份(新到舊):路徑、時間戳、標記、大小。"""
+    out_dir = _db_path().parent / "backups"
+    if not out_dir.exists():
+        return []
+    out = []
+    for p in sorted(out_dir.glob("erhe_state.*.db"), reverse=True):
+        parts = p.name.split(".")
+        out.append({"path": p, "stamp": parts[1] if len(parts) > 2 else "",
+                    "tag": parts[2] if len(parts) > 3 else "", "size": p.stat().st_size})
+    return out
+
+
 # ── 寫入 / 讀取 ──────────────────────────────────────────
 def add_round(account: str, game: str, draw_date: str, numbers: int, cars: int,
-              hits: int | None, cost: float, payout_rate: float) -> int:
+              hits: int | None, cost: float, payout_rate: float,
+              mode: str = MULTI) -> int:
     """新增一筆下注流水,回傳該筆 id。
 
     account   帳號(整個帳號共用一個損益池)
@@ -184,10 +250,13 @@ def add_round(account: str, game: str, draw_date: str, numbers: int, cars: int,
     hits      重幾顆;傳 None 代表「還沒開獎 / 待回填」
     cost        本局成本
     payout_rate 下注當時的「每車中獎可得」;回收 = 中幾顆 × 車數 × payout_rate
+    mode        single(單顆)/ multi(多顆);兩者共用損益池,但紀錄與重置分開
 
     待回填的紀錄一樣把成本計入累積損益(錢已經花出去了),
     等回填中獎顆數時再依當初的 payout_rate 把回收加回來。
     """
+    if mode not in MODES:
+        raise ValueError(f"未知的下注模式:{mode}")
     pending = hits is None
     hits_val = PENDING if pending else int(hits)
     payout = 0.0 if pending else int(hits) * int(cars) * float(payout_rate)
@@ -196,9 +265,10 @@ def add_round(account: str, game: str, draw_date: str, numbers: int, cars: int,
         cur = c.execute(
             "INSERT INTO erhe_rounds "
             "(game_key, account, game, draw_date, numbers, cars, hits, cost, payout, "
-            " payout_rate, net, cumulative) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)",
+            " payout_rate, net, cumulative, mode) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)",
             (account, account, game, str(draw_date), int(numbers), int(cars), hits_val,
-             float(cost), payout, float(payout_rate), net),
+             float(cost), payout, float(payout_rate), net, mode),
         )
         rid = int(cur.lastrowid)
         _recompute(c, account)
@@ -253,28 +323,34 @@ def delete_round(round_id: int) -> bool:
 
 
 _ROW_COLS = ["id", "ts", "draw_date", "game", "numbers", "cars", "hits",
-             "cost", "payout", "payout_rate", "net", "cumulative"]
+             "cost", "payout", "payout_rate", "net", "cumulative", "mode"]
 
 
-def load_rounds(account: str) -> list[dict]:
-    """該帳號的完整下注流水(依下注日期、寫入順序);pending 欄標示是否待回填。"""
+def load_rounds(account: str, mode: str | None = None) -> list[dict]:
+    """該帳號的下注流水(依下注日期、寫入順序);pending 欄標示是否待回填。
+
+    mode 傳 single / multi 只取該模式的紀錄,None(預設)則兩種都取。
+    注意累積損益(cumulative)一律是**整個帳號**的共用池,不會因為只取一種模式而重算。
+    """
+    where, params = _mode_clause(mode)
     with _conn() as c:
         rows = c.execute(
             f"SELECT {', '.join(_ROW_COLS)} FROM erhe_rounds "
-            "WHERE account = ? ORDER BY draw_date, id",
-            (account,),
+            f"WHERE account = ?{where} ORDER BY draw_date, id",
+            (account, *params),
         ).fetchall()
     out = []
     for r in rows:
         d = dict(zip(_ROW_COLS, r))
         d["pending"] = int(d["hits"] or 0) < 0
+        d["mode"] = d["mode"] or MULTI
         out.append(d)
     return out
 
 
-def pending_rounds(account: str) -> list[dict]:
+def pending_rounds(account: str, mode: str | None = None) -> list[dict]:
     """尚未回填中獎顆數的紀錄(待對獎清單)。"""
-    return [r for r in load_rounds(account) if r["pending"]]
+    return [r for r in load_rounds(account, mode) if r["pending"]]
 
 
 def current_cumulative(account: str) -> float:
@@ -288,16 +364,20 @@ def current_cumulative(account: str) -> float:
     return float(row[0]) if row else 0.0
 
 
-def totals(account: str) -> dict:
-    """該帳號的合計:總成本、總回收、總損益、局數、中獎局數。"""
+def totals(account: str, mode: str | None = None) -> dict:
+    """該帳號的合計:總成本、總回收、總損益、局數、中獎局數。
+
+    mode 傳 single / multi 則只算該模式(用來顯示各自的小計)。
+    """
+    where, params = _mode_clause(mode)
     with _conn() as c:
         row = c.execute(
             "SELECT COALESCE(SUM(cost),0), COALESCE(SUM(payout),0), "
             "       COALESCE(SUM(net),0), COUNT(*), "
             "       COALESCE(SUM(CASE WHEN hits > 0 THEN 1 ELSE 0 END),0), "
             "       COALESCE(SUM(CASE WHEN hits < 0 THEN 1 ELSE 0 END),0) "
-            "FROM erhe_rounds WHERE account = ?",
-            (account,),
+            f"FROM erhe_rounds WHERE account = ?{where}",
+            (account, *params),
         ).fetchone()
     cost, payout, net, rounds, wins, pending = row
     settled = int(rounds) - int(pending)   # 勝率只看已對獎的局
@@ -310,16 +390,17 @@ def totals(account: str) -> dict:
     }
 
 
-def totals_by_game(account: str) -> dict[str, dict]:
+def totals_by_game(account: str, mode: str | None = None) -> dict[str, dict]:
     """依遊戲拆開的合計(給「哪一款賺賠最多」用)。"""
+    where, params = _mode_clause(mode)
     with _conn() as c:
         rows = c.execute(
             "SELECT game, COALESCE(SUM(cost),0), COALESCE(SUM(payout),0), "
             "       COALESCE(SUM(net),0), COUNT(*), "
             "       COALESCE(SUM(CASE WHEN hits > 0 THEN 1 ELSE 0 END),0), "
             "       COALESCE(SUM(CASE WHEN hits < 0 THEN 1 ELSE 0 END),0) "
-            "FROM erhe_rounds WHERE account = ? GROUP BY game",
-            (account,),
+            f"FROM erhe_rounds WHERE account = ?{where} GROUP BY game",
+            (account, *params),
         ).fetchall()
     return {
         r[0]: {"cost": float(r[1]), "payout": float(r[2]), "net": float(r[3]),
@@ -328,14 +409,16 @@ def totals_by_game(account: str) -> dict[str, dict]:
     }
 
 
-def totals_by_date(account: str) -> list[dict]:
+def totals_by_date(account: str, mode: str | None = None) -> list[dict]:
     """依下注日期彙總的流水(同一天三款一起看)。"""
+    where, params = _mode_clause(mode)
     with _conn() as c:
         rows = c.execute(
             "SELECT draw_date, COUNT(*), COALESCE(SUM(cost),0), "
             "       COALESCE(SUM(payout),0), COALESCE(SUM(net),0), MAX(cumulative) "
-            "FROM erhe_rounds WHERE account = ? GROUP BY draw_date ORDER BY draw_date",
-            (account,),
+            f"FROM erhe_rounds WHERE account = ?{where} "
+            "GROUP BY draw_date ORDER BY draw_date",
+            (account, *params),
         ).fetchall()
     out = []
     for d, n, cost, payout, net, _cum in rows:
@@ -349,12 +432,16 @@ def totals_by_date(account: str) -> list[dict]:
     return out
 
 
-def undo_last_round(account: str) -> bool:
-    """撤銷「最後輸入」的那一筆(不是最後日期的那筆);無紀錄回 False。"""
+def undo_last_round(account: str, mode: str | None = None) -> bool:
+    """撤銷「最後輸入」的那一筆(不是最後日期的那筆);無紀錄回 False。
+
+    mode 傳 single / multi 則只撤銷該模式最後輸入的那筆。
+    """
+    where, params = _mode_clause(mode)
     with _conn() as c:
         row = c.execute(
-            "SELECT id FROM erhe_rounds WHERE account = ? ORDER BY id DESC LIMIT 1",
-            (account,),
+            f"SELECT id FROM erhe_rounds WHERE account = ?{where} ORDER BY id DESC LIMIT 1",
+            (account, *params),
         ).fetchone()
         if row is None:
             return False
@@ -363,10 +450,20 @@ def undo_last_round(account: str) -> bool:
     return True
 
 
-def reset(account: str) -> None:
-    """清除該帳號的所有下注流水。"""
+def reset(account: str, mode: str | None = None) -> int:
+    """清除該帳號的下注流水,回傳刪掉幾筆。
+
+    mode 傳 single / multi 只清該模式,None 則清該帳號全部。
+    **刪除前一定先整份備份**(data/backups/),誤刪時可直接還原檔案。
+    """
+    where, params = _mode_clause(mode)
+    backup(f"reset-{mode or 'all'}-{account or 'anon'}")
     with _conn() as c:
-        c.execute("DELETE FROM erhe_rounds WHERE account = ?", (account,))
+        cur = c.execute(
+            f"DELETE FROM erhe_rounds WHERE account = ?{where}", (account, *params))
+        n = cur.rowcount
+        _recompute(c, account)      # 只清一種模式時,剩下那種的累積要重排
+    return int(n)
 
 
 def latest_cumulatives() -> list[dict]:

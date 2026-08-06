@@ -925,18 +925,21 @@ def _plans_of(cfgs: dict, keys: list[str]) -> dict:
 
 
 def _record(user: str, cfgs: dict, picks: list[str], cars: dict,
-            draw_date, hits: dict | None = None, prefix: str = "multi"):
-    """把選定的幾款一次記進流水;hits 沒填的款視為待開獎。記完把車數欄位還原成自動。"""
+            draw_date, hits: dict | None = None, mode: str = storage.MULTI):
+    """把選定的幾款一次記進流水;hits 沒填的款視為待開獎。記完把車數欄位還原成自動。
+
+    mode 同時當作 session key 前綴與寫進資料庫的下注模式(single / multi)。
+    """
     hits = hits or {}
     for k in picks:
         cfg = cfgs[k]
         cost = cfg["n_numbers"] * int(cars[k]) * cfg["cost_per_car"]
         storage.add_round(
             user, k, draw_date.isoformat(), cfg["n_numbers"], int(cars[k]),
-            hits.get(k), cost, cfg["win_payout"],
+            hits.get(k), cost, cfg["win_payout"], mode=mode,
         )
         _kick_autoupdate(games.get(k))
-    _reset_car_inputs(prefix)
+    _reset_car_inputs(mode)
     st.rerun()
 
 
@@ -1036,14 +1039,14 @@ def _single_intro(cfgs: dict):
         )
 
 
-def _render_today(user: str, cfgs: dict, cum: float, mode: str = "multi"):
+def _render_today(user: str, cfgs: dict, cum: float, mode: str = storage.MULTI):
     """今天要下哪幾款的輸入 + 試算。
 
     mode="multi"  每款可自訂押幾顆(現行玩法)。
     mode="single" 每款固定押 1 顆,只能改車數 —— 成本係數 k 小很多,
                   連敗時虧損成長慢,但中獎頻率也低。
     """
-    single = mode == "single"
+    single = mode == storage.SINGLE
     if single:
         # 顆數鎖 1:只覆寫這次試算用的值,不動「設定」頁存的多顆顆數
         cfgs = {k: {**v, "n_numbers": 1} for k, v in cfgs.items()}
@@ -1286,7 +1289,7 @@ def _render_today(user: str, cfgs: dict, cum: float, mode: str = "multi"):
                       else "(中獎顆數留空的就當作待開獎)"),
             key=f"{mode}_record", type="primary", width="stretch",
             disabled=bool(bad_hits)):
-        _record(user, cfgs, picks, cars, draw_date, hits, prefix=mode)
+        _record(user, cfgs, picks, cars, draw_date, hits, mode=mode)
     if not single and cols[1].button(
             "查看中更多顆的金額", key=f"{mode}_more", width="stretch",
             help="依你填的車數,列出中 1 顆、2 顆…各拿多少、累積會變多少。"):
@@ -1317,7 +1320,8 @@ def _render_pending(rows: list[dict]):
         g = games.get(r["game"])
         c1, c2, c3 = st.columns([5, 2, 1.4])
         c1.markdown(
-            f"**{r['draw_date']} {g.label}**  \n"
+            f"**{r['draw_date']} {g.label}**"
+            f"〔{storage.MODE_NAMES.get(r['mode'], '')}〕  \n"
             f"{int(r['cars'])} 車 × 押 {int(r['numbers'])} 顆,成本 {r['cost']:,.0f},"
             f"每中 1 顆 +{int(r['cars']) * float(r['payout_rate'] or 0):,.0f}"
         )
@@ -1348,42 +1352,75 @@ def _detail_df(rows: list[dict]) -> pd.DataFrame:
 
 
 def _render_records(user: str, rows: list[dict]):
+    """三、紀錄:單顆與多顆各自一區,撤銷與清除也各自獨立。"""
     st.subheader("三、紀錄")
     if not rows:
-        st.info("還沒有任何紀錄。用上面的「照這樣記帳」送出第一筆。")
+        st.info("還沒有任何紀錄。用上面的「記帳」送出第一筆。")
         return
 
-    recent = rows[-RECENT_N:]
-    st.caption(f"最近 {len(recent)} 筆(共 {len(rows)} 筆)")
+    by_mode = {m: [r for r in rows if r["mode"] == m] for m in storage.MODES}
+    tabs = st.tabs([f"{storage.MODE_NAMES[m]}下注({len(by_mode[m])} 筆)"
+                    for m in storage.MODES])
+    for tab, m in zip(tabs, storage.MODES):
+        with tab:
+            _render_mode_records(user, m, by_mode[m])
+
+
+def _render_mode_records(user: str, mode: str, rows: list[dict]):
+    """單一下注模式的紀錄區:小計 → 最近幾筆 → 撤銷/清除 → 完整流水。"""
+    name = storage.MODE_NAMES[mode]
+    if not rows:
+        st.info(f"還沒有{name}下注的紀錄。")
+        return
+
+    t = storage.totals(user, mode)
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric(f"{name}損益", f"{t['net']:+,.0f}")
+    c2.metric("投入", f"{t['cost']:,.0f}")
+    c3.metric("回收", f"{t['payout']:,.0f}")
+    c4.metric("局數", f"{t['rounds']}",
+              delta=f"中獎 {t['wins']}" if t["settled"] else "尚未對獎",
+              delta_color="off")
+    st.caption(
+        f"最近 {min(RECENT_N, len(rows))} 筆(共 {len(rows)} 筆)。"
+        "「累積」欄是整個帳號的共用損益池,所以會把另一種下法的損益也算進去。")
     st.dataframe(_detail_df(rows).tail(RECENT_N), width="stretch", hide_index=True)
 
     b1, b2 = st.columns(2)
-    if b1.button("撤銷剛剛記的那筆", width="stretch",
-                 help="刪除最後寫入的一筆,累積損益自動重算。"):
-        storage.undo_last_round(user)
+    if b1.button(f"撤銷剛剛記的那筆({name})", key=f"undo_{mode}", width="stretch",
+                 help=f"刪除{name}最後寫入的一筆,累積損益自動重算。"):
+        storage.undo_last_round(user, mode)
         st.rerun()
-    if b2.button("清除全部紀錄", width="stretch"):
-        st.session_state["confirm_reset"] = True
-    if st.session_state.get("confirm_reset"):
-        st.warning("確定清除這個帳號**全部三款**的紀錄?無法復原。")
+    if b2.button(f"清除{name}的全部紀錄", key=f"reset_{mode}", width="stretch"):
+        st.session_state[f"confirm_reset_{mode}"] = True
+    if st.session_state.get(f"confirm_reset_{mode}"):
+        st.warning(
+            f"確定清除這個帳號**{name}下注**的全部紀錄({len(rows)} 筆、"
+            f"三款合計)?另一種下法的紀錄不受影響。\n\n"
+            "清除前會自動備份整個資料庫,誤刪可還原。")
         r1, r2 = st.columns(2)
-        if r1.button("確定清除", type="primary"):
-            storage.reset(user)
-            st.session_state.pop("confirm_reset", None)
+        if r1.button("確定清除", key=f"confirm_{mode}", type="primary"):
+            n = storage.reset(user, mode)
+            st.session_state.pop(f"confirm_reset_{mode}", None)
+            st.session_state["last_reset_note"] = f"已清除{name} {n} 筆(已自動備份)"
             st.rerun()
-        if r2.button("取消"):
-            st.session_state.pop("confirm_reset", None)
+        if r2.button("取消", key=f"cancel_{mode}"):
+            st.session_state.pop(f"confirm_reset_{mode}", None)
             st.rerun()
+    note = st.session_state.pop("last_reset_note", None)
+    if note:
+        st.success(note)
 
-    with st.expander("完整流水(每日彙總 / 逐筆明細 / 分款統計 / 走勢圖)"):
-        _render_full_ledger(user, rows)
+    with st.expander(f"{name}的完整流水(每日彙總 / 逐筆明細 / 分款統計 / 走勢圖)"):
+        _render_full_ledger(user, rows, mode)
 
 
-def _render_full_ledger(user: str, rows: list[dict]):
+def _render_full_ledger(user: str, rows: list[dict], mode: str | None = None):
+    suffix = f"_{mode}" if mode else ""
     tab_day, tab_all, tab_game = st.tabs(["每日彙總", "逐筆明細", "分款統計"])
 
     with tab_day:
-        daily = storage.totals_by_date(user)
+        daily = storage.totals_by_date(user, mode)
         st.dataframe(pd.DataFrame([{
             "日期": d["draw_date"], "筆數": d["rounds"],
             "當日成本": f"{d['cost']:,.0f}", "當日回收": f"{d['payout']:,.0f}",
@@ -1393,41 +1430,42 @@ def _render_full_ledger(user: str, rows: list[dict]):
             fig = px.line(
                 pd.DataFrame({"日期": [d["draw_date"] for d in daily],
                               "累積損益": [d["cumulative"] for d in daily]}),
-                x="日期", y="累積損益", markers=True, title="累積損益走勢(三款合併)")
+                x="日期", y="累積損益", markers=True,
+                title=f"累積損益走勢({storage.MODE_NAMES.get(mode, '全部')}、三款合併)")
             fig.add_hline(y=0, line_dash="dash", line_color="#888")
-            st.plotly_chart(fig, theme=None, width="stretch")
+            st.plotly_chart(fig, theme=None, width="stretch", key=f"cum_chart{suffix}")
 
     with tab_all:
         st.dataframe(_detail_df(rows), width="stretch", hide_index=True)
         st.download_button(
-            "下載流水 CSV",
+            "下載流水 CSV", key=f"dl_ledger{suffix}",
             data=pd.DataFrame(rows).to_csv(index=False).encode("utf-8-sig"),
-            file_name="erhe_ledger.csv", mime="text/csv")
+            file_name=f"erhe_ledger{suffix}.csv", mime="text/csv")
         st.markdown("**修改 / 刪除指定的一筆**")
         opts = {
             f"#{i + 1} {r['draw_date']} {games.get(r['game']).name} "
             f"{int(r['cars'])}車 損益{r['net']:+,.0f}": r
             for i, r in enumerate(rows)
         }
-        choice = st.selectbox("選一筆", list(opts), key="edit_pick")
+        choice = st.selectbox("選一筆", list(opts), key=f"edit_pick{suffix}")
         row = opts[choice]
         e1, e2, e3 = st.columns([1.4, 1, 1])
         new_date = e1.date_input("改日期", value=dt.date.fromisoformat(row["draw_date"]),
-                                 format="YYYY-MM-DD", key="edit_date")
+                                 format="YYYY-MM-DD", key=f"edit_date{suffix}")
         new_hits = e2.number_input("改中獎顆數", min_value=0, max_value=int(row["numbers"]),
                                    value=0 if row["pending"] else int(row["hits"]),
-                                   key="edit_hits")
+                                   key=f"edit_hits{suffix}")
         e3.markdown("&nbsp;", unsafe_allow_html=True)
-        if e3.button("套用", key="edit_apply", width="stretch"):
+        if e3.button("套用", key=f"edit_apply{suffix}", width="stretch"):
             storage.update_round_result(int(row["id"]), int(new_hits))
             storage.set_round_date(int(row["id"]), new_date.isoformat())
             st.rerun()
-        if st.button("刪除這一筆", key="edit_del"):
+        if st.button("刪除這一筆", key=f"edit_del{suffix}"):
             storage.delete_round(int(row["id"]))
             st.rerun()
 
     with tab_game:
-        by_game = storage.totals_by_game(user)
+        by_game = storage.totals_by_game(user, mode)
         gm_rows = []
         shown = _history_games(by_game)
         for g in shown:
@@ -1446,9 +1484,10 @@ def _render_full_ledger(user: str, rows: list[dict]):
             fig = px.bar(
                 pd.DataFrame({"遊戲": [r["遊戲"] for r in gm_rows],
                               "損益": [by_game[g.key]["net"] for g in shown]}),
-                x="遊戲", y="損益", title="各款累積損益", color="損益",
+                x="遊戲", y="損益",
+                title=f"各款累積損益({storage.MODE_NAMES.get(mode, '全部')})", color="損益",
                 color_continuous_scale=["#e63946", "#457b9d"])
-            st.plotly_chart(fig, theme=None, width="stretch")
+            st.plotly_chart(fig, theme=None, width="stretch", key=f"game_chart{suffix}")
 
 
 # ── 策略頁主體 ───────────────────────────────────────────
@@ -1457,8 +1496,8 @@ def page_strategy(user: str):
     _note(
         "- 所有遊戲**共用同一個損益池**:不管下哪一款、用哪種下法,"
         "盈虧都累加在一起。\n"
-        "- **多顆 / 單顆是兩種下法**,共用同一個損益池與紀錄:多顆中得勤但回本慢,"
-        "單顆中得少但一中就整碗端回去。同一天請只用其中一個 tab 記帳。\n"
+        "- **多顆 / 單顆是兩種下法**:多顆中得勤但回本慢,單顆中得少但一中就整碗端回去。"
+        "兩者**共用損益池**,但**紀錄與清除各自獨立** —— 清單顆不會動到多顆。\n"
         "- 建議車數依「合併累積虧損 + 今天要花的總成本」計算 —— "
         "所以多下一款,大家的車數都會變多。\n"
         "- 中獎顆數可以先填,也可以開獎後再回填。",
@@ -1473,10 +1512,10 @@ def page_strategy(user: str):
 
     tab_multi, tab_single = st.tabs(["多顆下注", "單顆下注"])
     with tab_multi:
-        _render_today(user, cfgs, cum, mode="multi")
+        _render_today(user, cfgs, cum, mode=storage.MULTI)
     with tab_single:
         _single_intro(cfgs)
-        _render_today(user, cfgs, cum, mode="single")
+        _render_today(user, cfgs, cum, mode=storage.SINGLE)
     st.divider()
     _render_pending(rows)
     _render_records(user, rows)
