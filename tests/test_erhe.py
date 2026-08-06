@@ -120,3 +120,31 @@ def test_martingale_explodes_and_busts():
     assert t.steps[-1].cumulative_cost > t.steps[0].cumulative_cost
     # 打平需中車數隨累積成本上升
     assert t.steps[-1].cars_to_break_even > t.steps[0].cars_to_break_even
+
+
+# ── 頁尾「回本要下幾車」用到的比較(單顆 vs 多顆)──────────
+def test_single_needs_fewer_cars_than_multi():
+    """同一個坑,單顆需要的車數與成本都比多顆少 —— 這是頁尾那張表的重點。"""
+    loss = -1_207_840.0
+    one = erhe.next_cars_for_recovery(loss, 1, 2755.0, 21200.0, base_cars=3)
+    five = erhe.next_cars_for_recovery(loss, 5, 2755.0, 21200.0, base_cars=3)
+    assert one["next_cars"] == 66            # ⌈1207840 / (21200 − 2755)⌉
+    assert one["next_cars"] < five["next_cars"]
+    assert one["next_cost"] < five["next_cost"]
+    # 照建議車數下,中 1 顆之後必須真的翻正
+    assert loss + one["next_cars"] * 21200.0 - one["next_cost"] >= 0
+
+
+def test_recovery_marks_no_solution_when_payout_too_thin():
+    """中獎可得 ≤ 押幾顆 × 每車成本 時,中 1 顆永遠追不回來。"""
+    rec = erhe.next_cars_for_recovery(-100_000, 8, 2755.0, 21200.0, base_cars=3)
+    assert rec["can_recover_1hit"] is False
+    assert rec["next_cars"] == float("inf") and rec["next_cost"] == float("inf")
+
+
+def test_recovery_cost_ranks_games_by_cheapest():
+    """六合彩每車淨利較高,追同一個坑比 539 便宜 —— 頁尾會據此推薦最省的一款。"""
+    loss = -1_207_840.0
+    a = erhe.next_cars_for_recovery(loss, 1, 2755.0, 21200.0)["next_cost"]
+    b = erhe.next_cars_for_recovery(loss, 1, 3528.0, 28500.0)["next_cost"]
+    assert b < a

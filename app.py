@@ -1490,6 +1490,75 @@ def _render_full_ledger(user: str, rows: list[dict], mode: str | None = None):
             st.plotly_chart(fig, theme=None, width="stretch", key=f"game_chart{suffix}")
 
 
+# ── 四、依目前總損益的回本試算 ────────────────────────────
+def _render_recovery_summary(cfgs: dict, cum: float):
+    """頁尾:目前總損益,以及「只下這一款」要幾車才能把它一次打平。
+
+    跟頁首「一、今天下哪幾款」的差別:那裡算的是**今天實際要下的組合**
+    (多款一起下時成本會互相吃掉);這裡是單押一款的乾淨基準,
+    用來快速看「現在這個坑,哪一款、哪種下法最容易爬出來」。
+    """
+    st.subheader("四、回本要下幾車(依目前總損益)")
+    loss = max(0.0, -cum)
+
+    if cum >= 0:
+        st.metric("目前總損益", f"{cum:+,.0f}", delta="獲利中")
+        st.success("目前沒有虧損要追,車數用各款的起始值就好。")
+        return
+
+    rows = []
+    for g in GAME_LIST:
+        cfg = cfgs[g.key]
+        c, w = cfg["cost_per_car"], cfg["win_payout"]
+        n_multi = int(cfg["n_numbers"])
+        # 多顆的顆數本來就設成 1 時,兩種下法完全一樣,不重複列一次
+        plans = [(storage.SINGLE, 1)]
+        if n_multi != 1:
+            plans.append((storage.MULTI, n_multi))
+        for mode, n in plans:
+            res = erhe.next_cars_for_recovery(cum, n, c, w, base_cars=int(cfg["base"]))
+            if not res["can_recover_1hit"]:
+                rows.append({
+                    "遊戲": g.label, "下法": storage.MODE_NAMES[mode], "押幾顆": n,
+                    "回本車數": "無解", "本局成本": "—", "中1顆可得": "—",
+                    "中後累積": "中 1 顆也回不了本",
+                })
+                continue
+            cars = int(res["next_cars"])
+            cost = res["next_cost"]
+            gain = cars * w
+            rows.append({
+                "遊戲": g.label, "下法": storage.MODE_NAMES[mode], "押幾顆": n,
+                "回本車數": f"{cars:,} 車", "本局成本": f"{cost:,.0f}",
+                "中1顆可得": f"{gain:,.0f}", "中後累積": f"{cum + gain - cost:+,.0f}",
+            })
+    ok = [r for r in rows if r["回本車數"] != "無解"]
+    cheapest = (min(ok, key=lambda r: float(r["本局成本"].replace(",", "")))
+                if ok else None)
+
+    # metric 自己一列(手機上會被強制並排),表格另起一行才有完整寬度
+    m1, m2, m3 = st.columns(3)
+    m1.metric("目前總損益", f"{cum:+,.0f}", delta="虧損中", delta_color="inverse")
+    if cheapest:
+        m2.metric("最省的回本下法", f"{cheapest['遊戲']}·{cheapest['下法']}",
+                  delta=cheapest["回本車數"], delta_color="off")
+        m3.metric("那一注要花", cheapest["本局成本"],
+                  delta=f"中1顆得 {cheapest['中1顆可得']}", delta_color="off")
+    else:
+        m2.metric("最省的回本下法", "無解", delta="中 1 顆都追不回", delta_color="off")
+
+    st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
+    _note(
+        "- 這裡假設**只下這一款**。同一天下多款時,每一款的中獎都要先扣掉當天"
+        "全部的下注成本,所需車數會比表上的多 —— 那種情況請用頁首「一、今天下哪幾款」。\n"
+        "- 車數 = ⌈目前虧損 ÷ (中獎可得 − 押幾顆 × 每車成本)⌉,"
+        "也就是「中 1 顆的淨利要能覆蓋整個坑」。\n"
+        "- **單顆的車數永遠比多顆少**:押越多顆,每車要付的成本越高,"
+        "中 1 顆的淨利就越薄。但單顆中獎機率也低得多,這是代價不是免費午餐。\n"
+        "- 這只是算術,改變不了每局的負期望;追虧損會讓下注金額幾何成長。",
+        "這張表怎麼算的")
+
+
 # ── 策略頁主體 ───────────────────────────────────────────
 def page_strategy(user: str):
     st.header("二合買牌")
@@ -1519,6 +1588,8 @@ def page_strategy(user: str):
     st.divider()
     _render_pending(rows)
     _render_records(user, rows)
+    st.divider()
+    _render_recovery_summary(cfgs, cum)
 
     if any(autoupdate.status(g.key).get("running") for g in GAME_LIST):
         st.caption("開獎資料背景補抓中…(關閉網頁也會繼續)")
