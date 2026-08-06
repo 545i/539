@@ -1311,6 +1311,7 @@ def _render_today(user: str, cfgs: dict, cum: float, mode: str = storage.MULTI):
 
 # ── 二、開獎後回填 ────────────────────────────────────────
 def _render_pending(rows: list[dict]):
+    """待對獎清單(呼叫端已經只傳該下法的紀錄進來)。"""
     pend = [r for r in rows if r["pending"]]
     if not pend:
         return
@@ -1320,8 +1321,7 @@ def _render_pending(rows: list[dict]):
         g = games.get(r["game"])
         c1, c2, c3 = st.columns([5, 2, 1.4])
         c1.markdown(
-            f"**{r['draw_date']} {g.label}**"
-            f"〔{storage.MODE_NAMES.get(r['mode'], '')}〕  \n"
+            f"**{r['draw_date']} {g.label}**  \n"
             f"{int(r['cars'])} 車 × 押 {int(r['numbers'])} 顆,成本 {r['cost']:,.0f},"
             f"每中 1 顆 +{int(r['cars']) * float(r['payout_rate'] or 0):,.0f}"
         )
@@ -1351,26 +1351,12 @@ def _detail_df(rows: list[dict]) -> pd.DataFrame:
     } for i, r in enumerate(rows)])
 
 
-def _render_records(user: str, rows: list[dict]):
-    """三、紀錄:單顆與多顆各自一區,撤銷與清除也各自獨立。"""
-    st.subheader("三、紀錄")
-    if not rows:
-        st.info("還沒有任何紀錄。用上面的「記帳」送出第一筆。")
-        return
-
-    by_mode = {m: [r for r in rows if r["mode"] == m] for m in storage.MODES}
-    tabs = st.tabs([f"{storage.MODE_NAMES[m]}下注({len(by_mode[m])} 筆)"
-                    for m in storage.MODES])
-    for tab, m in zip(tabs, storage.MODES):
-        with tab:
-            _render_mode_records(user, m, by_mode[m])
-
-
 def _render_mode_records(user: str, mode: str, rows: list[dict]):
-    """單一下注模式的紀錄區:小計 → 最近幾筆 → 撤銷/清除 → 完整流水。"""
+    """三、紀錄:只顯示目前這個下法的紀錄,撤銷與清除也只作用在它身上。"""
     name = storage.MODE_NAMES[mode]
+    st.subheader(f"三、紀錄({name})")
     if not rows:
-        st.info(f"還沒有{name}下注的紀錄。")
+        st.info(f"還沒有{name}下注的紀錄。用上面的「記帳」送出第一筆。")
         return
 
     t = storage.totals(user, mode)
@@ -1565,8 +1551,11 @@ def page_strategy(user: str):
     _note(
         "- 所有遊戲**共用同一個損益池**:不管下哪一款、用哪種下法,"
         "盈虧都累加在一起。\n"
-        "- **多顆 / 單顆是兩種下法**:多顆中得勤但回本慢,單顆中得少但一中就整碗端回去。"
-        "兩者**共用損益池**,但**紀錄與清除各自獨立** —— 清單顆不會動到多顆。\n"
+        "- **多顆 / 單顆是兩種下法**,用上面的分頁切換 —— 下注、回填、紀錄、清除"
+        "全部跟著你選的那一種走,互不干擾。多顆中得勤但回本慢,"
+        "單顆中得少但一中就整碗端回去。\n"
+        "- 兩者**共用損益池**(頁首戰績與頁尾回本試算都是合計),"
+        "但**紀錄與清除各自獨立** —— 清單顆不會動到多顆。\n"
         "- 建議車數依「合併累積虧損 + 今天要花的總成本」計算 —— "
         "所以多下一款,大家的車數都會變多。\n"
         "- 中獎顆數可以先填,也可以開獎後再回填。",
@@ -1578,16 +1567,21 @@ def page_strategy(user: str):
 
     rows = storage.load_rounds(user)
     cum = storage.current_cumulative(user)
+    counts = {m: sum(1 for r in rows if r["mode"] == m) for m in storage.MODES}
 
-    tab_multi, tab_single = st.tabs(["多顆下注", "單顆下注"])
-    with tab_multi:
-        _render_today(user, cfgs, cum, mode=storage.MULTI)
-    with tab_single:
-        _single_intro(cfgs)
-        _render_today(user, cfgs, cum, mode=storage.SINGLE)
-    st.divider()
-    _render_pending(rows)
-    _render_records(user, rows)
+    # 一層 tab 就好:選了下法,下注、回填、紀錄全部跟著它走
+    tabs = st.tabs([f"{storage.MODE_NAMES[m]}下注({counts[m]} 筆)"
+                    for m in storage.MODES])
+    for tab, mode in zip(tabs, storage.MODES):
+        with tab:
+            if mode == storage.SINGLE:
+                _single_intro(cfgs)
+            _render_today(user, cfgs, cum, mode=mode)
+            st.divider()
+            mode_rows = [r for r in rows if r["mode"] == mode]
+            _render_pending(mode_rows)
+            _render_mode_records(user, mode, mode_rows)
+
     st.divider()
     _render_recovery_summary(cfgs, cum)
 
