@@ -17,7 +17,8 @@ import plotly.express as px
 import streamlit as st
 import streamlit.components.v1 as components
 
-from core import auth, backtest, constants, erhe, excel_report, games, kelly, picker
+from core import (auth, backtest, binary_wide, constants, erhe, excel_report,
+                  games, kelly, picker)
 from core import autoupdate, scraper, scraper_fantasy5, scraper_marksix, stats, storage
 from core.loader import DataError, load_history, merge, save
 from ui import docs
@@ -671,13 +672,29 @@ def _fetch_and_merge(game, df, path, fetch, err_types, what: str):
         st.error(f"{game.name} 更新失敗:{e}")
 
 
-# ── 6. Excel 匯出 ─────────────────────────────────────────
+# ── 6. 匯出 ───────────────────────────────────────────────
+_FMT_REPORT = "一般報表(Excel)"
+_FMT_WIDE = "二元虛擬變數寬表(CSV)"
+
+
 def page_export(fdf: pd.DataFrame, game):
-    st.header(f"Excel 匯出 — {game.name}")
+    st.header(f"匯出 — {game.name}")
     if fdf.empty:
         st.warning("目前範圍沒有資料,無法匯出。")
         return
 
+    fmt = st.radio("匯出格式", [_FMT_REPORT, _FMT_WIDE], horizontal=True,
+                   key="export_fmt")
+    st.caption(f"匯出範圍跟著側邊欄的日期選擇走,目前是 {len(fdf)} 期"
+               f"({_range_label(fdf)})。要換遊戲請用左側的遊戲選單。")
+
+    if fmt == _FMT_WIDE:
+        _export_binary_wide(fdf, game)
+    else:
+        _export_excel_report(fdf, game)
+
+
+def _export_excel_report(fdf: pd.DataFrame, game):
     st.markdown(
         """
         匯出的 Excel 報表包含以下工作表:
@@ -706,6 +723,32 @@ def page_export(fdf: pd.DataFrame, game):
         data=data,
         file_name=f"{game.key}_report.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
+def _export_binary_wide(fdf: pd.DataFrame, game):
+    """統計軟體用的寬表:每期一列,開出的號碼記 1、沒開出記 0。"""
+    wide = binary_wide.to_binary_wide(fdf, game)
+    n_cols = game.num_max
+    st.markdown(
+        f"""
+        每一期是一筆觀察值(一列),欄位為:
+        - **期數**:依日期排序的流水序號(資料源沒有官方期別編號)
+        - **日期**:YYYY-MM-DD
+        - **Num_01 … Num_{n_cols:02d}**:當期開出該號碼記 1,沒開出記 0
+
+        {game.name} 是 **{n_cols} 選 {game.pick}**,所以有 {n_cols} 個號碼欄、
+        每列剛好 {game.pick} 個 1。編碼為 utf-8-sig,Excel 直接開不會亂碼。
+        """
+    )
+    st.caption(f"共 {len(wide)} 列 × {len(wide.columns)} 欄。下面是前 5 期的前幾欄:")
+    st.dataframe(wide.head(5).iloc[:, :10], width="stretch", hide_index=True)
+
+    st.download_button(
+        label="下載寬表 CSV",
+        data=binary_wide.to_csv_bytes(fdf, game),
+        file_name=f"{game.key}_binary_wide.csv",
+        mime="text/csv",
     )
 
 
