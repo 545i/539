@@ -1325,10 +1325,19 @@ def _render_today(user: str, cfgs: dict, cum: float, mode: str = storage.MULTI):
     )
 
     loss = max(0.0, -cum)
+    # 只有真的圈過號才多一欄「號碼」;純填數量的人看到的表跟以前一模一樣
+    def _row_nums(k: str) -> str:
+        got = nums_map.get(k) or []
+        return " ".join(f"{n:02d}" for n in got) if got else "—"
+
+    num_col = {"號碼": st.column_config.TextColumn(
+        "號碼", help="在下方號碼盤圈的號碼;沒圈號的款顯示「—」,一樣只記數量。")}
+
     # 輸入表:只放可以改的欄,手機不必左右滑。單顆模式連「押幾顆」都不放。
     if single:
         table = pd.DataFrame([{
             "遊戲": games.get(k).label,
+            **({"號碼": _row_nums(k)} if by_pick else {}),
             "下幾車": int(res["cars"][k]),
             "開獎結果": SINGLE_HITS_REV[hits_state.get(k)],
         } for k in picks], index=list(picks))
@@ -1339,11 +1348,13 @@ def _render_today(user: str, cfgs: dict, cum: float, mode: str = storage.MULTI):
             "開獎結果": st.column_config.SelectboxColumn(
                 "開獎結果", options=list(SINGLE_HITS), required=True,
                 help="押 1 顆只有中或沒中兩種結果;還沒開獎就留「待開獎」。"),
+            **(num_col if by_pick else {}),
         }
     else:
         hit_opts = _hit_options(cfgs, picks)
         table = pd.DataFrame([{
             "遊戲": games.get(k).label,
+            **({"號碼": _row_nums(k)} if by_pick else {}),
             "押幾顆": int(cfgs[k]["n_numbers"]),
             "下幾車": int(res["cars"][k]),
             "中獎顆數": (PENDING_LABEL if hits_state.get(k) is None
@@ -1362,11 +1373,14 @@ def _render_today(user: str, cfgs: dict, cum: float, mode: str = storage.MULTI):
                 "中獎顆數", options=hit_opts, required=True,
                 help="中了幾顆就選幾;還沒開獎就留「待開獎」,"
                      "之後在「二、開獎後回填」補。"),
+            **(num_col if by_pick else {}),
         }
 
     st.markdown("**填這裡**")
-    # 有圈號的款「押幾顆」是號碼盤算出來的,鎖住避免兩邊打架
-    locked = ["遊戲"] + (["押幾顆"] if (by_pick and not single) else [])
+    # 有圈號的款「押幾顆」是號碼盤算出來的,鎖住避免兩邊打架;
+    # 「號碼」欄只是顯示,要改請回號碼盤
+    locked = (["遊戲"] + (["押幾顆"] if (by_pick and not single) else [])
+              + (["號碼"] if by_pick else []))
     edited = st.data_editor(
         table, key=f"{mode}_today_editor", hide_index=True, width="stretch",
         disabled=locked, column_config=col_cfg,
@@ -1581,15 +1595,33 @@ def _render_pending(rows: list[dict]):
 
 
 # ── 三、紀錄 ─────────────────────────────────────────────
+def _marked_numbers(r: dict) -> str:
+    """把該筆圈的號碼排成字串,中的號碼用【】框起來。
+
+    需要比對當期開獎號碼才知道哪幾顆中 —— 查不到開獎資料(還沒開 / 沒抓到)
+    就只列號碼不加記號,不會擅自標成沒中。
+    """
+    picked = r.get("picked") or []
+    if not picked:
+        return "—"
+    matched: set[int] = set()
+    if not r["pending"]:
+        res = checker.check(load_df(r["game"]), r["draw_date"], picked)
+        if res["ok"]:
+            matched = set(res["matched"])
+    return " ".join(f"【{n:02d}】" if n in matched else f"{n:02d}" for n in picked)
+
+
 def _detail_df(rows: list[dict]) -> pd.DataFrame:
+    # 全部都是手動填數量的話就不放「號碼」欄,表格維持原樣(手機也不用左右滑)
+    any_picked = any(r.get("picked") for r in rows)
     return pd.DataFrame([{
         "#": i + 1,
         "日期": r["draw_date"],
         "遊戲": games.get(r["game"]).label,
         "車數": int(r["cars"]),
         "押幾顆": int(r["numbers"]),
-        "號碼": (" ".join(f"{n:02d}" for n in r["picked"])
-               if r.get("picked") else "—"),
+        **({"號碼(【】=中)": _marked_numbers(r)} if any_picked else {}),
         "重幾顆": "待開獎" if r["pending"] else f"{int(r['hits'])} 顆",
         "成本": f"{r['cost']:,.0f}",
         "回收": f"{r['payout']:,.0f}",

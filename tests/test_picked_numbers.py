@@ -228,6 +228,42 @@ def test_count_hits():
     assert checker.count_hits([], [1, 2]) == 0
 
 
+def test_marked_numbers_formats(monkeypatch, draw_df):
+    """紀錄表的號碼欄:中的框【】、待開獎不亂標、沒圈號顯示破折號。"""
+    import app
+
+    monkeypatch.setattr(app, "load_df", lambda _k: draw_df)
+
+    hit = {"game": "lotto539", "draw_date": "2026-08-05",
+           "picked": [5, 12, 23, 31], "pending": False}
+    assert app._marked_numbers(hit) == "05 12 【23】 【31】"
+
+    # 還沒開獎:只列號碼,不能擅自標成沒中
+    pending = {**hit, "draw_date": "2026-08-20", "picked": [3, 14], "pending": True}
+    assert app._marked_numbers(pending) == "03 14"
+
+    # 手動填數量的舊紀錄沒有號碼
+    assert app._marked_numbers({**hit, "picked": []}) == "—"
+
+
+def test_detail_df_hides_number_column_when_all_manual(monkeypatch, draw_df):
+    """全部都是手動填數量時,「號碼」欄不該出現(表格維持原樣)。"""
+    import app
+
+    monkeypatch.setattr(app, "load_df", lambda _k: draw_df)
+    base = {"draw_date": "2026-08-05", "game": "lotto539", "cars": 3, "numbers": 5,
+            "hits": 2, "cost": 1500, "payout": 0, "net": -1500, "cumulative": -1500,
+            "pending": False}
+
+    manual_only = app._detail_df([{**base, "picked": []}])
+    assert not any("號碼" in c for c in manual_only.columns)
+
+    with_picked = app._detail_df([{**base, "picked": [5, 23]}])
+    col = [c for c in with_picked.columns if "號碼" in c]
+    assert col, "有圈號時應該要有號碼欄"
+    assert with_picked.iloc[0][col[0]] == "05 【23】"
+
+
 def test_marksix_six_numbers():
     """六合彩開 6 顆,對獎要能吃 n1~n6。"""
     df = pd.DataFrame({
