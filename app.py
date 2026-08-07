@@ -20,8 +20,9 @@ import streamlit.components.v1 as components
 from core import (auth, backtest, binary_wide, constants, erhe, excel_report,
                   games, kelly, picker)
 from core import autoupdate, scraper, scraper_fantasy5, scraper_marksix, stats, storage
+from core import checker
 from core.loader import DataError, load_history, merge, save
-from ui import docs
+from ui import docs, numpad
 
 
 def _writable_base() -> Path:
@@ -1024,21 +1025,27 @@ def _plans_of(cfgs: dict, keys: list[str]) -> dict:
 
 
 def _record(user: str, cfgs: dict, picks: list[str], cars: dict,
-            draw_date, hits: dict | None = None, mode: str = storage.MULTI):
+            draw_date, hits: dict | None = None, mode: str = storage.MULTI,
+            nums: dict | None = None):
     """把選定的幾款一次記進流水;hits 沒填的款視為待開獎。記完把車數欄位還原成自動。
 
     mode 同時當作 session key 前綴與寫進資料庫的下注模式(single / multi)。
+    nums 是用選號盤下注時各款圈的號碼;填數量的話留空。
     """
     hits = hits or {}
+    nums = nums or {}
     for k in picks:
         cfg = cfgs[k]
         cost = cfg["n_numbers"] * int(cars[k]) * cfg["cost_per_car"]
         storage.add_round(
             user, k, draw_date.isoformat(), cfg["n_numbers"], int(cars[k]),
             hits.get(k), cost, cfg["win_payout"], mode=mode,
+            picked=nums.get(k),
         )
         _kick_autoupdate(games.get(k))
     _reset_car_inputs(mode)
+    for k in picks:                       # 記完就把號碼盤清空,下一筆重選
+        numpad.clear(f"{mode}_pad_{k}")
     st.rerun()
 
 
@@ -1152,6 +1159,56 @@ def _hit_options(cfgs: dict, picks: list[str]) -> list[str]:
     return [PENDING_LABEL] + [str(i) for i in range(max_hits + 1)]
 
 
+MAX_PICK_MULTI = 20          # 多顆下法最多能圈幾顆(與「押幾顆」欄的上限一致)
+
+
+def _pad_key(mode: str, game_key: str) -> str:
+    return f"{mode}_pad_{game_key}"
+
+
+def _picked_map(picks: list[str], mode: str) -> dict[str, list[int]]:
+    """讀各款目前圈了哪些號(沒開過號碼盤就是空的)。
+
+    這也是「填數量 / 選號碼」的自動判斷依據 —— 圈了號就存號碼,
+    沒圈就跟以前一樣只記數量,不必再叫使用者先選模式。
+    """
+    return {k: numpad.get_picked(_pad_key(mode, k)) for k in picks}
+
+
+@st.dialog("圈選號碼", width="large")
+def _pick_dialog(game_key: str, mode: str, single: bool, preset_n: int):
+    """號碼盤彈窗:在這裡點號碼,關掉後押幾顆就跟著圈的顆數走。"""
+    g = games.get(game_key)
+    cap = 1 if single else MAX_PICK_MULTI
+    st.caption(
+        f"**{g.name}** — 1~{g.num_max} 號,每期開 {g.pick} 顆。"
+        + ("這個 tab 固定押 **1 顆**,點另一顆會直接換過去。" if single else
+           f"圈幾顆就押幾顆(目前設定 {preset_n} 顆,最多 {cap} 顆)。"))
+    numpad.number_pad(key=_pad_key(mode, game_key), num_max=g.num_max, max_pick=cap)
+    c1, c2 = st.columns([1, 1])
+    if c1.button("完成", type="primary", width="stretch", key=f"pad_ok_{mode}_{game_key}"):
+        st.session_state.pop(f"{mode}_open_pad", None)
+        st.rerun()
+    if c2.button("不選號(改用填數量)", width="stretch", key=f"pad_cancel_{mode}_{game_key}"):
+        numpad.clear(_pad_key(mode, game_key))
+        st.session_state.pop(f"{mode}_open_pad", None)
+        st.rerun()
+
+
+def _pad_buttons(picks: list[str], mode: str, nums_map: dict) -> None:
+    """表格底下的「選號碼」按鈕列:一款一顆,順便顯示已經圈了什麼。"""
+    cols = st.columns(len(picks))
+    for col, k in zip(cols, picks):
+        got = nums_map.get(k) or []
+        label = (f"🎯 {games.get(k).label}　" +
+                 (" ".join(f"{n:02d}" for n in got) if got else "選號碼"))
+        if col.button(label, key=f"{mode}_openpad_{k}", width="stretch",
+                      type="primary" if got else "secondary",
+                      help="打開號碼盤圈號;圈了號就會連號碼一起存,開獎後可自動對獎。"):
+            st.session_state[f"{mode}_open_pad"] = k
+            st.rerun()
+
+
 def _render_today(user: str, cfgs: dict, cum: float, mode: str = storage.MULTI):
     """今天要下哪幾款的輸入 + 試算。
 
@@ -1178,6 +1235,18 @@ def _render_today(user: str, cfgs: dict, cum: float, mode: str = storage.MULTI):
     if not picks:
         st.info("勾選至少一款,系統就會算出今天要下幾車。")
         return
+
+    # ── 輸入方式自動判斷:圈了號碼就用號碼,沒圈就跟以前一樣只記數量 ──
+    nums_map = _picked_map(picks, mode)
+    by_pick = any(nums_map.values())
+    # 有圈號的款,押幾顆一律以圈的顆數為準(沒圈的維持設定值)
+    cfgs = {k: {**v, "n_numbers": (len(nums_map.get(k) or []) or v["n_numbers"])}
+            for k, v in cfgs.items()}
+
+    # 使用者按了某款的「選號碼」就把彈窗叫出來(旗標留著,重跑時彈窗才不會消失)
+    open_for = st.session_state.get(f"{mode}_open_pad")
+    if open_for in picks:
+        _pick_dialog(open_for, mode, single, int(cfgs[open_for]["n_numbers"]))
 
     fixed = {k: v for k, v in st.session_state.get(f"{mode}_today_fixed_cars", {}).items()
              if k in picks}
@@ -1279,7 +1348,9 @@ def _render_today(user: str, cfgs: dict, cum: float, mode: str = storage.MULTI):
         col_cfg = {
             "押幾顆": st.column_config.NumberColumn(
                 "押幾顆", min_value=1, max_value=20, step=1, required=True,
-                help="今天這款要押幾個號碼。改了會一併更新「設定」頁的盤口。"),
+                help=("由上面圈了幾顆決定,改這裡沒有用 —— 要改請回號碼盤加減。"
+                      if by_pick else
+                      "今天這款要押幾個號碼。改了會一併更新「設定」頁的盤口。")),
             "下幾車": st.column_config.NumberColumn(
                 "下幾車", min_value=1, max_value=100_000, step=1, required=True,
                 help="可直接修改。你改過的那款會固定住,其餘款依剩下的成本重算。"),
@@ -1290,16 +1361,19 @@ def _render_today(user: str, cfgs: dict, cum: float, mode: str = storage.MULTI):
         }
 
     st.markdown("**填這裡**")
+    # 有圈號的款「押幾顆」是號碼盤算出來的,鎖住避免兩邊打架
+    locked = ["遊戲"] + (["押幾顆"] if (by_pick and not single) else [])
     edited = st.data_editor(
         table, key=f"{mode}_today_editor", hide_index=True, width="stretch",
-        disabled=["遊戲"], column_config=col_cfg,
+        disabled=locked, column_config=col_cfg,
     )
+    _pad_buttons(picks, mode, nums_map)
 
     # 比對「送進表格的值」與「改完的值」,不同的就是使用者手動指定的。
     # 押幾顆存進設定,車數/顆數存進 session,再重跑一次讓建議依它重算。
     changed = False
     for k in picks:                      # 以遊戲代號取值,排序過也不會對錯行
-        if not single:
+        if not single and not by_pick:   # 選號模式的顆數來自號碼盤,不寫回設定
             n_new = edited.loc[k, "押幾顆"]
             if n_new and int(n_new) != int(table.loc[k, "押幾顆"]):
                 storage.set_setting(cfgs[k]["skey"], "n_numbers", int(n_new))
@@ -1405,7 +1479,8 @@ def _render_today(user: str, cfgs: dict, cum: float, mode: str = storage.MULTI):
                       else "(中獎顆數留空的就當作待開獎)"),
             key=f"{mode}_record", type="primary", width="stretch",
             disabled=bool(bad_hits)):
-        _record(user, cfgs, picks, cars, draw_date, hits, mode=mode)
+        # 圈了號的款連號碼一起存,沒圈的只存數量 —— 同一次記帳可以混著來
+        _record(user, cfgs, picks, cars, draw_date, hits, mode=mode, nums=nums_map)
     if not single and cols[1].button(
             "查看中更多顆的金額", key=f"{mode}_more", width="stretch",
             help="依你填的車數,列出中 1 顆、2 顆…各拿多少、累積會變多少。"):
@@ -1426,24 +1501,74 @@ def _render_today(user: str, cfgs: dict, cum: float, mode: str = storage.MULTI):
 
 
 # ── 二、開獎後回填 ────────────────────────────────────────
+def _balls(nums: list[int], hit: set[int] | None = None) -> str:
+    """把號碼排成一列;中的號碼加粗標色,其餘淡色。"""
+    hit = hit or set()
+    out = []
+    for n in nums:
+        if n in hit:
+            out.append(f"<span style='background:#16a34a;color:#fff;padding:1px 6px;"
+                       f"border-radius:4px;font-weight:700'>{n:02d}</span>")
+        else:
+            out.append(f"<span style='color:#64748b'>{n:02d}</span>")
+    return " ".join(out)
+
+
+def _auto_check(r: dict) -> dict:
+    """用該款的開獎資料替一筆紀錄對獎(沒選號或沒資料就回 ok=False)。"""
+    return checker.check(load_df(r["game"]), r["draw_date"], r.get("picked") or [])
+
+
 def _render_pending(rows: list[dict]):
-    """待對獎清單(呼叫端已經只傳該下法的紀錄進來)。"""
+    """待對獎清單(呼叫端已經只傳該下法的紀錄進來)。
+
+    用選號盤下的紀錄會自動比對開獎號碼算出中幾顆,按一下就回填;
+    填數量的舊紀錄沒有號碼可比,維持手動輸入。
+    """
     pend = [r for r in rows if r["pending"]]
     if not pend:
         return
     st.subheader(f"二、開獎後回填({len(pend)} 筆待對獎)")
-    st.caption("填上中了幾顆,回收依下注當時的盤口結算。")
+
+    checked = {int(r["id"]): _auto_check(r) for r in pend}
+    auto_ok = [r for r in pend if checked[int(r["id"])]["ok"]]
+    if auto_ok:
+        st.caption(f"其中 {len(auto_ok)} 筆已經比對到開獎號碼,可以直接回填。")
+        if st.button(f"✅ 一次回填這 {len(auto_ok)} 筆", type="primary",
+                     key="fill_all_auto",
+                     help="依開獎號碼自動算出的中獎顆數,一次寫進所有能判定的紀錄。"):
+            for r in auto_ok:
+                storage.update_round_result(int(r["id"]),
+                                            int(checked[int(r["id"])]["hits"]))
+            st.rerun()
+    else:
+        st.caption("填上中了幾顆,回收依下注當時的盤口結算。")
+
     for r in pend:
         g = games.get(r["game"])
+        res = checked[int(r["id"])]
+        picked = r.get("picked") or []
         c1, c2, c3 = st.columns([5, 2, 1.4])
-        c1.markdown(
-            f"**{r['draw_date']} {g.label}**  \n"
-            f"{int(r['cars'])} 車 × 押 {int(r['numbers'])} 顆,成本 {r['cost']:,.0f},"
-            f"每中 1 顆 +{int(r['cars']) * float(r['payout_rate'] or 0):,.0f}"
-        )
+        head = (f"**{r['draw_date']} {g.label}**  \n"
+                f"{int(r['cars'])} 車 × 押 {int(r['numbers'])} 顆,"
+                f"成本 {r['cost']:,.0f},"
+                f"每中 1 顆 +{int(r['cars']) * float(r['payout_rate'] or 0):,.0f}")
+        c1.markdown(head)
+        if picked:
+            c1.markdown("我的號碼　" + _balls(picked, set(res["matched"])),
+                        unsafe_allow_html=True)
+        if res["ok"]:
+            c1.markdown("開獎號碼　" + _balls(res["drawn"], set(res["matched"])),
+                        unsafe_allow_html=True)
+            c1.success(f"自動判定:中 {res['hits']} 顆", icon="🎯")
+        elif picked:
+            c1.info(res["reason"], icon="⏳")
+
+        default_hit = int(res["hits"]) if res["ok"] else 0
         hit = c2.number_input(
-            "重幾顆", min_value=0, max_value=int(r["numbers"]), value=0,
+            "重幾顆", min_value=0, max_value=int(r["numbers"]), value=default_hit,
             key=f"fill_hits_{r['id']}", label_visibility="collapsed",
+            help="自動判定的結果可以直接改;沒有開獎資料時就自己填。",
         )
         if c3.button("回填", key=f"fill_btn_{r['id']}", type="primary"):
             storage.update_round_result(int(r["id"]), int(hit))
@@ -1459,6 +1584,8 @@ def _detail_df(rows: list[dict]) -> pd.DataFrame:
         "遊戲": games.get(r["game"]).label,
         "車數": int(r["cars"]),
         "押幾顆": int(r["numbers"]),
+        "號碼": (" ".join(f"{n:02d}" for n in r["picked"])
+               if r.get("picked") else "—"),
         "重幾顆": "待開獎" if r["pending"] else f"{int(r['hits'])} 顆",
         "成本": f"{r['cost']:,.0f}",
         "回收": f"{r['payout']:,.0f}",
@@ -1546,7 +1673,9 @@ def _render_full_ledger(user: str, rows: list[dict], mode: str | None = None):
         st.markdown("**修改 / 刪除指定的一筆**")
         opts = {
             f"#{i + 1} {r['draw_date']} {games.get(r['game']).name} "
-            f"{int(r['cars'])}車 損益{r['net']:+,.0f}": r
+            f"{int(r['cars'])}車 "
+            + (" ".join(f"{n:02d}" for n in r["picked"]) + " " if r.get("picked") else "")
+            + f"損益{r['net']:+,.0f}": r
             for i, r in enumerate(rows)
         }
         choice = st.selectbox("選一筆", list(opts), key=f"edit_pick{suffix}")
@@ -1743,7 +1872,9 @@ def page_strategy(user: str):
     # 再加一個看合計的總損益頁。
     labels = [f"{MODE_THEME[m]['emoji']} {storage.MODE_NAMES[m]}下注({counts[m]})"
               for m in storage.MODES] + ["📊 總損益"]
-    tabs = st.tabs(labels)
+    # 給 key 讓分頁記住選了哪一頁 —— 否則每次重跑(記帳、開關號碼盤、改車數)
+    # 都會跳回第一頁,人在多顆頁操作卻被彈回單顆頁。
+    tabs = st.tabs(labels, key="mode_tabs")
 
     for tab, mode in zip(tabs, storage.MODES):
         with tab, st.container(key=f"mode_{mode}"):

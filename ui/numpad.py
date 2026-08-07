@@ -1,0 +1,263 @@
+"""日曆式號碼盤:用點選取代打字,直接把要下的號碼圈出來。
+
+排版沿用 539 民間「三柱」分區(見 539-SPEC 的三柱分區),把號碼切成三區:
+
+    第一柱  10 11 12 13 14 15 16 17 18                    (9 顆)
+    第二柱  20 21 22 23 24 25 26 27 28 29                 (10 顆)
+    第三柱  01 02 03 04 05 06 07 08 09 19                 (其餘)
+            30 31 32 33 34 35 36 37 38 39
+
+每列固定 10 格,所以三柱各自都排得剛好 —— 第三柱的「01~09 + 19」正好湊滿
+第一列,30 之後每十顆一列。號碼範圍跟著 GameConfig.num_max 走:今彩539 與
+天天樂是 1~39,六合彩是 1~49(第三柱多出 40~49 一列),不必為各款各寫一份。
+
+選幾顆由呼叫端給 max_pick:
+  max_pick == 1  單顆下法 —— 點別顆會直接換過去(像 radio,不用先取消)
+  max_pick >  1  多顆下法 —— 選滿之後再點會擋下來,要先取消才能換
+"""
+from __future__ import annotations
+
+import streamlit as st
+
+# 三柱的固定骨架(第三柱是「其餘全部」,依 num_max 動態展開)
+_C1 = list(range(10, 19))       # 10~18
+_C2 = list(range(20, 30))       # 20~29
+
+PILLAR_NAMES = ("第一柱", "第二柱", "第三柱")
+
+
+def pillars(num_max: int) -> tuple[list[int], list[int], list[int]]:
+    """把 1~num_max 切成三柱;第三柱吃下所有不屬於前兩柱的號碼。
+
+    39 → (9, 10, 20) 顆;49 → (9, 10, 30) 顆(第三柱多 40~49)。
+    """
+    c1 = [n for n in _C1 if n <= num_max]
+    c2 = [n for n in _C2 if n <= num_max]
+    taken = set(c1) | set(c2)
+    c3 = [n for n in range(1, num_max + 1) if n not in taken]
+    return c1, c2, c3
+
+
+def pillar_of(n: int, num_max: int = 39) -> int:
+    """某號碼屬於第幾柱(1/2/3);畫紀錄時要標色會用到。"""
+    if n in _C1:
+        return 1
+    if n in _C2:
+        return 2
+    return 3
+
+
+def pillar_counts(nums: list[int], num_max: int = 39) -> tuple[int, int, int]:
+    """一組號碼落在三柱各幾顆。"""
+    c = [0, 0, 0]
+    for n in nums:
+        c[pillar_of(n, num_max) - 1] += 1
+    return tuple(c)  # type: ignore[return-value]
+
+
+# 三柱各自的球色(未選中時的邊框與字色;選中時填滿同色)
+_TONE = ("#2563eb", "#ea580c", "#0f766e")     # 藍 / 橘 / 墨綠
+
+_CSS = """
+<style>
+/* ── 號碼球:把 Streamlit 的方形按鈕改成圓形彩球 ───────────── */
+/* 號碼盤所在的彈窗:Streamlit 內外兩層各留了 8~24px 內距,手機上會把球擠到
+   剩 27px。這兩層一起收窄,球才有 33px 以上可以點。 */
+div[data-testid="stDialog"]:has([class*="lotto-pad-"]) > div > div,
+div[data-testid="stDialog"]:has([class*="lotto-pad-"]) > div > div > div {
+    padding-left: .5rem !important;
+    padding-right: .5rem !important;
+}
+div[class*="lotto-pad-"] div[data-testid="stHorizontalBlock"] {
+    flex-wrap: nowrap !important;   /* 一列就是一列,窄螢幕也不准換行 */
+    gap: .16rem !important;
+    container-type: inline-size;    /* 讓球的字體能跟著這一列的寬度縮放 */
+}
+div[class*="lotto-pad-"] div[data-testid="stColumn"] {
+    min-width: 0 !important;        /* 讓 10 欄能一起壓縮而不是擠爆 */
+    flex: 1 1 0 !important;
+}
+/* 外層容器也要放行,否則按鈕被 40px 的最小高度撐成橢圓 */
+div[class*="lotto-pad-"] div[data-testid="stElementContainer"],
+div[class*="lotto-pad-"] div[data-testid="stButton"] {
+    min-height: 0 !important;
+    margin: 0 !important;
+}
+div[class*="lotto-pad-"] .stButton > button {
+    border-radius: 50% !important;  /* 圓形 */
+    aspect-ratio: 1 / 1 !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 0 !important;       /* Streamlit 預設 40px,會壓成橢圓 */
+    height: auto !important;
+    padding: 0 !important;
+    font-weight: 700 !important;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap !important; /* 「01」不准拆成兩行 */
+    overflow: hidden;
+    /* 一列 10 顆,每顆約佔 10cqw;字大約取球徑的 4 成 */
+    font-size: clamp(9px, 3.8cqw, 16px) !important;
+    line-height: 1 !important;
+    border-width: 2px !important;
+    transition: transform .08s ease;
+}
+div[class*="lotto-pad-"] .stButton > button:hover { transform: scale(1.12); }
+div[class*="lotto-pad-"] .stButton > button:active { transform: scale(.94); }
+/* 未選中:白底 + 柱色外框;選中(primary):柱色填滿 */
+%SCOPED%
+</style>
+"""
+
+
+def _scoped_css() -> str:
+    """替三柱各產生一組配色規則。"""
+    out = []
+    for i, tone in enumerate(_TONE, start=1):
+        out.append(f"""
+div[class*="lotto-pad-p{i}"] .stButton > button[kind="secondary"] {{
+    background: #fff !important; color: {tone} !important;
+    border-color: {tone}55 !important;
+}}
+div[class*="lotto-pad-p{i}"] .stButton > button[kind="secondary"]:hover {{
+    border-color: {tone} !important;
+}}
+div[class*="lotto-pad-p{i}"] .stButton > button[kind="primary"] {{
+    background: {tone} !important; color: #fff !important;
+    border-color: {tone} !important;
+    box-shadow: 0 2px 6px {tone}66;
+}}""")
+    return "\n".join(out)
+
+
+def inject_css() -> None:
+    """把號碼球的樣式送進頁面(整頁只需要一次;重複送也無害)。"""
+    st.markdown(_CSS.replace("%SCOPED%", _scoped_css()), unsafe_allow_html=True)
+
+
+def _state_key(key: str) -> str:
+    return f"{key}__picked"
+
+
+def get_picked(key: str) -> list[int]:
+    """讀某個號碼盤目前選了哪些號(呼叫端不必碰 session_state)。"""
+    return sorted(st.session_state.get(_state_key(key), []))
+
+
+def set_picked(key: str, nums: list[int]) -> None:
+    """外部指定選號(用於預填、隨機帶入、清空)。"""
+    st.session_state[_state_key(key)] = sorted({int(n) for n in nums})
+
+
+def clear(key: str) -> None:
+    st.session_state.pop(_state_key(key), None)
+
+
+def number_pad(
+    *,
+    key: str,
+    num_max: int,
+    max_pick: int,
+    default: list[int] | None = None,
+    label: str | None = None,
+    show_toolbar: bool = True,
+) -> list[int]:
+    """畫出三柱號碼盤並回傳已選號碼(由小到大)。
+
+    key       這個盤的識別字;同一頁有多個盤(多款一起下)時務必給不同 key
+    num_max   號碼上限(39 或 49),直接取自 GameConfig.num_max
+    max_pick  最多可選幾顆;1 = 單顆下法
+    default   第一次渲染時的預選號碼
+    """
+    state = _state_key(key)
+    if state not in st.session_state:
+        st.session_state[state] = sorted(set(default or []))
+
+    inject_css()
+    if label:
+        st.markdown(f"**{label}**")
+
+    cols3 = pillars(num_max)
+    for idx, nums in enumerate(cols3):
+        if not nums:
+            continue
+        picked_now: list[int] = st.session_state[state]
+        hit = sum(1 for n in nums if n in picked_now)
+        rng = f"{nums[0]:02d}-{nums[-1]:02d}" if idx < 2 else "其餘"
+        st.caption(
+            f"<span style='color:{_TONE[idx]};font-weight:700'>●</span> "
+            f"**{PILLAR_NAMES[idx]}**({rng},{len(nums)} 顆)"
+            + (f"　— 已選 {hit} 顆" if hit else ""),
+            unsafe_allow_html=True,
+        )
+        # container 的 key 會變成 DOM class(st-key-…),CSS 靠它找到這一柱
+        with st.container(key=f"lotto-pad-p{idx + 1}-{key}"):
+            _grid(key, state, nums, max_pick)
+
+    picked = sorted(st.session_state[state])
+    if show_toolbar:
+        _toolbar(key, state, picked, max_pick, num_max)
+    return picked
+
+
+def _grid(key: str, state: str, nums: list[int], max_pick: int) -> None:
+    """一柱的號碼球:每列 10 顆,不足的補空位維持十位對齊。"""
+    picked: list[int] = st.session_state[state]
+    for start in range(0, len(nums), 10):
+        row = nums[start:start + 10]
+        cols = st.columns(10, gap="small")
+        for i, col in enumerate(cols):
+            if i >= len(row):
+                col.markdown("&nbsp;", unsafe_allow_html=True)   # 補空位
+                continue
+            n = row[i]
+            # 用 on_click 而不是 if button(): callback 會在腳本重跑「之前」執行,
+            # 重繪時就拿得到新狀態,球才會立刻變色。
+            # (在 if 區塊裡改狀態要等下一輪才看得到;若在裡面補 st.rerun(),
+            #  這顆按鈕在下一輪仍為 True,會把剛選的號又切掉。)
+            col.button(
+                f"{n:02d}",
+                key=f"{key}_btn_{n}",
+                type="primary" if n in picked else "secondary",
+                width="stretch",
+                on_click=_toggle,
+                args=(state, n, max_pick),
+            )
+
+
+def _toggle(state: str, n: int, max_pick: int) -> None:
+    """點一顆號碼:已選就取消;沒選就加入(依 max_pick 決定滿了怎麼辦)。"""
+    picked: list[int] = st.session_state[state]
+    if n in picked:
+        picked.remove(n)
+        return
+    if max_pick == 1:
+        st.session_state[state] = [n]      # 單顆:直接換過去
+        return
+    if len(picked) >= max_pick:
+        st.toast(f"最多選 {max_pick} 顆,要換的話先取消一顆。", icon="⚠️")
+        return
+    picked.append(n)
+
+
+def _toolbar(key: str, state: str, picked: list[int],
+             max_pick: int, num_max: int) -> None:
+    """盤下方的狀態列:選了幾顆、三柱怎麼分、選了哪些、清除。"""
+    left, right = st.columns([4, 1])
+    n = len(picked)
+    if n == 0:
+        left.caption(f"還沒選號 —— 請點上面的號碼(要選 {max_pick} 顆)")
+    else:
+        c1, c2, c3 = pillar_counts(picked, num_max)
+        nums = " ".join(f"{v:02d}" for v in picked)
+        tone = "✅" if n == max_pick else "⏳"
+        left.markdown(
+            f"{tone} **已選 {n}/{max_pick} 顆**　"
+            f"<span style='color:#64748b'>三柱 {c1}-{c2}-{c3}</span>　`{nums}`",
+            unsafe_allow_html=True,
+        )
+    right.button("清除", key=f"{key}_clear", width="stretch", disabled=(n == 0),
+                 on_click=_clear_state, args=(state,))
+
+
+def _clear_state(state: str) -> None:
+    st.session_state[state] = []

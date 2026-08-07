@@ -74,7 +74,8 @@ def _conn() -> sqlite3.Connection:
             cost       REAL,
             payout     REAL,
             payout_rate REAL,
-            mode       TEXT NOT NULL DEFAULT 'multi'
+            mode       TEXT NOT NULL DEFAULT 'multi',
+            picked     TEXT
         )
         """
     )
@@ -101,6 +102,9 @@ def _migrate(conn: sqlite3.Connection, path: Path) -> None:
     cols = [r[1] for r in conn.execute("PRAGMA table_info(erhe_rounds)").fetchall()]
     if "numbers" not in cols:  # v0 → v1
         conn.execute("ALTER TABLE erhe_rounds ADD COLUMN numbers INTEGER NOT NULL DEFAULT 5")
+    if "picked" not in cols:   # v3 → v4:記下實際圈選的號碼(選號盤)
+        conn.execute("ALTER TABLE erhe_rounds ADD COLUMN picked TEXT")
+        cols.append("picked")
     if "mode" not in cols:     # v2 → v3:單顆 / 多顆分流
         if path.exists():
             bak = path.with_name(path.name + ".bak_v2")
@@ -237,10 +241,30 @@ def list_backups() -> list[dict]:
     return out
 
 
+# ── 選號的字串化(資料庫存 "5,12,18,23,31",空的存 NULL)──
+def dump_picked(nums: list[int] | None) -> str | None:
+    """把選號存成逗號字串;沒選號(填數量模式)回 None。"""
+    if not nums:
+        return None
+    return ",".join(str(int(n)) for n in sorted(set(nums)))
+
+
+def parse_picked(raw) -> list[int]:
+    """把資料庫欄位讀回號碼清單;空值或格式壞掉都回空清單。"""
+    if not raw:
+        return []
+    out = []
+    for part in str(raw).split(","):
+        part = part.strip()
+        if part.isdigit():
+            out.append(int(part))
+    return sorted(set(out))
+
+
 # ── 寫入 / 讀取 ──────────────────────────────────────────
 def add_round(account: str, game: str, draw_date: str, numbers: int, cars: int,
               hits: int | None, cost: float, payout_rate: float,
-              mode: str = MULTI) -> int:
+              mode: str = MULTI, picked: list[int] | None = None) -> int:
     """新增一筆下注流水,回傳該筆 id。
 
     account   帳號(整個帳號共用一個損益池)
@@ -251,6 +275,7 @@ def add_round(account: str, game: str, draw_date: str, numbers: int, cars: int,
     cost        本局成本
     payout_rate 下注當時的「每車中獎可得」;回收 = 中幾顆 × 車數 × payout_rate
     mode        single(單顆)/ multi(多顆);兩者共用損益池,但紀錄與重置分開
+    picked      實際圈選的號碼;用選號盤下注才有,填數量的話留 None
 
     待回填的紀錄一樣把成本計入累積損益(錢已經花出去了),
     等回填中獎顆數時再依當初的 payout_rate 把回收加回來。
@@ -261,14 +286,15 @@ def add_round(account: str, game: str, draw_date: str, numbers: int, cars: int,
     hits_val = PENDING if pending else int(hits)
     payout = 0.0 if pending else int(hits) * int(cars) * float(payout_rate)
     net = payout - float(cost)
+    picked_str = dump_picked(picked)
     with _conn() as c:
         cur = c.execute(
             "INSERT INTO erhe_rounds "
             "(game_key, account, game, draw_date, numbers, cars, hits, cost, payout, "
-            " payout_rate, net, cumulative, mode) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)",
+            " payout_rate, net, cumulative, mode, picked) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)",
             (account, account, game, str(draw_date), int(numbers), int(cars), hits_val,
-             float(cost), payout, float(payout_rate), net, mode),
+             float(cost), payout, float(payout_rate), net, mode, picked_str),
         )
         rid = int(cur.lastrowid)
         _recompute(c, account)
@@ -323,7 +349,7 @@ def delete_round(round_id: int) -> bool:
 
 
 _ROW_COLS = ["id", "ts", "draw_date", "game", "numbers", "cars", "hits",
-             "cost", "payout", "payout_rate", "net", "cumulative", "mode"]
+             "cost", "payout", "payout_rate", "net", "cumulative", "mode", "picked"]
 
 
 def load_rounds(account: str, mode: str | None = None) -> list[dict]:
@@ -347,6 +373,7 @@ def load_rounds(account: str, mode: str | None = None) -> list[dict]:
         d = dict(zip(_ROW_COLS, r))
         d["pending"] = int(d["hits"] or 0) < 0
         d["mode"] = d["mode"] or MULTI
+        d["picked"] = parse_picked(d.get("picked"))
         out.append(d)
     if mode is not None:
         running = 0.0
