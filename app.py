@@ -1699,8 +1699,10 @@ def page_strategy(user: str):
             mode_rows = [r for r in rows if r["mode"] == mode]
             _render_pending(mode_rows)
             _render_mode_records(user, mode, mode_rows)
-            st.divider()
-            _render_mode_recovery(cfgs, cum, mode)
+            # 多顆頁不放回本試算 —— 「📊 總損益」那頁的對照表已經涵蓋
+            if mode == storage.SINGLE:
+                st.divider()
+                _render_mode_recovery(cfgs, cum, mode)
 
     with tabs[-1], st.container(key="mode_totals"):
         _render_totals_tab(user, cfgs, cum, rows)
