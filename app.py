@@ -867,6 +867,68 @@ def page_wheel(fdf: pd.DataFrame, game):
 # ── 二合買牌(策略1):三款共用一個損益池 ──────────────────
 GAME_LIST = list(games.GAMES.values())          # 目前可下注的遊戲
 
+# 單顆 / 多顆各自一套配色。下錯分頁的代價是真金白銀,所以整塊視覺都要不一樣,
+# 不能只靠分頁標題那幾個字。
+MODE_THEME = {
+    storage.SINGLE: {"color": "#0d9488", "emoji": "🟢", "name": "單顆",
+                     "desc": "每款固定押 1 顆,只能調車數"},
+    storage.MULTI: {"color": "#d97706", "emoji": "🟠", "name": "多顆",
+                    "desc": "每款可自訂押幾顆"},
+}
+TOTALS_COLOR = "#4f46e5"
+
+_MODE_CSS = f"""
+<style>
+.mode-banner {{
+  padding: 0.5rem 0.8rem; border-radius: 8px; color: #fff !important;
+  font-weight: 700; margin: 0.2rem 0 0.8rem 0; line-height: 1.45;
+}}
+.mode-banner small {{ color: rgba(255,255,255,0.92) !important; font-weight: 400; }}
+/* 整個分頁內容掛上左側色條 + 淡底,一眼看得出現在在哪一種下法 */
+.st-key-mode_{storage.SINGLE} {{
+  border-left: 5px solid {MODE_THEME[storage.SINGLE]['color']};
+  background: {MODE_THEME[storage.SINGLE]['color']}0f;
+  padding: 0.6rem 0.7rem; border-radius: 0 10px 10px 0;
+}}
+.st-key-mode_{storage.MULTI} {{
+  border-left: 5px solid {MODE_THEME[storage.MULTI]['color']};
+  background: {MODE_THEME[storage.MULTI]['color']}0f;
+  padding: 0.6rem 0.7rem; border-radius: 0 10px 10px 0;
+}}
+.st-key-mode_totals {{
+  border-left: 5px solid {TOTALS_COLOR}; background: {TOTALS_COLOR}0f;
+  padding: 0.6rem 0.7rem; border-radius: 0 10px 10px 0;
+}}
+/* 主要按鈕(記帳)跟著該下法的顏色走 */
+.st-key-mode_{storage.SINGLE} [data-testid="stBaseButton-primary"] {{
+  background-color: {MODE_THEME[storage.SINGLE]['color']} !important;
+  border-color: {MODE_THEME[storage.SINGLE]['color']} !important; color: #fff !important;
+}}
+.st-key-mode_{storage.MULTI} [data-testid="stBaseButton-primary"] {{
+  background-color: {MODE_THEME[storage.MULTI]['color']} !important;
+  border-color: {MODE_THEME[storage.MULTI]['color']} !important; color: #fff !important;
+}}
+/* 區塊標題也上色,捲到一半也知道自己在哪 */
+.st-key-mode_{storage.SINGLE} h3 {{
+  color: {MODE_THEME[storage.SINGLE]['color']} !important; }}
+.st-key-mode_{storage.MULTI} h3 {{
+  color: {MODE_THEME[storage.MULTI]['color']} !important; }}
+.st-key-mode_totals h3 {{ color: {TOTALS_COLOR} !important; }}
+</style>
+"""
+
+
+def _mode_banner(mode: str):
+    """分頁最上方的色條,寫明現在這一頁是哪一種下法。"""
+    t = MODE_THEME[mode]
+    st.markdown(
+        f'<div class="mode-banner" style="background:{t["color"]}">'
+        f'{t["emoji"]} 現在是「{t["name"]}下注」'
+        f'<br><small>{t["desc"]} — 這一頁的下注、回填、紀錄、清除都只作用在'
+        f'{t["name"]}</small></div>',
+        unsafe_allow_html=True,
+    )
+
 
 def _history_games(by_game: dict) -> list:
     """歷史統計要顯示的遊戲:目前啟用的 + 已停用但還有紀錄的。"""
@@ -1476,104 +1538,160 @@ def _render_full_ledger(user: str, rows: list[dict], mode: str | None = None):
             st.plotly_chart(fig, theme=None, width="stretch", key=f"game_chart{suffix}")
 
 
-# ── 四、依目前總損益的回本試算 ────────────────────────────
-def _render_recovery_summary(cfgs: dict, cum: float):
-    """頁尾:目前總損益,以及「只下這一款」要幾車才能把它一次打平。
+# ── 回本試算:依目前總損益,單押一款要幾車 ──────────────────
+def _recovery_rows(cfgs: dict, cum: float, mode: str | None = None) -> list[dict]:
+    """各款(在指定下法下)單押一款、中 1 顆就把總損益一次打平所需的車數。
 
-    跟頁首「一、今天下哪幾款」的差別:那裡算的是**今天實際要下的組合**
-    (多款一起下時成本會互相吃掉);這裡是單押一款的乾淨基準,
-    用來快速看「現在這個坑,哪一款、哪種下法最容易爬出來」。
+    mode 傳 None 則單顆與多顆都列,供跨下法比較。
     """
-    st.subheader("四、回本要下幾車(依目前總損益)")
-    loss = max(0.0, -cum)
-
-    if cum >= 0:
-        st.metric("目前總損益", f"{cum:+,.0f}", delta="獲利中")
-        st.success("目前沒有虧損要追,車數用各款的起始值就好。")
-        return
-
     rows = []
     for g in GAME_LIST:
         cfg = cfgs[g.key]
         c, w = cfg["cost_per_car"], cfg["win_payout"]
         n_multi = int(cfg["n_numbers"])
-        # 多顆的顆數本來就設成 1 時,兩種下法完全一樣,不重複列一次
-        plans = [(storage.SINGLE, 1)]
-        if n_multi != 1:
-            plans.append((storage.MULTI, n_multi))
-        for mode, n in plans:
+        plans = [(storage.SINGLE, 1), (storage.MULTI, n_multi)]
+        if mode is not None:
+            plans = [p for p in plans if p[0] == mode]
+        elif n_multi == 1:
+            plans = plans[:1]     # 多顆本來就設 1 顆時兩者相同,不重複列
+        for m, n in plans:
             res = erhe.next_cars_for_recovery(cum, n, c, w, base_cars=int(cfg["base"]))
+            row = {"遊戲": g.label, "下法": storage.MODE_NAMES[m], "押幾顆": n}
             if not res["can_recover_1hit"]:
-                rows.append({
-                    "遊戲": g.label, "下法": storage.MODE_NAMES[mode], "押幾顆": n,
-                    "回本車數": "無解", "本局成本": "—", "中1顆可得": "—",
-                    "中後累積": "中 1 顆也回不了本",
-                })
-                continue
-            cars = int(res["next_cars"])
-            cost = res["next_cost"]
-            gain = cars * w
-            rows.append({
-                "遊戲": g.label, "下法": storage.MODE_NAMES[mode], "押幾顆": n,
-                "回本車數": f"{cars:,} 車", "本局成本": f"{cost:,.0f}",
-                "中1顆可得": f"{gain:,.0f}", "中後累積": f"{cum + gain - cost:+,.0f}",
-            })
-    ok = [r for r in rows if r["回本車數"] != "無解"]
-    cheapest = (min(ok, key=lambda r: float(r["本局成本"].replace(",", "")))
-                if ok else None)
+                row.update({"回本車數": "無解", "本局成本": "—", "中1顆可得": "—",
+                            "中後累積": "中 1 顆也回不了本", "_cost": float("inf")})
+            else:
+                cars, cost = int(res["next_cars"]), res["next_cost"]
+                gain = cars * w
+                row.update({"回本車數": f"{cars:,} 車", "本局成本": f"{cost:,.0f}",
+                            "中1顆可得": f"{gain:,.0f}",
+                            "中後累積": f"{cum + gain - cost:+,.0f}", "_cost": cost})
+            rows.append(row)
+    return rows
 
-    # metric 自己一列(手機上會被強制並排),表格另起一行才有完整寬度
+
+def _recovery_df(rows: list[dict], drop_mode: bool = False) -> pd.DataFrame:
+    skip = {"_cost"} | ({"下法"} if drop_mode else set())
+    return pd.DataFrame([{k: v for k, v in r.items() if k not in skip} for r in rows])
+
+
+_RECOVERY_NOTE = (
+    "- 這裡假設**只下這一款**。同一天下多款時,每一款的中獎都要先扣掉當天"
+    "全部的下注成本,所需車數會比表上的多 —— 那種情況請用「一、今天下哪幾款」。\n"
+    "- 車數 = ⌈目前虧損 ÷ (中獎可得 − 押幾顆 × 每車成本)⌉,"
+    "也就是「中 1 顆的淨利要能覆蓋整個坑」。\n"
+    "- **單顆的車數永遠比多顆少**:押越多顆,每車要付的成本越高,"
+    "中 1 顆的淨利就越薄。但單顆中獎機率也低得多,這是代價不是免費午餐。\n"
+    "- 這只是算術,改變不了每局的負期望;追虧損會讓下注金額幾何成長。"
+)
+
+
+def _render_mode_recovery(cfgs: dict, cum: float, mode: str):
+    """分頁內的建議車數:只算這一種下法,不跟另一種混在一起。"""
+    name = storage.MODE_NAMES[mode]
+    st.subheader(f"四、回本要下幾車({name})")
+    if cum >= 0:
+        st.success(f"目前總損益 {cum:+,.0f},沒有虧損要追,車數用各款的起始值就好。")
+        return
+
+    rows = _recovery_rows(cfgs, cum, mode)
+    ok = [r for r in rows if r["_cost"] != float("inf")]
+    cheapest = min(ok, key=lambda r: r["_cost"]) if ok else None
+
     m1, m2, m3 = st.columns(3)
     m1.metric("目前總損益", f"{cum:+,.0f}", delta="虧損中", delta_color="inverse")
     if cheapest:
-        m2.metric("最省的回本下法", f"{cheapest['遊戲']}·{cheapest['下法']}",
+        m2.metric(f"{name}最省的一款", cheapest["遊戲"],
                   delta=cheapest["回本車數"], delta_color="off")
         m3.metric("那一注要花", cheapest["本局成本"],
                   delta=f"中1顆得 {cheapest['中1顆可得']}", delta_color="off")
     else:
-        m2.metric("最省的回本下法", "無解", delta="中 1 顆都追不回", delta_color="off")
+        m2.metric(f"{name}最省的一款", "無解", delta="中 1 顆都追不回", delta_color="off")
 
-    st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
-    _note(
-        "- 這裡假設**只下這一款**。同一天下多款時,每一款的中獎都要先扣掉當天"
-        "全部的下注成本,所需車數會比表上的多 —— 那種情況請用頁首「一、今天下哪幾款」。\n"
-        "- 車數 = ⌈目前虧損 ÷ (中獎可得 − 押幾顆 × 每車成本)⌉,"
-        "也就是「中 1 顆的淨利要能覆蓋整個坑」。\n"
-        "- **單顆的車數永遠比多顆少**:押越多顆,每車要付的成本越高,"
-        "中 1 顆的淨利就越薄。但單顆中獎機率也低得多,這是代價不是免費午餐。\n"
-        "- 這只是算術,改變不了每局的負期望;追虧損會讓下注金額幾何成長。",
-        "這張表怎麼算的")
+    st.dataframe(_recovery_df(rows, drop_mode=True), width="stretch", hide_index=True)
+    st.caption(f"總損益是**兩種下法合計**的共用池;這裡算的是「全部用{name}追」要幾車。")
+    _note(_RECOVERY_NOTE, "這張表怎麼算的")
+
+
+# ── 總損益分頁:兩種下法的合計與對照 ────────────────────────
+def _render_totals_tab(user: str, cfgs: dict, cum: float, rows: list[dict]):
+    st.markdown(
+        f'<div class="mode-banner" style="background:{TOTALS_COLOR}">'
+        f'📊 總損益(單顆 + 多顆合計)'
+        f'<br><small>兩種下法共用同一個損益池,這一頁看的是合起來的結果</small></div>',
+        unsafe_allow_html=True,
+    )
+    _render_scoreboard(storage.totals(user))
+
+    st.markdown("**兩種下法各自的成績**")
+    per_mode = {m: storage.totals(user, m) for m in storage.MODES}
+    st.dataframe(pd.DataFrame([{
+        "下法": f"{MODE_THEME[m]['emoji']} {storage.MODE_NAMES[m]}",
+        "局數": t["rounds"], "中獎局": t["wins"],
+        "投入": f"{t['cost']:,.0f}", "回收": f"{t['payout']:,.0f}",
+        "損益": f"{t['net']:+,.0f}",
+        "報酬率": f"{t['roi']:+.1%}" if t["cost"] else "—",
+    } for m, t in per_mode.items()]), width="stretch", hide_index=True)
+
+    if not rows:
+        st.info("還沒有任何紀錄。")
+        return
+
+    daily = storage.totals_by_date(user)
+    if len(daily) >= 2:
+        fig = px.line(
+            pd.DataFrame({"日期": [d["draw_date"] for d in daily],
+                          "累積損益": [d["cumulative"] for d in daily]}),
+            x="日期", y="累積損益", markers=True, title="累積損益走勢(兩種下法合計)")
+        fig.add_hline(y=0, line_dash="dash", line_color="#888")
+        st.plotly_chart(fig, theme=None, width="stretch", key="cum_chart_totals")
+
+    st.markdown("**回本要下幾車 — 兩種下法對照**")
+    if cum >= 0:
+        st.success(f"目前總損益 {cum:+,.0f},沒有虧損要追。")
+        return
+    rec = _recovery_rows(cfgs, cum, None)
+    st.dataframe(_recovery_df(rec), width="stretch", hide_index=True)
+    ok = [r for r in rec if r["_cost"] != float("inf")]
+    if ok:
+        best = min(ok, key=lambda r: r["_cost"])
+        st.info(
+            f"要一次把 {-cum:,.0f} 追回來,最省的是 **{best['遊戲']}·{best['下法']}**:"
+            f"{best['回本車數']},成本 {best['本局成本']}。")
+    _note(_RECOVERY_NOTE, "這張表怎麼算的")
 
 
 # ── 策略頁主體 ───────────────────────────────────────────
 def page_strategy(user: str):
     st.header("二合買牌")
     _note(
-        "- 所有遊戲**共用同一個損益池**:不管下哪一款、用哪種下法,"
-        "盈虧都累加在一起。\n"
-        "- **多顆 / 單顆是兩種下法**,用上面的分頁切換 —— 下注、回填、紀錄、清除"
-        "全部跟著你選的那一種走,互不干擾。多顆中得勤但回本慢,"
-        "單顆中得少但一中就整碗端回去。\n"
-        "- 兩者**共用損益池**(頁首戰績與頁尾回本試算都是合計),"
-        "但**紀錄與清除各自獨立** —— 清單顆不會動到多顆。\n"
+        "- 三個分頁:🟢 **單顆下注**、🟠 **多顆下注**、📊 **總損益**。"
+        "兩個下注頁的底色與按鈕顏色不一樣,別下錯頁。\n"
+        "- 下注、回填、紀錄、清除、建議車數**全部跟著你所在的分頁走**,"
+        "互不干擾 —— 清單顆不會動到多顆。\n"
+        "- 但**損益池是共用的**:不管哪一款、哪種下法,盈虧都累加在同一池,"
+        "合計看「📊 總損益」那頁。所以建議車數是拿**總損益**去追的。\n"
+        "- 多顆中得勤但回本慢,單顆中得少但一中就整碗端回去。\n"
         "- 建議車數依「合併累積虧損 + 今天要花的總成本」計算 —— "
         "所以多下一款,大家的車數都會變多。\n"
         "- 中獎顆數可以先填,也可以開獎後再回填。",
         "這頁怎麼用")
 
+    st.markdown(_MODE_CSS, unsafe_allow_html=True)
     cfgs = {g.key: _game_settings(user, g) for g in GAME_LIST}
-    _render_scoreboard(storage.totals(user))
-    st.divider()
-
     rows = storage.load_rounds(user)
     cum = storage.current_cumulative(user)
     counts = {m: sum(1 for r in rows if r["mode"] == m) for m in storage.MODES}
 
-    # 一層 tab 就好:選了下法,下注、回填、紀錄全部跟著它走
-    tabs = st.tabs([f"{storage.MODE_NAMES[m]}下注({counts[m]} 筆)"
-                    for m in storage.MODES])
+    # 一層 tab:兩種下法各自獨立(下注 / 回填 / 紀錄 / 建議車數都跟著它),
+    # 再加一個看合計的總損益頁。
+    labels = [f"{MODE_THEME[m]['emoji']} {storage.MODE_NAMES[m]}下注({counts[m]})"
+              for m in storage.MODES] + ["📊 總損益"]
+    tabs = st.tabs(labels)
+
     for tab, mode in zip(tabs, storage.MODES):
-        with tab:
+        with tab, st.container(key=f"mode_{mode}"):
+            _mode_banner(mode)
             if mode == storage.SINGLE:
                 _single_intro(cfgs)
             _render_today(user, cfgs, cum, mode=mode)
@@ -1581,9 +1699,11 @@ def page_strategy(user: str):
             mode_rows = [r for r in rows if r["mode"] == mode]
             _render_pending(mode_rows)
             _render_mode_records(user, mode, mode_rows)
+            st.divider()
+            _render_mode_recovery(cfgs, cum, mode)
 
-    st.divider()
-    _render_recovery_summary(cfgs, cum)
+    with tabs[-1], st.container(key="mode_totals"):
+        _render_totals_tab(user, cfgs, cum, rows)
 
     if any(autoupdate.status(g.key).get("running") for g in GAME_LIST):
         st.caption("開獎資料背景補抓中…(關閉網頁也會繼續)")
