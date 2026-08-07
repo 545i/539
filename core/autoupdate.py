@@ -16,7 +16,8 @@ from pathlib import Path
 
 import pandas as pd
 
-from core import games, loader, scraper, scraper_fantasy5, scraper_marksix
+from core import (games, loader, scraper, scraper_fantasy5, scraper_marksix,
+                  scraper_tof)
 
 MIN_DRAWS = 7        # 每次補抓至少涵蓋的期數(去重合併,不會重複寫入)
 _MIN_SPAN_DAYS = 9   # 今彩539 週一~六開獎:9 個日曆天必含 >=7 個開獎日
@@ -59,7 +60,20 @@ def _run(game_key: str, data_path: Path, on_done) -> None:
         # 從資料最新日與「今天 − 9 天」較早者開始抓,保證至少重抓 7 期
         start = min(latest, today - dt.timedelta(days=_MIN_SPAN_DAYS))
 
-        if game_key == "fantasy5":
+        # 先試彩世界(tof):一站三款、日期是台灣日期、附期號,而且只要一次請求。
+        # 它只留最近 100 期,不夠補的時候才退回各自的原始來源。
+        new_rows = []
+        try:
+            tof_rows = scraper_tof.fetch_history(game_key, game.pick, game.num_max)
+            oldest = min(r["date"] for r in tof_rows)
+            if oldest <= start:          # 這 100 期涵蓋得到落差區間才夠用
+                new_rows = tof_rows
+        except scraper_tof.ScrapeError:
+            new_rows = []
+
+        if new_rows:
+            pass
+        elif game_key == "fantasy5":
             # 天天樂每日開獎:每頁約 50 期,依落差天數換算頁數
             gap_days = (today - start).days
             pages = min(60, max(1, -(-(gap_days + MIN_DRAWS) // 50)))

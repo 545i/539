@@ -52,7 +52,7 @@ def load_history(path: str | Path, pick: int = PICK,
         raise DataError(f"找不到資料檔:{path}")
 
     cols = num_cols(pick)
-    df = pd.read_csv(path)
+    df = pd.read_csv(path, dtype={"issue": str})
     missing = [c for c in ["date"] + cols if c not in df.columns]
     if missing:
         raise DataError(f"CSV 缺少欄位:{missing}(需要 {['date'] + cols})")
@@ -75,14 +75,32 @@ def load_history(path: str | Path, pick: int = PICK,
 
 
 def merge(df: pd.DataFrame, new_rows: list[dict]) -> pd.DataFrame:
-    """合併新開獎資料,依日期去重(保留既有),回傳排序後 DataFrame。"""
+    """合併新開獎資料,回傳排序後 DataFrame。
+
+    **有期號就以期號去重**,沒有才退回用日期 —— 期號是開獎的唯一識別,
+    光看日期分不出「同一期被記成不同日期」(天天樂的加州/台灣時差就踩過這個坑),
+    也看不出中間漏了一期。既有資料若還沒有期號,新資料會把它補上。
+    """
     if not new_rows:
         return df
     add = pd.DataFrame(new_rows)
     add["date"] = pd.to_datetime(add["date"], errors="coerce")
     combined = pd.concat([df, add], ignore_index=True)
+
+    if "issue" in combined.columns:
+        combined["issue"] = combined["issue"].fillna("").astype(str).str.strip()
+        has = combined[combined["issue"] != ""]
+        none = combined[combined["issue"] == ""]
+        # 有期號的照期號去重(新資料排在後面,保留先出現的既有列)
+        has = has.drop_duplicates(subset="issue", keep="first")
+        # 沒期號的舊列,若該日期已被有期號的列覆蓋就丟掉,避免同一期出現兩列
+        none = none[~none["date"].isin(has["date"])]
+        combined = pd.concat([has, none], ignore_index=True)
+
     combined = combined.drop_duplicates(subset="date", keep="first")
     combined = combined.sort_values("date").reset_index(drop=True)
+    if "issue" in combined.columns:
+        combined["issue"] = combined["issue"].fillna("")
     return combined
 
 
@@ -127,4 +145,8 @@ def save(df: pd.DataFrame, path: str | Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     out = df.copy()
     out["date"] = pd.to_datetime(out["date"]).dt.strftime("%Y-%m-%d")
+    if "issue" in out.columns:      # 期號緊接在日期後面,方便人工核對
+        out["issue"] = out["issue"].fillna("").astype(str)
+        rest = [c for c in out.columns if c not in ("date", "issue")]
+        out = out[["date", "issue"] + rest]
     out.to_csv(path, index=False)
