@@ -224,6 +224,7 @@ def _apply_theme():
     import plotly.io as pio
 
     st.markdown(_MOBILE_CSS, unsafe_allow_html=True)  # 手機放大,永遠套用
+    _numeric_keyboard()                               # 手機的數字欄位跳數字鍵盤
     dark = st.sidebar.toggle("深色模式", value=False, key="dark_mode")
     pio.templates.default = "plotly_dark" if dark else "plotly_white"
     if dark:
@@ -918,6 +919,42 @@ _MODE_CSS = f"""
 """
 
 
+def _numeric_keyboard():
+    """讓手機在「車數 / 顆數」這類欄位跳出數字鍵盤。
+
+    Streamlit 的表格編輯器與 number_input 都沒有設 inputmode,手機因此會跳出
+    全鍵盤,要按好幾下才切到數字。這裡用一小段腳本補上 inputmode="numeric",
+    並用 MutationObserver 追新出現的輸入框(表格的編輯器是點下去才產生的)。
+
+    只作用在數字類欄位:number_input、type=number、以及表格編輯器的 portal。
+    純屬體驗優化 —— 就算哪天 Streamlit 改了 DOM 讓它失效,也只是退回全鍵盤。
+    """
+    components.html(
+        """
+        <script>
+        const doc = window.parent.document;
+        const SEL = [
+          'input[type="number"]',
+          '[data-testid="stNumberInputField"]',
+          '#portal input',                      /* 表格 cell 的編輯器 */
+          '[data-testid="stDataFrameResizable"] input',
+        ].join(',');
+        function markNumeric() {
+          doc.querySelectorAll(SEL).forEach(function (el) {
+            if (el.getAttribute('inputmode') === 'numeric') return;
+            el.setAttribute('inputmode', 'numeric');
+            el.setAttribute('pattern', '[0-9]*');
+          });
+        }
+        markNumeric();
+        new MutationObserver(markNumeric).observe(doc.body,
+          {childList: true, subtree: true});
+        </script>
+        """,
+        height=0,
+    )
+
+
 def _mode_banner(mode: str):
     """分頁最上方的色條,寫明現在這一頁是哪一種下法。"""
     t = MODE_THEME[mode]
@@ -1060,6 +1097,9 @@ def _parse_hits(raw) -> int | None:
     return int(text) if text.isdigit() else None
 
 
+# 「還沒開獎」在下拉選單裡的顯示字樣(多顆用;單顆用下面那組三選一)
+PENDING_LABEL = "待開獎"
+
 # 單顆模式的「中獎顆數」只有三種可能,用下拉選單比填數字直覺
 SINGLE_HITS = {"待開獎": None, "中了": 1, "沒中": 0}
 SINGLE_HITS_REV = {None: "待開獎", 1: "中了", 0: "沒中"}
@@ -1099,6 +1139,17 @@ def _single_intro(cfgs: dict):
             "但每局中獎機率也越低。**兩種下法的期望值完全一樣**,都是負的;"
             "單顆只是把破產風險往後推,不會讓你變成正期望。"
         )
+
+
+def _hit_options(cfgs: dict, picks: list[str]) -> list[str]:
+    """多顆的「中獎顆數」下拉選項:待開獎 + 0 到「最多可能中幾顆」。
+
+    上限 = 各款「押幾顆」與「每期開幾顆」取小之後的最大值 ——
+    押 4 顆最多中 4 顆;押 8 顆但 539 每期只開 5 顆,最多也只能中 5 顆。
+    用下拉而不是自由輸入,是為了不讓人填出不可能發生的顆數。
+    """
+    max_hits = max(min(int(cfgs[k]["n_numbers"]), games.get(k).pick) for k in picks)
+    return [PENDING_LABEL] + [str(i) for i in range(max_hits + 1)]
 
 
 def _render_today(user: str, cfgs: dict, cum: float, mode: str = storage.MULTI):
@@ -1196,7 +1247,8 @@ def _render_today(user: str, cfgs: dict, cum: float, mode: str = storage.MULTI):
         + ("- 中了就選「中了」、槓龜選「沒中」;還沒開獎留「待開獎」,"
            "之後在「二、開獎後回填」補。"
            if single else
-           "- 中獎顆數留空 = 還沒開獎,之後在「二、開獎後回填」補。")
+           "- 中獎顆數是下拉選單(0 顆到最多可能中的顆數);"
+           "留「待開獎」= 還沒開獎,之後在「二、開獎後回填」補。")
     )
 
     loss = max(0.0, -cum)
@@ -1216,12 +1268,13 @@ def _render_today(user: str, cfgs: dict, cum: float, mode: str = storage.MULTI):
                 help="押 1 顆只有中或沒中兩種結果;還沒開獎就留「待開獎」。"),
         }
     else:
+        hit_opts = _hit_options(cfgs, picks)
         table = pd.DataFrame([{
             "遊戲": games.get(k).label,
             "押幾顆": int(cfgs[k]["n_numbers"]),
             "下幾車": int(res["cars"][k]),
-            # 用字串欄:Streamlit 的數字欄空值會顯示灰色 "None",文字欄空字串才是真的空白
-            "中獎顆數": "" if hits_state.get(k) is None else str(hits_state[k]),
+            "中獎顆數": (PENDING_LABEL if hits_state.get(k) is None
+                     else str(hits_state[k])),
         } for k in picks], index=list(picks))
         col_cfg = {
             "押幾顆": st.column_config.NumberColumn(
@@ -1230,9 +1283,10 @@ def _render_today(user: str, cfgs: dict, cum: float, mode: str = storage.MULTI):
             "下幾車": st.column_config.NumberColumn(
                 "下幾車", min_value=1, max_value=100_000, step=1, required=True,
                 help="可直接修改。你改過的那款會固定住,其餘款依剩下的成本重算。"),
-            "中獎顆數": st.column_config.TextColumn(
-                "中獎顆數", max_chars=2,
-                help="中了幾顆就填幾;還沒開獎就留空,之後在「二、開獎後回填」補。"),
+            "中獎顆數": st.column_config.SelectboxColumn(
+                "中獎顆數", options=hit_opts, required=True,
+                help="中了幾顆就選幾;還沒開獎就留「待開獎」,"
+                     "之後在「二、開獎後回填」補。"),
         }
 
     st.markdown("**填這裡**")
@@ -1591,7 +1645,7 @@ def _render_mode_recovery(cfgs: dict, cum: float, mode: str):
     name = storage.MODE_NAMES[mode]
     st.subheader(f"四、回本要下幾車({name})")
     if cum >= 0:
-        st.success(f"目前總損益 {cum:+,.0f},沒有虧損要追,車數用各款的起始值就好。")
+        st.success(f"{name}目前累積 {cum:+,.0f},沒有虧損要追,車數用各款的起始值就好。")
         return
 
     rows = _recovery_rows(cfgs, cum, mode)
@@ -1599,7 +1653,8 @@ def _render_mode_recovery(cfgs: dict, cum: float, mode: str):
     cheapest = min(ok, key=lambda r: r["_cost"]) if ok else None
 
     m1, m2, m3 = st.columns(3)
-    m1.metric("目前總損益", f"{cum:+,.0f}", delta="虧損中", delta_color="inverse")
+    m1.metric(f"{name}累積損益", f"{cum:+,.0f}", delta="虧損中",
+              delta_color="inverse")
     if cheapest:
         m2.metric(f"{name}最省的一款", cheapest["遊戲"],
                   delta=cheapest["回本車數"], delta_color="off")
@@ -1609,7 +1664,8 @@ def _render_mode_recovery(cfgs: dict, cum: float, mode: str):
         m2.metric(f"{name}最省的一款", "無解", delta="中 1 顆都追不回", delta_color="off")
 
     st.dataframe(_recovery_df(rows, drop_mode=True), width="stretch", hide_index=True)
-    st.caption(f"總損益是**兩種下法合計**的共用池;這裡算的是「全部用{name}追」要幾車。")
+    st.caption(f"這裡用的是**{name}自己的累積損益**({cum:+,.0f}),不含另一種下法;"
+               "兩者合計看「📊 總損益」那頁。")
     _note(_RECOVERY_NOTE, "這張表怎麼算的")
 
 
@@ -1669,8 +1725,8 @@ def page_strategy(user: str):
         "兩個下注頁的底色與按鈕顏色不一樣,別下錯頁。\n"
         "- 下注、回填、紀錄、清除、建議車數**全部跟著你所在的分頁走**,"
         "互不干擾 —— 清單顆不會動到多顆。\n"
-        "- 但**損益池是共用的**:不管哪一款、哪種下法,盈虧都累加在同一池,"
-        "合計看「📊 總損益」那頁。所以建議車數是拿**總損益**去追的。\n"
+        "- **每種下法各算各的累積**:單顆頁的建議車數只追單顆的虧損,"
+        "多顆頁只追多顆的。兩者合起來的數字看「📊 總損益」那頁。\n"
         "- 多顆中得勤但回本慢,單顆中得少但一中就整碗端回去。\n"
         "- 建議車數依「合併累積虧損 + 今天要花的總成本」計算 —— "
         "所以多下一款,大家的車數都會變多。\n"
@@ -1694,15 +1750,17 @@ def page_strategy(user: str):
             _mode_banner(mode)
             if mode == storage.SINGLE:
                 _single_intro(cfgs)
-            _render_today(user, cfgs, cum, mode=mode)
+            # 建議車數用「這一種下法自己的累積」,不被另一種的盈虧帶偏
+            mode_rows = storage.load_rounds(user, mode)
+            mode_cum = storage.current_cumulative(user, mode)
+            _render_today(user, cfgs, mode_cum, mode=mode)
             st.divider()
-            mode_rows = [r for r in rows if r["mode"] == mode]
             _render_pending(mode_rows)
             _render_mode_records(user, mode, mode_rows)
             # 多顆頁不放回本試算 —— 「📊 總損益」那頁的對照表已經涵蓋
             if mode == storage.SINGLE:
                 st.divider()
-                _render_mode_recovery(cfgs, cum, mode)
+                _render_mode_recovery(cfgs, mode_cum, mode)
 
     with tabs[-1], st.container(key="mode_totals"):
         _render_totals_tab(user, cfgs, cum, rows)

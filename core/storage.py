@@ -330,7 +330,10 @@ def load_rounds(account: str, mode: str | None = None) -> list[dict]:
     """該帳號的下注流水(依下注日期、寫入順序);pending 欄標示是否待回填。
 
     mode 傳 single / multi 只取該模式的紀錄,None(預設)則兩種都取。
-    注意累積損益(cumulative)一律是**整個帳號**的共用池,不會因為只取一種模式而重算。
+
+    **指定 mode 時,cumulative 會就地重算成「該下法自己的累積」**,
+    這樣單顆頁看到的累積就只含單顆的盈虧,追虧損的車數才不會被另一種下法帶偏。
+    資料庫裡存的仍是整個帳號共用池的值(不指定 mode 時回傳的就是它)。
     """
     where, params = _mode_clause(mode)
     with _conn() as c:
@@ -345,6 +348,11 @@ def load_rounds(account: str, mode: str | None = None) -> list[dict]:
         d["pending"] = int(d["hits"] or 0) < 0
         d["mode"] = d["mode"] or MULTI
         out.append(d)
+    if mode is not None:
+        running = 0.0
+        for d in out:
+            running += float(d["net"] or 0.0)
+            d["cumulative"] = running
     return out
 
 
@@ -353,8 +361,14 @@ def pending_rounds(account: str, mode: str | None = None) -> list[dict]:
     return [r for r in load_rounds(account, mode) if r["pending"]]
 
 
-def current_cumulative(account: str) -> float:
-    """目前合併累積損益(流水最後一筆的累積值;無紀錄回 0)。"""
+def current_cumulative(account: str, mode: str | None = None) -> float:
+    """目前累積損益(無紀錄回 0)。
+
+    mode 傳 single / multi 則只算該下法自己的累積 —— 兩種下法的追虧損進程
+    各自獨立,建議車數才不會被另一種的盈虧帶偏。
+    """
+    if mode is not None:
+        return totals(account, mode)["net"]
     with _conn() as c:
         row = c.execute(
             "SELECT cumulative FROM erhe_rounds WHERE account = ? "

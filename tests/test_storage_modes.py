@@ -1,7 +1,8 @@
 """單顆 / 多顆分流(core.storage 的 mode 欄)測試。
 
-重點:兩種下法**共用同一個損益池**(累積損益連續),但**紀錄與清除各自獨立** ——
-清單顆不能動到多顆,而且清除前一定要有備份。
+重點:紀錄、清除、追虧損的累積**各自獨立** —— 清單顆不能動到多顆,
+多顆頁看到的累積不能含單顆的虧損(否則建議車數會被帶偏),而且清除前一定要有備份。
+不指定 mode 時仍回傳資料庫存的共用池累積(總損益頁用)。
 """
 import sqlite3
 
@@ -140,3 +141,37 @@ def test_migration_backfills_mode_from_numbers(db):
     rows = storage.load_rounds("u")
     assert [r["mode"] for r in rows] == [storage.SINGLE, storage.MULTI]
     assert db.with_name(db.name + ".bak_v2").exists()      # 遷移前有備份
+
+
+# ── 每種下法各算各的累積(建議車數的基準)──────────────────
+def test_cumulative_is_per_mode_when_filtered(db):
+    """指定 mode 讀取時,累積要只含該下法 —— 否則多顆頁會顯示到單顆的虧損。"""
+    _add(date="2026-08-01", mode=storage.SINGLE, n=1, cost=1000.0)
+    _add(date="2026-08-02", mode=storage.SINGLE, n=1, cost=2000.0)
+    _add(date="2026-08-03", mode=storage.MULTI, cost=500.0)
+    _add(date="2026-08-04", mode=storage.MULTI, cost=700.0)
+
+    single = storage.load_rounds("u", storage.SINGLE)
+    multi = storage.load_rounds("u", storage.MULTI)
+    assert [r["cumulative"] for r in single] == [-1000.0, -3000.0]
+    assert [r["cumulative"] for r in multi] == [-500.0, -1200.0]   # 不含單顆的 3000
+    # 不指定 mode 仍是共用池(資料庫存的值)
+    assert [r["cumulative"] for r in storage.load_rounds("u")] == [
+        -1000.0, -3000.0, -3500.0, -4200.0]
+
+
+def test_current_cumulative_per_mode(db):
+    """建議車數的基準:單顆頁只追單顆的坑,多顆頁只追多顆的。"""
+    _add(mode=storage.SINGLE, n=1, cost=1000.0)
+    _add(mode=storage.MULTI, cost=500.0)
+    assert storage.current_cumulative("u", storage.SINGLE) == -1000.0
+    assert storage.current_cumulative("u", storage.MULTI) == -500.0
+    assert storage.current_cumulative("u") == -1500.0
+
+
+def test_per_mode_cumulative_matches_totals(db):
+    """該下法最後一筆的累積,必須等於該下法的損益合計。"""
+    for i in range(4):
+        _add(date=f"2026-08-0{i + 1}", mode=storage.SINGLE, n=1, cost=1000.0 * (i + 1))
+    rows = storage.load_rounds("u", storage.SINGLE)
+    assert rows[-1]["cumulative"] == storage.totals("u", storage.SINGLE)["net"]
