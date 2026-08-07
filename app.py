@@ -1175,9 +1175,16 @@ def _picked_map(picks: list[str], mode: str) -> dict[str, list[int]]:
     return {k: numpad.get_picked(_pad_key(mode, k)) for k in picks}
 
 
-@st.dialog("圈選號碼", width="large")
+@st.dialog("圈選號碼", width="large", on_dismiss="rerun")
 def _pick_dialog(game_key: str, mode: str, single: bool, preset_n: int):
-    """號碼盤彈窗:在這裡點號碼,關掉後押幾顆就跟著圈的顆數走。"""
+    """號碼盤彈窗:在這裡點號碼,關掉後押幾顆就跟著圈的顆數走。
+
+    st.dialog 繼承 st.fragment 的行為 —— 在彈窗裡點號碼只會重跑這個函式,
+    不會重跑整個頁面,所以彈窗自己會保持開著,**不需要**外部旗標去撐住它。
+    (先前用旗標撐,結果按 X 關掉後旗標還在,之後隨便點個東西彈窗就又跳出來。)
+    on_dismiss="rerun":使用者按 X / ESC / 點外面關掉後重跑一次,
+    外面的按鈕才會即時換成剛圈好的號碼。
+    """
     g = games.get(game_key)
     cap = 1 if single else MAX_PICK_MULTI
     st.caption(
@@ -1187,16 +1194,19 @@ def _pick_dialog(game_key: str, mode: str, single: bool, preset_n: int):
     numpad.number_pad(key=_pad_key(mode, game_key), num_max=g.num_max, max_pick=cap)
     c1, c2 = st.columns([1, 1])
     if c1.button("完成", type="primary", width="stretch", key=f"pad_ok_{mode}_{game_key}"):
-        st.session_state.pop(f"{mode}_open_pad", None)
-        st.rerun()
+        st.rerun()                      # 關掉彈窗並重跑,外面才看得到新號碼
     if c2.button("不選號(改用填數量)", width="stretch", key=f"pad_cancel_{mode}_{game_key}"):
         numpad.clear(_pad_key(mode, game_key))
-        st.session_state.pop(f"{mode}_open_pad", None)
         st.rerun()
 
 
-def _pad_buttons(picks: list[str], mode: str, nums_map: dict) -> None:
-    """表格底下的「選號碼」按鈕列:一款一顆,順便顯示已經圈了什麼。"""
+def _pad_buttons(picks: list[str], mode: str, nums_map: dict,
+                 single: bool, cfgs: dict) -> None:
+    """表格底下的「選號碼」按鈕列:一款一顆,順便顯示已經圈了什麼。
+
+    直接在按鈕的 if 裡叫彈窗 —— 只有真的按下這顆按鈕才會開,
+    切換遊戲、改車數之類的重跑都不會誤觸。
+    """
     cols = st.columns(len(picks))
     for col, k in zip(cols, picks):
         got = nums_map.get(k) or []
@@ -1205,8 +1215,7 @@ def _pad_buttons(picks: list[str], mode: str, nums_map: dict) -> None:
         if col.button(label, key=f"{mode}_openpad_{k}", width="stretch",
                       type="primary" if got else "secondary",
                       help="打開號碼盤圈號;圈了號就會連號碼一起存,開獎後可自動對獎。"):
-            st.session_state[f"{mode}_open_pad"] = k
-            st.rerun()
+            _pick_dialog(k, mode, single, int(cfgs[k]["n_numbers"]))
 
 
 def _render_today(user: str, cfgs: dict, cum: float, mode: str = storage.MULTI):
@@ -1242,11 +1251,6 @@ def _render_today(user: str, cfgs: dict, cum: float, mode: str = storage.MULTI):
     # 有圈號的款,押幾顆一律以圈的顆數為準(沒圈的維持設定值)
     cfgs = {k: {**v, "n_numbers": (len(nums_map.get(k) or []) or v["n_numbers"])}
             for k, v in cfgs.items()}
-
-    # 使用者按了某款的「選號碼」就把彈窗叫出來(旗標留著,重跑時彈窗才不會消失)
-    open_for = st.session_state.get(f"{mode}_open_pad")
-    if open_for in picks:
-        _pick_dialog(open_for, mode, single, int(cfgs[open_for]["n_numbers"]))
 
     fixed = {k: v for k, v in st.session_state.get(f"{mode}_today_fixed_cars", {}).items()
              if k in picks}
@@ -1367,7 +1371,7 @@ def _render_today(user: str, cfgs: dict, cum: float, mode: str = storage.MULTI):
         table, key=f"{mode}_today_editor", hide_index=True, width="stretch",
         disabled=locked, column_config=col_cfg,
     )
-    _pad_buttons(picks, mode, nums_map)
+    _pad_buttons(picks, mode, nums_map, single, cfgs)
 
     # 比對「送進表格的值」與「改完的值」,不同的就是使用者手動指定的。
     # 押幾顆存進設定,車數/顆數存進 session,再重跑一次讓建議依它重算。
