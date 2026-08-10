@@ -40,10 +40,10 @@ def df539():
 
 # ── 期別辨識 ─────────────────────────────────────────────
 def test_period_label_prefers_issue():
-    """有期號就顯示期號,沒有才退回日期。"""
-    assert predictor.period_label("2026-08-11", "115000192") == "第 192 期(08-11)"
-    assert predictor.period_label("2026-08-11", None) == "2026-08-11"
-    assert predictor.period_label("2026-08-11", "") == "2026-08-11"
+    """期號是數字就寫成「第 N 期」,期號其實是日期字串時就直接顯示日期。"""
+    assert predictor.period_label("115000192", dt.date(2026, 8, 11)) == "第 192 期(08-11)"
+    assert predictor.period_label("11965", dt.date(2026, 8, 11)) == "第 11965 期(08-11)"
+    assert predictor.period_label("2026-08-11") == "2026-08-11"
 
 
 def test_issue_of_without_column(df539):
@@ -234,8 +234,85 @@ def test_marksix_flow(temp_db):
     assert ev[0]["label"] == target.isoformat()
 
 
-def test_next_target_is_day_after_last(df539):
-    assert predictor.next_target(df539) == df539.iloc[-1]["date"].date() + dt.timedelta(days=1)
+def test_next_target_without_issue_falls_back_to_date(df539):
+    """沒有期號的款:期號退化成日期字串,預估開獎日是最後一期的隔天。"""
+    issue, day = predictor.next_target(df539)
+    expect = df539.iloc[-1]["date"].date() + dt.timedelta(days=1)
+    assert day == expect and issue == expect.isoformat()
+
+
+# ── 期數(而不是日期)才是一期的識別 ────────────────────────
+@pytest.fixture
+def df_issue():
+    """帶期號的資料,最後一期是 11964(2026-08-10 已開獎)。"""
+    rows = []
+    for i in range(120):
+        d = dt.date(2026, 4, 13) + dt.timedelta(days=i)
+        base = (i % 30) + 1
+        nums = sorted({base, (base + 5) % 39 + 1, (base + 11) % 39 + 1,
+                       (base + 17) % 39 + 1, (base + 23) % 39 + 1})
+        while len(nums) < 5:
+            nums = sorted(set(nums) | {max(nums) % 39 + 1})
+        rows.append({"date": pd.Timestamp(d), "issue": str(11845 + i),
+                     **{f"n{j+1}": nums[j] for j in range(5)}})
+    return pd.DataFrame(rows)
+
+
+def test_next_issue_is_last_plus_one(df_issue):
+    assert df_issue.iloc[-1]["issue"] == "11964"
+    assert predictor.next_issue(df_issue) == "11965"
+    issue, day = predictor.next_target(df_issue)
+    assert issue == "11965"
+    assert day == df_issue.iloc[-1]["date"].date() + dt.timedelta(days=1)
+
+
+def test_can_predict_next_issue_after_today_drawn(df_issue, temp_db):
+    """今天已開出 11964,還是要能對下一期 11965 產生預測。
+
+    先前用日期當識別,11964 與 11965 都落在同一天附近就會撞在一起,
+    第二次產生會被 UNIQUE 擋掉 —— 這就是「預測沒辦法再次產生」的成因。
+    """
+    # 先對已開獎的 11964 存一份
+    added_now, _ = predictor.save_for(df_issue, "lotto539", "11964")
+    assert added_now == len(picker.STRATEGIES)
+
+    # 同一天再對下一期 11965 存 —— 必須成功,而且是另一組紀錄
+    added_next, rows_next = predictor.save_for(df_issue, "lotto539", "11965")
+    assert added_next == len(picker.STRATEGIES), "下一期應該要能存進去"
+    assert rows_next
+
+    issues = {r["target_issue"] for r in storage.load_predictions("lotto539")}
+    assert issues == {"11964", "11965"}
+
+
+def test_next_issue_is_pending_until_drawn(df_issue, temp_db):
+    """11965 還沒開獎 → 待開獎;11964 已開 → 算得出中幾顆。"""
+    predictor.save_for(df_issue, "lotto539", "11965")
+    predictor.save_for(df_issue, "lotto539", "11964")
+
+    nxt = predictor.evaluate(df_issue, "lotto539", "11965")
+    assert nxt and all(r["pending"] and r["hits"] is None for r in nxt)
+
+    cur = predictor.evaluate(df_issue, "lotto539", "11964")
+    drawn = {int(df_issue.iloc[-1][f"n{j+1}"]) for j in range(5)}
+    assert cur and all(not r["pending"] for r in cur)
+    for r in cur:
+        assert r["hits"] == len(set(r["numbers"]) & drawn)
+
+
+def test_future_issue_does_not_leak_last_draw(df_issue, temp_db):
+    """對未來期預測時,最後一期是可以用的(它已經開了,不算偷看)。"""
+    got = predictor.generate_for(df_issue, "lotto539", "11965")
+    assert len(got) == len(picker.STRATEGIES)
+
+
+def test_draw_of_issue_by_number_and_date(df_issue, df539):
+    """有期號的用期號查,沒期號的款用日期字串查。"""
+    assert predictor.draw_of_issue(df_issue, "11964") == sorted(
+        int(df_issue.iloc[-1][f"n{j+1}"]) for j in range(5))
+    assert predictor.draw_of_issue(df_issue, "99999") is None      # 還沒開
+    last_day = df539.iloc[-1]["date"].date().isoformat()
+    assert predictor.draw_of_issue(df539, last_day) is not None    # 無期號→用日期
 
 
 def test_marked_formats():

@@ -68,30 +68,118 @@ def issue_of(df: pd.DataFrame, target_date) -> str | None:
     return raw or None
 
 
-def period_label(target_date, issue: str | None = None) -> str:
-    """期別的顯示字樣:有期號優先顯示期號,沒有就用日期。"""
+def last_drawn(df: pd.DataFrame) -> dict | None:
+    """最後一期已開出的資訊:{issue, date}。issue 可能是 None(該款沒有期號)。"""
+    if df is None or df.empty or "date" not in df.columns:
+        return None
+    d = df.sort_values("date").iloc[-1]
+    date = _as_date(d["date"])
+    issue = None
+    if "issue" in df.columns:
+        issue = str(d["issue"] or "").strip() or None
+    return {"issue": issue, "date": date}
+
+
+def next_issue(df: pd.DataFrame) -> str | None:
+    """下一期的期號 = 最後一期 + 1;該款沒有期號就回 None。
+
+    539 的期號是「民國年 3 碼 + 流水 6 碼」(115000192),天天樂是純流水
+    (11964),兩者都能直接 +1。**跨年度時最後一期加一會算錯**(應該跳成
+    下個年度的 000001),那時請在畫面上直接把期號改掉。
+    """
+    last = last_drawn(df)
+    if not last or not last["issue"]:
+        return None
+    try:
+        return str(int(last["issue"]) + 1)
+    except (TypeError, ValueError):
+        return None
+
+
+def next_target(df: pd.DataFrame) -> tuple[str, dt.date]:
+    """建議的目標期:(期號, 預估開獎日)。
+
+    沒有期號的款(六合彩)拿日期字串當期號用 —— 識別方式退化成日期,
+    但流程完全一樣。
+    """
+    last = last_drawn(df)
+    day = (last["date"] + dt.timedelta(days=1)) if last and last["date"] \
+        else dt.date.today()
+    issue = next_issue(df)
+    return (issue or day.isoformat()), day
+
+
+def period_label(target_issue: str, target_date=None) -> str:
+    """期別的顯示字樣。
+
+    期號是純數字就寫成「第 192 期」(539 的 115000192 只取後段流水);
+    期號其實是日期字串(該款沒期號)時就直接顯示日期。
+    """
+    s = str(target_issue or "").strip()
     d = _as_date(target_date)
-    ds = d.isoformat() if d else str(target_date)
-    if not issue:
-        return ds
-    tail = issue[-3:].lstrip("0") or issue      # 115000192 → 192
-    return f"第 {tail} 期({ds[5:]})"
+    tail = f"({d.isoformat()[5:]})" if d else ""
+    if not s:
+        return d.isoformat() if d else ""
+    if not s.isdigit():
+        return s                                  # 本來就是日期字串
+    short = s[-6:].lstrip("0") or s if len(s) > 6 else s
+    return f"第 {short} 期{tail}"
 
 
-def generate_for(df: pd.DataFrame, game_key: str, target_date,
+def date_of_issue(df: pd.DataFrame, target_issue: str):
+    """依期號查該期的開獎日;查不到(還沒開的未來期)回 None。"""
+    s = str(target_issue or "").strip()
+    if df is None or df.empty or not s:
+        return None
+    if "issue" in df.columns:
+        hit = df[df["issue"].astype(str).str.strip() == s]
+        if not hit.empty:
+            return _as_date(hit.iloc[-1]["date"])
+    return _as_date(s) if not s.isdigit() else None   # 沒期號的款,期號就是日期
+
+
+def draw_of_issue(df: pd.DataFrame, target_issue: str) -> list[int] | None:
+    """依期號查開獎號碼;還沒開就回 None。
+
+    沒有期號的款(六合彩)期號其實是日期字串,自動退回用日期查。
+    """
+    s = str(target_issue or "").strip()
+    if df is None or df.empty or not s:
+        return None
+    if "issue" in df.columns:
+        hit = df[df["issue"].astype(str).str.strip() == s]
+        if not hit.empty:
+            return checker.draw_of(df, hit.iloc[-1]["date"])
+    if not s.isdigit():
+        return checker.draw_of(df, s)
+    return None
+
+
+def seed_for_issue(target_issue: str, target_date=None) -> int:
+    """依期號推導 seed:同一期永遠重現,不同期不會撞號。"""
+    s = str(target_issue or "").strip()
+    if s.isdigit():
+        return int(s)
+    return seed_for(target_date or s)
+
+
+def generate_for(df: pd.DataFrame, game_key: str, target_issue: str,
+                 target_date=None,
                  strategies: list[str] | None = None) -> dict[str, list[int]]:
     """替某一期產生各策略的預測號碼(只算,不寫入)。
 
-    用目標期之前的資料當輸入,seed 依目標期推導。
+    只餵目標期之前的資料,seed 依期號推導。
+    target_date 沒給時會用期號回查;查不到就當成還沒開的未來期(可用全部歷史)。
     前置資料太少時(冷熱號沒東西可算)回空 dict。
     """
     strategies = strategies or picker.STRATEGIES
-    past = history_before(df, target_date)
+    known = target_date or date_of_issue(df, target_issue)
+    past = history_before(df, known) if known else df
     if past is None or past.empty:
         return {}
     # 依該款的玩法規格出號 —— 六合彩是 49 選 6,用預設的 39 選 5 會出錯號
     g = games.get(game_key)
-    base = seed_for(target_date)
+    base = seed_for_issue(target_issue, known)
     out: dict[str, list[int]] = {}
     for s in strategies:
         # 每個策略再錯開 seed。同 seed 下權重接近均勻時,不同策略會抽出
@@ -109,24 +197,26 @@ def generate_for(df: pd.DataFrame, game_key: str, target_date,
     return out
 
 
-def save_for(df: pd.DataFrame, game_key: str, target_date,
+def save_for(df: pd.DataFrame, game_key: str, target_issue: str,
+             target_date=None,
              strategies: list[str] | None = None) -> tuple[int, dict[str, list[int]]]:
     """產生並存檔;回傳 (實際新增筆數, 這次算出來的預測)。
 
     同期同策略已存過的不會被覆蓋,所以重複按不會改掉先前的預測。
     """
-    rows = generate_for(df, game_key, target_date, strategies)
+    known = target_date or date_of_issue(df, target_issue)
+    rows = generate_for(df, game_key, target_issue, known, strategies)
     if not rows:
         return 0, {}
     added = storage.add_predictions(
-        game_key, _as_date(target_date).isoformat(),
-        rows, issue=issue_of(df, target_date),
+        game_key, str(target_issue), rows,
+        target_date=known.isoformat() if known else None,
     )
     return added, rows
 
 
 def evaluate(df: pd.DataFrame, game_key: str,
-             target_date: str | None = None) -> list[dict]:
+             target_issue: str | None = None) -> list[dict]:
     """把預測跟當期開獎號比對,回傳逐筆結果(新的期在前)。
 
     每筆多出來的欄位:
@@ -134,15 +224,15 @@ def evaluate(df: pd.DataFrame, game_key: str,
       matched  命中的號碼
       hits     中幾顆(還沒開獎為 None)
       pending  是否還沒開獎
-      label    期別顯示字樣(期號優先)
+      label    期別顯示字樣
     """
     out = []
     drawn_cache: dict[str, list[int] | None] = {}
-    for row in storage.load_predictions(game_key, target_date):
-        td = row["target_date"]
-        if td not in drawn_cache:
-            drawn_cache[td] = checker.draw_of(df, td)
-        drawn = drawn_cache[td]
+    for row in storage.load_predictions(game_key, target_issue):
+        ti = row["target_issue"]
+        if ti not in drawn_cache:
+            drawn_cache[ti] = draw_of_issue(df, ti)
+        drawn = drawn_cache[ti]
         nums = row["numbers"]
         pending = drawn is None
         matched = [] if pending else sorted(set(nums) & set(drawn))
@@ -152,7 +242,7 @@ def evaluate(df: pd.DataFrame, game_key: str,
             "matched": matched,
             "hits": None if pending else len(matched),
             "pending": pending,
-            "label": period_label(td, row.get("issue")),
+            "label": period_label(ti, row.get("target_date")),
         })
     return out
 
@@ -177,12 +267,6 @@ def ranking(evaluated: list[dict]) -> list[dict]:
                      "avg": a["total_hits"] / a["periods"] if a["periods"] else 0.0})
     rows.sort(key=lambda x: (-x["avg"], -x["best"], x["strategy"]))
     return rows
-
-
-def next_target(df: pd.DataFrame) -> dt.date:
-    """建議的目標期:資料最後一期的下一天(沒資料就用今天)。"""
-    last = checker.today_or_last(df)
-    return (last + dt.timedelta(days=1)) if last else dt.date.today()
 
 
 def marked(nums: list[int], matched: set[int] | None = None) -> str:

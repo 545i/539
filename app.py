@@ -544,24 +544,33 @@ def _render_prediction(game):
         "**不代表哪個策略比較會中**。理性娛樂、量力而為。"
     )
 
-    c1, c2 = st.columns([1, 2])
-    target = c1.date_input(
-        "目標期(要預測哪一天的開獎)", value=predictor.next_target(df),
-        format="YYYY-MM-DD", key=f"pred_date_{game.key}",
-    )
-    issue = predictor.issue_of(df, target)
-    c2.markdown(
-        f"　\n期別:**{predictor.period_label(target, issue)}**"
-        + ("" if issue else "　<small>(這一款沒有期號,用日期辨識)</small>"),
-        unsafe_allow_html=True,
-    )
+    last = predictor.last_drawn(df)
+    suggest_issue, suggest_day = predictor.next_target(df)
+    if last:
+        st.caption(
+            f"最新已開獎:**{predictor.period_label(last['issue'] or '', last['date'])}**"
+            f"　{last['date']}" if last["issue"] else
+            f"最新已開獎:{last['date']}(這一款沒有期號,用日期辨識)"
+        )
 
-    if st.button("產生各策略預測並存檔", type="primary", key=f"pred_gen_{game.key}"):
-        added, rows = predictor.save_for(df, game.key, target)
+    c1, c2 = st.columns([1, 2])
+    target = c1.text_input(
+        "要預測哪一期", value=suggest_issue, key=f"pred_issue_{game.key}",
+        help="預設是最新已開獎的下一期。跨年度時期號不是單純加一,可以直接改這裡。",
+    ).strip()
+    c2.markdown(f"　\n目標期:**{predictor.period_label(target, suggest_day)}**"
+                + ("　<small>(預估開獎日 "
+                   f"{suggest_day})</small>" if str(target).isdigit() else ""),
+                unsafe_allow_html=True)
+
+    if st.button("產生各策略預測並存檔", type="primary", key=f"pred_gen_{game.key}",
+                 disabled=not target):
+        added, rows = predictor.save_for(df, game.key, target, suggest_day)
         if not rows:
-            st.error("目標期之前沒有資料可以算,請往後選一天。")
+            st.error("沒有資料可以算 —— 請確認期號填對了。")
         elif added:
-            st.success(f"已存下 {added} 個策略對 {target} 的預測。")
+            st.success(f"已存下 {added} 個策略對「"
+                       f"{predictor.period_label(target, suggest_day)}」的預測。")
         else:
             st.info("這一期先前已經存過了 —— 預測不會被覆蓋,以保留當初的判斷。")
 
@@ -571,10 +580,10 @@ def _render_prediction(game):
         return
 
     # ── 本期 ──
-    tstr = target.isoformat() if hasattr(target, "isoformat") else str(target)
-    cur = [r for r in evaluated if r["target_date"] == tstr]
+    tstr = str(target)
+    cur = [r for r in evaluated if r["target_issue"] == tstr]
     if cur:
-        st.markdown(f"**這一期({predictor.period_label(tstr, cur[0].get('issue'))})的預測**")
+        st.markdown(f"**這一期({cur[0]['label']})的預測**")
         if cur[0]["pending"]:
             st.caption("⏳ 還沒開獎(或開獎資料還沒抓到),開出來後這裡會自動比對。")
         else:
@@ -1323,21 +1332,31 @@ def _pad_buttons(picks: list[str], mode: str, nums_map: dict,
 
 
 def _pred_panel(picks: list[str], mode: str, single: bool, draw_date) -> None:
-    """下注頁裡的策略預測:對「今天這一期」產生各策略的號碼,可一鍵帶進號碼盤。
+    """下注頁裡的策略預測:對「你正要下的那一期」產生各策略的號碼,可帶進號碼盤。
 
-    目標期直接沿用上面的下注日期 —— 你正在為那一期下注,預測自然是對那一期。
+    目標期是各款「最新已開獎的下一期」—— 你要下的本來就是還沒開的那一期。
+    以前這裡跟著下注日期走,但日期不等於一期:同一天可能剛開完 11964、
+    接著要下的是 11965,兩個都落在同一天就會撞在一起、後者存不進去。
     完整的逐期戰績與排行仍在「統計分析 → 預測比對」。
     """
-    tstr = draw_date.isoformat() if hasattr(draw_date, "isoformat") else str(draw_date)
-    with st.expander(f"🎯 各策略對 {tstr} 的預測(參考用,可帶進號碼盤)"):
+    # 各款各自算自己的下一期(開獎日不同,期號也各走各的)
+    targets = {}
+    for k in picks:
+        issue, day = predictor.next_target(load_df(k))
+        targets[k] = (issue, day)
+    title = "、".join(
+        f"{games.get(k).label} {predictor.period_label(*targets[k])}" for k in picks)
+    with st.expander(f"🎯 下一期的各策略預測 —— {title}(參考用,可帶進號碼盤)"):
         st.caption(
-            "所有策略的期望中獎率完全相同,這只是把不同選號方式的結果攤出來看,"
-            "**不是準度排名**。預測只吃得到這一期之前的資料,存下後不會被覆蓋。"
+            "目標是**還沒開獎的下一期**(不是上面的下注日期)。所有策略的期望中獎率"
+            "完全相同,這只是把不同選號方式的結果攤出來看,**不是準度排名**。"
+            "預測只吃得到這一期之前的資料,存下後不會被覆蓋。"
         )
         if st.button("產生並存檔", key=f"{mode}_pred_gen", type="primary"):
             added_txt, kept = [], []
             for k in picks:
-                added, rows = predictor.save_for(load_df(k), k, draw_date)
+                issue, day = targets[k]
+                added, rows = predictor.save_for(load_df(k), k, issue, day)
                 if not rows:
                     continue
                 (added_txt if added else kept).append(
@@ -1349,14 +1368,14 @@ def _pred_panel(picks: list[str], mode: str, single: bool, draw_date) -> None:
                 st.info("、".join(kept) + " 這一期先前已經存過了 —— "
                         "預測不會被覆蓋,以保留當初的判斷。")
             if not added_txt and not kept:
-                st.error("這一期之前沒有資料可以算,請確認下注日期。")
+                st.error("沒有資料可以算 —— 請先到「資料」頁更新開獎資料。")
 
         # 排成矩陣:一列一個策略(Y),一欄一款遊戲(X),格子裡是號碼 + 帶入。
         # 「帶入」要是真的按鈕,沒辦法塞進 <table>,所以用欄位排出表格結構。
         by_cell = {}                       # (遊戲, 策略) -> 該筆預測
         drawn_note = []
         for k in picks:
-            got = predictor.evaluate(load_df(k), k, tstr)
+            got = predictor.evaluate(load_df(k), k, targets[k][0])
             for r in got:
                 by_cell[(k, r["strategy"])] = r
             if got and not got[0]["pending"]:
