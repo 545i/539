@@ -22,7 +22,7 @@ from core import (auth, backtest, binary_wide, constants, erhe, excel_report,
 from core import autoupdate, scraper, scraper_fantasy5, scraper_marksix, stats, storage
 from core import checker, predictor
 from core.loader import DataError, load_history, merge, save
-from ui import docs, numpad
+from ui import docs, numpad, tables
 
 
 def _writable_base() -> Path:
@@ -579,12 +579,12 @@ def _render_prediction(game):
             st.caption("⏳ 還沒開獎(或開獎資料還沒抓到),開出來後這裡會自動比對。")
         else:
             st.caption(f"開獎號碼:{'  '.join(f'{n:02d}' for n in cur[0]['drawn'])}")
-        st.dataframe(pd.DataFrame([{
+        tables.html_table(pd.DataFrame([{
             "策略": picker.label(r["strategy"]),
-            "預測號碼(【】=中)": predictor.marked(r["numbers"], set(r["matched"])),
+            "預測號碼": predictor.marked(r["numbers"], set(r["matched"])),
             "中幾顆": "待開獎" if r["pending"] else f"{r['hits']} 顆",
             "存檔時間": r["created_at"],
-        } for r in cur]), width="stretch", hide_index=True)
+        } for r in cur]), mono_cols=("預測號碼",))
         if st.button("刪掉這一期的預測", key=f"pred_del_{game.key}",
                      help="期別選錯時用;刪掉後可以重新產生。"):
             storage.delete_predictions(game.key, tstr)
@@ -596,14 +596,14 @@ def _render_prediction(game):
     if rank:
         st.markdown("**策略累計戰績**(只計已開獎的期)")
         medals = ["🥇", "🥈", "🥉"]
-        st.dataframe(pd.DataFrame([{
+        tables.html_table(pd.DataFrame([{
             "名次": medals[i] if i < len(medals) else f"第 {i + 1} 名",
             "策略": r["label"],
             "期數": r["periods"],
             "總命中": f"{r['total_hits']} 顆",
             "平均每期": f"{r['avg']:.2f} 顆",
             "單期最佳": f"{r['best']} 顆",
-        } for i, r in enumerate(rank)]), width="stretch", hide_index=True)
+        } for i, r in enumerate(rank)]), mono_cols=("平均每期",))
         st.caption(
             f"參考基準:每期開 {game.pick} 顆、{game.num_max} 選 {game.pick},"
             f"隨便選 {game.pick} 顆的期望命中是 "
@@ -613,12 +613,12 @@ def _render_prediction(game):
 
     # ── 逐期明細 ──
     st.markdown("**逐期明細**")
-    st.dataframe(pd.DataFrame([{
+    tables.html_table(pd.DataFrame([{
         "期別": r["label"],
         "策略": picker.label(r["strategy"]),
-        "預測號碼(【】=中)": predictor.marked(r["numbers"], set(r["matched"])),
+        "預測號碼": predictor.marked(r["numbers"], set(r["matched"])),
         "中幾顆": "待開獎" if r["pending"] else f"{r['hits']} 顆",
-    } for r in evaluated]), width="stretch", hide_index=True)
+    } for r in evaluated]), mono_cols=("預測號碼",), max_height=420)
 
 
 # ── 2. 產生參考號碼 ───────────────────────────────────────
@@ -1751,6 +1751,10 @@ def _render_pending(rows: list[dict]):
 
 
 # ── 三、紀錄 ─────────────────────────────────────────────
+# 流水表裡要靠等寬字型對齊的欄(號碼與金額)
+_LEDGER_MONO = ("號碼", "成本", "回收", "本局損益", "累積損益")
+
+
 def _marked_numbers(r: dict) -> str:
     """把該筆圈的號碼排成字串,中的號碼用【】框起來。
 
@@ -1777,7 +1781,8 @@ def _detail_df(rows: list[dict]) -> pd.DataFrame:
         "遊戲": games.get(r["game"]).label,
         "車數": int(r["cars"]),
         "押幾顆": int(r["numbers"]),
-        **({"號碼(【】=中)": _marked_numbers(r)} if any_picked else {}),
+        # 中的號碼在 ui/tables 會被畫成綠色標籤,欄名不必再標示【】
+        **({"號碼": _marked_numbers(r)} if any_picked else {}),
         "重幾顆": "待開獎" if r["pending"] else f"{int(r['hits'])} 顆",
         "成本": f"{r['cost']:,.0f}",
         "回收": f"{r['payout']:,.0f}",
@@ -1805,7 +1810,8 @@ def _render_mode_records(user: str, mode: str, rows: list[dict]):
     st.caption(
         f"最近 {min(RECENT_N, len(rows))} 筆(共 {len(rows)} 筆)。"
         "「累積」欄是整個帳號的共用損益池,所以會把另一種下法的損益也算進去。")
-    st.dataframe(_detail_df(rows).tail(RECENT_N), width="stretch", hide_index=True)
+    tables.html_table(_detail_df(rows).tail(RECENT_N),
+                      mono_cols=_LEDGER_MONO, max_height=420)
 
     b1, b2 = st.columns(2)
     if b1.button(f"撤銷剛剛記的那筆({name})", key=f"undo_{mode}", width="stretch",
@@ -1857,7 +1863,7 @@ def _render_full_ledger(user: str, rows: list[dict], mode: str | None = None):
             st.plotly_chart(fig, theme=None, width="stretch", key=f"cum_chart{suffix}")
 
     with tab_all:
-        st.dataframe(_detail_df(rows), width="stretch", hide_index=True)
+        tables.html_table(_detail_df(rows), mono_cols=_LEDGER_MONO, max_height=520)
         st.download_button(
             "下載流水 CSV", key=f"dl_ledger{suffix}",
             data=pd.DataFrame(rows).to_csv(index=False).encode("utf-8-sig"),
