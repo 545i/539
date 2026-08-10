@@ -1131,9 +1131,31 @@ def _plans_of(cfgs: dict, keys: list[str]) -> dict:
             for k in keys}
 
 
+def _next_issue_of(game_key: str, mode: str) -> str:
+    """這一款下一筆要用的期號。
+
+    優先用上次記帳後推的下一期(存在 session);沒有就用開獎資料推算
+    「最新已開獎 + 1」。回空字串代表這款沒有期號可用(六合彩)。
+    """
+    memo = st.session_state.get(f"{mode}_next_issue", {})
+    if game_key in memo:
+        return str(memo[game_key])
+    issue = predictor.next_issue(load_df(game_key))
+    return str(issue or "")
+
+
+def _bump_issue(game_key: str, used: str, mode: str) -> None:
+    """記完帳就把該款的期號往下推一期,下一筆自動接續(使用者仍可改)。"""
+    if not str(used).strip().isdigit():
+        return
+    memo = dict(st.session_state.get(f"{mode}_next_issue", {}))
+    memo[game_key] = str(int(used) + 1)
+    st.session_state[f"{mode}_next_issue"] = memo
+
+
 def _record(user: str, cfgs: dict, picks: list[str], cars: dict,
             draw_date, hits: dict | None = None, mode: str = storage.MULTI,
-            nums: dict | None = None):
+            nums: dict | None = None, issues: dict | None = None):
     """把選定的幾款一次記進流水;hits 沒填的款視為待開獎。記完把車數欄位還原成自動。
 
     mode 同時當作 session key 前綴與寫進資料庫的下注模式(single / multi)。
@@ -1141,14 +1163,17 @@ def _record(user: str, cfgs: dict, picks: list[str], cars: dict,
     """
     hits = hits or {}
     nums = nums or {}
+    issues = issues or {}
     for k in picks:
         cfg = cfgs[k]
         cost = cfg["n_numbers"] * int(cars[k]) * cfg["cost_per_car"]
+        issue = str(issues.get(k) or "").strip()
         storage.add_round(
             user, k, draw_date.isoformat(), cfg["n_numbers"], int(cars[k]),
             hits.get(k), cost, cfg["win_payout"], mode=mode,
-            picked=nums.get(k),
+            picked=nums.get(k), issue=issue or None,
         )
+        _bump_issue(k, issue, mode)          # 下一筆自動接續下一期
         _kick_autoupdate(games.get(k))
     _reset_car_inputs(mode)
     for k in picks:                       # 記完就把號碼盤清空,下一筆重選
@@ -1539,10 +1564,21 @@ def _render_today(user: str, cfgs: dict, cum: float, mode: str = storage.MULTI):
     num_col = {"號碼": st.column_config.TextColumn(
         "號碼", help="在下方號碼盤圈的號碼;沒圈號的款顯示「—」,一樣只記數量。")}
 
+    # 期號:預設帶「最新已開獎 + 1」,記完帳會自動往下推一期,隨時可以改。
+    # 用 NumberColumn 手機才會跳數字鍵盤(見 _numeric_keyboard)。
+    issue_now = {k: _next_issue_of(k, mode) for k in picks}
+    has_issue = any(issue_now.values())
+    issue_col = {"期號": st.column_config.NumberColumn(
+        "期號", step=1, format="%d",
+        help="這一注要下哪一期。預設是最新已開獎的下一期;記完帳會自動 +1,"
+             "跨年度或補登時直接改這格。")}
+
     # 輸入表:只放可以改的欄,手機不必左右滑。單顆模式連「押幾顆」都不放。
     if single:
         table = pd.DataFrame([{
             "遊戲": games.get(k).label,
+            **({"期號": (int(issue_now[k]) if str(issue_now[k]).isdigit() else None)}
+               if has_issue else {}),
             **({"號碼": _row_nums(k)} if by_pick else {}),
             "下幾車": int(res["cars"][k]),
             "開獎結果": SINGLE_HITS_REV[hits_state.get(k)],
@@ -1555,11 +1591,14 @@ def _render_today(user: str, cfgs: dict, cum: float, mode: str = storage.MULTI):
                 "開獎結果", options=list(SINGLE_HITS), required=True,
                 help="押 1 顆只有中或沒中兩種結果;還沒開獎就留「待開獎」。"),
             **(num_col if by_pick else {}),
+            **(issue_col if has_issue else {}),
         }
     else:
         hit_opts = _hit_options(cfgs, picks)
         table = pd.DataFrame([{
             "遊戲": games.get(k).label,
+            **({"期號": (int(issue_now[k]) if str(issue_now[k]).isdigit() else None)}
+               if has_issue else {}),
             **({"號碼": _row_nums(k)} if by_pick else {}),
             "押幾顆": int(cfgs[k]["n_numbers"]),
             "下幾車": int(res["cars"][k]),
@@ -1580,6 +1619,7 @@ def _render_today(user: str, cfgs: dict, cum: float, mode: str = storage.MULTI):
                 help="中了幾顆就選幾;還沒開獎就留「待開獎」,"
                      "之後在「二、開獎後回填」補。"),
             **(num_col if by_pick else {}),
+            **(issue_col if has_issue else {}),
         }
 
     st.markdown("**填這裡**")
@@ -1705,7 +1745,14 @@ def _render_today(user: str, cfgs: dict, cum: float, mode: str = storage.MULTI):
             key=f"{mode}_record", type="primary", width="stretch",
             disabled=bool(bad_hits)):
         # 圈了號的款連號碼一起存,沒圈的只存數量 —— 同一次記帳可以混著來
-        _record(user, cfgs, picks, cars, draw_date, hits, mode=mode, nums=nums_map)
+        issues_in = {}
+        if has_issue and "期號" in edited.columns:
+            for k in picks:
+                v = edited.loc[k, "期號"]
+                if v is not None and not pd.isna(v):
+                    issues_in[k] = str(int(v))
+        _record(user, cfgs, picks, cars, draw_date, hits, mode=mode,
+                nums=nums_map, issues=issues_in)
     if not single and cols[1].button(
             "查看中更多顆的金額", key=f"{mode}_more", width="stretch",
             help="依你填的車數,列出中 1 顆、2 顆…各拿多少、累積會變多少。"):
@@ -1826,9 +1873,11 @@ def _marked_numbers(r: dict) -> str:
 def _detail_df(rows: list[dict]) -> pd.DataFrame:
     # 全部都是手動填數量的話就不放「號碼」欄,表格維持原樣(手機也不用左右滑)
     any_picked = any(r.get("picked") for r in rows)
+    any_issue = any(str(r.get("issue") or "").strip() for r in rows)
     return pd.DataFrame([{
         "#": i + 1,
         "日期": r["draw_date"],
+        **({"期號": str(r.get("issue") or "—")} if any_issue else {}),
         "遊戲": games.get(r["game"]).label,
         "車數": int(r["cars"]),
         "押幾顆": int(r["numbers"]),

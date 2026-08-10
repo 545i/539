@@ -273,3 +273,42 @@ def test_marksix_six_numbers():
     res = checker.check(df, "2026-08-05", [4, 25, 45, 49])
     assert res["ok"] and res["hits"] == 3
     assert res["matched"] == [4, 25, 45]
+
+
+# ── 下注紀錄的期號(2026-08 新增)────────────────────────────
+def test_round_stores_issue(temp_db):
+    """期號要能存進下注紀錄;沒填的款維持空值。"""
+    storage.add_round("u", "fantasy5", "2026-08-11", 5, 3, None, 1500, 20000,
+                      mode=storage.MULTI, picked=[5, 12], issue="11965")
+    storage.add_round("u", "marksix", "2026-08-11", 6, 1, None, 500, 20000,
+                      mode=storage.MULTI)
+    rows = {r["game"]: r for r in storage.load_rounds("u")}
+    assert rows["fantasy5"]["issue"] == "11965"
+    assert not rows["marksix"]["issue"]
+
+
+def test_issue_migration_keeps_old_rows(tmp_path, monkeypatch):
+    """v4(沒有 issue 欄)的舊庫要能就地升級,舊紀錄不掉。"""
+    db = tmp_path / "v4.db"
+    conn = sqlite3.connect(str(db))
+    conn.execute("""
+        CREATE TABLE erhe_rounds (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, game_key TEXT NOT NULL, ts TEXT,
+            numbers INTEGER NOT NULL DEFAULT 5, cars INTEGER NOT NULL,
+            hits INTEGER NOT NULL, net REAL NOT NULL, cumulative REAL NOT NULL,
+            account TEXT, game TEXT, draw_date TEXT, cost REAL, payout REAL,
+            payout_rate REAL, mode TEXT, picked TEXT)
+    """)
+    conn.execute(
+        "INSERT INTO erhe_rounds (game_key, account, game, draw_date, numbers, cars,"
+        " hits, cost, payout, payout_rate, net, cumulative, mode)"
+        " VALUES ('u','u','lotto539','2026-08-01',5,3,-1,1500,0,20000,-1500,-1500,'multi')")
+    conn.commit()
+    conn.close()
+
+    monkeypatch.setattr(storage, "_db_path", lambda: db)
+    rows = storage.load_rounds("u")
+    assert len(rows) == 1 and not rows[0]["issue"]
+    cols = [r[1] for r in sqlite3.connect(str(db))
+            .execute("PRAGMA table_info(erhe_rounds)")]
+    assert "issue" in cols

@@ -75,7 +75,8 @@ def _conn() -> sqlite3.Connection:
             payout     REAL,
             payout_rate REAL,
             mode       TEXT NOT NULL DEFAULT 'multi',
-            picked     TEXT
+            picked     TEXT,
+            issue      TEXT
         )
         """
     )
@@ -157,6 +158,9 @@ def _migrate(conn: sqlite3.Connection, path: Path) -> None:
     if "picked" not in cols:   # v3 → v4:記下實際圈選的號碼(選號盤)
         conn.execute("ALTER TABLE erhe_rounds ADD COLUMN picked TEXT")
         cols.append("picked")
+    if "issue" not in cols:    # v4 → v5:記下期號,才能跟預測對得起來
+        conn.execute("ALTER TABLE erhe_rounds ADD COLUMN issue TEXT")
+        cols.append("issue")
     if "mode" not in cols:     # v2 → v3:單顆 / 多顆分流
         if path.exists():
             bak = path.with_name(path.name + ".bak_v2")
@@ -316,7 +320,8 @@ def parse_picked(raw) -> list[int]:
 # ── 寫入 / 讀取 ──────────────────────────────────────────
 def add_round(account: str, game: str, draw_date: str, numbers: int, cars: int,
               hits: int | None, cost: float, payout_rate: float,
-              mode: str = MULTI, picked: list[int] | None = None) -> int:
+              mode: str = MULTI, picked: list[int] | None = None,
+              issue: str | None = None) -> int:
     """新增一筆下注流水,回傳該筆 id。
 
     account   帳號(整個帳號共用一個損益池)
@@ -343,10 +348,11 @@ def add_round(account: str, game: str, draw_date: str, numbers: int, cars: int,
         cur = c.execute(
             "INSERT INTO erhe_rounds "
             "(game_key, account, game, draw_date, numbers, cars, hits, cost, payout, "
-            " payout_rate, net, cumulative, mode, picked) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)",
+            " payout_rate, net, cumulative, mode, picked, issue) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)",
             (account, account, game, str(draw_date), int(numbers), int(cars), hits_val,
-             float(cost), payout, float(payout_rate), net, mode, picked_str),
+             float(cost), payout, float(payout_rate), net, mode, picked_str,
+             (str(issue).strip() or None) if issue else None),
         )
         rid = int(cur.lastrowid)
         _recompute(c, account)
@@ -401,7 +407,8 @@ def delete_round(round_id: int) -> bool:
 
 
 _ROW_COLS = ["id", "ts", "draw_date", "game", "numbers", "cars", "hits",
-             "cost", "payout", "payout_rate", "net", "cumulative", "mode", "picked"]
+             "cost", "payout", "payout_rate", "net", "cumulative", "mode", "picked",
+             "issue"]
 
 
 def load_rounds(account: str, mode: str | None = None) -> list[dict]:
