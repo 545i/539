@@ -89,6 +89,20 @@ def _conn() -> sqlite3.Connection:
         )
         """
     )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS predictions (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            game        TEXT NOT NULL,
+            target_date TEXT NOT NULL,
+            issue       TEXT,
+            strategy    TEXT NOT NULL,
+            numbers     TEXT NOT NULL,
+            created_at  TEXT DEFAULT (datetime('now', 'localtime')),
+            UNIQUE (game, target_date, strategy)
+        )
+        """
+    )
     _migrate(conn, path)
     return conn
 
@@ -540,3 +554,74 @@ def set_setting(game_key: str, key: str, value: float) -> None:
             "ON CONFLICT(game_key, key) DO UPDATE SET value = excluded.value",
             (game_key, key, float(value)),
         )
+
+
+# ── 策略預測(不分帳號:系統依固定 seed 產生的客觀紀錄)──────
+_PRED_COLS = ["id", "game", "target_date", "issue", "strategy", "numbers", "created_at"]
+
+
+def add_predictions(game: str, target_date: str, rows: dict[str, list[int]],
+                    issue: str | None = None) -> int:
+    """存下某一期各策略的預測號碼,回傳實際新增的筆數。
+
+    rows 形如 {"hot": [5,12,...], "cold": [...]}。
+    同一期同一策略已經存過就跳過(不覆蓋)—— 預測一旦寫下就不該再改,
+    否則「事前預測」的意義就沒了。
+    """
+    added = 0
+    with _conn() as c:
+        for strategy, nums in rows.items():
+            if not nums:
+                continue
+            cur = c.execute(
+                "INSERT OR IGNORE INTO predictions "
+                "(game, target_date, issue, strategy, numbers) VALUES (?, ?, ?, ?, ?)",
+                (game, str(target_date), (issue or None), strategy, dump_picked(nums)),
+            )
+            added += cur.rowcount or 0
+    return added
+
+
+def load_predictions(game: str | None = None,
+                     target_date: str | None = None) -> list[dict]:
+    """讀預測紀錄(新的期在前);numbers 已轉回號碼清單。"""
+    where, params = [], []
+    if game:
+        where.append("game = ?")
+        params.append(game)
+    if target_date:
+        where.append("target_date = ?")
+        params.append(str(target_date))
+    clause = (" WHERE " + " AND ".join(where)) if where else ""
+    with _conn() as c:
+        rows = c.execute(
+            f"SELECT {', '.join(_PRED_COLS)} FROM predictions{clause} "
+            "ORDER BY target_date DESC, strategy",
+            params,
+        ).fetchall()
+    out = []
+    for r in rows:
+        d = dict(zip(_PRED_COLS, r))
+        d["numbers"] = parse_picked(d["numbers"])
+        out.append(d)
+    return out
+
+
+def prediction_dates(game: str) -> list[str]:
+    """該遊戲有預測紀錄的期別(新到舊)。"""
+    with _conn() as c:
+        rows = c.execute(
+            "SELECT DISTINCT target_date FROM predictions WHERE game = ? "
+            "ORDER BY target_date DESC", (game,),
+        ).fetchall()
+    return [r[0] for r in rows]
+
+
+def delete_predictions(game: str, target_date: str) -> int:
+    """刪掉某一期的全部預測(輸錯期別時用);回傳刪除筆數。"""
+    with _conn() as c:
+        cur = c.execute(
+            "DELETE FROM predictions WHERE game = ? AND target_date = ?",
+            (game, str(target_date)),
+        )
+        return cur.rowcount or 0

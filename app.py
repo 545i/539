@@ -20,7 +20,7 @@ import streamlit.components.v1 as components
 from core import (auth, backtest, binary_wide, constants, erhe, excel_report,
                   games, kelly, picker)
 from core import autoupdate, scraper, scraper_fantasy5, scraper_marksix, stats, storage
-from core import checker
+from core import checker, predictor
 from core.loader import DataError, load_history, merge, save
 from ui import docs, numpad
 
@@ -363,7 +363,7 @@ def _render_stats(fdf: pd.DataFrame, game):
 
     tabs = st.tabs(
         ["號碼頻率", "冷熱號", "遺漏值", "間隔/連號", "奇偶/大小/和值",
-         f"星數統計({n_bands}興)", "卡方檢定", "共現配對"]
+         f"星數統計({n_bands}興)", "卡方檢定", "共現配對", "🎯 預測比對"]
     )
 
     # 號碼頻率
@@ -521,6 +521,104 @@ def _render_stats(fdf: pd.DataFrame, game):
         ]
         st.subheader("最常一起出現的配對 Top10")
         st.dataframe(pd.DataFrame(pair_rows), width='stretch', hide_index=True)
+
+    # 預測比對:每期存下各策略的預測,開獎後自動比對
+    with tabs[8]:
+        _render_prediction(game)
+
+
+def _render_prediction(game):
+    """預測比對:先把各策略的預測存下來,開獎後自動比對中幾顆。
+
+    刻意用完整歷史(load_df)而不是側邊欄過濾後的 fdf —— 預測要看得到
+    目標期之前的所有資料,比對也得查得到當期開獎號。
+    """
+    df = load_df(game.key)
+    st.subheader("🎯 預測比對")
+    st.caption(
+        "在開獎前把各策略選的號碼存下來,開獎後自動比對中了幾顆。"
+        "預測只吃得到目標期**之前**的資料,一旦存下就不會被覆蓋。"
+    )
+    st.warning(
+        "所有策略的期望中獎率完全相同 —— 下面的排行只是把運氣視覺化,"
+        "**不代表哪個策略比較會中**。理性娛樂、量力而為。"
+    )
+
+    c1, c2 = st.columns([1, 2])
+    target = c1.date_input(
+        "目標期(要預測哪一天的開獎)", value=predictor.next_target(df),
+        format="YYYY-MM-DD", key=f"pred_date_{game.key}",
+    )
+    issue = predictor.issue_of(df, target)
+    c2.markdown(
+        f"　\n期別:**{predictor.period_label(target, issue)}**"
+        + ("" if issue else "　<small>(這一款沒有期號,用日期辨識)</small>"),
+        unsafe_allow_html=True,
+    )
+
+    if st.button("產生各策略預測並存檔", type="primary", key=f"pred_gen_{game.key}"):
+        added, rows = predictor.save_for(df, game.key, target)
+        if not rows:
+            st.error("目標期之前沒有資料可以算,請往後選一天。")
+        elif added:
+            st.success(f"已存下 {added} 個策略對 {target} 的預測。")
+        else:
+            st.info("這一期先前已經存過了 —— 預測不會被覆蓋,以保留當初的判斷。")
+
+    evaluated = predictor.evaluate(df, game.key)
+    if not evaluated:
+        st.info("還沒有任何預測紀錄。選好目標期後按上面的按鈕存第一筆。")
+        return
+
+    # ── 本期 ──
+    tstr = target.isoformat() if hasattr(target, "isoformat") else str(target)
+    cur = [r for r in evaluated if r["target_date"] == tstr]
+    if cur:
+        st.markdown(f"**這一期({predictor.period_label(tstr, cur[0].get('issue'))})的預測**")
+        if cur[0]["pending"]:
+            st.caption("⏳ 還沒開獎(或開獎資料還沒抓到),開出來後這裡會自動比對。")
+        else:
+            st.caption(f"開獎號碼:{'  '.join(f'{n:02d}' for n in cur[0]['drawn'])}")
+        st.dataframe(pd.DataFrame([{
+            "策略": picker.label(r["strategy"]),
+            "預測號碼(【】=中)": predictor.marked(r["numbers"], set(r["matched"])),
+            "中幾顆": "待開獎" if r["pending"] else f"{r['hits']} 顆",
+            "存檔時間": r["created_at"],
+        } for r in cur]), width="stretch", hide_index=True)
+        if st.button("刪掉這一期的預測", key=f"pred_del_{game.key}",
+                     help="期別選錯時用;刪掉後可以重新產生。"):
+            storage.delete_predictions(game.key, tstr)
+            st.rerun()
+        st.divider()
+
+    # ── 策略排行 ──
+    rank = predictor.ranking(evaluated)
+    if rank:
+        st.markdown("**策略累計戰績**(只計已開獎的期)")
+        medals = ["🥇", "🥈", "🥉"]
+        st.dataframe(pd.DataFrame([{
+            "名次": medals[i] if i < len(medals) else f"第 {i + 1} 名",
+            "策略": r["label"],
+            "期數": r["periods"],
+            "總命中": f"{r['total_hits']} 顆",
+            "平均每期": f"{r['avg']:.2f} 顆",
+            "單期最佳": f"{r['best']} 顆",
+        } for i, r in enumerate(rank)]), width="stretch", hide_index=True)
+        st.caption(
+            f"參考基準:每期開 {game.pick} 顆、{game.num_max} 選 {game.pick},"
+            f"隨便選 {game.pick} 顆的期望命中是 "
+            f"{game.pick * game.pick / game.num_max:.2f} 顆。"
+        )
+        st.divider()
+
+    # ── 逐期明細 ──
+    st.markdown("**逐期明細**")
+    st.dataframe(pd.DataFrame([{
+        "期別": r["label"],
+        "策略": picker.label(r["strategy"]),
+        "預測號碼(【】=中)": predictor.marked(r["numbers"], set(r["matched"])),
+        "中幾顆": "待開獎" if r["pending"] else f"{r['hits']} 顆",
+    } for r in evaluated]), width="stretch", hide_index=True)
 
 
 # ── 2. 產生參考號碼 ───────────────────────────────────────

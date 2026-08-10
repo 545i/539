@@ -45,15 +45,20 @@ def _build_session():
 
 
 def _parse_month(payload: dict) -> list[dict]:
-    """把 API 回傳的某月資料轉成 [{date,n1..n5}, ...]。
+    """把 API 回傳的某月資料轉成 [{date,issue,n1..n5}, ...]。
 
     API 欄位名稱可能隨改版調整,這裡採容錯解析:找出 5 個 1~39 的開獎號。
+
+    issue 取自 API 的 period(例:115000192 = 民國115年第192期)。
+    期號是開獎的唯一識別,loader.merge() 有期號時會優先照期號去重;
+    抓不到就留空字串,合併時自動退回用日期。
     """
     content = payload.get("content") or {}
     items = content.get("daily539Res") or content.get("lotteryDaily539Res") or []
     rows = []
     for it in items:
         date = it.get("lotteryDate") or it.get("openDate")
+        issue = str(it.get("period") or it.get("issue") or "").strip()
         # 開獎號通常放在 drawNumberSize / openShowOrder 之類欄位
         raw = (
             it.get("drawNumberSize")
@@ -68,7 +73,8 @@ def _parse_month(payload: dict) -> list[dict]:
             d = pd.to_datetime(date, errors="coerce")
             if pd.isna(d):
                 continue
-            rows.append({"date": d, **{f"n{i+1}": nums[i] for i in range(5)}})
+            rows.append({"date": d, "issue": issue,
+                         **{f"n{i+1}": nums[i] for i in range(5)}})
     return rows
 
 

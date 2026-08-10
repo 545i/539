@@ -53,13 +53,14 @@ def draw_probabilities(df, strategy: str = "random", window: int = 30,
     return {n: pick * weights[n] / total for n in nums}
 
 
-def _weighted_sample(weights: dict[int, float], rng: random.Random) -> list[int]:
-    """依權重不放回抽 PICK 個號碼。"""
+def _weighted_sample(weights: dict[int, float], rng: random.Random,
+                     pick_n: int = PICK) -> list[int]:
+    """依權重不放回抽 pick_n 個號碼。"""
     nums = list(weights.keys())
     w = [max(weights[n], 1e-9) for n in nums]
     chosen: list[int] = []
     pool = list(zip(nums, w))
-    for _ in range(PICK):
+    for _ in range(pick_n):
         total = sum(x[1] for x in pool)
         r = rng.uniform(0, total)
         acc = 0.0
@@ -89,9 +90,15 @@ def _weights(df: pd.DataFrame, strategy: str, window: int = 30,
     raise ValueError(f"未知策略:{strategy}")
 
 
-def _common_sum_range(df: pd.DataFrame) -> tuple[int, int]:
-    """歷史和值的中央區間(約 10%~90% 分位),供 balanced 過濾。"""
-    sums = [sum(r) for r in df[[f"n{i}" for i in range(1, PICK + 1)]].values.tolist()]
+def _common_sum_range(df: pd.DataFrame, pick_n: int = PICK) -> tuple[int, int]:
+    """歷史和值的中央區間(約 10%~90% 分位),供 balanced 過濾。
+
+    號碼欄依實際資料推斷(六合彩有 n1~n6),不寫死 5 欄。
+    """
+    from core.loader import detect_num_cols
+
+    cols = detect_num_cols(df) or [f"n{i}" for i in range(1, pick_n + 1)]
+    sums = [sum(r) for r in df[cols].values.tolist()]
     if not sums:
         return (60, 140)
     s = sorted(sums)
@@ -101,29 +108,37 @@ def _common_sum_range(df: pd.DataFrame) -> tuple[int, int]:
 
 
 def pick(df: pd.DataFrame, strategy: str = "random", sets: int = 5,
-         seed: int | None = None) -> list[list[int]]:
-    """產生 sets 組參考號碼,每組 PICK 個不重複號(已排序)。
+         seed: int | None = None, num_max: int = NUM_MAX,
+         pick_n: int = PICK) -> list[list[int]]:
+    """產生 sets 組參考號碼,每組 pick_n 個不重複號(已排序)。
 
     seed 固定時結果可重現。balanced 會重抽直到符合條件(有上限避免無窮迴圈)。
+
+    num_max / pick_n 預設是今彩539 的 39 選 5;六合彩要傳 49 選 6,
+    否則會抽出 5 個 1~39 的號碼(規格不符),cold 策略更會直接 KeyError。
     """
     if strategy not in STRATEGIES:
         raise ValueError(f"未知策略:{strategy};可用 {STRATEGIES}")
     rng = random.Random(seed)
 
     if strategy == "balanced":
-        lo, hi = _common_sum_range(df)
+        lo, hi = _common_sum_range(df, pick_n)
+        # 奇數/大數各佔約 4~6 成(對 39 選 5 就是原本的 2~3 個)
+        lo_n, hi_n = round(pick_n * 0.4), round(pick_n * 0.6)
+        split = round(num_max / 2) if num_max != NUM_MAX else SIZE_SPLIT
         results = []
         for _ in range(sets):
             for _attempt in range(200):
-                cand = sorted(rng.sample(range(NUM_MIN, NUM_MAX + 1), PICK))
+                cand = sorted(rng.sample(range(NUM_MIN, num_max + 1), pick_n))
                 odd = sum(1 for n in cand if n % 2 == 1)
-                big = sum(1 for n in cand if n >= SIZE_SPLIT)
-                if 2 <= odd <= 3 and 2 <= big <= 3 and lo <= sum(cand) <= hi:
+                big = sum(1 for n in cand if n >= split)
+                if (lo_n <= odd <= hi_n and lo_n <= big <= hi_n
+                        and lo <= sum(cand) <= hi):
                     results.append(cand)
                     break
             else:
-                results.append(sorted(rng.sample(range(NUM_MIN, NUM_MAX + 1), PICK)))
+                results.append(sorted(rng.sample(range(NUM_MIN, num_max + 1), pick_n)))
         return results
 
-    weights = _weights(df, strategy)
-    return [_weighted_sample(weights, rng) for _ in range(sets)]
+    weights = _weights(df, strategy, num_max=num_max)
+    return [_weighted_sample(weights, rng, pick_n) for _ in range(sets)]
