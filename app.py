@@ -1316,6 +1316,63 @@ def _pad_buttons(picks: list[str], mode: str, nums_map: dict,
             _pick_dialog(k, mode, single, int(cfgs[k]["n_numbers"]))
 
 
+def _pred_panel(picks: list[str], mode: str, single: bool, draw_date) -> None:
+    """下注頁裡的策略預測:對「今天這一期」產生各策略的號碼,可一鍵帶進號碼盤。
+
+    目標期直接沿用上面的下注日期 —— 你正在為那一期下注,預測自然是對那一期。
+    完整的逐期戰績與排行仍在「統計分析 → 預測比對」。
+    """
+    tstr = draw_date.isoformat() if hasattr(draw_date, "isoformat") else str(draw_date)
+    with st.expander(f"🎯 各策略對 {tstr} 的預測(參考用,可帶進號碼盤)"):
+        st.caption(
+            "所有策略的期望中獎率完全相同,這只是把不同選號方式的結果攤出來看,"
+            "**不是準度排名**。預測只吃得到這一期之前的資料,存下後不會被覆蓋。"
+        )
+        if st.button("產生並存檔", key=f"{mode}_pred_gen", type="primary"):
+            added_txt, kept = [], []
+            for k in picks:
+                added, rows = predictor.save_for(load_df(k), k, draw_date)
+                if not rows:
+                    continue
+                (added_txt if added else kept).append(
+                    f"{games.get(k).label} {added} 筆" if added
+                    else games.get(k).label)
+            if added_txt:
+                st.success("已存下:" + "、".join(added_txt))
+            if kept:
+                st.info("、".join(kept) + " 這一期先前已經存過了 —— "
+                        "預測不會被覆蓋,以保留當初的判斷。")
+            if not added_txt and not kept:
+                st.error("這一期之前沒有資料可以算,請確認下注日期。")
+
+        for k in picks:
+            got = predictor.evaluate(load_df(k), k, tstr)
+            if not got:
+                continue
+            g = games.get(k)
+            st.markdown(f"**{g.label}** — {predictor.period_label(tstr, got[0].get('issue'))}")
+            if not got[0]["pending"]:
+                st.caption("開獎號碼:" + "  ".join(f"{n:02d}" for n in got[0]["drawn"]))
+            for r in got:
+                c1, c2 = st.columns([3, 1])
+                # 不用固定寬度補齊 —— 中文的顯示寬度是英數的兩倍,
+                # ljust 只算字元數,補出來反而歪掉
+                c1.markdown(
+                    f"**{picker.label(r['strategy'])}**  \n"
+                    f"{predictor.marked(r['numbers'], set(r['matched']))}"
+                    + ("" if r["pending"] else f"　— 中 {r['hits']} 顆")
+                )
+                # 帶進號碼盤:單顆下法只塞第一顆,多顆最多塞到上限
+                cap = 1 if single else MAX_PICK_MULTI
+                if c2.button("帶入", key=f"{mode}_use_{k}_{r['strategy']}",
+                             width="stretch",
+                             help=f"把這組號碼填進「{g.label}」的號碼盤"
+                                  + ("(單顆下法只帶第 1 顆)" if single else "")):
+                    numpad.set_picked(_pad_key(mode, k), r["numbers"][:cap])
+                    st.rerun()
+            st.divider()
+
+
 def _render_today(user: str, cfgs: dict, cum: float, mode: str = storage.MULTI):
     """今天要下哪幾款的輸入 + 試算。
 
@@ -1484,6 +1541,7 @@ def _render_today(user: str, cfgs: dict, cum: float, mode: str = storage.MULTI):
         disabled=locked, column_config=col_cfg,
     )
     _pad_buttons(picks, mode, nums_map, single, cfgs)
+    _pred_panel(picks, mode, single, draw_date)
 
     # 比對「送進表格的值」與「改完的值」,不同的就是使用者手動指定的。
     # 押幾顆存進設定,車數/顆數存進 session,再重跑一次讓建議依它重算。
