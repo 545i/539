@@ -1259,6 +1259,12 @@ def _hit_options(cfgs: dict, picks: list[str]) -> list[str]:
 
 MAX_PICK_MULTI = 20          # 多顆下法最多能圈幾顆(與「押幾顆」欄的上限一致)
 
+# 策略的短名:表格欄位放得下的版本。
+# picker 的完整標籤(如「均衡(奇偶/和值落常見區間)」)在手機上會把欄寬撐爆,
+# 完整說明改放在「帶入」按鈕的 tooltip。
+STRATEGY_SHORT = {"random": "隨機", "hot": "熱號", "cold": "冷號",
+                  "frequency": "頻率", "balanced": "均衡"}
+
 
 def _pad_key(mode: str, game_key: str) -> str:
     return f"{mode}_pad_{game_key}"
@@ -1345,32 +1351,53 @@ def _pred_panel(picks: list[str], mode: str, single: bool, draw_date) -> None:
             if not added_txt and not kept:
                 st.error("這一期之前沒有資料可以算,請確認下注日期。")
 
+        # 排成矩陣:一列一個策略(Y),一欄一款遊戲(X),格子裡是號碼 + 帶入。
+        # 「帶入」要是真的按鈕,沒辦法塞進 <table>,所以用欄位排出表格結構。
+        by_cell = {}                       # (遊戲, 策略) -> 該筆預測
+        drawn_note = []
         for k in picks:
             got = predictor.evaluate(load_df(k), k, tstr)
-            if not got:
-                continue
-            g = games.get(k)
-            st.markdown(f"**{g.label}** — {predictor.period_label(tstr, got[0].get('issue'))}")
-            if not got[0]["pending"]:
-                st.caption("開獎號碼:" + "  ".join(f"{n:02d}" for n in got[0]["drawn"]))
             for r in got:
-                c1, c2 = st.columns([3, 1])
-                # 不用固定寬度補齊 —— 中文的顯示寬度是英數的兩倍,
-                # ljust 只算字元數,補出來反而歪掉
-                c1.markdown(
-                    f"**{picker.label(r['strategy'])}**  \n"
-                    f"{predictor.marked(r['numbers'], set(r['matched']))}"
-                    + ("" if r["pending"] else f"　— 中 {r['hits']} 顆")
-                )
-                # 帶進號碼盤:單顆下法只塞第一顆,多顆最多塞到上限
-                cap = 1 if single else MAX_PICK_MULTI
-                if c2.button("帶入", key=f"{mode}_use_{k}_{r['strategy']}",
-                             width="stretch",
-                             help=f"把這組號碼填進「{g.label}」的號碼盤"
-                                  + ("(單顆下法只帶第 1 顆)" if single else "")):
-                    numpad.set_picked(_pad_key(mode, k), r["numbers"][:cap])
-                    st.rerun()
-            st.divider()
+                by_cell[(k, r["strategy"])] = r
+            if got and not got[0]["pending"]:
+                drawn_note.append(f"{games.get(k).label} 開出 "
+                                  + " ".join(f"{n:02d}" for n in got[0]["drawn"]))
+        if not by_cell:
+            return
+        if drawn_note:
+            st.caption("　|　".join(drawn_note))
+
+        WIDTHS = [0.7] + [2.4] * len(picks)
+        cap = 1 if single else MAX_PICK_MULTI      # 單顆下法只帶第 1 顆
+        with tables.cols_container(f"{mode}_pred"):
+            tables.header_row(st.columns(WIDTHS),
+                              ["策略"] + [games.get(k).label for k in picks])
+            for s in picker.STRATEGIES:
+                if not any((k, s) in by_cell for k in picks):
+                    continue
+                c = st.columns(WIDTHS, vertical_alignment="center")
+                # 用短名 —— 完整名稱(如「均衡(奇偶/和值落常見區間)」)會把欄寬撐爆
+                c[0].markdown(tables.inline(STRATEGY_SHORT.get(s, s)),
+                              unsafe_allow_html=True)
+                for i, k in enumerate(picks):
+                    r = by_cell.get((k, s))
+                    cell = c[i + 1]
+                    if not r:
+                        cell.markdown(tables.inline("—"), unsafe_allow_html=True)
+                        continue
+                    cell.markdown(
+                        tables.inline(predictor.marked(r["numbers"],
+                                                       set(r["matched"])), mono=True)
+                        + ("" if r["pending"] else
+                           f'<span class="lt-sub">　中 {r["hits"]}</span>'),
+                        unsafe_allow_html=True)
+                    if cell.button("帶入", key=f"{mode}_use_{k}_{s}",
+                                   width="stretch",
+                                   help=f"{picker.label(s)} —— 把這組號碼填進"
+                                        f"「{games.get(k).label}」的號碼盤"
+                                        + ("(單顆下法只帶第 1 顆)" if single else "")):
+                        numpad.set_picked(_pad_key(mode, k), r["numbers"][:cap])
+                        st.rerun()
 
 
 def _render_today(user: str, cfgs: dict, cum: float, mode: str = storage.MULTI):
