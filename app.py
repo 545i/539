@@ -1367,37 +1367,42 @@ def _pred_panel(picks: list[str], mode: str, single: bool, draw_date) -> None:
         if drawn_note:
             st.caption("　|　".join(drawn_note))
 
-        WIDTHS = [0.7] + [2.4] * len(picks)
+        # 表格本身用 <table> 畫(格線、斑馬紋都有,縮放也不會糊);
+        # 「帶入」是真按鈕、塞不進表格,所以排在表格底下。
+        cols = [games.get(k).label for k in picks]
+        matrix = []
+        for s in picker.STRATEGIES:
+            if not any((k, s) in by_cell for k in picks):
+                continue
+            row = {"策略": STRATEGY_SHORT.get(s, s)}
+            for k in picks:
+                r = by_cell.get((k, s))
+                row[games.get(k).label] = (
+                    "—" if not r else
+                    predictor.marked(r["numbers"], set(r["matched"]))
+                    + ("" if r["pending"] else f"　中 {r['hits']}")
+                )
+            matrix.append(row)
+        tables.html_table(pd.DataFrame(matrix), mono_cols=tuple(cols))
+
         cap = 1 if single else MAX_PICK_MULTI      # 單顆下法只帶第 1 顆
-        with tables.cols_container(f"{mode}_pred"):
-            tables.header_row(st.columns(WIDTHS),
-                              ["策略"] + [games.get(k).label for k in picks])
-            for s in picker.STRATEGIES:
-                if not any((k, s) in by_cell for k in picks):
-                    continue
-                c = st.columns(WIDTHS, vertical_alignment="center")
-                # 用短名 —— 完整名稱(如「均衡(奇偶/和值落常見區間)」)會把欄寬撐爆
-                c[0].markdown(tables.inline(STRATEGY_SHORT.get(s, s)),
-                              unsafe_allow_html=True)
-                for i, k in enumerate(picks):
-                    r = by_cell.get((k, s))
-                    cell = c[i + 1]
-                    if not r:
-                        cell.markdown(tables.inline("—"), unsafe_allow_html=True)
-                        continue
-                    cell.markdown(
-                        tables.inline(predictor.marked(r["numbers"],
-                                                       set(r["matched"])), mono=True)
-                        + ("" if r["pending"] else
-                           f'<span class="lt-sub">　中 {r["hits"]}</span>'),
-                        unsafe_allow_html=True)
-                    if cell.button("帶入", key=f"{mode}_use_{k}_{s}",
-                                   width="stretch",
-                                   help=f"{picker.label(s)} —— 把這組號碼填進"
-                                        f"「{games.get(k).label}」的號碼盤"
-                                        + ("(單顆下法只帶第 1 顆)" if single else "")):
-                        numpad.set_picked(_pad_key(mode, k), r["numbers"][:cap])
-                        st.rerun()
+        st.caption("把某個策略的號碼帶進號碼盤:")
+        for k in picks:
+            if len(picks) > 1:                     # 只下一款就不必重複標遊戲名
+                st.markdown(f"**{games.get(k).label}**")
+            # 這裡刻意用一般的 st.columns —— 手機放不下 5 顆時就讓它自然堆疊,
+            # 每顆按鈕才有足夠寬度(硬壓成一列會把「隨機」拆成兩個直排的字)
+            bc = st.columns(len(picker.STRATEGIES))
+            for i, s in enumerate(picker.STRATEGIES):
+                r = by_cell.get((k, s))
+                if bc[i].button(STRATEGY_SHORT.get(s, s),
+                                key=f"{mode}_use_{k}_{s}", width="stretch",
+                                disabled=not r,
+                                help=f"{picker.label(s)} —— 把這組號碼填進"
+                                     f"「{games.get(k).label}」的號碼盤"
+                                     + ("(單顆下法只帶第 1 顆)" if single else "")):
+                    numpad.set_picked(_pad_key(mode, k), r["numbers"][:cap])
+                    st.rerun()
 
 
 def _render_today(user: str, cfgs: dict, cum: float, mode: str = storage.MULTI):

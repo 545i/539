@@ -48,10 +48,13 @@ _CSS = """
 .lt-hit { background: #16a34a; color: #fff !important; font-weight: 700;
           padding: 1px 6px; border-radius: 4px; }
 .lt-num { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-/* 用 st.columns 排出來的表格列:表頭與分隔線 */
-.lt-hd { font-weight: 700; color: var(--lt-head-fg); font-size: .88rem;
-         border-bottom: 2px solid var(--lt-line); padding-bottom: .25rem; }
-.lt-cell { padding: .1rem 0; color: var(--lt-fg); }
+/* 用 st.columns 排出來的表格列:表頭與儲存格 */
+.lt-hd { font-weight: 700; color: var(--lt-head-fg); font-size: .88rem; }
+.lt-cell { color: var(--lt-fg); }
+
+/* 註:曾經試過替 st.columns 的每一欄補格線,做成「格子裡有按鈕的表格」,
+   但 Streamlit 的欄內還有多層巢狀 div,格線接不起來、列高也對不齊。
+   結論是表格就用 <table>(html_table),按鈕另外排一列。 */
 /* 附註(例如「中 2 顆」)不准被拆開換行,否則「顆」會單獨掉到下一行 */
 .lt-sub { color: #64748b; font-size: .8rem; white-space: nowrap; }
 /* 關鍵:Streamlit 的 st.columns 在窄螢幕會自動堆疊成直的,
@@ -59,7 +62,7 @@ _CSS = """
    並讓各欄可以一起壓縮而不是把版面撐爆。 */
 div[class*="lt-cols"] div[data-testid="stHorizontalBlock"] {
     flex-wrap: nowrap !important;
-    gap: .4rem !important;
+    gap: .25rem !important;
     align-items: center;
 }
 div[class*="lt-cols"] div[data-testid="stColumn"] {
