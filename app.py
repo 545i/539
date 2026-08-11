@@ -1305,60 +1305,44 @@ def _bump_issue(game_key: str, used: str, mode: str) -> None:
 
 
 # 期號下拉的候選範圍:往回幾期(補登用)、往前幾期(預先下注用)
-_ISSUE_BACK = 3
-_ISSUE_FWD = 2
-
-
 def _issue_key(game_key: str, mode: str) -> str:
     return f"{mode}_issue_{game_key}"
 
 
 def _issue_options(game_key: str, mode: str) -> tuple[list[str], str]:
-    """這一款可選的期號清單與預設值。
+    """這一款可選的期號清單(由小到大)與預設值。
 
     預設是**開獎資料算出來的「下一期」**(最新已開獎 + 1),不是讓人自己記。
-    清單往回幾期給補登用、往前幾期給預先下注用 —— 用下拉而不是自由輸入,
-    是因為期號打錯不會有任何提示,事後對獎才會發現對不起來。
-
-    **清單一律由小到大排**,預設值靠 index 指過去。先前把下一期排在第一個、
-    再接往回與往前,結果順序長成 11966 11965 11964 11963 11967 11968,
-    看起來像壞掉 —— 期號是連號,照大小排才讀得懂。
-
-    該款沒有期號可用(六合彩)回空清單,呼叫端就不顯示這一欄。
+    用下拉而不是自由輸入,是因為期號打錯不會有任何提示,事後對獎才會發現
+    對不起來。該款沒有期號(資料裡沒期號欄)回空清單,呼叫端就不顯示這一欄。
     """
     nxt = _next_issue_of(game_key, mode)
-    if not str(nxt).strip().isdigit():
-        return [], ""
-    n = int(nxt)
-    lo = max(1, n - _ISSUE_BACK)
-    return [str(i) for i in range(lo, n + _ISSUE_FWD + 1)], str(n)
+    options = predictor.issue_candidates(nxt)
+    return options, (str(nxt) if options else "")
 
 
-def _issue_label(issue: str, default: str) -> str:
-    """下拉選項的字樣:標出哪一個是開獎資料推算的下一期。"""
-    if issue == default:
-        return f"{issue}(下一期)"
-    return f"{issue}(已開獎)" if int(issue) < int(default) else f"{issue}(更後面)"
+# 該款沒有期號時,表格裡那一格顯示的字樣(SelectboxColumn 的值一定要在選項裡)
+_ISSUE_NONE = "—"
 
 
-def _issue_selectors(picks: list[str], mode: str) -> dict[str, str]:
-    """表格底下的期號下拉列:一款一個,回傳各款選定的期號。"""
-    opts = {k: _issue_options(k, mode) for k in picks}
-    usable = [k for k in picks if opts[k][0]]
-    if not usable:
-        return {}
-    st.caption("下注期號(預設帶開獎資料算出來的下一期,補登或預先下注就改這裡):")
-    chosen = {}
-    cols = st.columns(len(usable))
-    for col, k in zip(cols, usable):
-        options, default = opts[k]
-        chosen[k] = col.selectbox(
-            games.get(k).label, options, index=options.index(default),
-            key=_issue_key(k, mode),
-            format_func=lambda s, d=default: _issue_label(s, d),
-            help="「下一期」是依這一款的開獎資料推算的最新已開獎 + 1。"
-                 "跨年度時期號會斷號,那時請選「更後面」或到設定改資料。")
-    return chosen
+def _issue_column(picks: list[str], mode: str) -> tuple[dict, list[str], dict]:
+    """表格裡「期號」欄要用的:各款的候選、整欄共用的選項、各款的預設字樣。
+
+    st.column_config.SelectboxColumn **一整欄共用同一份選項**,而各款的期號是
+    各自的流水號,合起來之後理論上可以把甲款的期號選進乙款。位數差很多
+    (今彩539 是 9 碼、天天樂 5 碼)不容易看錯,但還是在記帳前擋一次
+    —— 見 _render_today 裡的 bad_issue。
+    """
+    per_game = {k: _issue_options(k, mode) for k in picks}
+    options, default = [_ISSUE_NONE], {}
+    for k in picks:
+        cands, nxt = per_game[k]
+        default[k] = predictor.issue_label(nxt, nxt) if cands else _ISSUE_NONE
+        for c in cands:
+            label = predictor.issue_label(c, nxt)
+            if label not in options:
+                options.append(label)
+    return per_game, options, default
 
 
 def _clear_issue_choice(game_key: str, mode: str) -> None:
@@ -1783,22 +1767,21 @@ def _render_today(user: str, cfgs: dict, cum: float, mode: str = storage.MULTI):
     num_col = {"號碼": st.column_config.TextColumn(
         "號碼", help="在下方號碼盤圈的號碼;沒圈號的款顯示「—」,一樣只記數量。")}
 
-    # 期號:表格裡只顯示,選擇放在表格底下的下拉(見 _issue_selectors)——
-    # 期號打錯不會有任何提示,事後對獎才會發現對不起來,所以不給自由輸入。
-    # 各款的期號是各自的流水號,擺在同一個表格欄位會變成一份共用清單,
-    # 有可能把甲款的期號填進乙款,所以拆成一款一個下拉。
-    issue_now = {k: st.session_state.get(_issue_key(k, mode))
-                    or _issue_options(k, mode)[1] for k in picks}
-    has_issue = any(issue_now.values())
-    issue_col = {"期號": st.column_config.TextColumn(
-        "期號", help="這一注要下哪一期。預設是開獎資料算出來的下一期;"
-                   "要改請用表格底下的期號下拉。")}
+    # 期號:表格裡就是下拉,直接在那一格選。預設帶開獎資料算出來的下一期,
+    # 往回幾期給補登、往前幾期給預先下注 —— 期號打錯不會有任何提示,
+    # 事後對獎才會發現對不起來,所以不給自由輸入。
+    issue_cands, issue_opts, issue_now = _issue_column(picks, mode)
+    has_issue = any(c for c, _ in issue_cands.values())
+    issue_col = {"期號": st.column_config.SelectboxColumn(
+        "期號", options=issue_opts, required=True,
+        help="這一注要下哪一期。「下一期」是依該款開獎資料推算的最新已開獎 + 1;"
+             "補登選「已開獎」、預先下注選「更後面」。記完帳會自動接續下一期。")}
 
     # 輸入表:只放可以改的欄,手機不必左右滑。單顆模式連「押幾顆」都不放。
     if single:
         table = pd.DataFrame([{
             "遊戲": games.get(k).label,
-            **({"期號": str(issue_now[k] or "—")} if has_issue else {}),
+            **({"期號": issue_now[k]} if has_issue else {}),
             **({"號碼": _row_nums(k)} if by_pick else {}),
             "下幾車": int(res["cars"][k]),
             "開獎結果": SINGLE_HITS_REV[hits_state.get(k)],
@@ -1817,7 +1800,7 @@ def _render_today(user: str, cfgs: dict, cum: float, mode: str = storage.MULTI):
         hit_opts = _hit_options(cfgs, picks)
         table = pd.DataFrame([{
             "遊戲": games.get(k).label,
-            **({"期號": str(issue_now[k] or "—")} if has_issue else {}),
+            **({"期號": issue_now[k]} if has_issue else {}),
             **({"號碼": _row_nums(k)} if by_pick else {}),
             "押幾顆": int(cfgs[k]["n_numbers"]),
             "下幾車": int(res["cars"][k]),
@@ -1845,12 +1828,25 @@ def _render_today(user: str, cfgs: dict, cum: float, mode: str = storage.MULTI):
     # 有圈號的款「押幾顆」是號碼盤算出來的,鎖住避免兩邊打架;
     # 「號碼」欄只是顯示,要改請回號碼盤
     locked = (["遊戲"] + (["押幾顆"] if (by_pick and not single) else [])
-              + (["號碼"] if by_pick else []) + (["期號"] if has_issue else []))
+              + (["號碼"] if by_pick else []))
     edited = st.data_editor(
         table, key=f"{mode}_today_editor", hide_index=True, width="stretch",
         disabled=locked, column_config=col_cfg,
     )
-    issues_in = _issue_selectors(picks, mode)
+    # 整欄共用同一份選項,所以要擋「把甲款的期號選進乙款」
+    issues_in, bad_issue = {}, []
+    if has_issue:
+        for k in picks:
+            got = predictor.issue_of_label(edited.loc[k, "期號"])
+            if not got:
+                continue
+            if got in issue_cands[k][0]:
+                issues_in[k] = got
+            else:
+                bad_issue.append(games.get(k).name)
+    if bad_issue:
+        st.error(f"**{'、'.join(bad_issue)}** 選到的期號不是這一款的 —— "
+                 "各款期號各自編號,請重選。")
     _pad_buttons(picks, mode, nums_map, single, cfgs)
     _pred_panel(picks, mode, single, draw_date)
 
@@ -1963,7 +1959,7 @@ def _render_today(user: str, cfgs: dict, cum: float, mode: str = storage.MULTI):
             "記帳" + ("(留「待開獎」的就當作還沒對獎)" if single
                       else "(中獎顆數留空的就當作待開獎)"),
             key=f"{mode}_record", type="primary", width="stretch",
-            disabled=bool(bad_hits)):
+            disabled=bool(bad_hits or bad_issue)):
         # 圈了號的款連號碼一起存,沒圈的只存數量 —— 同一次記帳可以混著來
         _record(user, cfgs, picks, cars, draw_date, hits, mode=mode,
                 nums=nums_map, issues=issues_in)
@@ -2390,7 +2386,7 @@ def _render_pillar_today(user: str, cfgs: dict, cum: float):
         issue_in = c3.selectbox(
             "期號", issue_opts, index=issue_opts.index(issue_default),
             key=_issue_key(key, storage.PILLAR),
-            format_func=lambda s, d=issue_default: _issue_label(s, d),
+            format_func=lambda s, d=issue_default: predictor.issue_label(s, d),
             help="預設是開獎資料算出來的下一期;補登或預先下注就改這裡。")
 
     # 有這一天的開獎資料就直接判定 —— 1800碰 買的是全組合,結果完全由開獎號碼決定,

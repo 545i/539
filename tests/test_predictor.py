@@ -318,3 +318,48 @@ def test_draw_of_issue_by_number_and_date(df_issue, df539):
 def test_marked_formats():
     assert predictor.marked([5, 12, 23], {23}) == "05 12 【23】"
     assert predictor.marked([5, 12], None) == "05 12"
+
+
+# ── 下注期號的候選清單 ───────────────────────────────────
+def test_issue_candidates_are_sorted_ascending():
+    """期號是連號,一定要照大小排。
+
+    先前把下一期排最前面再接往回、往前,長成 11966 11965 11964 11963 11967,
+    看起來像壞掉。
+    """
+    got = predictor.issue_candidates("11966", back=3, fwd=2)
+    assert got == ["11963", "11964", "11965", "11966", "11967", "11968"]
+    assert got == sorted(got, key=int)
+
+
+def test_issue_candidates_centre_on_the_next_issue():
+    got = predictor.issue_candidates("100", back=2, fwd=1)
+    assert got.index("100") == 2      # 前面 2 期補登、後面 1 期預先下注
+    assert got == ["98", "99", "100", "101"]
+
+
+def test_issue_candidates_do_not_go_below_one():
+    assert predictor.issue_candidates("2", back=5, fwd=0) == ["1", "2"]
+
+
+@pytest.mark.parametrize("value", [None, "", "  ", "沒有期號", "11a"])
+def test_issue_candidates_without_a_number(value):
+    """該款沒有期號(資料裡沒期號欄)就回空清單,呼叫端據此不顯示這一欄。"""
+    assert predictor.issue_candidates(value) == []
+
+
+def test_issue_label_marks_which_one_is_next():
+    assert predictor.issue_label("11966", "11966") == "11966(下一期)"
+    assert predictor.issue_label("11965", "11966") == "11965(已開獎)"
+    assert predictor.issue_label("11967", "11966") == "11967(更後面)"
+
+
+def test_issue_of_label_round_trips():
+    for issue in ("11963", "11966", "115000194"):
+        label = predictor.issue_label(issue, "11966")
+        assert predictor.issue_of_label(label) == issue
+
+
+def test_issue_of_label_on_garbage():
+    assert predictor.issue_of_label("—") == ""
+    assert predictor.issue_of_label(None) == ""

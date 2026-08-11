@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import re
 
 import pandas as pd
 
@@ -267,6 +268,46 @@ def ranking(evaluated: list[dict]) -> list[dict]:
                      "avg": a["total_hits"] / a["periods"] if a["periods"] else 0.0})
     rows.sort(key=lambda x: (-x["avg"], -x["best"], x["strategy"]))
     return rows
+
+
+# 下注期號的候選範圍:往回幾期(補登用)、往前幾期(預先下注用)
+ISSUE_BACK = 3
+ISSUE_FWD = 2
+
+
+def issue_candidates(next_issue, back: int = ISSUE_BACK,
+                     fwd: int = ISSUE_FWD) -> list[str]:
+    """以「下一期」為中心,產生可選的期號清單(**由小到大**)。
+
+    往回幾期給補登用、往前幾期給預先下注用。一律照大小排 —— 期號是連號,
+    把下一期排在最前面再接往回、往前,會長成 11966 11965 11964 11963 11967
+    這種看起來像壞掉的順序。
+
+    next_issue 不是數字(該款沒有期號)就回空清單,呼叫端據此決定要不要顯示。
+    """
+    s = str(next_issue or "").strip()
+    if not s.isdigit():
+        return []
+    n = int(s)
+    lo = max(1, n - back)
+    return [str(i) for i in range(lo, n + fwd + 1)]
+
+
+def issue_label(issue: str, next_issue: str) -> str:
+    """期號選項的字樣:標出哪一個是開獎資料推算的下一期。
+
+    看得到「已開獎 / 下一期 / 更後面」,才不會補登時選錯邊。
+    """
+    if str(issue) == str(next_issue):
+        return f"{issue}(下一期)"
+    return (f"{issue}(已開獎)" if int(issue) < int(next_issue)
+            else f"{issue}(更後面)")
+
+
+def issue_of_label(label: str) -> str:
+    """把 issue_label 產生的字樣還原成期號本身。"""
+    m = re.match(r"\d+", str(label or "").strip())
+    return m.group() if m else ""
 
 
 def marked(nums: list[int], matched: set[int] | None = None) -> str:

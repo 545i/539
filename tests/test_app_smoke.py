@@ -80,32 +80,13 @@ def test_share_mode_radio_does_not_reset_the_table(app):
     assert not app.exception, [str(e.value) for e in app.exception]
 
 
-def test_issue_dropdown_is_sorted_and_defaults_to_next(app):
-    """期號由小到大排,預設停在開獎資料算出來的下一期。"""
+def test_issue_column_is_a_dropdown_in_the_table(app):
+    """期號在表格裡就是下拉,不是唯讀欄位 —— 使用者要能直接在那一格選。"""
     _pick_games(app, ["fantasy5"])
-    box = next((sb for sb in app.selectbox if sb.label == "天天樂"), None)
-    assert box is not None, "天天樂應該要有期號下拉"
-
-    # AppTest 的 options 拿到的是 format_func 之後的字樣(「11962(下一期)」),
-    # 這裡只取前面的期號本身
-    options = [int(re.match(r"\d+", o).group()) for o in box.options]
-    assert options == sorted(options), f"期號沒有照大小排:{box.options}"
-    assert options == list(range(options[0], options[0] + len(options)))
-    # 預設值前面有幾期(補登用)、後面有幾期(預先下注用)
-    idx = options.index(int(box.value))
-    assert idx > 0 and idx < len(options) - 1
-
-
-def test_recorded_issue_follows_the_dropdown(app):
-    """選了補登的期號,存進去的就是那一期;記完帳下拉接續下一期。"""
-    _pick_games(app, ["fantasy5"])
-    box = next(sb for sb in app.selectbox if sb.label == "天天樂")
-    default = int(box.value)
-    box.set_value(str(default - 2)).run()
+    assert not app.exception
+    # AppTest 沒辦法驅動 data_editor 的儲存格,所以改驗最終結果:
+    # 不改任何東西直接記帳,存下的期號要是開獎資料算出來的下一期
     _record_button(app).click().run()
     assert not app.exception, [str(e.value) for e in app.exception]
-
     rows = storage.load_rounds("apptest")
-    assert [r["issue"] for r in rows] == [str(default - 2)]
-    after = next(sb for sb in app.selectbox if sb.label == "天天樂")
-    assert int(after.value) == default - 1
+    assert len(rows) == 1 and rows[0]["issue"], "期號應該要跟著記進去"
