@@ -20,11 +20,17 @@ from pathlib import Path
 # 用 -1 而非 NULL,是因為舊資料庫的 hits 欄位有 NOT NULL 約束,SQLite 無法事後移除。
 PENDING = -1
 
-# 下注模式:單顆(每款固定押 1 顆)/ 多顆。兩者共用同一個損益池,但紀錄與重置分開。
+# 下注模式:單顆(每款固定押 1 顆)/ 多顆 / 三柱 1800碰(包三柱全組合的三合)。
+# 三者共用同一個損益池,但紀錄、重置與「追虧損的累積」各自分開。
+#
+# 1800碰 沿用同一張表:numbers 存總注數(1800)、cars 存倍數、hits 存命中注數
+# (0/3/4),回收一樣是 hits × cars × payout_rate,所以流水、撤銷、累積損益
+# 全部照舊運作,不必為它另開一張表。
 SINGLE = "single"
 MULTI = "multi"
-MODES = (SINGLE, MULTI)
-MODE_NAMES = {SINGLE: "單顆", MULTI: "多顆"}
+PILLAR = "pillar"
+MODES = (SINGLE, MULTI, PILLAR)
+MODE_NAMES = {SINGLE: "單顆", MULTI: "多顆", PILLAR: "三柱1800碰"}
 
 # v1 舊資料遷移時,推不出成本的紀錄用的每車成本(僅供回填,不影響損益)
 _FALLBACK_COST_PER_CAR = {"lotto539": 2755.0, "fantasy5": 2755.0, "marksix": 3528.0}

@@ -19,40 +19,10 @@ from __future__ import annotations
 
 import streamlit as st
 
-# 三柱的固定骨架(第三柱是「其餘全部」,依 num_max 動態展開)
-_C1 = list(range(10, 19))       # 10~18
-_C2 = list(range(20, 30))       # 20~29
-
-PILLAR_NAMES = ("第一柱", "第二柱", "第三柱")
-
-
-def pillars(num_max: int) -> tuple[list[int], list[int], list[int]]:
-    """把 1~num_max 切成三柱;第三柱吃下所有不屬於前兩柱的號碼。
-
-    39 → (9, 10, 20) 顆;49 → (9, 10, 30) 顆(第三柱多 40~49)。
-    """
-    c1 = [n for n in _C1 if n <= num_max]
-    c2 = [n for n in _C2 if n <= num_max]
-    taken = set(c1) | set(c2)
-    c3 = [n for n in range(1, num_max + 1) if n not in taken]
-    return c1, c2, c3
-
-
-def pillar_of(n: int, num_max: int = 39) -> int:
-    """某號碼屬於第幾柱(1/2/3);畫紀錄時要標色會用到。"""
-    if n in _C1:
-        return 1
-    if n in _C2:
-        return 2
-    return 3
-
-
-def pillar_counts(nums: list[int], num_max: int = 39) -> tuple[int, int, int]:
-    """一組號碼落在三柱各幾顆。"""
-    c = [0, 0, 0]
-    for n in nums:
-        c[pillar_of(n, num_max) - 1] += 1
-    return tuple(c)  # type: ignore[return-value]
+# 分柱的定義住在 core.pillar(三柱 1800碰 的算式也用同一份),
+# 這裡只轉出來用 —— 兩邊各寫一份的話,哪天調了邊界就會對不起來。
+from core.pillar import (PILLAR_NAMES, pillar_counts,  # noqa: F401  (轉出給呼叫端)
+                         pillar_of, pillars)
 
 
 # 三柱各自的球色(未選中時的邊框與字色;選中時填滿同色)

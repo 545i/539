@@ -27,6 +27,11 @@ class GameConfig:
     # ── 二合買牌(策略1)的盤口預設值(新帳號第一次進頁面時的初值)──
     default_cost_per_car: float = 2755.0   # 每車成本
     default_win_payout: float = 21200.0    # 每車中獎可得
+    # ── 三柱 1800碰 的盤口預設值(只有 39 選 5 的款用得到)──
+    # 預設抓官方 39樂合彩三合:每注 25 元、全中一注派彩 11,250 元。
+    # 跟民間盤下的人可以在「設定 → 盤口設定」改成自己的價碼。
+    default_bet_cost: float = 25.0         # 每注(三合)成本
+    default_bet_prize: float = 11_250.0    # 中一注可得
 
     @property
     def label(self) -> str:

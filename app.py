@@ -20,7 +20,7 @@ import streamlit.components.v1 as components
 from core import (auth, backtest, binary_wide, constants, erhe, excel_report,
                   games, kelly, picker)
 from core import autoupdate, scraper, scraper_fantasy5, scraper_marksix, stats, storage
-from core import checker, predictor
+from core import checker, loader, pillar, predictor
 from core.loader import DataError, load_history, merge, save
 from ui import docs, numpad, tables
 
@@ -527,6 +527,9 @@ def _render_stats(fdf: pd.DataFrame, game):
         _render_prediction(game)
 
 
+_PRED_DETAIL_N = 20        # 逐期明細預設展開幾期(超過就給滑桿自己調)
+
+
 def _render_prediction(game):
     """預測比對:先把各策略的預測存下來,開獎後自動比對中幾顆。
 
@@ -620,14 +623,43 @@ def _render_prediction(game):
         )
         st.divider()
 
-    # ── 逐期明細 ──
+    # ── 逐期明細:一期一列,收起來只看開獎號碼 ──
+    # 以前是一張攤平的長表 —— 一期五個策略,十幾期就要捲很久才找得到某一期。
+    # 改成依期折疊:標題列直接把「開出什麼、最好中幾顆」寫出來,
+    # 想看某一期各策略分別押了什麼再點開。
     st.markdown("**逐期明細**")
-    tables.html_table(pd.DataFrame([{
-        "期別": r["label"],
-        "策略": picker.label(r["strategy"]),
-        "預測號碼": predictor.marked(r["numbers"], set(r["matched"])),
-        "中幾顆": "待開獎" if r["pending"] else f"{r['hits']} 顆",
-    } for r in evaluated]), mono_cols=("預測號碼",), max_height=420)
+    by_issue: dict[str, list[dict]] = {}
+    for r in evaluated:                    # evaluate 已按期別新到舊排好
+        by_issue.setdefault(r["target_issue"], []).append(r)
+
+    issues = list(by_issue)
+    shown = issues
+    if len(issues) > _PRED_DETAIL_N:
+        # 折疊起來的內容 Streamlit 一樣會先算好,期數多時全開會拖慢頁面
+        n = st.slider("顯示最近幾期", min_value=5, max_value=len(issues),
+                      value=_PRED_DETAIL_N, step=5, key=f"pred_detail_n_{game.key}")
+        shown = issues[:int(n)]
+        st.caption(f"共 {len(issues)} 期,目前顯示最近 {len(shown)} 期。")
+    else:
+        st.caption("點開某一期,看該期各策略分別押了哪些號碼。")
+
+    for ti in shown:
+        rows = by_issue[ti]
+        head = rows[0]
+        if head["pending"]:
+            label = f"{head['label']}　⏳ 待開獎　{len(rows)} 個策略"
+        else:
+            best = max(r["hits"] for r in rows)
+            label = (f"{head['label']}　開出 "
+                     + " ".join(f"{n:02d}" for n in head["drawn"])
+                     + f"　最佳 {best} 顆")
+        with st.expander(label):
+            tables.html_table(pd.DataFrame([{
+                "策略": picker.label(r["strategy"]),
+                "預測號碼": predictor.marked(r["numbers"], set(r["matched"])),
+                "中幾顆": "待開獎" if r["pending"] else f"{r['hits']} 顆",
+                "存檔時間": r["created_at"],
+            } for r in rows]), mono_cols=("預測號碼",))
 
 
 # ── 2. 產生參考號碼 ───────────────────────────────────────
@@ -975,56 +1007,60 @@ def page_wheel(fdf: pd.DataFrame, game):
 
 # ── 二合買牌(策略1):三款共用一個損益池 ──────────────────
 GAME_LIST = list(games.GAMES.values())          # 目前可下注的遊戲
+# 三柱 1800碰 只吃 39 選 5(9/10/20 三柱、1800 注的結構就是這樣長出來的)
+PILLAR_GAMES = [g for g in GAME_LIST if pillar.supports(g)]
 
-# 單顆 / 多顆各自一套配色。下錯分頁的代價是真金白銀,所以整塊視覺都要不一樣,
+# 三種下法各自一套配色。下錯分頁的代價是真金白銀,所以整塊視覺都要不一樣,
 # 不能只靠分頁標題那幾個字。
 MODE_THEME = {
     storage.SINGLE: {"color": "#0d9488", "emoji": "🟢", "name": "單顆",
+                     "tab": "單顆下注",
                      "desc": "每款固定押 1 顆,只能調車數"},
     storage.MULTI: {"color": "#d97706", "emoji": "🟠", "name": "多顆",
+                    "tab": "多顆下注",
                     "desc": "每款可自訂押幾顆"},
+    storage.PILLAR: {"color": "#7c3aed", "emoji": "🟣", "name": "三柱1800碰",
+                     "tab": "三柱1800碰",
+                     "desc": "包下三柱全組合 1800 注,三柱各開到一顆就中"},
 }
 TOTALS_COLOR = "#4f46e5"
 
-_MODE_CSS = f"""
-<style>
-.mode-banner {{
+
+def _mode_css() -> str:
+    """每種下法各一組色條 / 按鈕 / 標題配色。
+
+    以前是三段幾乎一樣的 CSS 手寫在字串裡,加一種下法就得再複製一次;
+    改成依 MODE_THEME 產生,新增下法只要在字典裡多一列。
+    """
+    blocks = [
+        """
+.mode-banner {
   padding: 0.5rem 0.8rem; border-radius: 8px; color: #fff !important;
   font-weight: 700; margin: 0.2rem 0 0.8rem 0; line-height: 1.45;
-}}
-.mode-banner small {{ color: rgba(255,255,255,0.92) !important; font-weight: 400; }}
+}
+.mode-banner small { color: rgba(255,255,255,0.92) !important; font-weight: 400; }
+"""
+    ]
+    for key, color in [(f"mode_{m}", t["color"]) for m, t in MODE_THEME.items()] \
+            + [("mode_totals", TOTALS_COLOR)]:
+        blocks.append(f"""
 /* 整個分頁內容掛上左側色條 + 淡底,一眼看得出現在在哪一種下法 */
-.st-key-mode_{storage.SINGLE} {{
-  border-left: 5px solid {MODE_THEME[storage.SINGLE]['color']};
-  background: {MODE_THEME[storage.SINGLE]['color']}0f;
-  padding: 0.6rem 0.7rem; border-radius: 0 10px 10px 0;
-}}
-.st-key-mode_{storage.MULTI} {{
-  border-left: 5px solid {MODE_THEME[storage.MULTI]['color']};
-  background: {MODE_THEME[storage.MULTI]['color']}0f;
-  padding: 0.6rem 0.7rem; border-radius: 0 10px 10px 0;
-}}
-.st-key-mode_totals {{
-  border-left: 5px solid {TOTALS_COLOR}; background: {TOTALS_COLOR}0f;
+.st-key-{key} {{
+  border-left: 5px solid {color}; background: {color}0f;
   padding: 0.6rem 0.7rem; border-radius: 0 10px 10px 0;
 }}
 /* 主要按鈕(記帳)跟著該下法的顏色走 */
-.st-key-mode_{storage.SINGLE} [data-testid="stBaseButton-primary"] {{
-  background-color: {MODE_THEME[storage.SINGLE]['color']} !important;
-  border-color: {MODE_THEME[storage.SINGLE]['color']} !important; color: #fff !important;
-}}
-.st-key-mode_{storage.MULTI} [data-testid="stBaseButton-primary"] {{
-  background-color: {MODE_THEME[storage.MULTI]['color']} !important;
-  border-color: {MODE_THEME[storage.MULTI]['color']} !important; color: #fff !important;
+.st-key-{key} [data-testid="stBaseButton-primary"] {{
+  background-color: {color} !important; border-color: {color} !important;
+  color: #fff !important;
 }}
 /* 區塊標題也上色,捲到一半也知道自己在哪 */
-.st-key-mode_{storage.SINGLE} h3 {{
-  color: {MODE_THEME[storage.SINGLE]['color']} !important; }}
-.st-key-mode_{storage.MULTI} h3 {{
-  color: {MODE_THEME[storage.MULTI]['color']} !important; }}
-.st-key-mode_totals h3 {{ color: {TOTALS_COLOR} !important; }}
-</style>
-"""
+.st-key-{key} h3 {{ color: {color} !important; }}
+""")
+    return "<style>" + "".join(blocks) + "</style>"
+
+
+_MODE_CSS = _mode_css()
 
 
 def _numeric_keyboard():
@@ -1089,7 +1125,12 @@ def _persist_setting(skey: str, setting_key: str, widget_key: str):
 
 
 def _game_settings(user: str, g) -> dict:
-    """讀出某遊戲的盤口設定(每車成本 / 中獎可得 / 押幾顆 / 回本後起始車數)。"""
+    """讀出某遊戲的盤口設定。
+
+    前四項是二合買牌(單顆 / 多顆)用的:每車成本 / 中獎可得 / 押幾顆 / 起始車數。
+    bet_cost / bet_prize 是三柱 1800碰 用的**每注**價碼 —— 兩套盤口互不相干,
+    改哪一邊都不會動到另一邊。
+    """
     skey = f"{user}::{g.key}"
     return {
         "game": g,
@@ -1098,6 +1139,10 @@ def _game_settings(user: str, g) -> dict:
         "win_payout": storage.get_setting(skey, "win_payout", g.default_win_payout),
         "n_numbers": int(storage.get_setting(skey, "n_numbers", 5)),
         "base": int(storage.get_setting(skey, "base", 3)),
+        # 三柱 1800碰:每注(三合)成本與中一注可得
+        "bet_cost": storage.get_setting(skey, "bet_cost", g.default_bet_cost),
+        "bet_prize": storage.get_setting(skey, "bet_prize", g.default_bet_prize),
+        "pillar_base": int(storage.get_setting(skey, "pillar_base", 1)),
     }
 
 
@@ -1851,6 +1896,16 @@ def _render_pending(rows: list[dict]):
 # ── 三、紀錄 ─────────────────────────────────────────────
 # 流水表裡要靠等寬字型對齊的欄(號碼與金額)
 _LEDGER_MONO = ("號碼", "成本", "回收", "本局損益", "累積損益")
+_PILLAR_MONO = ("開出", "注數", "成本", "回收", "本局損益", "累積損益")
+
+
+def _mode_detail_df(rows: list[dict], mode: str | None) -> pd.DataFrame:
+    """流水表:1800碰 的欄位講「倍數 / 注數 / 碰」,二合講「車數 / 顆數」。"""
+    return _pillar_detail_df(rows) if mode == storage.PILLAR else _detail_df(rows)
+
+
+def _mode_mono_cols(mode: str | None) -> tuple[str, ...]:
+    return _PILLAR_MONO if mode == storage.PILLAR else _LEDGER_MONO
 
 
 def _marked_numbers(r: dict) -> str:
@@ -1909,9 +1964,9 @@ def _render_mode_records(user: str, mode: str, rows: list[dict]):
               delta_color="off")
     st.caption(
         f"最近 {min(RECENT_N, len(rows))} 筆(共 {len(rows)} 筆)。"
-        "「累積」欄是整個帳號的共用損益池,所以會把另一種下法的損益也算進去。")
-    tables.html_table(_detail_df(rows).tail(RECENT_N),
-                      mono_cols=_LEDGER_MONO, max_height=420)
+        "「累積」欄是整個帳號的共用損益池,所以會把另外兩種下法的損益也算進去。")
+    tables.html_table(_mode_detail_df(rows, mode).tail(RECENT_N),
+                      mono_cols=_mode_mono_cols(mode), max_height=420)
 
     b1, b2 = st.columns(2)
     if b1.button(f"撤銷剛剛記的那筆({name})", key=f"undo_{mode}", width="stretch",
@@ -1963,15 +2018,18 @@ def _render_full_ledger(user: str, rows: list[dict], mode: str | None = None):
             st.plotly_chart(fig, theme=None, width="stretch", key=f"cum_chart{suffix}")
 
     with tab_all:
-        tables.html_table(_detail_df(rows), mono_cols=_LEDGER_MONO, max_height=520)
+        is_pillar = mode == storage.PILLAR
+        tables.html_table(_mode_detail_df(rows, mode),
+                          mono_cols=_mode_mono_cols(mode), max_height=520)
         st.download_button(
             "下載流水 CSV", key=f"dl_ledger{suffix}",
             data=pd.DataFrame(rows).to_csv(index=False).encode("utf-8-sig"),
             file_name=f"erhe_ledger{suffix}.csv", mime="text/csv")
         st.markdown("**修改 / 刪除指定的一筆**")
+        unit = "倍" if is_pillar else "車"
         opts = {
             f"#{i + 1} {r['draw_date']} {games.get(r['game']).name} "
-            f"{int(r['cars'])}車 "
+            f"{int(r['cars'])}{unit} "
             + (" ".join(f"{n:02d}" for n in r["picked"]) + " " if r.get("picked") else "")
             + f"損益{r['net']:+,.0f}": r
             for i, r in enumerate(rows)
@@ -1981,9 +2039,19 @@ def _render_full_ledger(user: str, rows: list[dict], mode: str | None = None):
         e1, e2, e3 = st.columns([1.4, 1, 1])
         new_date = e1.date_input("改日期", value=dt.date.fromisoformat(row["draw_date"]),
                                  format="YYYY-MM-DD", key=f"edit_date{suffix}")
-        new_hits = e2.number_input("改中獎顆數", min_value=0, max_value=int(row["numbers"]),
-                                   value=0 if row["pending"] else int(row["hits"]),
-                                   key=f"edit_hits{suffix}")
+        if is_pillar:
+            # 1800碰 的命中注數只可能是 4 / 3 / 0,用下拉避免填出不可能的數字
+            hit_opts = _pillar_hits_options(games.get(row["game"]))
+            cur = 0 if row["pending"] else int(row["hits"])
+            new_hits = e2.selectbox(
+                "改結果", hit_opts, format_func=pillar.result_text,
+                index=hit_opts.index(cur) if cur in hit_opts else len(hit_opts) - 1,
+                key=f"edit_hits{suffix}")
+        else:
+            new_hits = e2.number_input("改中獎顆數", min_value=0,
+                                       max_value=int(row["numbers"]),
+                                       value=0 if row["pending"] else int(row["hits"]),
+                                       key=f"edit_hits{suffix}")
         e3.markdown("&nbsp;", unsafe_allow_html=True)
         if e3.button("套用", key=f"edit_apply{suffix}", width="stretch"):
             storage.update_round_result(int(row["id"]), int(new_hits))
@@ -2017,6 +2085,379 @@ def _render_full_ledger(user: str, rows: list[dict], mode: str | None = None):
                 title=f"各款累積損益({storage.MODE_NAMES.get(mode, '全部')})", color="損益",
                 color_continuous_scale=["#e63946", "#457b9d"])
             st.plotly_chart(fig, theme=None, width="stretch", key=f"game_chart{suffix}")
+
+
+# ── 三柱 1800碰 ───────────────────────────────────────────
+# 三柱各自的球色,跟號碼盤同一套(藍 / 橘 / 墨綠),看紀錄時對得起來
+_PILLAR_TONE = ("#2563eb", "#ea580c", "#0f766e")
+
+
+def _pillar_balls(nums: list[int], num_max: int = 39) -> str:
+    """把一期開獎號碼依三柱上色排出來。"""
+    out = []
+    for n in sorted(nums):
+        tone = _PILLAR_TONE[pillar.pillar_of(n, num_max) - 1]
+        out.append(f"<span style='background:{tone};color:#fff;padding:1px 6px;"
+                   f"border-radius:4px;font-weight:700;margin-right:3px'>{n:02d}</span>")
+    return "".join(out)
+
+
+def _pillar_dist_text(counts) -> str:
+    return " + ".join(str(c) for c in counts)
+
+
+def _draws_of(game) -> list[list[int]]:
+    """某款的全部開獎號碼(舊 → 新);顆數不齊的期照樣回傳,由呼叫端決定怎麼處理。"""
+    df = load_df(game.key)
+    if df is None or df.empty:
+        return []
+    cols = loader.detect_num_cols(df)
+    if not cols:
+        return []
+    out = []
+    for _, r in df.iterrows():
+        out.append(sorted(int(r[c]) for c in cols if not pd.isna(r[c])))
+    return out
+
+
+def _pillar_intro(game):
+    """1800碰 是什麼、機率多少 —— 數字全部由組合數現算,不是抄表。"""
+    cols = pillar.pillars(game.num_max)
+    k1, k2, k3 = pillar.sizes(game.num_max)
+    total = pillar.total_bets(game.num_max)
+    probs = pillar.hit_probs(game.num_max, game.pick)
+    ways = pillar.hit_ways(game.num_max, game.pick)
+    with st.expander(f"三柱 1800碰 是什麼(以 {game.name} 的 "
+                     f"{game.num_max} 選 {game.pick} 現算)"):
+        st.markdown(
+            f"把 1~{game.num_max} 切成三柱,買下「三柱各取一號」的**全部組合**:\n\n"
+            f"- {pillar.PILLAR_NAMES[0]} 10~18 共 **{k1}** 顆\n"
+            f"- {pillar.PILLAR_NAMES[1]} 20~29 共 **{k2}** 顆\n"
+            f"- {pillar.PILLAR_NAMES[2]} 其餘(01~09、19、30~{game.num_max})共 "
+            f"**{k3}** 顆　← **19 在這裡**,第一柱嚴格只到 18\n\n"
+            f"注數 = {k1} × {k2} × {k3} = **{total:,} 注**,每一注就是一注"
+            f"「39樂合彩三合」。命中注數 = n₁ × n₂ × n₃(n_i = 開獎號碼落在第 i 柱的顆數)"
+            f"—— 任何一柱掛蛋(**斷柱**)整期就歸零。"
+        )
+        for i, nums in enumerate(cols):
+            st.markdown(f"**{pillar.PILLAR_NAMES[i]}**　" +
+                        _pillar_balls(nums, game.num_max), unsafe_allow_html=True)
+        st.markdown("**每期會發生什麼(理論值)**")
+        st.dataframe(pd.DataFrame([{
+            "結果": pillar.result_text(h),
+            "命中注數": h,
+            "組合數": f"{ways[h]:,}",
+            "機率": f"{probs[h]:.4%}",
+        } for h in sorted(probs, reverse=True)]), width="stretch", hide_index=True)
+        st.caption(
+            f"過關率(三柱都有開)= **{pillar.pass_prob(game.num_max, game.pick):.4%}**,"
+            f"每期期望命中 **{pillar.expected_hits(game.num_max, game.pick):.5f}** 注。"
+            f"總組合數 C({game.num_max},{game.pick}) = "
+            f"{pillar.total_draws(game.num_max, game.pick):,}。"
+        )
+
+
+def _pillar_odds_panel(cfg: dict, game):
+    """目前這款的 1800碰 盤口與它的期望值判定。"""
+    cost, prize = float(cfg["bet_cost"]), float(cfg["bet_prize"])
+    total = pillar.total_bets(game.num_max)
+    be = pillar.breakeven_prize(cost, game.num_max, game.pick)
+    rate = pillar.return_rate(cost, prize, game.num_max, game.pick)
+    ev = pillar.expected_net(cost, prize, 1, game.num_max, game.pick)
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("每注成本", f"{cost:,.0f}")
+    c2.metric("中一注可得", f"{prize:,.0f}")
+    c3.metric(f"{total:,} 注總成本", f"{cost * total:,.0f}")
+    c4.metric("返還率", f"{rate:.2%}",
+              delta=f"期望 {ev:+,.0f}/期", delta_color="off")
+    st.caption(
+        f"損益兩平的中一注可得是 **{be:,.1f}**(= 每注成本 × C({game.num_max},3)/"
+        f"C({game.pick},3),與買幾注無關)。金額要改請到"
+        "**設定 → 盤口設定 → 三柱 1800碰**。"
+    )
+    if prize > be:
+        st.error(
+            f"目前設定的 {prize:,.0f} 高於兩平點 {be:,.1f},算出來會是**正期望值**"
+            f"(返還率 {rate:.0%})。正期望的彩券玩法不存在 —— 請先確認是不是"
+            "「成本基數不是整包 1800 注」或「賠率定義不同」,不要直接相信這個獲利預測。"
+        )
+
+
+def _pillar_hits_options(game) -> list[int]:
+    """這款可能出現的命中注數,大到小(39選5 → 4、3、0)。"""
+    return sorted(pillar.hit_ways(game.num_max, game.pick), reverse=True)
+
+
+def _render_pillar_today(user: str, cfgs: dict, cum: float):
+    st.subheader("一、這一期下幾倍")
+    if not PILLAR_GAMES:
+        st.info("目前沒有適用 1800碰 的遊戲(需要 39 選 5)。")
+        return
+
+    keys = [g.key for g in PILLAR_GAMES]
+    key = st.segmented_control(
+        "這一期要下哪一款", keys, selection_mode="single", default=keys[0],
+        format_func=lambda k: games.get(k).name, key="pillar_game",
+    ) or keys[0]
+    g, cfg = games.get(key), cfgs[key]
+    cost_per_bet, prize = float(cfg["bet_cost"]), float(cfg["bet_prize"])
+    total_bets = pillar.total_bets(g.num_max)
+
+    _pillar_intro(g)
+    _pillar_odds_panel(cfg, g)
+    st.divider()
+
+    issue_now = _next_issue_of(key, storage.PILLAR)
+    c1, c2, c3 = st.columns([1.3, 1, 1])
+    draw_date = c1.date_input("下注日期", value=dt.date.today(), format="YYYY-MM-DD",
+                              key="pillar_date")
+    mult = int(c2.number_input(
+        "下幾倍", min_value=1, max_value=1000, step=1,
+        value=int(cfg["pillar_base"]), key="pillar_mult",
+        help=f"1 倍 = 買滿 {total_bets:,} 注。倍數只是等比放大,不會改變機率。"))
+    issue_in = c3.text_input("期號", value=issue_now, key="pillar_issue",
+                             help="預設是最新已開獎的下一期;記完帳會自動 +1。")
+
+    # 有這一天的開獎資料就直接判定 —— 1800碰 買的是全組合,結果完全由開獎號碼決定,
+    # 不像二合要先知道你圈了哪幾顆,所以這裡可以全自動。
+    drawn = checker.draw_of(load_df(key), draw_date)
+    auto_hits = None
+    if drawn and len(drawn) == g.pick:
+        counts = pillar.pillar_counts(drawn, g.num_max)
+        auto_hits = pillar.hits_from_counts(counts)
+        st.markdown(f"**{draw_date} 開出**　" + _pillar_balls(drawn, g.num_max),
+                    unsafe_allow_html=True)
+        broken = pillar.broken_pillars(counts)
+        st.success(
+            f"柱分佈 {_pillar_dist_text(counts)} → **{pillar.result_text(auto_hits)}**"
+            + (f"({'、'.join(pillar.PILLAR_NAMES[i - 1] for i in broken)}斷柱)"
+               if broken else ""),
+            icon="🎯")
+    else:
+        st.caption("還沒有這一天的開獎資料,結果請自己選;留「待開獎」之後再回填也可以。")
+
+    opts = [None] + _pillar_hits_options(g)
+    default_idx = opts.index(auto_hits) if auto_hits in opts else 0
+    hits = st.radio("這一期的結果", opts, index=default_idx, horizontal=True,
+                    format_func=pillar.result_text, key="pillar_hits")
+
+    # 試算:三種結果各自的損益與機率,一次攤開
+    cost = pillar.round_cost(cost_per_bet, mult, g.num_max)
+    probs = pillar.hit_probs(g.num_max, g.pick)
+    st.markdown("**試算結果**")
+    st.dataframe(pd.DataFrame([{
+        "結果": pillar.result_text(h),
+        "機率": f"{probs[h]:.2%}",
+        "回收": f"{pillar.round_payout(h, prize, mult):,.0f}",
+        "本局損益": f"{pillar.round_payout(h, prize, mult) - cost:+,.0f}",
+        "之後累積": f"{cum + pillar.round_payout(h, prize, mult) - cost:+,.0f}",
+    } for h in sorted(probs, reverse=True)]), width="stretch", hide_index=True)
+
+    m1, m2, m3 = st.columns(3)
+    m1.metric("目前累積", f"{cum:+,.0f}")
+    m2.metric("這一期成本", f"{cost:,.0f}", delta=f"{mult} 倍 × {total_bets:,} 注",
+              delta_color="off")
+    m3.metric("期望損益", f"{pillar.expected_net(cost_per_bet, prize, mult, g.num_max, g.pick):+,.0f}",
+              delta=f"過關率 {pillar.pass_prob(g.num_max, g.pick):.2%}", delta_color="off")
+
+    if st.button("記帳" + ("(選「待開獎」就當作還沒對獎)" if hits is None else ""),
+                 key="pillar_record", type="primary", width="stretch"):
+        storage.add_round(
+            user, key, draw_date.isoformat(), total_bets, mult, hits,
+            cost, prize, mode=storage.PILLAR,
+            issue=(issue_in.strip() or None),
+        )
+        _bump_issue(key, issue_in.strip(), storage.PILLAR)
+        _kick_autoupdate(g)
+        st.rerun()
+
+
+def _render_pillar_pending(rows: list[dict]):
+    """待回填:1800碰 的結果完全由開獎號碼決定,有資料就能一鍵補完。"""
+    pend = [r for r in rows if r["pending"]]
+    if not pend:
+        return
+    st.subheader(f"二、開獎後回填({len(pend)} 筆待對獎)")
+
+    resolved = {}
+    for r in pend:
+        g = games.get(r["game"])
+        d = checker.draw_of(load_df(r["game"]), r["draw_date"])
+        if d and len(d) == g.pick:
+            resolved[int(r["id"])] = (d, pillar.pillar_counts(d, g.num_max))
+
+    if resolved:
+        st.caption(f"其中 {len(resolved)} 筆已經比對到開獎號碼,可以直接回填。")
+        if st.button(f"✅ 一次回填這 {len(resolved)} 筆", type="primary",
+                     key="pillar_fill_all"):
+            for rid, (_, counts) in resolved.items():
+                storage.update_round_result(rid, pillar.hits_from_counts(counts))
+            st.rerun()
+
+    for r in pend:
+        g = games.get(r["game"])
+        got = resolved.get(int(r["id"]))
+        c1, c2 = st.columns([5, 1.6])
+        c1.markdown(
+            f"**{r['draw_date']} {g.label}**"
+            + (f"　第 {r['issue']} 期" if r.get("issue") else "")
+            + f"  \n{int(r['cars'])} 倍 × {int(r['numbers']):,} 注,"
+              f"成本 {r['cost']:,.0f},每中 1 注 +"
+              f"{int(r['cars']) * float(r['payout_rate'] or 0):,.0f}")
+        if got:
+            drawn, counts = got
+            c1.markdown("開出　" + _pillar_balls(drawn, g.num_max),
+                        unsafe_allow_html=True)
+            c1.success(f"柱分佈 {_pillar_dist_text(counts)} → "
+                       f"{pillar.result_text(pillar.hits_from_counts(counts))}", icon="🎯")
+            default = pillar.hits_from_counts(counts)
+        else:
+            c1.info("還沒有這一期的開獎資料(可到「設定 → 開獎資料」更新後再試)。",
+                    icon="⏳")
+            default = 0
+        opts = _pillar_hits_options(g)
+        pick_hits = c2.selectbox(
+            "結果", opts, index=opts.index(default) if default in opts else len(opts) - 1,
+            format_func=pillar.result_text, key=f"pillar_fill_{r['id']}",
+            label_visibility="collapsed")
+        if c2.button("回填", key=f"pillar_fill_btn_{r['id']}", type="primary"):
+            storage.update_round_result(int(r["id"]), int(pick_hits))
+            st.rerun()
+    st.divider()
+
+
+def _pillar_detail_df(rows: list[dict]) -> pd.DataFrame:
+    """1800碰 的流水表:欄位講的是「倍數 / 注數 / 碰」,不是「車數 / 顆數」。"""
+    any_issue = any(str(r.get("issue") or "").strip() for r in rows)
+    out = []
+    for i, r in enumerate(rows):
+        g = games.get(r["game"])
+        drawn = checker.draw_of(load_df(r["game"]), r["draw_date"]) or []
+        counts = pillar.pillar_counts(drawn, g.num_max) if len(drawn) == g.pick else None
+        out.append({
+            "#": i + 1,
+            "日期": r["draw_date"],
+            **({"期號": str(r.get("issue") or "—")} if any_issue else {}),
+            "遊戲": g.label,
+            "倍數": f"{int(r['cars'])} 倍",
+            "注數": f"{int(r['numbers']) * int(r['cars']):,}",
+            "開出": " ".join(f"{n:02d}" for n in drawn) if drawn else "—",
+            "柱分佈": _pillar_dist_text(counts) if counts else "—",
+            "結果": "待開獎" if r["pending"] else pillar.result_text(int(r["hits"])),
+            "成本": f"{r['cost']:,.0f}",
+            "回收": f"{r['payout']:,.0f}",
+            "本局損益": f"{r['net']:+,.0f}",
+            "累積損益": f"{r['cumulative']:+,.0f}",
+        })
+    return pd.DataFrame(out)
+
+
+def _render_pillar_recovery(cfgs: dict, cum: float):
+    """回本要下幾倍 —— 以「中四碰」為單期回收上限。"""
+    st.subheader("四、回本要下幾倍(三柱1800碰)")
+    if cum >= 0:
+        st.success(f"1800碰 目前累積 {cum:+,.0f},沒有虧損要追。")
+        return
+
+    rows = []
+    for g in PILLAR_GAMES:
+        cfg = cfgs[g.key]
+        cost, prize = float(cfg["bet_cost"]), float(cfg["bet_prize"])
+        res = pillar.multiplier_for_recovery(-cum, cost, prize, g.num_max, g.pick,
+                                             base=int(cfg["pillar_base"]))
+        best = pillar.max_hits(g.num_max, g.pick)
+        if not res["feasible"]:
+            rows.append({"遊戲": g.label, "回本倍數": "無解", "本局成本": "—",
+                         f"中{best}碰可得": f"{best * prize:,.0f}",
+                         "中後累積": f"中{best}碰也回不了本"})
+            continue
+        gross = best * prize * res["multiplier"]
+        rows.append({
+            "遊戲": g.label,
+            "回本倍數": f"{res['multiplier']:,} 倍",
+            "本局成本": f"{res['cost']:,.0f}",
+            f"中{best}碰可得": f"{gross:,.0f}",
+            "中後累積": f"{cum + gross - res['cost']:+,.0f}",
+        })
+    st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
+    _note(
+        "- 倍數 = ⌈目前虧損 ÷ 中四碰每倍淨利⌉,而**中四碰每倍淨利 = "
+        "4 × 中一注可得 − 1800 × 每注成本**。\n"
+        "- 顯示「無解」代表這個盤口的中四碰淨利 ≤ 0 —— 官方 39樂合彩三合"
+        "(25 / 11,250)恰好就是 0,也就是**中最大獎也只是打平**,加倍完全追不回虧損。"
+        "這不是算式壞了,是這個玩法本來就沒有回本的能力。\n"
+        "- 加倍也不會改變 55.36% 的過關率;它只等比放大成本與回收。",
+        "這張表怎麼算的")
+
+
+def _render_pillar_history(cfgs: dict):
+    """拿專案裡的完整開獎歷史,回頭檢驗 1800碰 真的表現如何。
+
+    原站要人工一期一期輸入才有這張表;本專案的開獎資料本來就在,直接算就好。
+    """
+    st.subheader("五、用歷史開獎資料回頭檢驗")
+    keys = [g.key for g in PILLAR_GAMES]
+    key = st.segmented_control(
+        "看哪一款", keys, selection_mode="single", default=keys[0],
+        format_func=lambda k: games.get(k).name, key="pillar_hist_game") or keys[0]
+    g = games.get(key)
+    draws = _draws_of(g)
+    if not draws:
+        st.info("這一款還沒有開獎資料。")
+        return
+
+    span = st.select_slider(
+        "看最近幾期", options=[50, 100, 200, 500, 1000, len(draws)],
+        value=min(200, len(draws)),
+        format_func=lambda n: f"全部 {n} 期" if n == len(draws) else f"{n} 期",
+        key="pillar_hist_span")
+    s = pillar.history_stats(draws[-int(span):], g.num_max, g.pick)
+    theory = pillar.pass_prob(g.num_max, g.pick)
+
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("實際過關率", f"{s['pass_rate']:.2%}",
+              delta=f"理論 {theory:.2%}", delta_color="off")
+    m2.metric("期數", f"{s['rounds']:,}",
+              delta=f"過關 {s['passes']:,}", delta_color="off")
+    m3.metric("目前連續未過關", f"{s['streak']} 期")
+    m4.metric("史上最長連續未過關", f"{s['max_streak']} 期")
+
+    probs = pillar.hit_probs(g.num_max, g.pick)
+    st.dataframe(pd.DataFrame([{
+        "結果": pillar.result_text(h),
+        "出現期數": s["hit_counts"].get(h, 0),
+        "實際占比": f"{s['hit_counts'].get(h, 0) / s['rounds']:.2%}" if s["rounds"] else "—",
+        "理論機率": f"{probs[h]:.2%}",
+    } for h in sorted(probs, reverse=True)]), width="stretch", hide_index=True)
+
+    if s["last_draw"]:
+        st.markdown("**最新一期**　" + _pillar_balls(s["last_draw"], g.num_max),
+                    unsafe_allow_html=True)
+        st.caption(
+            f"柱分佈 {_pillar_dist_text(s['last_counts'])} → "
+            f"{pillar.result_text(pillar.hits_from_counts(s['last_counts']))}"
+            + (f";斷的是 {'、'.join(pillar.PILLAR_NAMES[i - 1] for i in s['last_broken'])}"
+               if s["last_broken"] else ""))
+    if s["skipped"]:
+        st.caption(f"有 {s['skipped']} 期資料不完整,已略過不計。")
+
+    st.warning(
+        f"**連續未過關 {s['streak']} 期不代表下一期比較會開。**每期都是獨立事件,"
+        f"過關機率恆為 {theory:.2%},不會因為連續槓龜而變高 —— "
+        "「越久沒開越該進場回補」是賭徒謬誤。這張表是描述過去,不是預測未來。",
+        icon="⚠️")
+
+
+def _render_pillar_tab(user: str, cfgs: dict, mode_rows: list, mode_cum: float):
+    _render_pillar_today(user, cfgs, mode_cum)
+    st.divider()
+    _render_pillar_pending(mode_rows)
+    _render_mode_records(user, storage.PILLAR, mode_rows)
+    st.divider()
+    _render_pillar_recovery(cfgs, mode_cum)
+    st.divider()
+    _render_pillar_history(cfgs)
 
 
 # ── 回本試算:依目前總損益,單押一款要幾車 ──────────────────
@@ -2091,22 +2532,22 @@ def _render_mode_recovery(cfgs: dict, cum: float, mode: str):
         m2.metric(f"{name}最省的一款", "無解", delta="中 1 顆都追不回", delta_color="off")
 
     st.dataframe(_recovery_df(rows, drop_mode=True), width="stretch", hide_index=True)
-    st.caption(f"這裡用的是**{name}自己的累積損益**({cum:+,.0f}),不含另一種下法;"
-               "兩者合計看「📊 總損益」那頁。")
+    st.caption(f"這裡用的是**{name}自己的累積損益**({cum:+,.0f}),不含其他下法;"
+               "三者合計看「📊 總損益」那頁。")
     _note(_RECOVERY_NOTE, "這張表怎麼算的")
 
 
-# ── 總損益分頁:兩種下法的合計與對照 ────────────────────────
+# ── 總損益分頁:三種下法的合計與對照 ────────────────────────
 def _render_totals_tab(user: str, cfgs: dict, cum: float, rows: list[dict]):
     st.markdown(
         f'<div class="mode-banner" style="background:{TOTALS_COLOR}">'
-        f'📊 總損益(單顆 + 多顆合計)'
-        f'<br><small>兩種下法共用同一個損益池,這一頁看的是合起來的結果</small></div>',
+        f'📊 總損益(單顆 + 多顆 + 三柱1800碰 合計)'
+        f'<br><small>三種下法共用同一個損益池,這一頁看的是合起來的結果</small></div>',
         unsafe_allow_html=True,
     )
     _render_scoreboard(storage.totals(user))
 
-    st.markdown("**兩種下法各自的成績**")
+    st.markdown("**各種下法的成績**")
     per_mode = {m: storage.totals(user, m) for m in storage.MODES}
     st.dataframe(pd.DataFrame([{
         "下法": f"{MODE_THEME[m]['emoji']} {storage.MODE_NAMES[m]}",
@@ -2125,16 +2566,20 @@ def _render_totals_tab(user: str, cfgs: dict, cum: float, rows: list[dict]):
         fig = px.line(
             pd.DataFrame({"日期": [d["draw_date"] for d in daily],
                           "累積損益": [d["cumulative"] for d in daily]}),
-            x="日期", y="累積損益", markers=True, title="累積損益走勢(兩種下法合計)")
+            x="日期", y="累積損益", markers=True, title="累積損益走勢(三種下法合計)")
         fig.add_hline(y=0, line_dash="dash", line_color="#888")
         st.plotly_chart(fig, theme=None, width="stretch", key="cum_chart_totals")
 
-    st.markdown("**回本要下幾車 — 兩種下法對照**")
+    st.markdown("**回本要下幾車 — 單顆 / 多顆對照**")
     if cum >= 0:
         st.success(f"目前總損益 {cum:+,.0f},沒有虧損要追。")
         return
     rec = _recovery_rows(cfgs, cum, None)
     st.dataframe(_recovery_df(rec), width="stretch", hide_index=True)
+    st.caption(
+        "三柱1800碰 不列在這張表 —— 它算的是「下幾倍」而不是「下幾車」,"
+        "而且單期回收的上限固定在中四碰。要看它的回本倍數請到 "
+        "🟣 三柱1800碰 分頁的「四、回本要下幾倍」。")
     ok = [r for r in rec if r["_cost"] != float("inf")]
     if ok:
         best = min(ok, key=lambda r: r["_cost"])
@@ -2148,13 +2593,16 @@ def _render_totals_tab(user: str, cfgs: dict, cum: float, rows: list[dict]):
 def page_strategy(user: str):
     st.header("二合買牌")
     _note(
-        "- 三個分頁:🟢 **單顆下注**、🟠 **多顆下注**、📊 **總損益**。"
-        "兩個下注頁的底色與按鈕顏色不一樣,別下錯頁。\n"
+        "- 四個分頁:🟢 **單顆下注**、🟠 **多顆下注**、🟣 **三柱1800碰**、"
+        "📊 **總損益**。三個下注頁的底色與按鈕顏色都不一樣,別下錯頁。\n"
         "- 下注、回填、紀錄、清除、建議車數**全部跟著你所在的分頁走**,"
         "互不干擾 —— 清單顆不會動到多顆。\n"
         "- **每種下法各算各的累積**:單顆頁的建議車數只追單顆的虧損,"
-        "多顆頁只追多顆的。兩者合起來的數字看「📊 總損益」那頁。\n"
+        "多顆頁只追多顆的。三者合起來的數字看「📊 總損益」那頁。\n"
         "- 多顆中得勤但回本慢,單顆中得少但一中就整碗端回去。\n"
+        "- 🟣 **三柱1800碰** 是完全不同的玩法:不押膽號,而是把號碼切成三柱、"
+        "買下三柱全組合共 1800 注三合。只要三柱各開到一顆就中,過關率 55.36%,"
+        "但官方賠率下**中最大獎也只是打平**,細節在那一頁裡。\n"
         "- 建議車數依「合併累積虧損 + 今天要花的總成本」計算 —— "
         "所以多下一款,大家的車數都會變多。\n"
         "- 中獎顆數可以先填,也可以開獎後再回填。",
@@ -2166,9 +2614,9 @@ def page_strategy(user: str):
     cum = storage.current_cumulative(user)
     counts = {m: sum(1 for r in rows if r["mode"] == m) for m in storage.MODES}
 
-    # 一層 tab:兩種下法各自獨立(下注 / 回填 / 紀錄 / 建議車數都跟著它),
+    # 一層 tab:三種下法各自獨立(下注 / 回填 / 紀錄 / 建議車數都跟著它),
     # 再加一個看合計的總損益頁。
-    labels = [f"{MODE_THEME[m]['emoji']} {storage.MODE_NAMES[m]}下注({counts[m]})"
+    labels = [f"{MODE_THEME[m]['emoji']} {MODE_THEME[m]['tab']}({counts[m]})"
               for m in storage.MODES] + ["📊 總損益"]
     # 給 key 讓分頁記住選了哪一頁 —— 否則每次重跑(記帳、開關號碼盤、改車數)
     # 都會跳回第一頁,人在多顆頁操作卻被彈回單顆頁。
@@ -2177,11 +2625,15 @@ def page_strategy(user: str):
     for tab, mode in zip(tabs, storage.MODES):
         with tab, st.container(key=f"mode_{mode}"):
             _mode_banner(mode)
-            if mode == storage.SINGLE:
-                _single_intro(cfgs)
-            # 建議車數用「這一種下法自己的累積」,不被另一種的盈虧帶偏
+            # 建議車數用「這一種下法自己的累積」,不被另外兩種的盈虧帶偏
             mode_rows = storage.load_rounds(user, mode)
             mode_cum = storage.current_cumulative(user, mode)
+            if mode == storage.PILLAR:
+                # 1800碰 是包牌,沒有「押幾顆 / 幾車」那組輸入,整頁自己一套
+                _render_pillar_tab(user, cfgs, mode_rows, mode_cum)
+                continue
+            if mode == storage.SINGLE:
+                _single_intro(cfgs)
             _render_today(user, cfgs, mode_cum, mode=mode)
             st.divider()
             _render_pending(mode_rows)
@@ -2258,6 +2710,7 @@ def page_settings(user: str):
     tab_odds, tab_data = st.tabs(["盤口設定", "開獎資料"])
 
     with tab_odds:
+        st.markdown("### 二合買牌(單顆 / 多顆)")
         _note(
             "這裡設定你跟組頭的盤口。**「押幾顆」是成本的主要槓桿** —— "
             "它直接決定成本係數 k = 押幾顆 × 每車成本 ÷ 中獎可得,"
@@ -2292,6 +2745,54 @@ def page_settings(user: str):
                 f"{cfg['cost_per_car'] / dan:,.0f}(目前 {cfg['win_payout']:,.0f})"
             )
             st.divider()
+
+        if PILLAR_GAMES:
+            st.markdown("### 三柱 1800碰")
+            _note(
+                "這一組跟上面的二合盤口**完全分開**,改了不會互相影響。\n\n"
+                "1800碰 買的是「三柱各取一號」的全組合,每一注就是一注"
+                "**39樂合彩三合**,所以這裡填的是**每注**的價碼,不是每車。\n\n"
+                "預設值是官方定價(每注 25、中一注 11,250)。跟民間盤下的人"
+                "請改成自己的價碼 —— 但注意 **中一注可得 ÷ 每注成本 不可能超過 "
+                "913.9**(那是單注三合的公平賠率),超過就代表正期望值,"
+                "現實中不存在。",
+                "這兩個金額是什麼")
+            for g in PILLAR_GAMES:
+                cfg, skey = cfgs[g.key], cfgs[g.key]["skey"]
+                total = pillar.total_bets(g.num_max)
+                k1, k2, k3 = pillar.sizes(g.num_max)
+                st.markdown(
+                    f"**{g.name}** — 三柱 {k1}/{k2}/{k3} 顆,"
+                    f"買滿 {k1}×{k2}×{k3} = **{total:,} 注**,"
+                    f"過關率 {pillar.pass_prob(g.num_max, g.pick):.2%}")
+                p1, p2, p3 = st.columns(3)
+                kc, kp = f"set_bet_cost_{g.key}", f"set_bet_prize_{g.key}"
+                kb = f"set_pillar_base_{g.key}"
+                p1.number_input("每注成本", min_value=0.01, max_value=100_000.0,
+                                value=float(cfg["bet_cost"]), step=1.0, key=kc,
+                                on_change=_persist_setting, args=(skey, "bet_cost", kc))
+                p2.number_input("中一注可得", min_value=1.0, max_value=10_000_000.0,
+                                value=float(cfg["bet_prize"]), step=250.0, key=kp,
+                                on_change=_persist_setting, args=(skey, "bet_prize", kp))
+                p3.number_input("預設下幾倍", min_value=1, max_value=1000,
+                                value=int(cfg["pillar_base"]), step=1, key=kb,
+                                on_change=_persist_setting,
+                                args=(skey, "pillar_base", kb))
+                cost, prize = float(cfg["bet_cost"]), float(cfg["bet_prize"])
+                be = pillar.breakeven_prize(cost, g.num_max, g.pick)
+                rate = pillar.return_rate(cost, prize, g.num_max, g.pick)
+                gain = pillar.best_case_net_per_multiple(cost, prize, g.num_max, g.pick)
+                st.caption(
+                    f"整包成本 {cost * total:,.0f};返還率 {rate:.2%}"
+                    f"(期望 {pillar.expected_net(cost, prize, 1, g.num_max, g.pick):+,.0f}/期);"
+                    f"損益兩平的中一注可得 {be:,.1f}(目前 {prize:,.0f});"
+                    f"中{pillar.max_hits(g.num_max, g.pick)}碰每倍淨利 {gain:+,.0f}"
+                    + ("(≤ 0 = 中最大獎也追不回虧損)" if gain <= 0 else ""))
+                if prize > be:
+                    st.error(
+                        f"{g.name}:目前的中一注可得 {prize:,.0f} 超過兩平點 {be:,.1f},"
+                        f"算出來會是正期望值(返還率 {rate:.0%})。請再確認這個賠率的定義。")
+                st.divider()
 
         odds = {g.key: (cfgs[g.key]["cost_per_car"], cfgs[g.key]["win_payout"])
                 for g in GAME_LIST}
