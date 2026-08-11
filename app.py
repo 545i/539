@@ -530,6 +530,18 @@ def _render_stats(fdf: pd.DataFrame, game):
 _PRED_DETAIL_N = 20        # 逐期明細預設展開幾期(超過就給滑桿自己調)
 
 
+def _drawn_md(drawn: list[int], matched) -> str:
+    """開獎號碼的 markdown:被押中的加綠底,沒押中的轉灰。
+
+    視覺要跟流水明細的【NN】綠標一致,但這裡不能用 HTML ——
+    st.expander 的標題只吃 markdown,塞 <span> 會被當成純文字印出來。
+    改用 Streamlit 的 :green-background[] / :gray[] 指令做出同一個效果。
+    """
+    hit = set(matched or ())
+    return " ".join(f":green-background[{n:02d}]" if n in hit else f":gray[{n:02d}]"
+                    for n in drawn)
+
+
 def _render_prediction(game):
     """預測比對:先把各策略的預測存下來,開獎後自動比對中幾顆。
 
@@ -590,7 +602,13 @@ def _render_prediction(game):
         if cur[0]["pending"]:
             st.caption("⏳ 還沒開獎(或開獎資料還沒抓到),開出來後這裡會自動比對。")
         else:
-            st.caption(f"開獎號碼:{'  '.join(f'{n:02d}' for n in cur[0]['drawn'])}")
+            # 綠底的就是有策略押到的號碼,跟下面表格裡的【NN】同一個視覺。
+            # 這一行不在折疊標題裡,可以直接走 HTML,不必繞 markdown 指令。
+            hit_any = set().union(*(set(r["matched"]) for r in cur))
+            st.markdown(
+                "開獎號碼　" + tables.inline(
+                    predictor.marked(cur[0]["drawn"], hit_any), mono=True),
+                unsafe_allow_html=True)
         tables.html_table(pd.DataFrame([{
             "策略": picker.label(r["strategy"]),
             "預測號碼": predictor.marked(r["numbers"], set(r["matched"])),
@@ -643,6 +661,10 @@ def _render_prediction(game):
     else:
         st.caption("點開某一期,看該期各策略分別押了哪些號碼。")
 
+    # 折疊列上的中獎號碼要靠 tables 的樣式才會是實心綠(見 ui/tables 的
+    # stMarkdownColoredBackground 覆寫);這一段有可能在任何表格之前就先畫,
+    # 所以自己確保樣式已經送出去。
+    tables.ensure_css()
     for ti in shown:
         rows = by_issue[ti]
         head = rows[0]
@@ -650,8 +672,9 @@ def _render_prediction(game):
             label = f"{head['label']}　⏳ 待開獎　{len(rows)} 個策略"
         else:
             best = max(r["hits"] for r in rows)
-            label = (f"{head['label']}　開出 "
-                     + " ".join(f"{n:02d}" for n in head["drawn"])
+            hit_any = set().union(*(set(r["matched"]) for r in rows))
+            label = (f"**{head['label']}**　"
+                     + _drawn_md(head["drawn"], hit_any)
                      + f"　最佳 {best} 顆")
         with st.expander(label):
             tables.html_table(pd.DataFrame([{

@@ -47,6 +47,22 @@ _CSS = """
    不限定在 .lt 之內 —— 用欄位排出來的列(例如下注頁的預測表)也要能用。 */
 .lt-hit { background: #16a34a; color: #fff !important; font-weight: 700;
           padding: 1px 6px; border-radius: 4px; }
+/* st.expander 的標題只吃 markdown、塞不進 HTML,所以折疊列上的中獎號碼是用
+   Streamlit 的 :green-background[] 畫的。但它只有 10~20% 不透明度,跟上面
+   .lt-hit 的實心綠差很多 —— 同一件事在兩個地方長得不一樣,會讓人以為是
+   兩種狀態。這裡把它拉回同一個綠。
+   兩層保險:限定在折疊標題內,而且只挑綠色那一種(Streamlit 把顏色寫進
+   inline style,亮色主題是 33,195,84、深色是 61,213,109),
+   紅、藍等其他背景標記不會被波及。哪天 Streamlit 換了色階,
+   最壞也只是退回原本的淡綠,不會誤把別的顏色塗成綠色。 */
+[data-testid="stExpander"] summary .stMarkdownColoredBackground[style*="33, 195, 84"],
+[data-testid="stExpander"] summary .stMarkdownColoredBackground[style*="61, 213, 109"] {
+    background-color: #16a34a !important;
+    color: #fff !important;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 4px;
+}
 .lt-num { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 /* 用 st.columns 排出來的表格列:表頭與儲存格 */
 .lt-hd { font-weight: 700; color: var(--lt-head-fg); font-size: .88rem; }
