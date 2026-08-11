@@ -20,7 +20,7 @@ import streamlit.components.v1 as components
 from core import (auth, backtest, binary_wide, constants, erhe, excel_report,
                   games, kelly, picker)
 from core import autoupdate, scraper, scraper_fantasy5, scraper_marksix, stats, storage
-from core import checker, loader, pillar, predictor
+from core import checker, drawtime, loader, pillar, predictor
 from core.loader import DataError, load_history, merge, save
 from ui import docs, numpad, tables
 
@@ -804,6 +804,82 @@ def _parse_ym(text: str) -> tuple[int, int]:
     return int(parts[0]), int(parts[1])
 
 
+def _render_autoupdate_panel():
+    """自動更新的狀態面板 + 手動抓取備援。"""
+    st.markdown("### 自動更新")
+    _note(
+        "開獎資料由背景排程自動維護,**不需要你做任何事**。以前是記帳的時候順便去抓,"
+        "所以沒下注的日子不會更新、下注頻繁的日子又一直打對方站台;現在改成照"
+        "開獎時刻表定時檢查,跟你有沒有下注無關。\n\n"
+        f"- 每 {autoupdate.TICK_SECONDS // 60} 分鐘檢查一次:算出「到現在為止,"
+        "最後一期應該已經開完並抓得到的是哪一天」,資料比它舊才去抓。\n"
+        f"- **開獎後等 {drawtime.READY_BUFFER_MIN} 分鐘才抓** —— 開完到來源站上架"
+        "有時間差,太早抓只會抓到舊資料。\n"
+        "- 因為比的是日期而不是「時間到了沒」,服務重啟、錯過時間點、放了幾天沒開,"
+        "下一次檢查都會自動補上。\n"
+        f"- 同一期最多自動試 {autoupdate.MAX_ATTEMPTS} 次就停手,等下一期才重新開始"
+        " —— 六合彩遇賽馬日攪珠會從週六挪到週日,那天抓不到東西也不會整天狂打對方站台。\n"
+        "- 下面的「立即抓取」不受這些限制,隨時可以按。",
+        "自動更新怎麼運作")
+
+    now = drawtime.now_taipei()
+    rows = []
+    for g in GAME_LIST:
+        sched = drawtime.get(g.key)
+        df = load_df(g.key)
+        latest = df["date"].max() if not df.empty else None
+        state = drawtime.staleness(g.key, latest, now)
+        s = autoupdate.status(g.key)
+        if s.get("running"):
+            mark = "補抓中…"
+        elif s.get("error"):
+            mark = f"上次失敗:{s['error'][:36]}"
+        elif state["stale"]:
+            mark = f"待更新(應有 {state['target']})"
+        else:
+            mark = "已是最新"
+        rows.append({
+            "遊戲": g.label,
+            "開獎時間": sched.note if sched else "未設定,不自動更新",
+            "資料最新": _date_str(latest) if latest is not None else "無資料",
+            "狀態": mark,
+            "下次開獎": (state["next_draw"].strftime("%m/%d %H:%M")
+                     if state["next_draw"] else "—"),
+        })
+    tables.html_table(pd.DataFrame(rows))
+
+    if not autoupdate.scheduler_running():
+        st.warning("背景排程還沒啟動 —— 重新整理一次頁面就會起來。", icon="⚠️")
+
+    c1, c2 = st.columns([1, 2])
+    if c1.button("立即抓取最新開獎紀錄", type="primary", width="stretch",
+                 key="manual_catchup"):
+        msgs = []
+        for g in GAME_LIST:
+            with st.spinner(f"抓取 {g.name} 最新開獎…"):
+                try:
+                    res = autoupdate.catch_up(g.key, game_data_path(g))
+                    msgs.append((True, f"**{g.label}**:重抓 {res['fetched']} 期、"
+                                       f"新增 {res['added']} 期,資料已到 {res['latest']}。"))
+                except Exception as e:      # noqa: BLE001 — 抓取失敗照實顯示
+                    msgs.append((False, f"**{g.label}**:抓取失敗 — {e}"))
+        load_df.clear()
+        st.session_state["_catchup_msgs"] = msgs
+        st.rerun()
+    c2.caption("備用方案:排程還沒跑到、或想立刻拿到剛開出的號碼時按這裡,"
+               "三款一次抓完。抓取期間頁面會等它跑完。")
+
+    for ok, msg in st.session_state.pop("_catchup_msgs", []):
+        (st.success if ok else st.error)(msg)
+
+    done = [(g, autoupdate.status(g.key)) for g in GAME_LIST]
+    if any(s.get("msg") for _, s in done):
+        with st.expander("背景排程的最近訊息"):
+            for g, s in done:
+                if s.get("msg"):
+                    st.caption(f"**{g.label}** — {s['msg']}")
+
+
 def _update_one_game(game):
     """單一遊戲的抓取 / 匯出區塊(三款各一段)。"""
     path = game_data_path(game)
@@ -1169,11 +1245,18 @@ def _game_settings(user: str, g) -> dict:
     }
 
 
-def _kick_autoupdate(game):
-    """背景補抓該遊戲的開獎資料(資料日期==系統日期則跳過)。"""
-    full_df = load_df(game.key)
-    latest = full_df["date"].max() if not full_df.empty else None
-    autoupdate.kick(game.key, game_data_path(game), latest, on_done=load_df.clear)
+def _start_autoupdate():
+    """啟動開獎資料的背景排程(整個行程只起一條)。
+
+    以前是「記帳的時候順便去抓」,結果沒下注的日子不會更新、下注頻繁的日子
+    又一直打對方站台。改成依開獎時刻表定時檢查(見 core.drawtime),
+    跟使用者做了什麼無關。
+
+    每次 rerun 都會走到這裡,但 start_scheduler 自己會擋掉重複啟動,
+    整個行程只會有一條排程執行緒。
+    """
+    autoupdate.start_scheduler(
+        {g.key: game_data_path(g) for g in GAME_LIST}, on_done=load_df.clear)
 
 
 # ── 戰績列 ───────────────────────────────────────────────
@@ -1221,6 +1304,64 @@ def _bump_issue(game_key: str, used: str, mode: str) -> None:
     st.session_state[f"{mode}_next_issue"] = memo
 
 
+# 期號下拉的候選範圍:往回幾期(補登用)、往前幾期(預先下注用)
+_ISSUE_BACK = 3
+_ISSUE_FWD = 2
+
+
+def _issue_key(game_key: str, mode: str) -> str:
+    return f"{mode}_issue_{game_key}"
+
+
+def _issue_options(game_key: str, mode: str) -> tuple[list[str], str]:
+    """這一款可選的期號清單與預設值。
+
+    預設是**開獎資料算出來的「下一期」**(最新已開獎 + 1),不是讓人自己記。
+    清單往回幾期給補登用、往前幾期給預先下注用 —— 用下拉而不是自由輸入,
+    是因為期號打錯不會有任何提示,事後對獎才會發現對不起來。
+
+    該款沒有期號可用(六合彩)回空清單,呼叫端就不顯示這一欄。
+    """
+    nxt = _next_issue_of(game_key, mode)
+    if not str(nxt).strip().isdigit():
+        return [], ""
+    n = int(nxt)
+    back = [str(n - i) for i in range(1, _ISSUE_BACK + 1) if n - i > 0]
+    fwd = [str(n + i) for i in range(1, _ISSUE_FWD + 1)]
+    return [str(n), *back, *fwd], str(n)
+
+
+def _issue_label(issue: str, default: str) -> str:
+    """下拉選項的字樣:標出哪一個是開獎資料推算的下一期。"""
+    if issue == default:
+        return f"{issue}(下一期)"
+    return f"{issue}(已開獎)" if int(issue) < int(default) else f"{issue}(更後面)"
+
+
+def _issue_selectors(picks: list[str], mode: str) -> dict[str, str]:
+    """表格底下的期號下拉列:一款一個,回傳各款選定的期號。"""
+    opts = {k: _issue_options(k, mode) for k in picks}
+    usable = [k for k in picks if opts[k][0]]
+    if not usable:
+        return {}
+    st.caption("下注期號(預設帶開獎資料算出來的下一期,補登或預先下注就改這裡):")
+    chosen = {}
+    cols = st.columns(len(usable))
+    for col, k in zip(cols, usable):
+        options, default = opts[k]
+        chosen[k] = col.selectbox(
+            games.get(k).label, options, key=_issue_key(k, mode),
+            format_func=lambda s, d=default: _issue_label(s, d),
+            help="「下一期」是依這一款的開獎資料推算的最新已開獎 + 1。"
+                 "跨年度時期號會斷號,那時請選「更後面」或到設定改資料。")
+    return chosen
+
+
+def _clear_issue_choice(game_key: str, mode: str) -> None:
+    """記完帳就把下拉還原成自動 —— 否則它會鎖在剛才那一期,不會跟著往下推。"""
+    st.session_state.pop(_issue_key(game_key, mode), None)
+
+
 def _record(user: str, cfgs: dict, picks: list[str], cars: dict,
             draw_date, hits: dict | None = None, mode: str = storage.MULTI,
             nums: dict | None = None, issues: dict | None = None):
@@ -1242,7 +1383,7 @@ def _record(user: str, cfgs: dict, picks: list[str], cars: dict,
             picked=nums.get(k), issue=issue or None,
         )
         _bump_issue(k, issue, mode)          # 下一筆自動接續下一期
-        _kick_autoupdate(games.get(k))
+        _clear_issue_choice(k, mode)         # 下拉還原成自動,才跟得上新的下一期
     _reset_car_inputs(mode)
     for k in picks:                       # 記完就把號碼盤清空,下一筆重選
         numpad.clear(f"{mode}_pad_{k}")
@@ -1632,21 +1773,22 @@ def _render_today(user: str, cfgs: dict, cum: float, mode: str = storage.MULTI):
     num_col = {"號碼": st.column_config.TextColumn(
         "號碼", help="在下方號碼盤圈的號碼;沒圈號的款顯示「—」,一樣只記數量。")}
 
-    # 期號:預設帶「最新已開獎 + 1」,記完帳會自動往下推一期,隨時可以改。
-    # 用 NumberColumn 手機才會跳數字鍵盤(見 _numeric_keyboard)。
-    issue_now = {k: _next_issue_of(k, mode) for k in picks}
+    # 期號:表格裡只顯示,選擇放在表格底下的下拉(見 _issue_selectors)——
+    # 期號打錯不會有任何提示,事後對獎才會發現對不起來,所以不給自由輸入。
+    # 各款的期號是各自的流水號,擺在同一個表格欄位會變成一份共用清單,
+    # 有可能把甲款的期號填進乙款,所以拆成一款一個下拉。
+    issue_now = {k: st.session_state.get(_issue_key(k, mode))
+                    or _issue_options(k, mode)[1] for k in picks}
     has_issue = any(issue_now.values())
-    issue_col = {"期號": st.column_config.NumberColumn(
-        "期號", step=1, format="%d",
-        help="這一注要下哪一期。預設是最新已開獎的下一期;記完帳會自動 +1,"
-             "跨年度或補登時直接改這格。")}
+    issue_col = {"期號": st.column_config.TextColumn(
+        "期號", help="這一注要下哪一期。預設是開獎資料算出來的下一期;"
+                   "要改請用表格底下的期號下拉。")}
 
     # 輸入表:只放可以改的欄,手機不必左右滑。單顆模式連「押幾顆」都不放。
     if single:
         table = pd.DataFrame([{
             "遊戲": games.get(k).label,
-            **({"期號": (int(issue_now[k]) if str(issue_now[k]).isdigit() else None)}
-               if has_issue else {}),
+            **({"期號": str(issue_now[k] or "—")} if has_issue else {}),
             **({"號碼": _row_nums(k)} if by_pick else {}),
             "下幾車": int(res["cars"][k]),
             "開獎結果": SINGLE_HITS_REV[hits_state.get(k)],
@@ -1665,8 +1807,7 @@ def _render_today(user: str, cfgs: dict, cum: float, mode: str = storage.MULTI):
         hit_opts = _hit_options(cfgs, picks)
         table = pd.DataFrame([{
             "遊戲": games.get(k).label,
-            **({"期號": (int(issue_now[k]) if str(issue_now[k]).isdigit() else None)}
-               if has_issue else {}),
+            **({"期號": str(issue_now[k] or "—")} if has_issue else {}),
             **({"號碼": _row_nums(k)} if by_pick else {}),
             "押幾顆": int(cfgs[k]["n_numbers"]),
             "下幾車": int(res["cars"][k]),
@@ -1694,11 +1835,12 @@ def _render_today(user: str, cfgs: dict, cum: float, mode: str = storage.MULTI):
     # 有圈號的款「押幾顆」是號碼盤算出來的,鎖住避免兩邊打架;
     # 「號碼」欄只是顯示,要改請回號碼盤
     locked = (["遊戲"] + (["押幾顆"] if (by_pick and not single) else [])
-              + (["號碼"] if by_pick else []))
+              + (["號碼"] if by_pick else []) + (["期號"] if has_issue else []))
     edited = st.data_editor(
         table, key=f"{mode}_today_editor", hide_index=True, width="stretch",
         disabled=locked, column_config=col_cfg,
     )
+    issues_in = _issue_selectors(picks, mode)
     _pad_buttons(picks, mode, nums_map, single, cfgs)
     _pred_panel(picks, mode, single, draw_date)
 
@@ -1813,12 +1955,6 @@ def _render_today(user: str, cfgs: dict, cum: float, mode: str = storage.MULTI):
             key=f"{mode}_record", type="primary", width="stretch",
             disabled=bool(bad_hits)):
         # 圈了號的款連號碼一起存,沒圈的只存數量 —— 同一次記帳可以混著來
-        issues_in = {}
-        if has_issue and "期號" in edited.columns:
-            for k in picks:
-                v = edited.loc[k, "期號"]
-                if v is not None and not pd.isna(v):
-                    issues_in[k] = str(int(v))
         _record(user, cfgs, picks, cars, draw_date, hits, mode=mode,
                 nums=nums_map, issues=issues_in)
     if not single and cols[1].button(
@@ -2231,7 +2367,7 @@ def _render_pillar_today(user: str, cfgs: dict, cum: float):
     _pillar_odds_panel(cfg, g)
     st.divider()
 
-    issue_now = _next_issue_of(key, storage.PILLAR)
+    issue_opts, issue_default = _issue_options(key, storage.PILLAR)
     c1, c2, c3 = st.columns([1.3, 1, 1])
     draw_date = c1.date_input("下注日期", value=dt.date.today(), format="YYYY-MM-DD",
                               key="pillar_date")
@@ -2239,8 +2375,12 @@ def _render_pillar_today(user: str, cfgs: dict, cum: float):
         "下幾倍", min_value=1, max_value=1000, step=1,
         value=int(cfg["pillar_base"]), key="pillar_mult",
         help=f"1 倍 = 買滿 {total_bets:,} 注。倍數只是等比放大,不會改變機率。"))
-    issue_in = c3.text_input("期號", value=issue_now, key="pillar_issue",
-                             help="預設是最新已開獎的下一期;記完帳會自動 +1。")
+    issue_in = ""
+    if issue_opts:
+        issue_in = c3.selectbox(
+            "期號", issue_opts, key=_issue_key(key, storage.PILLAR),
+            format_func=lambda s, d=issue_default: _issue_label(s, d),
+            help="預設是開獎資料算出來的下一期;補登或預先下注就改這裡。")
 
     # 有這一天的開獎資料就直接判定 —— 1800碰 買的是全組合,結果完全由開獎號碼決定,
     # 不像二合要先知道你圈了哪幾顆,所以這裡可以全自動。
@@ -2292,7 +2432,7 @@ def _render_pillar_today(user: str, cfgs: dict, cum: float):
             issue=(issue_in.strip() or None),
         )
         _bump_issue(key, issue_in.strip(), storage.PILLAR)
-        _kick_autoupdate(g)
+        _clear_issue_choice(key, storage.PILLAR)
         st.rerun()
 
 
@@ -2830,7 +2970,10 @@ def page_settings(user: str):
         )
 
     with tab_data:
-        st.caption("三款開獎資料各自獨立維護;回報下注時也會在背景自動補抓。")
+        _render_autoupdate_panel()
+        st.divider()
+        st.markdown("### 手動抓取(指定範圍)")
+        st.caption("要補很久以前的歷史資料時用這裡;日常更新交給上面的自動排程就好。")
         for i, game in enumerate(GAME_LIST):
             _update_one_game(game)
             if i < len(GAME_LIST) - 1:
@@ -2941,6 +3084,8 @@ def _login_gate() -> bool:
 def main():
     st.set_page_config(page_title="彩券統計分析(539 / 天天樂 / 六合彩)",
                        page_icon="", layout="wide")
+    # 開獎資料的背景排程:登入前就起,免得沒人登入的日子完全不更新
+    _start_autoupdate()
     if not _login_gate():
         return
     # 剛登入:把 token 寫進 cookie(重整 / 重開分頁自動保持登入)
