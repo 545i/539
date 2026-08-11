@@ -1320,15 +1320,18 @@ def _issue_options(game_key: str, mode: str) -> tuple[list[str], str]:
     清單往回幾期給補登用、往前幾期給預先下注用 —— 用下拉而不是自由輸入,
     是因為期號打錯不會有任何提示,事後對獎才會發現對不起來。
 
+    **清單一律由小到大排**,預設值靠 index 指過去。先前把下一期排在第一個、
+    再接往回與往前,結果順序長成 11966 11965 11964 11963 11967 11968,
+    看起來像壞掉 —— 期號是連號,照大小排才讀得懂。
+
     該款沒有期號可用(六合彩)回空清單,呼叫端就不顯示這一欄。
     """
     nxt = _next_issue_of(game_key, mode)
     if not str(nxt).strip().isdigit():
         return [], ""
     n = int(nxt)
-    back = [str(n - i) for i in range(1, _ISSUE_BACK + 1) if n - i > 0]
-    fwd = [str(n + i) for i in range(1, _ISSUE_FWD + 1)]
-    return [str(n), *back, *fwd], str(n)
+    lo = max(1, n - _ISSUE_BACK)
+    return [str(i) for i in range(lo, n + _ISSUE_FWD + 1)], str(n)
 
 
 def _issue_label(issue: str, default: str) -> str:
@@ -1350,7 +1353,8 @@ def _issue_selectors(picks: list[str], mode: str) -> dict[str, str]:
     for col, k in zip(cols, usable):
         options, default = opts[k]
         chosen[k] = col.selectbox(
-            games.get(k).label, options, key=_issue_key(k, mode),
+            games.get(k).label, options, index=options.index(default),
+            key=_issue_key(k, mode),
             format_func=lambda s, d=default: _issue_label(s, d),
             help="「下一期」是依這一款的開獎資料推算的最新已開獎 + 1。"
                  "跨年度時期號會斷號,那時請選「更後面」或到設定改資料。")
@@ -1698,16 +1702,22 @@ def _render_today(user: str, cfgs: dict, cum: float, mode: str = storage.MULTI):
                   if k in picks}
 
     # 下多款時要先決定「回本責任」怎麼算(只下一款時兩者是同一條式子,不用問)
+    #
+    # 注意:回傳值要接到別的變數。以前這裡寫 `mode = st.radio(...)`,把下注模式
+    # 給蓋成了「平攤:每款各負擔 1/N」—— 之後所有 f"{mode}_…" 的 widget key 都跟著
+    # 跑掉(期號下拉、表格、日期、車數在切換平攤/嚴格時整組重置),而且記帳時
+    # 會拿這個字串去 storage.add_round(mode=…),直接 ValueError:未知的下注模式。
+    # 只有勾 2 款以上才會踩到,所以一直沒被發現。
     n_games = len(picks)
     if n_games >= 2:
-        mode = st.radio(
+        share_mode = st.radio(
             "多款一起下時,怎麼算才算回本?",
             ["平攤:每款各負擔 1/N", "嚴格:任一款中 1 顆就全部回本"],
             horizontal=True, key=f"{mode}_share_mode",
             help="平攤比較便宜,但要每一款都中才完全回本;"
                  "嚴格是任何一款中 1 顆就回本,但成本高很多,而且 k ≥ 1 時無解。",
         )
-        share = n_games if mode.startswith("平攤") else 1
+        share = n_games if share_mode.startswith("平攤") else 1
     else:
         share = 1
 
@@ -2378,7 +2388,8 @@ def _render_pillar_today(user: str, cfgs: dict, cum: float):
     issue_in = ""
     if issue_opts:
         issue_in = c3.selectbox(
-            "期號", issue_opts, key=_issue_key(key, storage.PILLAR),
+            "期號", issue_opts, index=issue_opts.index(issue_default),
+            key=_issue_key(key, storage.PILLAR),
             format_func=lambda s, d=issue_default: _issue_label(s, d),
             help="預設是開獎資料算出來的下一期;補登或預先下注就改這裡。")
 
