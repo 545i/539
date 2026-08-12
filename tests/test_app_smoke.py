@@ -118,18 +118,42 @@ def test_combo_records_a_round_with_the_numbers(app):
     r = rows[0]
     assert r["numbers"] == 56 and r["cars"] == 1        # 預設三星,C(8,3)
     assert r["stars"] == 3 and r["dans"] == []          # 沒指定膽 = 連碰
-    assert r["cost"] == 2 * 56                          # 每注 2 元 × 56 注
-    assert r["payout_rate"] == 2 * 580                  # 倍率是幾倍,不是幾元
+    # 每注成本是**跟星數綁的**(三星 63、四星 50),不是三種共用一個數字
+    assert r["cost"] == 63 * 56                         # 三星每注 63 × 56 注
+    assert r["payout_rate"] == 63 * 580                 # 倍率是幾倍,不是幾元
     assert r["picked"] == [1, 2, 3, 4, 5, 6, 7, 8]
     assert r["drag"] == r["picked"], "沒有膽時,拖就是全部圈的號碼"
     assert r["pending"], "沒選結果就該是待開獎"
+
+
+def test_three_and_four_star_have_their_own_cost(app):
+    """三星 63、四星 50 是**不同的價**,不能共用一個「每注多少錢」欄位。
+
+    共用的話四星會用三星的成本記帳,損益整個是錯的。這裡切到四星再記一筆,
+    成本必須換成四星那一組。
+    """
+    app.session_state["ledger_combo_pad__picked"] = [1, 2, 3, 4, 5, 6, 7, 8]
+    app.run()
+    for sc in app.segmented_control:
+        if sc.key == "lcombo_stars":
+            sc.set_value(4).run()
+            break
+    assert not app.exception, [str(e.value) for e in app.exception]
+    _button(app, "lcombo_record").click().run()
+    assert not app.exception, [str(e.value) for e in app.exception]
+
+    r = storage.load_rounds("apptest", storage.COMBO)[0]
+    assert r["stars"] == 4 and r["numbers"] == 70          # C(8,4)
+    assert r["cost"] == 50 * 70 == 3_500                   # 四星每注 50
+    assert r["cost"] != 63 * 70, "四星不該套到三星的每注成本"
+    assert r["payout_rate"] == 50 * 7500                   # 四星倍率
 
 
 def test_combo_pending_autofills_from_the_draw(app):
     """待回填要能用存下的號碼自動對獎:對中 3 顆 → 三星中 C(3,3) = 1 注。"""
     date, drawn = _latest_draw()
     others = [n for n in range(1, 40) if n not in drawn][:5]
-    storage.add_round("apptest", "lotto539", date, 56, 1, None, 112.0, 1160.0,
+    storage.add_round("apptest", "lotto539", date, 56, 1, None, 3528.0, 36540.0,
                       mode=storage.COMBO, picked=sorted(drawn[:3] + others), stars=3)
     app.run()
     _button(app, "lcombo_fill_all").click().run()
@@ -137,7 +161,7 @@ def test_combo_pending_autofills_from_the_draw(app):
 
     r = storage.load_rounds("apptest", storage.COMBO)[0]
     assert not r["pending"] and r["hits"] == 1
-    assert r["payout"] == 1_160 and r["net"] == 1_160 - 112
+    assert r["payout"] == 36_540 and r["net"] == 36_540 - 3_528
 
 
 def test_combo_autofill_respects_the_dan(app):
@@ -146,7 +170,7 @@ def test_combo_autofill_respects_the_dan(app):
     miss = [n for n in range(1, 40) if n not in drawn][0]      # 這一顆沒開
     others = [n for n in range(1, 40) if n not in drawn][1:6]
     picked = sorted(drawn[:3] + others + [miss])
-    storage.add_round("apptest", "lotto539", date, 56, 1, None, 112.0, 1160.0,
+    storage.add_round("apptest", "lotto539", date, 56, 1, None, 3528.0, 36540.0,
                       mode=storage.COMBO, picked=picked, stars=3, dans=[miss])
     app.run()
     _button(app, "lcombo_fill_all").click().run()
@@ -154,10 +178,18 @@ def test_combo_autofill_respects_the_dan(app):
     assert storage.load_rounds("apptest", storage.COMBO)[0]["hits"] == 0
 
 
-def test_combo_wont_record_without_numbers(app):
-    """沒圈號碼就湊不出注,記帳鈕是關的。"""
-    assert _button(app, "lcombo_record").disabled
-    assert not storage.load_rounds("apptest", storage.COMBO)
+def test_combo_record_button_always_responds(app):
+    """沒圈號碼時記帳鈕**還是要能按**,而且要講清楚缺什麼。
+
+    以前這裡是 disabled —— 按下去毫無反應也沒有訊息,使用者只會覺得鈕壞了。
+    """
+    btn = _button(app, "lcombo_record")
+    assert not btn.disabled, "記帳鈕不該是 disabled,那樣按了完全沒反應"
+    btn.click().run()
+    assert not app.exception, [str(e.value) for e in app.exception]
+    assert not storage.load_rounds("apptest", storage.COMBO), "沒號碼不該記進去"
+    assert any("還沒圈號碼" in e.value for e in app.error), \
+        [e.value for e in app.error]
 
 
 def test_combo_calculator_page_renders(app):

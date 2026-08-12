@@ -1345,9 +1345,10 @@ def _game_settings(user: str, g) -> dict:
         "bet_cost": storage.get_setting(skey, "bet_cost", g.default_bet_cost),
         "bet_prize": storage.get_setting(skey, "bet_prize", g.default_bet_prize),
         "pillar_base": int(storage.get_setting(skey, "pillar_base", 1)),
-        # 連碰:每注成本(三種星數共用)與各星數的倍率(1 賠幾)
-        "combo_per_bet": storage.get_setting(skey, "combo_per_bet",
-                                             combo.DEFAULT_PER_BET),
+        # 連碰:每注成本與倍率(1 賠幾)—— **三種星數各一組**,價碼本來就不同
+        **{f"combo_cost{k}": storage.get_setting(skey, f"combo_cost{k}",
+                                                 combo.MARKET_COST[k])
+           for k in combo.STARS},
         **{f"combo_odds{k}": storage.get_setting(skey, f"combo_odds{k}",
                                                  combo.MARKET_ODDS[k])
            for k in combo.STARS},
@@ -2766,7 +2767,6 @@ def _render_pillar_history(cfgs: dict):
 
     原站要人工一期一期輸入才有這張表;本專案的開獎資料本來就在,直接算就好。
     """
-    st.subheader("五、用歷史開獎資料回頭檢驗")
     keys = [g.key for g in PILLAR_GAMES]
     key = st.segmented_control(
         "看哪一款", keys, selection_mode="single", default=keys[0],
@@ -2837,8 +2837,12 @@ _COMBO_LEDGER_PAD = "ledger_combo_pad"
 
 
 def _combo_odds(cfg: dict, stars: int) -> tuple[float, float]:
-    """該款在這個星數下的(每注成本, 倍率)。"""
-    return float(cfg["combo_per_bet"]), float(cfg[f"combo_odds{stars}"])
+    """該款在這個星數下的(每注成本, 倍率)。
+
+    **每注成本是跟星數綁的**(三星 63、四星 50 本來就不同價),
+    不能三種共用一個數字 —— 那樣算出來的成本與損益都是錯的。
+    """
+    return float(cfg[f"combo_cost{stars}"]), float(cfg[f"combo_odds{stars}"])
 
 
 def _combo_row_plan(r: dict) -> tuple[int, int, int]:
@@ -2884,35 +2888,6 @@ def _combo_pick_dialog(game_key: str, stars: int, dans_wanted):
     if c2.button("清空重選", width="stretch", key="ledger_pad_clear"):
         numpad.clear(_COMBO_LEDGER_PAD)
         st.rerun()
-
-
-def _combo_intro(game, stars: int, drag: int, dans: int):
-    """這張牌是什麼、機率多少 —— 數字全部由組合數現算,不是抄表。"""
-    n = combo.bets(stars, drag, dans)
-    probs = combo.hit_probs(stars, drag, dans, game.num_max, game.pick)
-    with st.expander(f"{_combo_play_of(dans)}·{combo.star_name(stars)}是什麼"
-                     f"(以 {game.name} 的 {game.num_max} 選 {game.pick} 現算)"):
-        st.markdown(
-            f"一注 = {stars} 個號碼,那 {stars} 顆**全部開出**才算中。\n\n"
-            + (f"- 膽 **{dans}** 顆:每一注都會用到,只要有一顆沒開整張歸零\n"
-               if dans else "")
-            + f"- 拖 **{drag}** 顆:一注的其餘 {stars - dans} 個位置從這裡挑\n"
-            + f"- 注數 = C({drag}, {stars} − {dans}) = **{n:,} 注** = 1 支\n\n"
-            f"中的注數 = C(拖中幾顆, {stars - dans})"
-            + ("(膽要先全中)" if dans else "") + "。"
-        )
-        st.markdown("**每期會發生什麼(理論值)**")
-        st.dataframe(pd.DataFrame([{
-            "結果": combo.result_text(h),
-            "機率": f"{probs[h]:.4%}",
-        } for h in sorted(probs, reverse=True)]), width="stretch", hide_index=True)
-        st.caption(
-            f"至少中一注的機率 = "
-            f"**{combo.win_prob(stars, drag, dans, game.num_max, game.pick):.4%}**,"
-            f"每期期望中 "
-            f"**{combo.expected_hits(stars, drag, dans, game.num_max, game.pick):.5f}**"
-            f" 注。單注公平賠率 C({game.num_max},{stars})/C({game.pick},{stars}) = "
-            f"{combo.fair_odds(stars, game.num_max, game.pick):,.1f}。")
 
 
 def _combo_odds_panel(cfg: dict, game, stars: int, drag: int, dans: int):
@@ -2995,9 +2970,7 @@ def _render_combo_today(user: str, cfgs: dict, cum: float):
 
     per_bet, odds = _combo_odds(cfg, stars)
     if n_bets > 0:
-        _combo_intro(g, stars, drag, dans)
         _combo_odds_panel(cfg, g, stars, drag, dans)
-    st.divider()
 
     issue_opts, issue_default = _issue_options(key, storage.COMBO)
     c1, c2, c3 = st.columns([1.3, 1, 1])
@@ -3065,18 +3038,28 @@ def _render_combo_today(user: str, cfgs: dict, cum: float):
     else:
         cost = 0.0
 
+    # 按鈕**永遠可按**。以前號碼沒圈滿時把它設成 disabled,結果按下去毫無反應、
+    # 也不說為什麼 —— 使用者只會覺得「這顆鈕壞了」。改成按了才講缺什麼。
     if st.button("記帳" + ("(選「待開獎」就當作還沒對獎)" if hits is None else ""),
-                 key="lcombo_record", type="primary", width="stretch",
-                 disabled=n_bets <= 0):
-        storage.add_round(
-            user, key, draw_date.isoformat(), n_bets, sheets, hits,
-            cost, combo.prize_per_bet(per_bet, odds), mode=storage.COMBO,
-            picked=picked, issue=(issue_in.strip() or None),
-            stars=stars, dans=dan_nums,
-        )
-        _bump_issue(key, issue_in.strip(), storage.COMBO)
-        _clear_issue_choice(key, storage.COMBO)
-        st.rerun()
+                 key="lcombo_record", type="primary", width="stretch"):
+        if not picked:
+            st.error("還沒圈號碼 —— 請先點上面的「🎯 圈選要下的號碼」把要下的號碼點出來。",
+                     icon="🚫")
+        elif n_bets <= 0:
+            st.error(
+                f"圈的號碼湊不出任何一注:{combo.star_name(stars)}扣掉 {dans} 顆膽,"
+                f"還要從拖裡挑 {stars - dans} 顆,但拖只有 {drag} 顆。"
+                f"請再多圈幾顆,或少指定一顆膽。", icon="🚫")
+        else:
+            storage.add_round(
+                user, key, draw_date.isoformat(), n_bets, sheets, hits,
+                cost, combo.prize_per_bet(per_bet, odds), mode=storage.COMBO,
+                picked=picked, issue=(issue_in.strip() or None),
+                stars=stars, dans=dan_nums,
+            )
+            _bump_issue(key, issue_in.strip(), storage.COMBO)
+            _clear_issue_choice(key, storage.COMBO)
+            st.rerun()
     # 二合記完帳會清空號碼盤,這裡刻意不清:連碰通常是同一組號碼長期打,
     # 每期重點一次太累。要換號直接點上面那顆按鈕改。
     st.caption("記完帳號碼會留著,下一期沿用;要換號就再點一次上面的號碼按鈕。")
@@ -3177,7 +3160,6 @@ def _combo_detail_df(rows: list[dict]) -> pd.DataFrame:
 
 def _render_combo_recovery(cfgs: dict, cum: float, rows: list[dict]):
     """回本要下幾支 —— 以「中 1 注」為基準,拿你最近下的那張牌來算。"""
-    st.subheader("四、回本要下幾支(連碰)")
     if cum >= 0:
         st.success(f"連碰目前累積 {cum:+,.0f},沒有虧損要追。")
         return
@@ -3300,14 +3282,20 @@ def _render_combo_history(cfgs: dict, rows: list[dict]):
 
 
 def _render_combo_tab(user: str, cfgs: dict, mode_rows: list, mode_cum: float):
+    """下注 → 回填 → 紀錄,就這三段。
+
+    回本試算與歷史檢驗收進摺疊區 —— 它們是偶爾看一次的東西,攤在主畫面上
+    會把「這一期要下什麼」擠到看不見。
+    """
     _render_combo_today(user, cfgs, mode_cum)
     st.divider()
     _render_combo_pending(mode_rows)
     _render_mode_records(user, storage.COMBO, mode_rows)
     st.divider()
-    _render_combo_recovery(cfgs, mode_cum, mode_rows)
-    st.divider()
-    _render_combo_history(cfgs, mode_rows)
+    with st.expander("回本要下幾支"):
+        _render_combo_recovery(cfgs, mode_cum, mode_rows)
+    with st.expander("用歷史開獎資料回頭檢驗"):
+        _render_combo_history(cfgs, mode_rows)
 
 
 # ── 回本試算:依目前總損益,單押一款要幾車 ──────────────────
@@ -3652,12 +3640,10 @@ def _combo_results(game, stars: int, drag: int, dans: int,
 
     win = combo.win_prob(stars, drag, dans, nm, pk)
     ev = combo.expected_net(stars, drag, per_bet, odds, dans, nm, pk)
-    d1, d2, d3 = st.columns(3)
-    d1.metric("返還率", f"{rate:.2%}",
-              delta=f"公平賠率 {combo.fair_odds(stars, nm, pk):,.1f}",
-              delta_color="off")
-    d2.metric("至少中一注的機率", f"{win:.4%}")
-    d3.metric("期望損益", f"{ev:+,.0f}", delta="每期", delta_color="off")
+    st.caption(
+        f"至少中一注的機率 **{win:.4%}**;返還率 **{rate:.2%}**"
+        f"(公平賠率 {combo.fair_odds(stars, nm, pk):,.1f});"
+        f"每期期望損益 **{ev:+,.0f}**。")
 
     if rate >= 1:
         st.error(
@@ -3665,15 +3651,15 @@ def _combo_results(game, stars: int, drag: int, dans: int,
             f"算出來會是正期望值(返還率 {rate:.0%})。正期望的彩券玩法不存在 —— "
             "請先確認這個「倍率」是不是其實指別的東西,不要相信這個獲利預測。")
 
-    st.markdown("**每期會發生什麼(理論值)**")
+    # 底下都收進摺疊區 —— 主畫面只留上面那四個數字
     probs = combo.hit_probs(stars, drag, dans, nm, pk)
-    st.dataframe(pd.DataFrame([{
-        "中幾注": f"{h:,}",
-        "機率": f"{probs[h]:.4%}",
-        "回收": f"{h * prize:,.0f}",
-        "本局損益": f"{h * prize - cost:+,.0f}",
-    } for h in sorted(probs, reverse=True)]), width="stretch", hide_index=True)
-
+    with st.expander("中幾注的機率與損益"):
+        st.dataframe(pd.DataFrame([{
+            "中幾注": f"{h:,}",
+            "機率": f"{probs[h]:.4%}",
+            "回收": f"{h * prize:,.0f}",
+            "本局損益": f"{h * prize - cost:+,.0f}",
+        } for h in sorted(probs, reverse=True)]), width="stretch", hide_index=True)
     _combo_formula_note(game, stars, drag, dans, per_bet, odds)
 
 
@@ -3717,24 +3703,11 @@ def _combo_reference_table(dans: int, stars_now: int):
 
 def page_combo():
     st.header("連碰計算機")
-    _note(
-        "- 算的是**民間的組合下注**:連碰 / 立柱 / 拖膽 要買幾注、花多少、"
-        "中一注拿多少、要中幾注才打平。\n"
-        "- 三種下法其實是同一條式子:**注數 = C(拖幾顆, 星數 − 膽幾顆)**。"
-        "連碰是「沒有膽」、立柱是「1 顆膽」、拖膽的膽數由你決定。\n"
-        "- 「天二 / 天三」是二星 / 三星連碰的別名,算式完全一樣,不另立一種。\n"
-        "- **倍率是「賠率幾倍」不是「幾元」**:二星 1賠53 指的是每注成本 × 53"
-        "(下 50 中 2,650)。\n"
-        "- 這頁只做試算**不會記帳**。要把輸贏記起來、看累積損益,"
-        "請到「二合買牌 → ⭐ 連碰」。",
-        "這頁在算什麼")
 
     keys = [g.key for g in GAME_LIST]
     gkey = st.segmented_control(
         "算哪一款", keys, selection_mode="single", default=keys[0],
-        format_func=lambda k: f"{games.get(k).name}({games.get(k).num_max}選"
-                              f"{games.get(k).pick})",
-        key="combo_game") or keys[0]
+        format_func=lambda k: games.get(k).name, key="combo_game") or keys[0]
     game = games.get(gkey)
 
     pkeys = [p.key for p in combo.PLAYS]
@@ -3744,16 +3717,18 @@ def page_combo():
     stars = st.segmented_control(
         "幾星", list(combo.STARS), selection_mode="single", default=3,
         format_func=combo.star_name, key="combo_stars") or 3
-    st.caption(f"**{p.name}** — {p.desc}。")
+    st.caption(f"{p.desc}。")
 
     st.radio("怎麼輸入", ["只算數字(快)", "圈實際號碼(可列出注單)"],
-             horizontal=True, key="combo_how")
+             horizontal=True, key="combo_how", label_visibility="collapsed")
     drag, dans, drag_nums, dan_nums = _combo_inputs(game, p, stars)
 
+    # 每注成本與倍率都是**跟著星數走**的,切星數就換一組(三星 63、四星 50)
     o1, o2 = st.columns(2)
     per_bet = float(o1.number_input(
-        "每注多少錢", min_value=0.01, max_value=1_000_000.0,
-        value=float(combo.DEFAULT_PER_BET), step=1.0, key="combo_per_bet"))
+        f"{combo.star_name(stars)}每注多少錢", min_value=0.01, max_value=1_000_000.0,
+        value=float(combo.MARKET_COST.get(stars, 50.0)), step=1.0,
+        key=f"combo_cost_{stars}"))
     odds = float(o2.number_input(
         f"{combo.star_name(stars)}倍率(1 賠幾)", min_value=1.0,
         max_value=1_000_000.0,
@@ -3762,21 +3737,25 @@ def page_combo():
         help="組頭報的賠率。市場參考:二星 53、三星 580、四星 7,500 —— "
              "各家不同,以你自己的盤口為準。"))
 
-    st.divider()
     _combo_results(game, stars, drag, dans, per_bet, odds)
     if drag_nums and combo.bets(stars, drag, dans) > 0:
-        st.divider()
         _combo_bet_list(stars, drag_nums, dan_nums)
-    st.divider()
     _combo_reference_table(dans, stars)
-
-    st.error(
-        "**誠實提醒**:注數算得再精準,也改變不了每一注都是負期望這件事。"
+    _note(
+        "- 三種下法其實是同一條式子:**注數 = C(拖幾顆, 星數 − 膽幾顆)**。"
+        "連碰是「沒有膽」、立柱是「1 顆膽」、拖膽的膽數由你決定。\n"
+        "- 「天二 / 天三」是二星 / 三星連碰的別名,算式完全一樣。\n"
+        "- **倍率是「賠率幾倍」不是「幾元」**:二星 1賠53 指的是每注成本 × 53"
+        "(下 50 中 2,650)。\n"
+        "- **二 / 三 / 四星各有各的每注價**,切換星數上面的金額會跟著換。\n"
+        "- 這頁只做試算**不會記帳**。要把輸贏記起來、看累積損益,"
+        "請到「二合買牌 → ⭐ 連碰」。\n\n"
+        "**誠實提醒**:注數算得再精準,也改變不了每一注都是負期望。"
         f"{combo.star_name(stars)}在 {game.name} 的公平賠率是 "
         f"{combo.fair_odds(stars, game.num_max, game.pick):,.1f},"
-        f"組頭報的倍率一定低於它 —— 差多少就是抽多少。買越多注只是把成本與"
-        "期望回收一起放大,返還率不會變好;「多包幾顆比較容易中」是真的,"
-        "但每一塊錢的期望值完全沒變。")
+        "組頭報的倍率一定低於它 —— 差多少就是抽多少。「多包幾顆比較容易中」"
+        "是真的,但每一塊錢的期望值完全沒變。",
+        "這頁在算什麼(必讀)")
 
 
 # ── 排行榜:各帳號的合併損益 ──────────────────────────────
@@ -3920,7 +3899,9 @@ def page_settings(user: str):
         _note(
             "這一組跟上面兩套盤口**完全分開**。\n\n"
             "連碰買的是「一注 K 個號碼」的組合,所以這裡填的是**每注**多少錢,"
-            "以及各星數的**倍率**。\n\n"
+            "以及**倍率**。\n\n"
+            "**二 / 三 / 四星各有各的價**(這邊實際在跑的是三星 63、四星 50),"
+            "所以每一種星數都要各填一組,不是共用一個金額。\n\n"
             "**倍率是「賠率幾倍」不是「幾元」** —— 二星 1賠53 指的是"
             "每注成本 × 53(下 50 中 2,650),不是中一注只給 53 元。\n\n"
             "倍率的上限是**單注的公平賠率**:39 選 5 下二星 74.1、三星 913.9、"
@@ -3931,37 +3912,36 @@ def page_settings(user: str):
         for g in GAME_LIST:
             cfg, skey = cfgs[g.key], cfgs[g.key]["skey"]
             st.markdown(f"**{g.name}** — {g.num_max}選{g.pick}")
-            kp = f"set_combo_per_bet_{g.key}"
-            cols = st.columns(1 + len(combo.STARS))
-            cols[0].number_input(
-                "每注多少錢", min_value=0.01, max_value=100_000.0,
-                value=float(cfg["combo_per_bet"]), step=1.0, key=kp,
-                on_change=_persist_setting, args=(skey, "combo_per_bet", kp))
-            for col, k in zip(cols[1:], combo.STARS):
-                ko = f"set_combo_odds{k}_{g.key}"
-                col.number_input(
-                    f"{combo.star_name(k)}倍率", min_value=1.0, max_value=1_000_000.0,
-                    value=float(cfg[f"combo_odds{k}"]), step=1.0, key=ko,
-                    on_change=_persist_setting, args=(skey, f"combo_odds{k}", ko))
-            per_bet = float(cfg["combo_per_bet"])
-            bits = []
+            # 一星數一列:每注成本與倍率各自獨立 —— 三星 63、四星 50 不同價,
+            # 共用一個成本欄位會把損益算錯。
             for k in combo.STARS:
-                odds = float(cfg[f"combo_odds{k}"])
+                cost, odds = _combo_odds(cfg, k)
                 fair = combo.fair_odds(k, g.num_max, g.pick)
                 rate = combo.return_rate(k, odds, g.num_max, g.pick)
-                bits.append(f"{combo.star_name(k)} 中一注 "
-                            f"{combo.prize_per_bet(per_bet, odds):,.0f}、"
-                            f"返還率 {rate:.2%}(公平 {fair:,.1f})")
+                kc, ko = f"set_combo_cost{k}_{g.key}", f"set_combo_odds{k}_{g.key}"
+                c1, c2, c3 = st.columns([1, 1, 2])
+                c1.number_input(
+                    f"{combo.star_name(k)}每注成本", min_value=0.01,
+                    max_value=100_000.0, value=float(cost), step=1.0, key=kc,
+                    on_change=_persist_setting, args=(skey, f"combo_cost{k}", kc))
+                c2.number_input(
+                    f"{combo.star_name(k)}倍率(1 賠幾)", min_value=1.0,
+                    max_value=1_000_000.0, value=float(odds), step=1.0, key=ko,
+                    on_change=_persist_setting, args=(skey, f"combo_odds{k}", ko))
+                c3.markdown(
+                    f"中一注可得 **{combo.prize_per_bet(cost, odds):,.0f}**"
+                    f"({cost:,.0f} × {odds:,.0f})  \n"
+                    f"返還率 **{rate:.2%}**　公平賠率 {fair:,.1f}")
                 if rate >= 1:
                     st.error(
                         f"{g.name}·{combo.star_name(k)}:倍率 {odds:,.0f} 超過公平賠率 "
                         f"{fair:,.1f},算出來會是正期望值(返還率 {rate:.0%})。"
                         "請再確認這個倍率的定義。")
-            st.caption(";".join(bits) + "。返還率只由倍率決定,跟拖幾顆無關。")
             kb = f"set_combo_base_{g.key}"
             st.number_input("預設下幾支", min_value=1, max_value=1000,
                             value=int(cfg["combo_base"]), step=1, key=kb,
                             on_change=_persist_setting, args=(skey, "combo_base", kb))
+            st.caption("返還率只由倍率決定,跟拖幾顆、幾顆膽、每注下多少都無關。")
             st.divider()
 
         odds = {g.key: (cfgs[g.key]["cost_per_car"], cfgs[g.key]["win_payout"])
