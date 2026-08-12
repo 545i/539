@@ -80,6 +80,72 @@ def test_share_mode_radio_does_not_reset_the_table(app):
     assert not app.exception, [str(e.value) for e in app.exception]
 
 
+def _button(at, key):
+    for b in at.button:
+        if b.key == key:
+            return b
+    raise AssertionError(f"找不到按鈕 {key}")
+
+
+def test_star_tab_renders(app):
+    """⭐ 三星/四星 分頁本身要畫得出來(整頁的 metric / 表格都會現算盤口)。"""
+    assert not app.exception, [str(e.value) for e in app.exception]
+    assert any("三星/四星" in t.label for t in app.tabs), \
+        [t.label for t in app.tabs]
+
+
+def test_star_records_a_round_with_the_eight_numbers(app):
+    """圈滿 8 顆再記帳:碰數 56、每碰可得 = 每碰成本 × 倍率,號碼要跟著存。
+
+    號碼盤在彈窗裡,AppTest 驅動不了,所以直接把選號寫進 session_state ——
+    那正是 numpad 存號碼的地方。
+    """
+    app.session_state["star_pad_lotto539__picked"] = [1, 2, 3, 4, 5, 6, 7, 8]
+    app.run()
+    assert not app.exception, [str(e.value) for e in app.exception]
+    _button(app, "star_record").click().run()
+    assert not app.exception, [str(e.value) for e in app.exception]
+
+    rows = storage.load_rounds("apptest", storage.STAR)
+    assert len(rows) == 1
+    r = rows[0]
+    assert r["numbers"] == 56 and r["cars"] == 1          # 三星 C(8,3),下 1 支
+    assert r["cost"] == 63 * 56                           # 每碰 63 × 56 碰
+    assert r["payout_rate"] == 63 * 570                   # 倍率是幾倍,不是幾元
+    assert r["picked"] == [1, 2, 3, 4, 5, 6, 7, 8]
+    assert r["pending"], "沒選結果就該是待開獎"
+
+
+def _latest_draw(game_key="lotto539"):
+    """開獎資料裡最後一期的(日期, 號碼);不寫死日期,資料每天都在長。"""
+    from core import games, loader
+    g = games.get(game_key)
+    df = loader.load_history(APP.parent / "data" / g.data_file)
+    row = df.iloc[-1]
+    return str(row["date"].date()), sorted(int(row[c]) for c in loader.detect_num_cols(df))
+
+
+def test_star_pending_autofills_from_the_draw(app):
+    """待回填要能用存下的 8 顆自動對獎:對中 3 顆 → 三星中 C(3,3) = 1 碰。"""
+    date, drawn = _latest_draw()
+    others = [n for n in range(1, 40) if n not in drawn][:5]
+    storage.add_round("apptest", "lotto539", date, 56, 1, None, 3528.0, 35910.0,
+                      mode=storage.STAR, picked=sorted(drawn[:3] + others))
+    app.run()
+    _button(app, "star_fill_all").click().run()
+    assert not app.exception, [str(e.value) for e in app.exception]
+
+    r = storage.load_rounds("apptest", storage.STAR)[0]
+    assert not r["pending"] and r["hits"] == 1
+    assert r["payout"] == 35_910 and r["net"] == 35_910 - 3_528
+
+
+def test_star_wont_record_without_eight_numbers(app):
+    """沒圈滿 8 顆,記帳鈕是關的 —— 買的就是這 8 顆的全組合。"""
+    assert _button(app, "star_record").disabled
+    assert not storage.load_rounds("apptest", storage.STAR)
+
+
 def test_issue_column_is_a_dropdown_in_the_table(app):
     """期號在表格裡就是下拉,不是唯讀欄位 —— 使用者要能直接在那一格選。"""
     _pick_games(app, ["fantasy5"])

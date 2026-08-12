@@ -21,7 +21,7 @@ import streamlit.components.v1 as components
 from core import (auth, backtest, binary_wide, constants, erhe, excel_report,
                   games, kelly, picker)
 from core import autoupdate, scraper, scraper_fantasy5, scraper_marksix, stats, storage
-from core import checker, drawtime, loader, pillar, predictor
+from core import checker, drawtime, loader, pillar, predictor, star
 from core.loader import DataError, load_history, merge, save
 from ui import docs, numpad, tables
 
@@ -1204,6 +1204,8 @@ def page_wheel(fdf: pd.DataFrame, game):
 GAME_LIST = list(games.GAMES.values())          # 目前可下注的遊戲
 # 三柱 1800碰 只吃 39 選 5(9/10/20 三柱、1800 注的結構就是這樣長出來的)
 PILLAR_GAMES = [g for g in GAME_LIST if pillar.supports(g)]
+# 三星 / 四星 的機率與盤口也是照 39 選 5 報的,同樣只開放這幾款
+STAR_GAMES = [g for g in GAME_LIST if star.supports(g)]
 
 # 三種下法各自一套配色。下錯分頁的代價是真金白銀,所以整塊視覺都要不一樣,
 # 不能只靠分頁標題那幾個字。
@@ -1217,6 +1219,9 @@ MODE_THEME = {
     storage.PILLAR: {"color": "#7c3aed", "emoji": "🟣", "name": "三柱1800碰",
                      "tab": "三柱1800碰",
                      "desc": "包下三柱全組合 1800 注,三柱各開到一顆就中"},
+    storage.STAR: {"color": "#db2777", "emoji": "⭐", "name": "三星/四星",
+                   "tab": "三星/四星",
+                   "desc": "自選 8 顆,買下它的所有 3 碼(56 碰)或 4 碼(70 碰)組合"},
 }
 TOTALS_COLOR = "#4f46e5"
 
@@ -1323,8 +1328,12 @@ def _game_settings(user: str, g) -> dict:
     """讀出某遊戲的盤口設定。
 
     前四項是二合買牌(單顆 / 多顆)用的:每車成本 / 中獎可得 / 押幾顆 / 起始車數。
-    bet_cost / bet_prize 是三柱 1800碰 用的**每注**價碼 —— 兩套盤口互不相干,
+    bet_cost / bet_prize 是三柱 1800碰 用的**每注**價碼;star{k}_cost /
+    star{k}_odds 是三星 / 四星 用的**每碰**成本與賠率(倍)。三套盤口互不相干,
     改哪一邊都不會動到另一邊。
+
+    三星 / 四星 的預設值取自 core.star.PLANS(玩法本身的報價),不放進
+    GameConfig —— 它是跟星別綁的,不是跟遊戲綁的。
     """
     skey = f"{user}::{g.key}"
     return {
@@ -1338,6 +1347,14 @@ def _game_settings(user: str, g) -> dict:
         "bet_cost": storage.get_setting(skey, "bet_cost", g.default_bet_cost),
         "bet_prize": storage.get_setting(skey, "bet_prize", g.default_bet_prize),
         "pillar_base": int(storage.get_setting(skey, "pillar_base", 1)),
+        # 三星 / 四星:每碰成本與賠率(倍),兩種星別各一組
+        **{f"star{k}_cost": storage.get_setting(skey, f"star{k}_cost",
+                                                star.plan(k).default_cost)
+           for k in star.STARS},
+        **{f"star{k}_odds": storage.get_setting(skey, f"star{k}_odds",
+                                                star.plan(k).default_odds)
+           for k in star.STARS},
+        "star_base": int(storage.get_setting(skey, "star_base", 1)),
     }
 
 
@@ -2158,15 +2175,25 @@ def _render_pending(rows: list[dict]):
 # 流水表裡要靠等寬字型對齊的欄(號碼與金額)
 _LEDGER_MONO = ("號碼", "成本", "回收", "本局損益", "累積損益")
 _PILLAR_MONO = ("開出", "注數", "成本", "回收", "本局損益", "累積損益")
+_STAR_MONO = ("號碼", "開出", "碰數", "成本", "回收", "本局損益", "累積損益")
 
 
 def _mode_detail_df(rows: list[dict], mode: str | None) -> pd.DataFrame:
-    """流水表:1800碰 的欄位講「支數 / 注數 / 碰」,二合講「車數 / 顆數」。"""
-    return _pillar_detail_df(rows) if mode == storage.PILLAR else _detail_df(rows)
+    """流水表:1800碰 講「支數 / 注數 / 碰」,三星四星講「支數 / 碰數 / 對中」,
+    二合講「車數 / 顆數」。"""
+    if mode == storage.PILLAR:
+        return _pillar_detail_df(rows)
+    if mode == storage.STAR:
+        return _star_detail_df(rows)
+    return _detail_df(rows)
 
 
 def _mode_mono_cols(mode: str | None) -> tuple[str, ...]:
-    return _PILLAR_MONO if mode == storage.PILLAR else _LEDGER_MONO
+    if mode == storage.PILLAR:
+        return _PILLAR_MONO
+    if mode == storage.STAR:
+        return _STAR_MONO
+    return _LEDGER_MONO
 
 
 def _marked_numbers(r: dict) -> str:
@@ -2279,7 +2306,7 @@ def _render_full_ledger(user: str, rows: list[dict], mode: str | None = None):
             st.plotly_chart(fig, theme=None, width="stretch", key=f"cum_chart{suffix}")
 
     with tab_all:
-        is_pillar = mode == storage.PILLAR
+        is_pillar, is_star = mode == storage.PILLAR, mode == storage.STAR
         tables.html_table(_mode_detail_df(rows, mode),
                           mono_cols=_mode_mono_cols(mode), max_height=520)
         st.download_button(
@@ -2287,7 +2314,7 @@ def _render_full_ledger(user: str, rows: list[dict], mode: str | None = None):
             data=pd.DataFrame(rows).to_csv(index=False).encode("utf-8-sig"),
             file_name=f"erhe_ledger{suffix}.csv", mime="text/csv")
         st.markdown("**修改 / 刪除指定的一筆**")
-        unit = "支" if is_pillar else "車"
+        unit = "支" if (is_pillar or is_star) else "車"
         opts = {
             f"#{i + 1} {r['draw_date']} {games.get(r['game']).name} "
             f"{int(r['cars'])}{unit} "
@@ -2306,6 +2333,14 @@ def _render_full_ledger(user: str, rows: list[dict], mode: str | None = None):
             cur = 0 if row["pending"] else int(row["hits"])
             new_hits = e2.selectbox(
                 "改結果", hit_opts, format_func=pillar.result_text,
+                index=hit_opts.index(cur) if cur in hit_opts else len(hit_opts) - 1,
+                key=f"edit_hits{suffix}")
+        elif is_star:
+            # 三星 10/4/1/0、四星 5/1/0 —— 同樣用下拉,填不出不存在的碰數
+            hit_opts = _star_hits_options(games.get(row["game"]), _star_of_row(row))
+            cur = 0 if row["pending"] else int(row["hits"])
+            new_hits = e2.selectbox(
+                "改結果", hit_opts, format_func=star.result_text,
                 index=hit_opts.index(cur) if cur in hit_opts else len(hit_opts) - 1,
                 key=f"edit_hits{suffix}")
         else:
@@ -2797,6 +2832,519 @@ def _render_pillar_tab(user: str, cfgs: dict, mode_rows: list, mode_cum: float):
     _render_pillar_history(cfgs)
 
 
+# ── 三星 / 四星 ───────────────────────────────────────────
+# 三星與四星共用一個分頁(與一個損益池):買的是同一組 8 顆號碼,只差在
+# 要買 3 碼還是 4 碼的組合,常常同一期兩種都下。拆成兩頁反而得一直來回切
+# 才能比較。流水裡靠碰數(56 / 70)分得出是哪一種,見 _star_of_row。
+def _star_odds(cfg: dict, stars: int) -> tuple[float, float]:
+    """該款在這個星別下的(每碰成本, 賠率倍數)。"""
+    return float(cfg[f"star{stars}_cost"]), float(cfg[f"star{stars}_odds"])
+
+
+def _star_of_row(r: dict) -> int:
+    """流水的這一列是三星還是四星 —— 由碰數反推(56 → 三星、70 → 四星)。"""
+    return star.stars_of_combos(int(r["numbers"])) or star.STARS[0]
+
+
+def _star_hits_options(game, stars: int) -> list[int]:
+    """這個星別可能出現的中獎碰數,大到小(三星 → 10、4、1、0)。"""
+    return star.possible_hits(stars, game.pick)
+
+
+def _star_label(stars: int) -> str:
+    return f"{star.name(stars)}({star.combos(stars)} 碰)"
+
+
+def _star_matched_map(stars: int, pick: int) -> dict[int, list[int]]:
+    """中的碰數 → 是對中幾顆造成的(三星的 0 碰來自對中 0~2 顆)。"""
+    out: dict[int, list[int]] = {}
+    for m in range(min(star.PICK_NUMBERS, pick) + 1):
+        out.setdefault(star.hits_for(m, stars), []).append(m)
+    return out
+
+
+@st.dialog("圈選 8 顆號碼", width="large", on_dismiss="rerun")
+def _star_pick_dialog(game_key: str):
+    """三星 / 四星 的號碼盤:一定要選滿 8 顆,買的就是這 8 顆的全組合。"""
+    g = games.get(game_key)
+    st.caption(
+        f"**{g.name}** — 1~{g.num_max} 號,每期開 {g.pick} 顆。"
+        f"三星 / 四星 買的是這 **{star.PICK_NUMBERS} 顆的全組合**,"
+        "所以顆數是固定的,不像二合可以自己決定押幾顆。")
+    numpad.number_pad(key=_pad_key(storage.STAR, game_key), num_max=g.num_max,
+                      max_pick=star.PICK_NUMBERS)
+    c1, c2 = st.columns(2)
+    if c1.button("完成", type="primary", width="stretch", key=f"star_pad_ok_{game_key}"):
+        st.rerun()
+    if c2.button("清空重選", width="stretch", key=f"star_pad_clear_{game_key}"):
+        numpad.clear(_pad_key(storage.STAR, game_key))
+        st.rerun()
+
+
+def _star_intro(game, stars: int):
+    """三星 / 四星 是什麼、機率多少 —— 數字全部由組合數現算,不是抄表。"""
+    n = star.combos(stars)
+    mprobs = star.match_probs(num_max=game.num_max, pick=game.pick)
+    with st.expander(f"{star.name(stars)}是什麼(以 {game.name} 的 "
+                     f"{game.num_max} 選 {game.pick} 現算)"):
+        st.markdown(
+            f"自選 **{star.PICK_NUMBERS} 顆**號碼,買下這 {star.PICK_NUMBERS} 顆的"
+            f"**所有 {stars} 碼組合**,一組叫一「碰」:\n\n"
+            f"- 碰數 = C({star.PICK_NUMBERS},{stars}) = **{n} 碰**,這 {n} 碰就是 **1 支**\n"
+            f"- 開獎 {game.pick} 顆裡對中 m 顆時,中的碰數 = C(m,{stars})\n\n"
+            + "、".join(f"對中 {m} 顆 → **中 {star.hits_for(m, stars)} 碰**"
+                       for m in range(stars, min(star.PICK_NUMBERS, game.pick) + 1))
+            + f";對中 {stars - 1} 顆以下一碰都不中。"
+        )
+        st.markdown("**每期會發生什麼(理論值)**")
+        st.dataframe(pd.DataFrame([{
+            "對中幾顆": f"{m} 顆",
+            "中幾碰": star.hits_for(m, stars),
+            "機率": f"{mprobs[m]:.4%}",
+        } for m in sorted(mprobs, reverse=True)]), width="stretch", hide_index=True)
+        st.caption(
+            f"至少中一碰的機率 = "
+            f"**{star.win_prob(stars, num_max=game.num_max, pick=game.pick):.4%}**,"
+            f"每期期望中 "
+            f"**{star.expected_hits(stars, num_max=game.num_max, pick=game.pick):.5f}** 碰。"
+            f"總組合數 C({game.num_max},{game.pick}) = {game.total_comb:,}。"
+        )
+
+
+def _star_formula_note(cfg: dict, game, stars: int):
+    """三星 / 四星 的損益算式,數字用當下的盤口現算。
+
+    跟 1800碰 那一頁一樣:不是重寫一份公式,是把式子代入你現在的盤口,
+    讓損益頁上的每一個金額都看得出從哪來。
+    """
+    cost, odds = _star_odds(cfg, stars)
+    nm, pk = game.num_max, game.pick
+    n = star.combos(stars)
+    per = star.payout_per_combo(cost, odds)
+    sheet = star.sheet_cost(cost, stars)
+    e_hits = star.expected_hits(stars, num_max=nm, pick=pk)
+    be = star.breakeven_odds(stars, num_max=nm, pick=pk)
+    rate = star.return_rate(cost, odds, stars, num_max=nm, pick=pk)
+    ev = star.expected_net(cost, odds, stars, 1, num_max=nm, pick=pk)
+    wins = [h for h in _star_hits_options(game, stars) if h]
+
+    lines = [
+        "**碰數**",
+        f"{star.PICK_NUMBERS} 顆取 {stars} 碼的全組合 = "
+        f"C({star.PICK_NUMBERS},{stars}) = **{n} 碰** = 1 支。",
+        "",
+        "**中的碰數**",
+        "```",
+        f"中的碰數 = C(對中幾顆, {stars})      (對中 = 你的 8 顆與開獎 {pk} 顆的交集)",
+        "```",
+        "、".join(f"對中 {m} 顆 → **{star.hits_for(m, stars)} 碰**"
+                 for m in range(stars, min(star.PICK_NUMBERS, pk) + 1)) + "。",
+        "",
+        "**每碰可得**(倍率是賠率幾倍,不是幾元)",
+        "```",
+        f"每碰可得 = 每碰成本 × 倍率 = {cost:,.0f} × {odds:,.0f} = {per:,.0f}",
+        "```",
+        "",
+        "**本局損益**",
+        "```",
+        f"單支成本 = 每碰成本 × 碰數 = {cost:,.0f} × {n} = {sheet:,.0f}",
+        f"本局成本 = 單支成本 × 支數 = {sheet:,.0f} × 支數",
+        f"本局回收 = 中的碰數 × 每碰可得 × 支數 = 中的碰數 × {per:,.0f} × 支數",
+        "損益 = 回收 − 成本",
+        "```",
+        f"所以下 1 支時:成本 {sheet:,.0f};"
+        + "、".join(f"中{h}碰回收 {h * per:,.0f}(損益 {h * per - sheet:+,.0f})"
+                   for h in wins)
+        + f";槓龜 0(損益 {-sheet:+,.0f})。",
+        "",
+        "**期望值**",
+        "```",
+        f"E[中的碰數] = {n} × C({nm - stars},{pk - stars})/C({nm},{pk}) = {e_hits:.6f}",
+        f"期望回收   = {e_hits:.6f} × {per:,.0f} = {e_hits * per:,.0f}",
+        f"期望損益   = {e_hits * per:,.0f} − {sheet:,.0f} = {ev:+,.0f} / 期",
+        f"返還率     = 期望回收 ÷ 成本 = {rate:.2%}",
+        "```",
+        "",
+        "**損益兩平的倍率**",
+        "```",
+        f"倍率要 = 碰數 ÷ E[中的碰數] = {n} ÷ {e_hits:.6f}",
+        f"       = C({nm},{stars})/C({pk},{stars}) = {be:,.1f}",
+        "```",
+        f"這個數字跟每碰多少錢無關 —— 成本與回收都線性於每碰價,會約掉。"
+        f"目前的倍率是 **{odds:,.0f}**,"
+        + (f"低於兩平的 {be:,.1f},所以是負期望(返還率 {rate:.2%})。"
+           if odds < be else f"高於兩平的 {be:,.1f} —— 見下方警告。"),
+        "",
+        f"**全中(對中 {min(star.PICK_NUMBERS, pk)} 顆 = {max(wins)} 碰)每支淨利** = "
+        f"{max(wins)} × {per:,.0f} − {sheet:,.0f} = "
+        f"**{star.best_case_net_per_sheet(cost, odds, stars, num_max=nm, pick=pk):+,.0f}**"
+        f";但它的機率只有 {star.match_probs(num_max=nm, pick=pk)[min(star.PICK_NUMBERS, pk)]:.4%}。",
+    ]
+    _note("\n".join(lines), "損益是怎麼算的(代入你現在的盤口)")
+
+
+def _star_odds_panel(cfg: dict, game, stars: int):
+    """目前這款在這個星別下的盤口與它的期望值判定。"""
+    cost, odds = _star_odds(cfg, stars)
+    nm, pk = game.num_max, game.pick
+    n = star.combos(stars)
+    per = star.payout_per_combo(cost, odds)
+    be = star.breakeven_odds(stars, num_max=nm, pick=pk)
+    rate = star.return_rate(cost, odds, stars, num_max=nm, pick=pk)
+    ev = star.expected_net(cost, odds, stars, 1, num_max=nm, pick=pk)
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("每碰成本", f"{cost:,.0f}", delta=f"倍率 {odds:,.0f}", delta_color="off")
+    c2.metric("中一碰可得", f"{per:,.0f}", delta=f"{cost:,.0f} × {odds:,.0f}",
+              delta_color="off")
+    c3.metric("單支成本", f"{star.sheet_cost(cost, stars):,.0f}",
+              delta=f"{n} 碰 × {cost:,.0f}", delta_color="off")
+    c4.metric("返還率", f"{rate:.2%}", delta=f"期望 {ev:+,.0f}/期", delta_color="off")
+    st.caption(
+        f"損益兩平的倍率是 **{be:,.1f}**(= C({nm},{stars})/C({pk},{stars}),"
+        f"與每碰多少錢無關)。價碼要改請到"
+        "**設定 → 盤口設定 → 三星 / 四星**。")
+    _star_formula_note(cfg, game, stars)
+    if odds > be:
+        st.error(
+            f"目前設定的倍率 {odds:,.0f} 高於兩平點 {be:,.1f},算出來會是**正期望值**"
+            f"(返還率 {rate:.0%})。正期望的彩券玩法不存在 —— 請先確認這個「倍率」"
+            "是不是其實指別的東西(例如每碰可得的金額,而不是幾倍),"
+            "不要直接相信這個獲利預測。")
+
+
+def _render_star_today(user: str, cfgs: dict, cum: float):
+    st.subheader("一、這一期下幾支")
+    if not STAR_GAMES:
+        st.info("目前沒有適用三星 / 四星的遊戲(需要 39 選 5)。")
+        return
+
+    keys = [g.key for g in STAR_GAMES]
+    key = st.segmented_control(
+        "這一期要下哪一款", keys, selection_mode="single", default=keys[0],
+        format_func=lambda k: games.get(k).name, key="star_game") or keys[0]
+    stars = st.segmented_control(
+        "買三星還是四星", list(star.STARS), selection_mode="single",
+        default=star.STARS[0], format_func=_star_label, key="star_stars") or star.STARS[0]
+    g, cfg = games.get(key), cfgs[key]
+    cost_per_combo, odds = _star_odds(cfg, stars)
+    per_combo = star.payout_per_combo(cost_per_combo, odds)
+    n_combos = star.combos(stars)
+
+    _star_intro(g, stars)
+    _star_odds_panel(cfg, g, stars)
+    st.divider()
+
+    # 買的就是這 8 顆的全組合 —— 沒有號碼就沒辦法自動對獎,所以這裡是必填
+    pad = _pad_key(storage.STAR, key)
+    picked = numpad.get_picked(pad)
+    full = len(picked) == star.PICK_NUMBERS
+    if st.button(
+            ("🎯 " + " ".join(f"{n:02d}" for n in picked)) if picked
+            else f"🎯 圈選 {star.PICK_NUMBERS} 顆號碼",
+            key="star_openpad", width="stretch",
+            type="primary" if full else "secondary",
+            help="打開號碼盤圈號;圈好的號碼會跟著紀錄一起存,開獎後可自動對獎。"):
+        _star_pick_dialog(key)
+    if not full:
+        st.warning(
+            f"還要再選 {star.PICK_NUMBERS - len(picked)} 顆 —— "
+            f"{star.name(stars)}買的是這 {star.PICK_NUMBERS} 顆的全組合,"
+            "號碼沒選滿沒辦法記帳。", icon="⚠️")
+
+    issue_opts, issue_default = _issue_options(key, storage.STAR)
+    c1, c2, c3 = st.columns([1.3, 1, 1])
+    draw_date = c1.date_input("下注日期", value=dt.date.today(), format="YYYY-MM-DD",
+                              key="star_date")
+    sheets = int(c2.number_input(
+        "下幾支", min_value=1, max_value=1000, step=1,
+        value=int(cfg["star_base"]), key="star_sheets",
+        help=f"1 支 = 這 8 顆的全部 {n_combos} 碰,成本 "
+             f"{star.sheet_cost(cost_per_combo, stars):,.0f}。"
+             "支數只是等比放大,不會改變機率。"))
+    issue_in = ""
+    if issue_opts:
+        issue_in = c3.selectbox(
+            "期號", issue_opts, index=issue_opts.index(issue_default),
+            key=_issue_key(key, storage.STAR),
+            format_func=lambda s, d=issue_default: predictor.issue_label(s, d),
+            help="預設是開獎資料算出來的下一期;補登或預先下注就改這裡。")
+
+    # 有這一天的開獎資料、號碼又選滿了就直接判定
+    drawn = checker.draw_of(load_df(key), draw_date)
+    auto_hits = None
+    if full and drawn and len(drawn) == g.pick:
+        matched = sorted(set(picked) & set(drawn))
+        auto_hits = star.hits_for(len(matched), stars)
+        st.markdown(f"**{draw_date} 開出**　" + _balls(drawn, set(matched)),
+                    unsafe_allow_html=True)
+        st.markdown("**你的號碼**　" + _balls(picked, set(matched)),
+                    unsafe_allow_html=True)
+        st.success(f"對中 {len(matched)} 顆 → **{star.result_text(auto_hits)}**", icon="🎯")
+    elif full:
+        st.caption("還沒有這一天的開獎資料,結果請自己選;留「待開獎」之後再回填也可以。")
+
+    opts = [None] + _star_hits_options(g, stars)
+    default_idx = opts.index(auto_hits) if auto_hits in opts else 0
+    hits = st.radio("這一期的結果", opts, index=default_idx, horizontal=True,
+                    format_func=star.result_text, key="star_hits")
+
+    # 試算:各種結果的損益與機率,一次攤開
+    cost = star.round_cost(cost_per_combo, stars, sheets)
+    probs = star.hit_probs(stars, num_max=g.num_max, pick=g.pick)
+    by_hits = _star_matched_map(stars, g.pick)
+    st.markdown("**試算結果**")
+    st.dataframe(pd.DataFrame([{
+        "結果": star.result_text(h),
+        "對中幾顆": "、".join(str(m) for m in by_hits[h]) + " 顆",
+        "機率": f"{probs[h]:.4%}",
+        "回收": f"{star.round_payout(h, cost_per_combo, odds, sheets):,.0f}",
+        "本局損益": f"{star.round_payout(h, cost_per_combo, odds, sheets) - cost:+,.0f}",
+        "之後累積": f"{cum + star.round_payout(h, cost_per_combo, odds, sheets) - cost:+,.0f}",
+    } for h in sorted(probs, reverse=True)]), width="stretch", hide_index=True)
+
+    m1, m2, m3 = st.columns(3)
+    m1.metric("目前累積", f"{cum:+,.0f}")
+    m2.metric("這一期成本", f"{cost:,.0f}", delta=f"{sheets} 支 × {n_combos} 碰",
+              delta_color="off")
+    m3.metric(
+        "期望損益",
+        f"{star.expected_net(cost_per_combo, odds, stars, sheets, num_max=g.num_max, pick=g.pick):+,.0f}",
+        delta=f"至少中一碰 {star.win_prob(stars, num_max=g.num_max, pick=g.pick):.2%}",
+        delta_color="off")
+
+    if st.button("記帳" + ("(選「待開獎」就當作還沒對獎)" if hits is None else ""),
+                 key="star_record", type="primary", width="stretch", disabled=not full):
+        storage.add_round(
+            user, key, draw_date.isoformat(), n_combos, sheets, hits,
+            cost, per_combo, mode=storage.STAR, picked=picked,
+            issue=(issue_in.strip() or None),
+        )
+        _bump_issue(key, issue_in.strip(), storage.STAR)
+        _clear_issue_choice(key, storage.STAR)
+        st.rerun()
+    # 二合記完帳會清空號碼盤,這裡刻意不清:三星/四星 通常是同一組 8 顆長期打,
+    # 每期重點一次太累。要換號直接點上面那顆按鈕改。
+    st.caption("記完帳號碼會留著,下一期沿用;要換號就再點一次上面的號碼按鈕。")
+
+
+def _render_star_pending(rows: list[dict]):
+    """待回填:圈了號碼就能跟開獎比對,按一下補完。"""
+    pend = [r for r in rows if r["pending"]]
+    if not pend:
+        return
+    st.subheader(f"二、開獎後回填({len(pend)} 筆待對獎)")
+
+    checked = {int(r["id"]): _auto_check(r) for r in pend}
+    auto_ok = [r for r in pend if checked[int(r["id"])]["ok"]]
+    if auto_ok:
+        st.caption(f"其中 {len(auto_ok)} 筆已經比對到開獎號碼,可以直接回填。")
+        if st.button(f"✅ 一次回填這 {len(auto_ok)} 筆", type="primary",
+                     key="star_fill_all"):
+            for r in auto_ok:
+                res = checked[int(r["id"])]
+                storage.update_round_result(
+                    int(r["id"]), star.hits_for(int(res["hits"]), _star_of_row(r)))
+            st.rerun()
+
+    for r in pend:
+        g, k = games.get(r["game"]), _star_of_row(r)
+        res = checked[int(r["id"])]
+        picked = r.get("picked") or []
+        c1, c2 = st.columns([5, 1.8])
+        c1.markdown(
+            f"**{r['draw_date']} {g.label}·{star.name(k)}**"
+            + (f"　第 {r['issue']} 期" if r.get("issue") else "")
+            + f"  \n{int(r['cars'])} 支 × {int(r['numbers'])} 碰,"
+              f"成本 {r['cost']:,.0f},每中 1 碰 +"
+              f"{int(r['cars']) * float(r['payout_rate'] or 0):,.0f}")
+        if picked:
+            c1.markdown("我的號碼　" + _balls(picked, set(res["matched"])),
+                        unsafe_allow_html=True)
+        if res["ok"]:
+            c1.markdown("開獎號碼　" + _balls(res["drawn"], set(res["matched"])),
+                        unsafe_allow_html=True)
+            auto = star.hits_for(int(res["hits"]), k)
+            c1.success(f"對中 {res['hits']} 顆 → {star.result_text(auto)}", icon="🎯")
+            default = auto
+        else:
+            c1.info(res["reason"], icon="⏳")
+            default = 0
+        opts = _star_hits_options(g, k)
+        pick_hits = c2.selectbox(
+            "結果", opts, index=opts.index(default) if default in opts else len(opts) - 1,
+            format_func=star.result_text, key=f"star_fill_{r['id']}",
+            label_visibility="collapsed")
+        if c2.button("回填", key=f"star_fill_btn_{r['id']}", type="primary"):
+            storage.update_round_result(int(r["id"]), int(pick_hits))
+            st.rerun()
+    st.divider()
+
+
+def _star_detail_df(rows: list[dict]) -> pd.DataFrame:
+    """三星 / 四星 的流水表:欄位講「支數 / 碰數 / 對中幾顆」。"""
+    any_issue = any(str(r.get("issue") or "").strip() for r in rows)
+    out = []
+    for i, r in enumerate(rows):
+        g, k = games.get(r["game"]), _star_of_row(r)
+        drawn = checker.draw_of(load_df(r["game"]), r["draw_date"]) or []
+        got = len(drawn) == g.pick
+        out.append({
+            "#": i + 1,
+            "日期": r["draw_date"],
+            **({"期號": str(r.get("issue") or "—")} if any_issue else {}),
+            "遊戲": g.label,
+            "星別": star.name(k),
+            "支數": f"{int(r['cars'])} 支",
+            "碰數": f"{int(r['numbers']) * int(r['cars']):,}",
+            "號碼": _marked_numbers(r),
+            "開出": " ".join(f"{n:02d}" for n in drawn) if drawn else "—",
+            "對中": (f"{star.matched_count(r.get('picked') or [], drawn)} 顆"
+                     if got and r.get("picked") else "—"),
+            "結果": "待開獎" if r["pending"] else star.result_text(int(r["hits"])),
+            "成本": f"{r['cost']:,.0f}",
+            "回收": f"{r['payout']:,.0f}",
+            "本局損益": f"{r['net']:+,.0f}",
+            "累積損益": f"{r['cumulative']:+,.0f}",
+        })
+    return pd.DataFrame(out)
+
+
+def _render_star_recovery(cfgs: dict, cum: float):
+    """回本要下幾支 —— 以「中 1 碰」為基準,不拿全中畫大餅。"""
+    st.subheader("四、回本要下幾支(三星/四星)")
+    if cum >= 0:
+        st.success(f"三星/四星 目前累積 {cum:+,.0f},沒有虧損要追。")
+        return
+
+    rows = []
+    for g in STAR_GAMES:
+        cfg = cfgs[g.key]
+        for k in star.STARS:
+            cost, odds = _star_odds(cfg, k)
+            probs = star.hit_probs(k, num_max=g.num_max, pick=g.pick)
+            res = star.sheets_for_recovery(-cum, 1, cost, odds, k,
+                                           base=int(cfg["star_base"]))
+            row = {"遊戲": g.label, "星別": star.name(k),
+                   "單支成本": f"{star.sheet_cost(cost, k):,.0f}",
+                   "中1碰每支淨利": f"{res['gain_per_sheet']:+,.0f}",
+                   "中1碰的機率": f"{probs.get(1, 0):.4%}"}
+            if not res["feasible"]:
+                row.update({"回本支數": "無解", "本局成本": "—", "中後累積": "中 1 碰也回不了本"})
+            else:
+                gross = 1 * star.payout_per_combo(cost, odds) * res["sheets"]
+                row.update({"回本支數": f"{res['sheets']:,} 支",
+                            "本局成本": f"{res['cost']:,.0f}",
+                            "中後累積": f"{cum + gross - res['cost']:+,.0f}"})
+            rows.append(row)
+    st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
+    # 機率一律現算,不寫死百分比(跟 core.star / core.pillar 同一個原則)
+    g0 = STAR_GAMES[0]
+    top = min(star.PICK_NUMBERS, g0.pick)
+    all_hit = star.match_probs(num_max=g0.num_max, pick=g0.pick)[top]
+    one = {k: star.hit_probs(k, num_max=g0.num_max, pick=g0.pick).get(1, 0)
+           for k in star.STARS}
+    _note(
+        "- 支數 = ⌈目前虧損 ÷ 中 1 碰每支淨利⌉,而**中 1 碰每支淨利 = "
+        "每碰可得 − 碰數 × 每碰成本**。\n"
+        f"- 這裡故意用「中 1 碰」而不是全中:對中 {top} 顆(三星 "
+        f"{star.hits_for(top, 3)} 碰、四星 {star.hits_for(top, 4)} 碰)的機率只有 "
+        f"{all_hit:.4%},拿它當回本基準等於在畫大餅。中 1 碰(三星對中 3 顆、"
+        "四星對中 4 顆)才是真的會發生的那種中獎。\n"
+        f"- 但即使是中 1 碰,三星也只有 {one[3]:.2%}、四星 {one[4]:.2%} —— "
+        "「下夠多支就會回本」的前提是**那一期真的有中**,而多下幾支完全不會提高中獎機率,"
+        "只會等比放大成本與回收。\n"
+        "- 顯示「無解」代表這個盤口的中 1 碰淨利 ≤ 0(倍率低到連本錢都回不來)。",
+        "這張表怎麼算的")
+
+
+def _render_star_history(cfgs: dict):
+    """拿你圈的那 8 顆,回頭跑完整的開獎歷史。"""
+    st.subheader("五、用歷史開獎資料回頭檢驗")
+    if not STAR_GAMES:
+        return
+    keys = [g.key for g in STAR_GAMES]
+    key = st.segmented_control(
+        "看哪一款", keys, selection_mode="single", default=keys[0],
+        format_func=lambda k: games.get(k).name, key="star_hist_game") or keys[0]
+    stars = st.segmented_control(
+        "看哪一種", list(star.STARS), selection_mode="single", default=star.STARS[0],
+        format_func=_star_label, key="star_hist_stars") or star.STARS[0]
+    g = games.get(key)
+
+    picked = numpad.get_picked(_pad_key(storage.STAR, key))
+    if len(picked) != star.PICK_NUMBERS:
+        st.info(f"先在上面圈滿 {star.PICK_NUMBERS} 顆({games.get(key).name}),"
+                "這裡才知道要拿哪一組號碼回頭跑。")
+        return
+    draws = _draws_of(g)
+    if not draws:
+        st.info("這一款還沒有開獎資料。")
+        return
+
+    span = st.select_slider(
+        "看最近幾期", options=[50, 100, 200, 500, 1000, len(draws)],
+        value=min(200, len(draws)),
+        format_func=lambda n: f"全部 {n} 期" if n == len(draws) else f"{n} 期",
+        key="star_hist_span")
+    s = star.history_stats(draws[-int(span):], picked, stars, g.pick)
+    cost, odds = _star_odds(cfgs[key], stars)
+    theory = star.win_prob(stars, num_max=g.num_max, pick=g.pick)
+    e_hits = star.expected_hits(stars, num_max=g.num_max, pick=g.pick)
+    spent = s["rounds"] * star.sheet_cost(cost, stars)
+    back = s["total_hits"] * star.payout_per_combo(cost, odds)
+
+    st.markdown("**這一組號碼**　" + _balls(picked), unsafe_allow_html=True)
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("實際中獎率", f"{s['win_rate']:.2%}", delta=f"理論 {theory:.2%}",
+              delta_color="off")
+    m2.metric("期數", f"{s['rounds']:,}", delta=f"中獎 {s['wins']:,} 期",
+              delta_color="off")
+    m3.metric("目前連續沒中", f"{s['streak']} 期",
+              delta=f"史上最長 {s['max_streak']} 期", delta_color="off")
+    m4.metric("實際返還率", f"{back / spent:.2%}" if spent else "—",
+              delta=f"理論 {star.return_rate(cost, odds, stars, num_max=g.num_max, pick=g.pick):.2%}",
+              delta_color="off")
+    st.caption(
+        f"每期下 1 支的話,這 {s['rounds']:,} 期一共花 {spent:,.0f}、"
+        f"中了 {s['total_hits']:,} 碰、拿回 {back:,.0f},淨 **{back - spent:+,.0f}**。"
+        f"(期望是每期 {e_hits:.6f} 碰,{s['rounds']:,} 期約 {e_hits * s['rounds']:.2f} 碰。)")
+
+    probs = star.hit_probs(stars, num_max=g.num_max, pick=g.pick)
+    st.dataframe(pd.DataFrame([{
+        "結果": star.result_text(h),
+        "出現期數": s["hit_counts"].get(h, 0),
+        "實際占比": f"{s['hit_counts'].get(h, 0) / s['rounds']:.2%}" if s["rounds"] else "—",
+        "理論機率": f"{probs[h]:.4%}",
+    } for h in sorted(probs, reverse=True)]), width="stretch", hide_index=True)
+
+    if s["last_draw"]:
+        st.markdown("**最新一期**　" + _balls(s["last_draw"],
+                                            set(picked) & set(s["last_draw"])),
+                    unsafe_allow_html=True)
+        st.caption(f"對中 {s['last_matched']} 顆 → {star.result_text(s['last_hits'])}")
+    if s["skipped"]:
+        st.caption(f"有 {s['skipped']} 期資料不完整,已略過不計。")
+
+    st.warning(
+        f"**換一組 8 顆不會比較好。**每一組 8 顆的理論中獎率都是 {theory:.2%}、"
+        f"返還率都是 {star.return_rate(cost, odds, stars, num_max=g.num_max, pick=g.pick):.2%},"
+        "上面那個實際數字跟理論的差距純粹是樣本雜訊 —— 換組號碼只會換一組雜訊。"
+        f"連續沒中 {s['streak']} 期也不代表下一期比較會開,每期都是獨立事件。",
+        icon="⚠️")
+
+
+def _render_star_tab(user: str, cfgs: dict, mode_rows: list, mode_cum: float):
+    _render_star_today(user, cfgs, mode_cum)
+    st.divider()
+    _render_star_pending(mode_rows)
+    _render_mode_records(user, storage.STAR, mode_rows)
+    st.divider()
+    _render_star_recovery(cfgs, mode_cum)
+    st.divider()
+    _render_star_history(cfgs)
+
+
 # ── 回本試算:依目前總損益,單押一款要幾車 ──────────────────
 def _recovery_rows(cfgs: dict, cum: float, mode: str | None = None) -> list[dict]:
     """各款(在指定下法下)單押一款、中 1 顆就把總損益一次打平所需的車數。
@@ -2878,8 +3426,8 @@ def _render_mode_recovery(cfgs: dict, cum: float, mode: str):
 def _render_totals_tab(user: str, cfgs: dict, cum: float, rows: list[dict]):
     st.markdown(
         f'<div class="mode-banner" style="background:{TOTALS_COLOR}">'
-        f'📊 總損益(單顆 + 多顆 + 三柱1800碰 合計)'
-        f'<br><small>三種下法共用同一個損益池,這一頁看的是合起來的結果</small></div>',
+        f'📊 總損益(單顆 + 多顆 + 三柱1800碰 + 三星/四星 合計)'
+        f'<br><small>四種下法共用同一個損益池,這一頁看的是合起來的結果</small></div>',
         unsafe_allow_html=True,
     )
     _render_scoreboard(storage.totals(user))
@@ -2914,9 +3462,9 @@ def _render_totals_tab(user: str, cfgs: dict, cum: float, rows: list[dict]):
     rec = _recovery_rows(cfgs, cum, None)
     st.dataframe(_recovery_df(rec), width="stretch", hide_index=True)
     st.caption(
-        "三柱1800碰 不列在這張表 —— 它算的是「下幾支」而不是「下幾車」,"
-        "而且單期回收的上限固定在中四碰。要看它的回本支數請到 "
-        "🟣 三柱1800碰 分頁的「四、回本要下幾支」。")
+        "三柱1800碰 與 三星/四星 不列在這張表 —— 它們算的是「下幾支」而不是"
+        "「下幾車」,回收的級距也完全不同。要看它們的回本支數請到 "
+        "🟣 三柱1800碰 / ⭐ 三星/四星 分頁的「四、回本要下幾支」。")
     ok = [r for r in rec if r["_cost"] != float("inf")]
     if ok:
         best = min(ok, key=lambda r: r["_cost"])
@@ -2931,8 +3479,8 @@ def page_strategy(user: str):
     st.header("二合買牌")
     _render_pillar_alert_banner()
     _note(
-        "- 四個分頁:🟢 **單顆下注**、🟠 **多顆下注**、🟣 **三柱1800碰**、"
-        "📊 **總損益**。三個下注頁的底色與按鈕顏色都不一樣,別下錯頁。\n"
+        "- 五個分頁:🟢 **單顆下注**、🟠 **多顆下注**、🟣 **三柱1800碰**、"
+        "⭐ **三星/四星**、📊 **總損益**。四個下注頁的底色與按鈕顏色都不一樣,別下錯頁。\n"
         "- 下注、回填、紀錄、清除、建議車數**全部跟著你所在的分頁走**,"
         "互不干擾 —— 清單顆不會動到多顆。\n"
         "- **每種下法各算各的累積**:單顆頁的建議車數只追單顆的虧損,"
@@ -2941,6 +3489,9 @@ def page_strategy(user: str):
         "- 🟣 **三柱1800碰** 是完全不同的玩法:不押膽號,而是把號碼切成三柱、"
         "買下三柱全組合共 1800 注三合。只要三柱各開到一顆就中,過關率 55.36%,"
         "但官方賠率下**中最大獎也只是打平**,細節在那一頁裡。\n"
+        "- ⭐ **三星/四星** 也是包牌:自選 8 顆,買下它的所有 3 碼(56 碰)或 "
+        "4 碼(70 碰)組合,對中幾顆就中 C(對中,星數) 碰。中獎率低(三星 4.9%、"
+        "四星 0.39%)但一中就是好幾萬,細節同樣在那一頁。\n"
         "- 建議車數依「合併累積虧損 + 今天要花的總成本」計算 —— "
         "所以多下一款,大家的車數都會變多。\n"
         "- 中獎顆數可以先填,也可以開獎後再回填。",
@@ -2969,6 +3520,10 @@ def page_strategy(user: str):
             if mode == storage.PILLAR:
                 # 1800碰 是包牌,沒有「押幾顆 / 幾車」那組輸入,整頁自己一套
                 _render_pillar_tab(user, cfgs, mode_rows, mode_cum)
+                continue
+            if mode == storage.STAR:
+                # 三星/四星 也是包牌(固定 8 顆的全組合),整頁自己一套
+                _render_star_tab(user, cfgs, mode_rows, mode_cum)
                 continue
             if mode == storage.SINGLE:
                 _single_intro(cfgs)
@@ -3130,6 +3685,60 @@ def page_settings(user: str):
                     st.error(
                         f"{g.name}:目前的中一注可得 {prize:,.0f} 超過兩平點 {be:,.1f},"
                         f"算出來會是正期望值(返還率 {rate:.0%})。請再確認這個賠率的定義。")
+                st.divider()
+
+        if STAR_GAMES:
+            st.markdown("### 三星 / 四星")
+            _note(
+                "這一組也跟上面兩套盤口**完全分開**。\n\n"
+                "三星 / 四星 買的是「自選 8 顆的所有 3 碼 / 4 碼組合」,一組叫一碰,"
+                f"所以這裡填的是**每碰**的價碼,以及**倍率**。\n\n"
+                "**倍率是「賠率幾倍」,不是「幾元」** —— 三星報 570 指的是 "
+                "每碰成本 × 570(63 × 570 = 35,910),不是中一碰只給 570 元。"
+                "把它當成金額的話返還率會低到 1% 以下,那種盤口不存在。\n\n"
+                "倍率的上限是**單碰的公平賠率**:三星 913.9、四星 16,450.2。"
+                "超過就代表正期望值,現實中不存在。",
+                "這幾個數字是什麼")
+            for g in STAR_GAMES:
+                cfg, skey = cfgs[g.key], cfgs[g.key]["skey"]
+                st.markdown(f"**{g.name}** — {g.num_max}選{g.pick},"
+                            f"自選 {star.PICK_NUMBERS} 顆")
+                for k in star.STARS:
+                    cost, odds = _star_odds(cfg, k)
+                    n = star.combos(k)
+                    be = star.breakeven_odds(k, num_max=g.num_max, pick=g.pick)
+                    rate = star.return_rate(cost, odds, k, num_max=g.num_max, pick=g.pick)
+                    kc, ko = f"set_star{k}_cost_{g.key}", f"set_star{k}_odds_{g.key}"
+                    st.markdown(
+                        f"　**{star.name(k)}** — C({star.PICK_NUMBERS},{k}) = "
+                        f"**{n} 碰** = 1 支,至少中一碰的機率 "
+                        f"{star.win_prob(k, num_max=g.num_max, pick=g.pick):.4%}")
+                    s1, s2 = st.columns(2)
+                    s1.number_input(
+                        f"{star.name(k)}每碰成本", min_value=0.01, max_value=100_000.0,
+                        value=float(cost), step=1.0, key=kc,
+                        on_change=_persist_setting, args=(skey, f"star{k}_cost", kc))
+                    s2.number_input(
+                        f"{star.name(k)}倍率(賠率幾倍)", min_value=1.0,
+                        max_value=1_000_000.0, value=float(odds), step=10.0, key=ko,
+                        on_change=_persist_setting, args=(skey, f"star{k}_odds", ko))
+                    st.caption(
+                        f"單支成本 {star.sheet_cost(cost, k):,.0f}"
+                        f"({n} × {cost:,.0f});中一碰可得 "
+                        f"{star.payout_per_combo(cost, odds):,.0f}"
+                        f"({cost:,.0f} × {odds:,.0f});返還率 {rate:.2%}"
+                        f"(期望 "
+                        f"{star.expected_net(cost, odds, k, 1, num_max=g.num_max, pick=g.pick):+,.0f}"
+                        f"/期);兩平倍率 {be:,.1f}(目前 {odds:,.0f})")
+                    if odds > be:
+                        st.error(
+                            f"{g.name}·{star.name(k)}:倍率 {odds:,.0f} 超過兩平點 "
+                            f"{be:,.1f},算出來會是正期望值(返還率 {rate:.0%})。"
+                            "請再確認這個倍率的定義。")
+                kb = f"set_star_base_{g.key}"
+                st.number_input("預設下幾支", min_value=1, max_value=1000,
+                                value=int(cfg["star_base"]), step=1, key=kb,
+                                on_change=_persist_setting, args=(skey, "star_base", kb))
                 st.divider()
 
         odds = {g.key: (cfgs[g.key]["cost_per_car"], cfgs[g.key]["win_payout"])

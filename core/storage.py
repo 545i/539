@@ -20,17 +20,25 @@ from pathlib import Path
 # 用 -1 而非 NULL,是因為舊資料庫的 hits 欄位有 NOT NULL 約束,SQLite 無法事後移除。
 PENDING = -1
 
-# 下注模式:單顆(每款固定押 1 顆)/ 多顆 / 三柱 1800碰(包三柱全組合的三合)。
-# 三者共用同一個損益池,但紀錄、重置與「追虧損的累積」各自分開。
+# 下注模式:單顆(每款固定押 1 顆)/ 多顆 / 三柱 1800碰(包三柱全組合的三合)/
+# 三星四星(自選 8 顆買下所有 3 碼或 4 碼組合)。
+# 四者共用同一個損益池,但紀錄、重置與「追虧損的累積」各自分開。
 #
 # 1800碰 沿用同一張表:numbers 存總注數(1800)、cars 存倍數、hits 存命中注數
 # (0/3/4),回收一樣是 hits × cars × payout_rate,所以流水、撤銷、累積損益
 # 全部照舊運作,不必為它另開一張表。
+#
+# 三星/四星 同樣沿用:numbers 存**一支的碰數**(三星 56、四星 70,所以也就
+# 反過來標明了星別,見 core.star.stars_of_combos)、cars 存支數、hits 存中的
+# 碰數、payout_rate 存「每碰可得」(= 每碰成本 × 倍率)。回收照樣是
+# hits × cars × payout_rate,picked 存那 8 顆自選號碼供自動對獎。
 SINGLE = "single"
 MULTI = "multi"
 PILLAR = "pillar"
-MODES = (SINGLE, MULTI, PILLAR)
-MODE_NAMES = {SINGLE: "單顆", MULTI: "多顆", PILLAR: "三柱1800碰"}
+STAR = "star"
+MODES = (SINGLE, MULTI, PILLAR, STAR)
+MODE_NAMES = {SINGLE: "單顆", MULTI: "多顆", PILLAR: "三柱1800碰",
+              STAR: "三星/四星"}
 
 # v1 舊資料遷移時,推不出成本的紀錄用的每車成本(僅供回填,不影響損益)
 _FALLBACK_COST_PER_CAR = {"lotto539": 2755.0, "fantasy5": 2755.0, "marksix": 3528.0}

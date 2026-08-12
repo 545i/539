@@ -133,3 +133,98 @@ def test_best_case_net_per_sheet():
     """三星全中(5 顆)= 10 碰;四星全中 = 5 碰。"""
     assert star.best_case_net_per_sheet(63, 570, 3) == 10 * 35_910 - 3_528
     assert star.best_case_net_per_sheet(50, 7500, 4) == 5 * 375_000 - 3_500
+
+
+# ── UI 要用的:星別反推、對獎、回本、歷史檢驗 ───────────────
+class _Game:
+    def __init__(self, num_max, pick):
+        self.num_max, self.pick = num_max, pick
+
+
+def test_supports_only_39_pick_5():
+    """盤口與機率都是照 39 選 5 報的,六合彩(49 選 6)不開放。"""
+    assert star.supports(_Game(39, 5))
+    assert not star.supports(_Game(49, 6))
+    assert not star.supports(object())
+
+
+def test_stars_of_combos_recovers_the_star_level():
+    """流水只存碰數,顯示星別時要能反推回來。"""
+    assert star.stars_of_combos(56) == 3
+    assert star.stars_of_combos(70) == 4
+    assert star.stars_of_combos(999) == 0      # 對不上就回 0,不硬猜
+
+
+def test_matched_count_and_hits_of():
+    picked = [1, 2, 3, 4, 5, 6, 7, 8]
+    assert star.matched_count(picked, [1, 2, 3, 20, 21]) == 3
+    assert star.hits_of(picked, [1, 2, 3, 20, 21], 3) == 1     # C(3,3)
+    assert star.hits_of(picked, [1, 2, 3, 20, 21], 4) == 0     # 對中 3 顆買四星不中
+    assert star.hits_of(picked, [1, 2, 3, 4, 5], 3) == 10      # C(5,3)
+
+
+def test_result_text():
+    assert star.result_text(None) == "待開獎"
+    assert star.result_text(0) == "槓龜"
+    assert star.result_text(4) == "中 4 碰"
+    assert star.result_text(4, 3) == "三星中 4 碰"
+
+
+def test_net_per_sheet_matches_best_case():
+    assert star.net_per_sheet(1, 63, 570, 3) == 35_910 - 3_528
+    assert star.net_per_sheet(10, 63, 570, 3) == star.best_case_net_per_sheet(63, 570, 3)
+
+
+def test_sheets_for_recovery_rounds_up():
+    """支數 = ⌈虧損 ÷ 中 hits 碰每支淨利⌉。"""
+    res = star.sheets_for_recovery(100_000, 1, 63, 570, 3)
+    assert res["feasible"] and res["gain_per_sheet"] == 32_382
+    assert res["sheets"] == 4                       # ⌈100000/32382⌉
+    assert res["cost"] == 4 * 3_528
+
+
+def test_sheets_for_recovery_never_below_base():
+    """沒有虧損(或虧一點點)時至少下起始支數。"""
+    assert star.sheets_for_recovery(0, 1, 63, 570, 3, base=2)["sheets"] == 2
+    assert star.sheets_for_recovery(100, 1, 63, 570, 3, base=2)["sheets"] == 2
+
+
+def test_sheets_for_recovery_is_infeasible_when_a_win_loses_money():
+    """倍率低到中 1 碰還賠錢 —— 那不是算不出來,是這個盤口回不了本。"""
+    res = star.sheets_for_recovery(100_000, 1, 63, 10, 3)
+    assert not res["feasible"] and res["sheets"] is None
+    assert res["gain_per_sheet"] < 0
+
+
+# ── 歷史檢驗 ─────────────────────────────────────────────
+_PICKED = [1, 2, 3, 4, 5, 6, 7, 8]
+
+
+def test_history_stats_counts_hits_per_draw():
+    draws = [[1, 2, 3, 20, 21],      # 對中 3 → 1 碰
+             [10, 11, 12, 13, 14],   # 對中 0 → 槓龜
+             [1, 2, 3, 4, 5]]        # 對中 5 → 10 碰
+    s = star.history_stats(draws, _PICKED, 3)
+    assert s["rounds"] == 3 and s["wins"] == 2
+    assert s["total_hits"] == 1 + 0 + 10
+    assert s["hit_counts"] == {0: 1, 1: 1, 10: 1}
+    assert s["last_draw"] == [1, 2, 3, 4, 5]
+    assert s["last_matched"] == 5 and s["last_hits"] == 10
+
+
+def test_history_stats_skips_incomplete_draws():
+    """顆數不齊的期不該被算成槓龜(資料還沒補齊而已)。"""
+    s = star.history_stats([[1, 2, 3], [], [1, 2, 3, 20, 21]], _PICKED, 3)
+    assert s["rounds"] == 1 and s["skipped"] == 2
+
+
+def test_history_stats_streaks():
+    """streak 是「目前」連幾期沒中,max_streak 是史上最長。"""
+    miss, win = [10, 11, 12, 13, 14], [1, 2, 3, 20, 21]
+    s = star.history_stats([miss, miss, miss, win, miss, miss], _PICKED, 3)
+    assert s["streak"] == 2 and s["max_streak"] == 3
+
+
+def test_history_stats_of_an_empty_history():
+    s = star.history_stats([], _PICKED, 3)
+    assert s["rounds"] == 0 and s["win_rate"] == 0.0 and s["last_draw"] == []
