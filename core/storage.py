@@ -28,17 +28,22 @@ PENDING = -1
 # (0/3/4),回收一樣是 hits × cars × payout_rate,所以流水、撤銷、累積損益
 # 全部照舊運作,不必為它另開一張表。
 #
-# 三星/四星 同樣沿用:numbers 存**一支的碰數**(三星 56、四星 70,所以也就
-# 反過來標明了星別,見 core.star.stars_of_combos)、cars 存支數、hits 存中的
-# 碰數、payout_rate 存「每碰可得」(= 每碰成本 × 倍率)。回收照樣是
-# hits × cars × payout_rate,picked 存那 8 顆自選號碼供自動對獎。
+# 連碰(含立柱 / 拖膽)同樣沿用:numbers 存**一支的注數**、cars 存支數、
+# hits 存中的注數、payout_rate 存「中一注可得」(= 每注成本 × 倍率)。
+# 回收照樣是 hits × cars × payout_rate。
+#
+# 它比別的下法多兩件事要記,所以另外開了兩欄(v5 → v6):
+#   stars 幾星(2/3/4);dans 哪幾顆是膽(逗號分隔,連碰沒有膽就留空)
+# picked 存的是**全部**圈的號碼(膽 + 拖),拖 = picked − dans。
+# 少了這兩欄就沒辦法自動對獎 —— 中的注數 = C(拖中幾顆, 星數 − 膽幾顆),
+# 而且膽只要有一顆沒開整張就歸零,光看號碼是分不出誰是膽的。
 SINGLE = "single"
 MULTI = "multi"
 PILLAR = "pillar"
-STAR = "star"
-MODES = (SINGLE, MULTI, PILLAR, STAR)
+COMBO = "combo"
+MODES = (SINGLE, MULTI, PILLAR, COMBO)
 MODE_NAMES = {SINGLE: "單顆", MULTI: "多顆", PILLAR: "三柱1800碰",
-              STAR: "三星/四星"}
+              COMBO: "連碰"}
 
 # v1 舊資料遷移時,推不出成本的紀錄用的每車成本(僅供回填,不影響損益)
 _FALLBACK_COST_PER_CAR = {"lotto539": 2755.0, "fantasy5": 2755.0, "marksix": 3528.0}
@@ -90,7 +95,9 @@ def _conn() -> sqlite3.Connection:
             payout_rate REAL,
             mode       TEXT NOT NULL DEFAULT 'multi',
             picked     TEXT,
-            issue      TEXT
+            issue      TEXT,
+            stars      INTEGER,
+            dans       TEXT
         )
         """
     )
@@ -187,6 +194,20 @@ def _migrate(conn: sqlite3.Connection, path: Path) -> None:
             f"ELSE '{MULTI}' END WHERE mode IS NULL"
         )
         cols.append("mode")
+    # v5 → v6 一定要排在 mode 那一塊**後面** —— 底下要 UPDATE mode 欄,
+    # 而 v2 以前的庫根本還沒有那一欄(排前面會 no such column: mode)。
+    if "stars" not in cols:    # v5 → v6:連碰要記幾星與哪幾顆是膽
+        conn.execute("ALTER TABLE erhe_rounds ADD COLUMN stars INTEGER")
+        conn.execute("ALTER TABLE erhe_rounds ADD COLUMN dans TEXT")
+        # 舊的三星 / 四星 紀錄:那時固定選 8 顆、沒有膽,注數就標明了星別
+        # (C(8,3)=56 → 三星、C(8,4)=70 → 四星)。改名成 combo 並補上 stars,
+        # 損益一個字都不動,只是把當初的玩法補記清楚。
+        conn.execute(
+            f"UPDATE erhe_rounds SET mode = '{COMBO}', "
+            "stars = CASE numbers WHEN 56 THEN 3 WHEN 70 THEN 4 END "
+            "WHERE mode = 'star'"
+        )
+        cols += ["stars", "dans"]
     missing = [c for c in _V2_COLUMNS if c not in cols]
     legacy = conn.execute(
         "SELECT COUNT(*) FROM erhe_rounds WHERE account IS NULL" if not missing else
@@ -335,7 +356,8 @@ def parse_picked(raw) -> list[int]:
 def add_round(account: str, game: str, draw_date: str, numbers: int, cars: int,
               hits: int | None, cost: float, payout_rate: float,
               mode: str = MULTI, picked: list[int] | None = None,
-              issue: str | None = None) -> int:
+              issue: str | None = None, stars: int | None = None,
+              dans: list[int] | None = None) -> int:
     """新增一筆下注流水,回傳該筆 id。
 
     account   帳號(整個帳號共用一個損益池)
@@ -347,12 +369,17 @@ def add_round(account: str, game: str, draw_date: str, numbers: int, cars: int,
     payout_rate 下注當時的「每車中獎可得」;回收 = 中幾顆 × 車數 × payout_rate
     mode        single(單顆)/ multi(多顆);兩者共用損益池,但紀錄與重置分開
     picked      實際圈選的號碼;用選號盤下注才有,填數量的話留 None
+    stars       連碰用:幾星(2/3/4);其餘下法留 None
+    dans        連碰用:哪幾顆是膽(要是 picked 的子集);連碰無膽時留空
 
     待回填的紀錄一樣把成本計入累積損益(錢已經花出去了),
     等回填中獎顆數時再依當初的 payout_rate 把回收加回來。
     """
     if mode not in MODES:
         raise ValueError(f"未知的下注模式:{mode}")
+    if dans and not set(dans) <= set(picked or []):
+        # 膽一定是圈的號碼之一;不然事後算「拖 = picked − dans」會多算一顆
+        raise ValueError(f"膽 {sorted(dans)} 不在圈選的號碼 {sorted(picked or [])} 裡")
     pending = hits is None
     hits_val = PENDING if pending else int(hits)
     payout = 0.0 if pending else int(hits) * int(cars) * float(payout_rate)
@@ -362,11 +389,12 @@ def add_round(account: str, game: str, draw_date: str, numbers: int, cars: int,
         cur = c.execute(
             "INSERT INTO erhe_rounds "
             "(game_key, account, game, draw_date, numbers, cars, hits, cost, payout, "
-            " payout_rate, net, cumulative, mode, picked, issue) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)",
+            " payout_rate, net, cumulative, mode, picked, issue, stars, dans) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)",
             (account, account, game, str(draw_date), int(numbers), int(cars), hits_val,
              float(cost), payout, float(payout_rate), net, mode, picked_str,
-             (str(issue).strip() or None) if issue else None),
+             (str(issue).strip() or None) if issue else None,
+             int(stars) if stars else None, dump_picked(dans)),
         )
         rid = int(cur.lastrowid)
         _recompute(c, account)
@@ -422,7 +450,7 @@ def delete_round(round_id: int) -> bool:
 
 _ROW_COLS = ["id", "ts", "draw_date", "game", "numbers", "cars", "hits",
              "cost", "payout", "payout_rate", "net", "cumulative", "mode", "picked",
-             "issue"]
+             "issue", "stars", "dans"]
 
 
 def load_rounds(account: str, mode: str | None = None) -> list[dict]:
@@ -447,6 +475,10 @@ def load_rounds(account: str, mode: str | None = None) -> list[dict]:
         d["pending"] = int(d["hits"] or 0) < 0
         d["mode"] = d["mode"] or MULTI
         d["picked"] = parse_picked(d.get("picked"))
+        d["dans"] = parse_picked(d.get("dans"))
+        d["stars"] = int(d["stars"]) if d.get("stars") else None
+        # 拖 = 圈的號碼扣掉膽;連碰的注數與對獎都是算在拖上面
+        d["drag"] = [n for n in d["picked"] if n not in set(d["dans"])]
         out.append(d)
     if mode is not None:
         running = 0.0

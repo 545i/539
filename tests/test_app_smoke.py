@@ -11,7 +11,6 @@ ValueError:未知的下注模式。只有多款才會踩到,所以一直沒被�
 這幾個測試比其他測試慢(整個 app 要跑起來),但這類問題是使用者直接撞到的。
 """
 import datetime as dt
-import re
 from pathlib import Path
 
 import pytest
@@ -87,33 +86,10 @@ def _button(at, key):
     raise AssertionError(f"找不到按鈕 {key}")
 
 
-def test_star_tab_renders(app):
-    """⭐ 三星/四星 分頁本身要畫得出來(整頁的 metric / 表格都會現算盤口)。"""
+def test_combo_tab_renders(app):
+    """⭐ 連碰 分頁本身要畫得出來(整頁的 metric / 表格都會現算盤口)。"""
     assert not app.exception, [str(e.value) for e in app.exception]
-    assert any("三星/四星" in t.label for t in app.tabs), \
-        [t.label for t in app.tabs]
-
-
-def test_star_records_a_round_with_the_eight_numbers(app):
-    """圈滿 8 顆再記帳:碰數 56、每碰可得 = 每碰成本 × 倍率,號碼要跟著存。
-
-    號碼盤在彈窗裡,AppTest 驅動不了,所以直接把選號寫進 session_state ——
-    那正是 numpad 存號碼的地方。
-    """
-    app.session_state["star_pad_lotto539__picked"] = [1, 2, 3, 4, 5, 6, 7, 8]
-    app.run()
-    assert not app.exception, [str(e.value) for e in app.exception]
-    _button(app, "star_record").click().run()
-    assert not app.exception, [str(e.value) for e in app.exception]
-
-    rows = storage.load_rounds("apptest", storage.STAR)
-    assert len(rows) == 1
-    r = rows[0]
-    assert r["numbers"] == 56 and r["cars"] == 1          # 三星 C(8,3),下 1 支
-    assert r["cost"] == 63 * 56                           # 每碰 63 × 56 碰
-    assert r["payout_rate"] == 63 * 570                   # 倍率是幾倍,不是幾元
-    assert r["picked"] == [1, 2, 3, 4, 5, 6, 7, 8]
-    assert r["pending"], "沒選結果就該是待開獎"
+    assert any("連碰" in t.label for t in app.tabs), [t.label for t in app.tabs]
 
 
 def _latest_draw(game_key="lotto539"):
@@ -125,25 +101,73 @@ def _latest_draw(game_key="lotto539"):
     return str(row["date"].date()), sorted(int(row[c]) for c in loader.detect_num_cols(df))
 
 
-def test_star_pending_autofills_from_the_draw(app):
-    """待回填要能用存下的 8 顆自動對獎:對中 3 顆 → 三星中 C(3,3) = 1 碰。"""
-    date, drawn = _latest_draw()
-    others = [n for n in range(1, 40) if n not in drawn][:5]
-    storage.add_round("apptest", "lotto539", date, 56, 1, None, 3528.0, 35910.0,
-                      mode=storage.STAR, picked=sorted(drawn[:3] + others))
+def test_combo_records_a_round_with_the_numbers(app):
+    """圈號碼再記帳:注數 = C(拖幾顆, 星數)、中一注可得 = 每注 × 倍率。
+
+    號碼盤在彈窗裡,AppTest 驅動不了,所以直接把選號寫進 session_state ——
+    那正是 numpad 存號碼的地方。
+    """
+    app.session_state["ledger_combo_pad__picked"] = [1, 2, 3, 4, 5, 6, 7, 8]
     app.run()
-    _button(app, "star_fill_all").click().run()
+    assert not app.exception, [str(e.value) for e in app.exception]
+    _button(app, "lcombo_record").click().run()
     assert not app.exception, [str(e.value) for e in app.exception]
 
-    r = storage.load_rounds("apptest", storage.STAR)[0]
+    rows = storage.load_rounds("apptest", storage.COMBO)
+    assert len(rows) == 1
+    r = rows[0]
+    assert r["numbers"] == 56 and r["cars"] == 1        # 預設三星,C(8,3)
+    assert r["stars"] == 3 and r["dans"] == []          # 沒指定膽 = 連碰
+    assert r["cost"] == 2 * 56                          # 每注 2 元 × 56 注
+    assert r["payout_rate"] == 2 * 580                  # 倍率是幾倍,不是幾元
+    assert r["picked"] == [1, 2, 3, 4, 5, 6, 7, 8]
+    assert r["drag"] == r["picked"], "沒有膽時,拖就是全部圈的號碼"
+    assert r["pending"], "沒選結果就該是待開獎"
+
+
+def test_combo_pending_autofills_from_the_draw(app):
+    """待回填要能用存下的號碼自動對獎:對中 3 顆 → 三星中 C(3,3) = 1 注。"""
+    date, drawn = _latest_draw()
+    others = [n for n in range(1, 40) if n not in drawn][:5]
+    storage.add_round("apptest", "lotto539", date, 56, 1, None, 112.0, 1160.0,
+                      mode=storage.COMBO, picked=sorted(drawn[:3] + others), stars=3)
+    app.run()
+    _button(app, "lcombo_fill_all").click().run()
+    assert not app.exception, [str(e.value) for e in app.exception]
+
+    r = storage.load_rounds("apptest", storage.COMBO)[0]
     assert not r["pending"] and r["hits"] == 1
-    assert r["payout"] == 35_910 and r["net"] == 35_910 - 3_528
+    assert r["payout"] == 1_160 and r["net"] == 1_160 - 112
 
 
-def test_star_wont_record_without_eight_numbers(app):
-    """沒圈滿 8 顆,記帳鈕是關的 —— 買的就是這 8 顆的全組合。"""
-    assert _button(app, "star_record").disabled
-    assert not storage.load_rounds("apptest", storage.STAR)
+def test_combo_autofill_respects_the_dan(app):
+    """膽沒開出來整張歸零 —— 即使拖那邊中了 3 顆。"""
+    date, drawn = _latest_draw()
+    miss = [n for n in range(1, 40) if n not in drawn][0]      # 這一顆沒開
+    others = [n for n in range(1, 40) if n not in drawn][1:6]
+    picked = sorted(drawn[:3] + others + [miss])
+    storage.add_round("apptest", "lotto539", date, 56, 1, None, 112.0, 1160.0,
+                      mode=storage.COMBO, picked=picked, stars=3, dans=[miss])
+    app.run()
+    _button(app, "lcombo_fill_all").click().run()
+    assert not app.exception, [str(e.value) for e in app.exception]
+    assert storage.load_rounds("apptest", storage.COMBO)[0]["hits"] == 0
+
+
+def test_combo_wont_record_without_numbers(app):
+    """沒圈號碼就湊不出注,記帳鈕是關的。"""
+    assert _button(app, "lcombo_record").disabled
+    assert not storage.load_rounds("apptest", storage.COMBO)
+
+
+def test_combo_calculator_page_renders(app):
+    """側邊欄的「連碰計算機」試算頁 —— 跟記帳頁分開,不寫資料庫。"""
+    for r in app.radio:
+        if r.options and "連碰計算機" in r.options:
+            r.set_value("連碰計算機").run()
+            break
+    assert not app.exception, [str(e.value) for e in app.exception]
+    assert not storage.load_rounds("apptest"), "試算頁不該寫進任何紀錄"
 
 
 def test_issue_column_is_a_dropdown_in_the_table(app):
