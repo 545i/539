@@ -353,77 +353,96 @@ def page_stats():
     _render_stats(fdf, game)
 
 
-# ── 斷柱提醒:三柱其中一柱連續幾期整柱沒開 ────────────────
-# 這裡的三柱就是 core.pillar 的分法(第一柱 10~18、第二柱 20~29、第三柱 其餘),
-# 跟號碼盤上看到的分區一致。
-#
-# 先講清楚一件事:第三柱有 20 個號碼,一期全數落空的機率只有約 2%
-# (C(19,5)/C(39,5)),所以提醒實務上幾乎只會為第一柱、第二柱而跳 ——
-# 這是分組本身的結構造成的,不是程式漏算。
-def _pillar_alert_text(a: dict) -> str:
-    extra = f"(歷史最長 {a['max_gap']} 期)" if a["max_gap"] > a["current"] else ""
-    return (f"**{a['name']}**　`{a['label']}`　"
-            f"連續 **{a['current']}** 期沒開{extra}")
+# ── 連續沒中提醒 ─────────────────────────────────────────
+# 1800碰 的中獎條件是**三柱各中至少一顆**(命中注數 = n1×n2×n3),
+# 任一柱掛蛋整期就歸零。所以該提醒的是「連續幾期沒中」,
+# 不是「某一柱連續幾期沒開」—— 後者跟會不會中獎不是同一件事,
+# 而且第一柱連 4 期不開只有 0.38%(約 266 期一次),幾乎永遠不會跳。
+# 連續 4 期沒中則是 3.97%(約 25 期一次),才是真的看得到的提醒。
+def _dry_stats(draws, game) -> dict:
+    return pillar.history_stats(draws, game.num_max, game.pick)
 
 
 def _pillar_break_prob(game, which: int) -> float:
     """某一柱在單期完全沒開的機率 = C(其餘號碼, pick) / C(全部, pick)。
 
-    把這個數字擺在表上,才看得出提醒為什麼很少跳:第三柱號碼多,
-    整柱落空幾乎不可能;第一柱只有 9 顆,才是提醒的主要來源。
+    擺在表上是為了看出各柱不對等:第三柱號碼多,幾乎不會掛蛋;
+    真正常拖累整期的是只有 9 顆的第一柱。
     """
     size = len(pillar.pillars(game.num_max)[which - 1])
     return comb(game.num_max - size, game.pick) / comb(game.num_max, game.pick)
 
 
 def _render_pillar_missing(fdf: pd.DataFrame, game):
-    """統計分析裡的斷柱表:每一柱目前連續沒開與歷史最長。"""
+    """統計分析裡的斷柱表:連續沒中幾期,以及是哪幾柱在斷。"""
     st.subheader("斷柱狀況(三柱)")
     st.caption(
-        "三柱就是號碼盤上的分區。那一柱**有任何一個號碼**開出就算開了,"
-        "整柱掛蛋(斷柱)才累計。三柱同時都有開才叫過關 —— "
-        "1800碰 的命中注數就是三柱各中幾顆相乘,任一柱掛蛋整期歸零。")
+        "1800碰 要**三柱各中至少一顆**才有注中獎(命中注數 = n₁ × n₂ × n₃),"
+        "任一柱掛蛋整期就歸零。所以下面先看「連續幾期沒中」,"
+        "再看是哪一柱在拖後腿。")
 
     draws = loader.draws_as_lists(fdf)
-    pm = pillar.pillar_missing(draws, game.num_max, game.pick)
+    s = _dry_stats(draws, game)
+    p0 = pillar.hit_probs(game.num_max, game.pick)[0]
     n = pillar.PILLAR_ALERT_DRAWS
-    table = pd.DataFrame([{
+
+    m1, m2, m3 = st.columns(3)
+    m1.metric("目前連續沒中", f"{s['streak']} 期")
+    m2.metric("歷史最長", f"{s['max_streak']} 期")
+    m3.metric("實際過關率", f"{s['pass_rate']:.2%}",
+              delta=f"理論 {pillar.pass_prob(game.num_max, game.pick):.2%}",
+              delta_color="off")
+
+    if s["streak"] >= n:
+        st.warning(
+            f"🔔 **已經連續 {s['streak']} 期沒中**(連 {n} 期沒中的機率 "
+            f"{p0 ** n:.2%},約每 {1 / p0 ** n:.0f} 期會遇到一次)。"
+            + (f"最新一期斷的是 "
+               f"{'、'.join(pillar.PILLAR_NAMES[i - 1] for i in s['last_broken'])}。"
+               if s["last_broken"] else ""))
+    else:
+        st.success(f"目前連續沒中 {s['streak']} 期,還沒到 {n} 期的提醒門檻。")
+
+    st.markdown("**各柱目前的狀況**")
+    pm = pillar.pillar_missing(draws, game.num_max, game.pick)
+    tables.html_table(pd.DataFrame([{
         "柱別": v["name"],
         "號碼": v["label"],
         "顆數": v["size"],
         "目前連續沒開": v["current"],
         "歷史最長": v["max_gap"],
-        "單期斷柱機率": f"{_pillar_break_prob(game, i):.2%}",
-        f"連{n}期機率": f"{_pillar_break_prob(game, i) ** n:.3%}",
-    } for i, v in pm.items()])
-    tables.html_table(table, mono_cols=("號碼",))
-
-    alerts = pillar.pillar_alerts(draws, game.num_max, game.pick)
-    if alerts:
-        st.warning(f"🔔 **連續 {pillar.PILLAR_ALERT_DRAWS} 期以上整柱沒開**\n\n"
-                   + "\n\n".join("- " + _pillar_alert_text(a) for a in alerts))
-    else:
-        st.success(f"目前沒有任何一柱連續 {pillar.PILLAR_ALERT_DRAWS} 期以上沒開。")
+        "單期掛蛋機率": f"{_pillar_break_prob(game, i):.2%}",
+    } for i, v in pm.items()]), mono_cols=("號碼",))
     st.caption(
-        "顆數多的那一柱本來就比較不容易整柱落空,期數要跟其他柱分開看。"
-        "另外提醒只是把「這一柱多久沒出現」講出來 —— 每期開獎是獨立事件,"
-        "久沒開不會讓它下一期比較容易開。")
+        "「目前連續沒開」是那一柱自己掛蛋幾期,顆數多的柱本來就比較少掛蛋 —— "
+        "看它是為了知道**是哪一柱在斷**,不是拿來當進場訊號。"
+        "每期開獎是獨立事件,久沒中不會讓下一期比較容易中。")
 
 
 def _render_pillar_alert_banner():
-    """下注頁頂端的斷柱提醒:三款一起看。"""
+    """下注頁頂端:哪一款已經連續幾期沒中(三柱有一柱掛蛋就算沒中)。"""
+    n = pillar.PILLAR_ALERT_DRAWS
     hits = []
     for g in GAME_LIST:
-        for a in pillar.pillar_alerts(_draws_of(g), g.num_max, g.pick):
-            hits.append((g, a))
+        s = _dry_stats(_draws_of(g), g)
+        if s["streak"] >= n:
+            hits.append((g, s))
     if not hits:
         return
-    hits.sort(key=lambda t: -t[1]["current"])
+    hits.sort(key=lambda t: -t[1]["streak"])
+    lines = []
+    for g, s in hits:
+        broke = ("、".join(pillar.PILLAR_NAMES[i - 1] for i in s["last_broken"])
+                 if s["last_broken"] else "")
+        lines.append(
+            f"- **{g.label}**　連續 **{s['streak']}** 期沒中"
+            + (f"(最新一期斷 {broke})" if broke else "")
+            + f"(歷史最長 {s['max_streak']} 期)")
     st.warning(
-        f"🔔 **斷柱提醒** —— 這幾柱已經連續 {pillar.PILLAR_ALERT_DRAWS} 期以上"
-        "整柱沒開:\n\n"
-        + "\n\n".join(f"- {g.label}　" + _pillar_alert_text(a) for g, a in hits)
-        + "\n\n完整的斷柱表在「統計分析 → 遺漏值」。")
+        f"🔔 **1800碰 連續沒中提醒** —— 三柱要各中至少一顆才有注中獎,"
+        f"下面這幾款已經連續 {n} 期以上整期歸零:\n\n"
+        + "\n\n".join(lines)
+        + "\n\n細節在「統計分析 → 遺漏值」。")
 
 
 def _render_stats(fdf: pd.DataFrame, game):
