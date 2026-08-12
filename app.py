@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import datetime as dt
+from math import comb
 import sys
 from pathlib import Path
 
@@ -352,61 +353,77 @@ def page_stats():
     _render_stats(fdf, game)
 
 
-# ── 直柱提醒:選號單上某一整行連續幾期沒開 ──────────────
-# 「柱」在這裡是**選號單上的直行**(01 11 21 31 這種尾數相同的一群),
-# 跟 core.pillar 的三柱(1800碰 的 10~18 / 20~29 / 其餘)是兩件不同的事。
-def _column_alert_text(a: dict) -> str:
+# ── 斷柱提醒:三柱其中一柱連續幾期整柱沒開 ────────────────
+# 這裡的三柱就是 core.pillar 的分法(第一柱 10~18、第二柱 20~29、第三柱 其餘),
+# 跟號碼盤上看到的分區一致。
+#
+# 先講清楚一件事:第三柱有 20 個號碼,一期全數落空的機率只有約 2%
+# (C(19,5)/C(39,5)),所以提醒實務上幾乎只會為第一柱、第二柱而跳 ——
+# 這是分組本身的結構造成的,不是程式漏算。
+def _pillar_alert_text(a: dict) -> str:
     extra = f"(歷史最長 {a['max_gap']} 期)" if a["max_gap"] > a["current"] else ""
-    return f"`{a['label']}`　連續 **{a['current']}** 期沒開{extra}"
+    return (f"**{a['name']}**　`{a['label']}`　"
+            f"連續 **{a['current']}** 期沒開{extra}")
 
 
-def _render_column_missing(fdf: pd.DataFrame, game):
-    """統計分析裡的直柱遺漏:整行的目前連續沒開與歷史最長。"""
-    st.subheader("直柱遺漏(選號單上的直行)")
+def _pillar_break_prob(game, which: int) -> float:
+    """某一柱在單期完全沒開的機率 = C(其餘號碼, pick) / C(全部, pick)。
+
+    把這個數字擺在表上,才看得出提醒為什麼很少跳:第三柱號碼多,
+    整柱落空幾乎不可能;第一柱只有 9 顆,才是提醒的主要來源。
+    """
+    size = len(pillar.pillars(game.num_max)[which - 1])
+    return comb(game.num_max - size, game.pick) / comb(game.num_max, game.pick)
+
+
+def _render_pillar_missing(fdf: pd.DataFrame, game):
+    """統計分析裡的斷柱表:每一柱目前連續沒開與歷史最長。"""
+    st.subheader("斷柱狀況(三柱)")
     st.caption(
-        "選號單一列 10 格,所以一個直行就是尾數相同的那一群:"
-        "01 11 21 31、02 12 22 32…,10 20 30 是尾數 0 那行。"
-        "那一行**有任何一個號碼**開出就算開了,整行都沒中才累計。\n\n"
-        f"注意 **{stats.column_label(0, game.num_max)}** 那行只有 "
-        f"{len(stats.columns(game.num_max)[0])} 個號碼(其餘是 "
-        f"{len(stats.columns(game.num_max)[1])} 個),本來就比較容易整行落空,"
-        "它的期數要跟其他行分開看。")
+        "三柱就是號碼盤上的分區。那一柱**有任何一個號碼**開出就算開了,"
+        "整柱掛蛋(斷柱)才累計。三柱同時都有開才叫過關 —— "
+        "1800碰 的命中注數就是三柱各中幾顆相乘,任一柱掛蛋整期歸零。")
 
-    cm = stats.column_missing(fdf, game.num_max)
+    draws = loader.draws_as_lists(fdf)
+    pm = pillar.pillar_missing(draws, game.num_max, game.pick)
+    n = pillar.PILLAR_ALERT_DRAWS
     table = pd.DataFrame([{
-        "直柱": v["label"],
+        "柱別": v["name"],
+        "號碼": v["label"],
+        "顆數": v["size"],
         "目前連續沒開": v["current"],
         "歷史最長": v["max_gap"],
-    } for v in cm.values()]).sort_values("目前連續沒開", ascending=False)
-    tables.html_table(table, mono_cols=("直柱",))
+        "單期斷柱機率": f"{_pillar_break_prob(game, i):.2%}",
+        f"連{n}期機率": f"{_pillar_break_prob(game, i) ** n:.3%}",
+    } for i, v in pm.items()])
+    tables.html_table(table, mono_cols=("號碼",))
 
-    alerts = stats.column_alerts(fdf, game.num_max)
+    alerts = pillar.pillar_alerts(draws, game.num_max, game.pick)
     if alerts:
-        st.warning("🔔 **連續 "
-                   f"{stats.COLUMN_ALERT_DRAWS} 期以上整行沒開**\n\n"
-                   + "\n\n".join("- " + _column_alert_text(a) for a in alerts))
+        st.warning(f"🔔 **連續 {pillar.PILLAR_ALERT_DRAWS} 期以上整柱沒開**\n\n"
+                   + "\n\n".join("- " + _pillar_alert_text(a) for a in alerts))
     else:
-        st.success(f"目前沒有任何直柱連續 {stats.COLUMN_ALERT_DRAWS} 期以上沒開。")
+        st.success(f"目前沒有任何一柱連續 {pillar.PILLAR_ALERT_DRAWS} 期以上沒開。")
     st.caption(
-        "提醒只是把「這一行多久沒出現」講出來。每期開獎是獨立事件,"
-        "久沒開不會讓它下一期比較容易開 —— 這是描述過去,不是預測未來。")
+        "顆數多的那一柱本來就比較不容易整柱落空,期數要跟其他柱分開看。"
+        "另外提醒只是把「這一柱多久沒出現」講出來 —— 每期開獎是獨立事件,"
+        "久沒開不會讓它下一期比較容易開。")
 
 
-def _render_column_alert_banner():
-    """下注頁頂端的直柱提醒:三款一起看,哪一行連續幾期沒開。"""
+def _render_pillar_alert_banner():
+    """下注頁頂端的斷柱提醒:三款一起看。"""
     hits = []
     for g in GAME_LIST:
-        for a in stats.column_alerts(load_df(g.key), g.num_max):
+        for a in pillar.pillar_alerts(_draws_of(g), g.num_max, g.pick):
             hits.append((g, a))
     if not hits:
         return
     hits.sort(key=lambda t: -t[1]["current"])
     st.warning(
-        f"🔔 **直柱提醒** —— 這幾行已經連續 {stats.COLUMN_ALERT_DRAWS} 期以上"
-        "整行沒開(選號單上尾數相同的那一行):\n\n"
-        + "\n\n".join(f"- **{g.label}**　" + _column_alert_text(a)
-                       for g, a in hits)
-        + "\n\n完整的直柱遺漏表在「統計分析 → 遺漏值」。")
+        f"🔔 **斷柱提醒** —— 這幾柱已經連續 {pillar.PILLAR_ALERT_DRAWS} 期以上"
+        "整柱沒開:\n\n"
+        + "\n\n".join(f"- {g.label}　" + _pillar_alert_text(a) for g, a in hits)
+        + "\n\n完整的斷柱表在「統計分析 → 遺漏值」。")
 
 
 def _render_stats(fdf: pd.DataFrame, game):
@@ -466,7 +483,7 @@ def _render_stats(fdf: pd.DataFrame, game):
         st.dataframe(miss_df, width='stretch', hide_index=True)
 
         st.divider()
-        _render_column_missing(fdf, game)
+        _render_pillar_missing(fdf, game)
 
     # 間隔 / 連號
     with tabs[3]:
@@ -2822,7 +2839,7 @@ def _render_totals_tab(user: str, cfgs: dict, cum: float, rows: list[dict]):
 # ── 策略頁主體 ───────────────────────────────────────────
 def page_strategy(user: str):
     st.header("二合買牌")
-    _render_column_alert_banner()
+    _render_pillar_alert_banner()
     _note(
         "- 四個分頁:🟢 **單顆下注**、🟠 **多顆下注**、🟣 **三柱1800碰**、"
         "📊 **總損益**。三個下注頁的底色與按鈕顏色都不一樣,別下錯頁。\n"

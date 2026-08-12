@@ -94,67 +94,6 @@ def missing(df: pd.DataFrame, num_max: int = NUM_MAX) -> dict[int, dict]:
     return result
 
 
-# ── C2. 直柱(選號單上的直行)遺漏 ────────────────────────
-# 選號單一列 10 格(01~10 / 11~20 / 21~30 / 31~39),所以一個直行就是
-# 「尾數相同」的那一群:01 11 21 31、02 12 22 32…,10 20 30 是尾數 0 那行。
-#
-# 注意:這裡的「柱」跟 core.pillar 的三柱(1800碰 的 10~18 / 20~29 / 其餘)
-# 是完全不同的兩件事,別混用。
-COLUMN_ALERT_DRAWS = 4      # 連續幾期沒開就提醒
-
-
-def column_of(n: int) -> int:
-    """號碼落在第幾直行,用個位數表示(10/20/30/40 歸 0)。"""
-    return int(n) % 10
-
-
-def columns(num_max: int = NUM_MAX) -> dict[int, list[int]]:
-    """每一直行有哪些號碼;鍵是個位數,由 0 到 9。"""
-    out: dict[int, list[int]] = {}
-    for n in all_nums(num_max):
-        out.setdefault(column_of(n), []).append(n)
-    return dict(sorted(out.items()))
-
-
-def column_label(col: int, num_max: int = NUM_MAX) -> str:
-    """那一直行的號碼字樣,例如「01 11 21 31」。"""
-    return " ".join(f"{n:02d}" for n in columns(num_max).get(col, []))
-
-
-def column_missing(df: pd.DataFrame, num_max: int = NUM_MAX) -> dict[int, dict]:
-    """每一直行的目前連續未開期數與歷史最長。
-
-    一期只要那一行**有任何一個號碼**開出就算開了,整行都沒中才累計。
-    current:到最新一期為止連續幾期沒開;max_gap:歷史上最長的一段。
-    """
-    draws = draws_as_lists(df)
-    cols = columns(num_max)
-    per_draw = [{column_of(n) for n in draw} for draw in draws]
-
-    out = {}
-    for c, nums in cols.items():
-        current = 0
-        for hits in reversed(per_draw):
-            if c in hits:
-                break
-            current += 1
-        run = max_gap = 0
-        for hits in per_draw:
-            run = 0 if c in hits else run + 1
-            max_gap = max(max_gap, run)
-        out[c] = {"current": current, "max_gap": max_gap, "nums": nums,
-                  "label": " ".join(f"{n:02d}" for n in nums)}
-    return out
-
-
-def column_alerts(df: pd.DataFrame, num_max: int = NUM_MAX,
-                  threshold: int = COLUMN_ALERT_DRAWS) -> list[dict]:
-    """連續 threshold 期(含)以上整行沒開的直行,久的排前面。"""
-    got = [{"col": c, **v} for c, v in column_missing(df, num_max).items()
-           if v["current"] >= threshold]
-    return sorted(got, key=lambda d: (-d["current"], d["col"]))
-
-
 # ── D. 間隔 / 連號 ───────────────────────────────────────
 def gaps_consecutive(df: pd.DataFrame):
     """每期開獎號相鄰間隔分布,以及含連號(相鄰差=1)的期數比例。"""

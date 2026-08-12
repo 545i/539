@@ -249,3 +249,76 @@ def test_pillar_ledger_is_separate_from_erhe(db):
     db.reset("u", db.PILLAR)
     assert db.load_rounds("u", db.PILLAR) == []
     assert len(db.load_rounds("u", db.MULTI)) == 1
+
+
+# ── 斷柱提醒:某一柱連續幾期整柱沒開 ─────────────────────
+def test_range_label_collapses_runs():
+    """第三柱 20 個號碼全列出來太長,壓成區間才看得懂。"""
+    c1, c2, c3 = pillar.pillars(39)
+    assert pillar.range_label(c1) == "10~18"
+    assert pillar.range_label(c2) == "20~29"
+    assert pillar.range_label(c3) == "01~09、19、30~39"
+
+
+def test_range_label_single_number():
+    assert pillar.range_label([7]) == "07"
+    assert pillar.range_label([3, 9]) == "03、09"
+
+
+def test_pillar_missing_counts_consecutive_broken_draws():
+    """那一柱有任何一個號碼開出就算開了,整柱掛蛋才累計。"""
+    draws = [
+        [10, 20, 1, 2, 3],       # 三柱都有
+        [20, 1, 2, 3, 4],        # 第一柱斷
+        [20, 1, 2, 3, 4],
+        [20, 1, 2, 3, 4],
+        [20, 1, 2, 3, 4],
+    ]
+    got = pillar.pillar_missing(draws)
+    assert got[1]["current"] == 4
+    assert got[2]["current"] == 0        # 每期都有 20
+    assert got[3]["current"] == 0
+
+
+def test_pillar_missing_resets_on_any_number_in_that_pillar():
+    draws = [[20, 1, 2, 3, 4]] * 3 + [[18, 20, 1, 2, 3]] + [[20, 1, 2, 3, 4]] * 2
+    got = pillar.pillar_missing(draws)
+    assert got[1]["current"] == 2        # 18 之後才過兩期
+    assert got[1]["max_gap"] == 3        # 18 之前那三期是歷史最長
+
+
+def test_pillar_missing_skips_incomplete_draws():
+    """顆數不齊的期略過 —— 資料還沒補齊不該被算成沒開。"""
+    draws = [[10, 20, 1, 2, 3], [20, 1, 2], [20, 1, 2, 3, 4]]
+    got = pillar.pillar_missing(draws)
+    assert got[1]["current"] == 1        # 只有最後那期有效且第一柱斷
+
+
+def test_pillar_alerts_fire_at_four_draws():
+    draws = [[10, 20, 1, 2, 3]] + [[20, 1, 2, 3, 4]] * 4
+    alerts = pillar.pillar_alerts(draws)
+    assert [a["pillar"] for a in alerts] == [1]
+    assert alerts[0]["current"] == 4
+    assert alerts[0]["name"] == "第一柱"
+    assert alerts[0]["label"] == "10~18"
+
+
+def test_pillar_alerts_quiet_at_three_draws():
+    draws = [[10, 20, 1, 2, 3]] + [[20, 1, 2, 3, 4]] * 3
+    assert pillar.pillar_alerts(draws) == []
+
+
+def test_pillar_alerts_sorted_longest_first():
+    # 第一柱斷 5 期、第二柱斷 4 期
+    draws = [[10, 20, 1, 2, 3]] + [[20, 1, 2, 3, 4]] + [[1, 2, 3, 4, 5]] * 4
+    alerts = pillar.pillar_alerts(draws)
+    assert [a["pillar"] for a in alerts] == [1, 2]
+    assert alerts[0]["current"] > alerts[1]["current"]
+
+
+def test_pillar_alerts_work_for_marksix_shape():
+    """六合彩 49 選 6:第三柱多出 40~49,分柱照樣算得出來。"""
+    draws = [[10, 20, 1, 2, 3, 4]] + [[20, 1, 2, 3, 4, 5]] * 4
+    alerts = pillar.pillar_alerts(draws, num_max=49, pick=6)
+    assert [a["pillar"] for a in alerts] == [1]
+    assert pillar.pillar_missing(draws, 49, 6)[3]["size"] == 30

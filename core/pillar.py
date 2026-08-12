@@ -249,6 +249,68 @@ def multiplier_for_recovery(loss: float, cost_per_bet: float, prize_per_bet: flo
             "gain_per_multiple": gain}
 
 
+# ── 逐柱的連續未開(斷柱提醒)──────────────────────────
+PILLAR_ALERT_DRAWS = 4      # 某一柱連續幾期沒開就提醒
+
+
+def range_label(nums) -> str:
+    """把一柱的號碼壓成區間字樣:第三柱 → 「01~09、19、30~39」。
+
+    整柱 20 個號碼全列出來太長,壓成區間才看得懂它涵蓋哪裡。
+    """
+    parts: list[str] = []
+    start = prev = None
+    for n in sorted(int(x) for x in nums):
+        if start is None:
+            start = prev = n
+            continue
+        if n == prev + 1:
+            prev = n
+            continue
+        parts.append(f"{start:02d}" if start == prev else f"{start:02d}~{prev:02d}")
+        start = prev = n
+    if start is not None:
+        parts.append(f"{start:02d}" if start == prev else f"{start:02d}~{prev:02d}")
+    return "、".join(parts)
+
+
+def pillar_missing(draws, num_max: int = 39, pick: int = 5) -> dict[int, dict]:
+    """每一柱目前連續幾期沒開(斷柱)與歷史最長。
+
+    一期只要那一柱**有任何一個號碼**開出就算開了,整柱掛蛋才累計。
+    顆數不齊的期直接略過 —— 資料還沒補齊時不該被算成沒開(同 history_stats)。
+
+    回傳 {柱別(1/2/3): {current, max_gap, name, label, size}}。
+    """
+    valid = [list(d) for d in draws if d and len(d) == pick]
+    per_draw = [{pillar_of(int(n), num_max) for n in d} for d in valid]
+
+    out = {}
+    for i, nums in enumerate(pillars(num_max), start=1):
+        current = 0
+        for hits in reversed(per_draw):
+            if i in hits:
+                break
+            current += 1
+        run = max_gap = 0
+        for hits in per_draw:
+            run = 0 if i in hits else run + 1
+            max_gap = max(max_gap, run)
+        out[i] = {"current": current, "max_gap": max_gap,
+                  "name": PILLAR_NAMES[i - 1], "label": range_label(nums),
+                  "size": len(nums)}
+    return out
+
+
+def pillar_alerts(draws, num_max: int = 39, pick: int = 5,
+                  threshold: int = PILLAR_ALERT_DRAWS) -> list[dict]:
+    """連續 threshold 期(含)以上整柱沒開的柱別,久的排前面。"""
+    got = [{"pillar": i, **v}
+           for i, v in pillar_missing(draws, num_max, pick).items()
+           if v["current"] >= threshold]
+    return sorted(got, key=lambda d: (-d["current"], d["pillar"]))
+
+
 # ── 歷史檢驗 ─────────────────────────────────────────────
 def history_stats(draws, num_max: int = 39, pick: int = 5) -> dict:
     """一串開獎號碼(**舊 → 新**)拿 1800碰 回頭檢驗的結果。
