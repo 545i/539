@@ -176,12 +176,12 @@ def max_hits(num_max: int = 39, pick: int = 5) -> int:
 
 # ── 損益 ─────────────────────────────────────────────────
 def round_cost(cost_per_bet: float, multiplier: int = 1, num_max: int = 39) -> float:
-    """一期的下注成本 = 總注數 × 每注成本 × 倍數。"""
+    """一期的下注成本 = 總注數 × 每注成本 × 支數(1 支 = 買滿全組合)。"""
     return total_bets(num_max) * float(cost_per_bet) * int(multiplier)
 
 
 def round_payout(hits: int, prize_per_bet: float, multiplier: int = 1) -> float:
-    """一期的回收 = 命中注數 × 每注派彩 × 倍數。"""
+    """一期的回收 = 命中注數 × 每注派彩 × 支數。"""
     return int(hits) * float(prize_per_bet) * int(multiplier)
 
 
@@ -220,7 +220,7 @@ def expected_net(cost_per_bet: float, prize_per_bet: float, multiplier: int = 1,
 
 def best_case_net_per_multiple(cost_per_bet: float, prize_per_bet: float,
                                num_max: int = 39, pick: int = 5) -> float:
-    """最好情況(中四碰)每 1 倍的淨利 = 4 × 每注派彩 − 總成本。
+    """最好情況(中四碰)每 1 支的淨利 = 4 × 每注派彩 − 總成本。
 
     這是 1800碰 單期回收的上限。官方盤口下它恰好是 0
     (4 × 11,250 = 45,000 = 1800 × 25)—— 代表就算中四碰也只是打平,
@@ -233,9 +233,9 @@ def best_case_net_per_multiple(cost_per_bet: float, prize_per_bet: float,
 def multiplier_for_recovery(loss: float, cost_per_bet: float, prize_per_bet: float,
                             num_max: int = 39, pick: int = 5,
                             base: int = 1) -> dict:
-    """要把 loss 一次追平,最少得下幾倍(以中四碰為回收上限)。
+    """要把 loss 一次追平,最少得下幾支(以中四碰為回收上限)。
 
-    追平條件:倍數 × 中四碰淨利 ≥ 目前虧損。中四碰淨利 ≤ 0 時無解 ——
+    追平條件:支數 × 中四碰淨利 ≥ 目前虧損。中四碰淨利 ≤ 0 時無解 ——
     這不是算不出來,是這個盤口本身就沒有回本的可能。
     """
     gain = best_case_net_per_multiple(cost_per_bet, prize_per_bet, num_max, pick)

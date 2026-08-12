@@ -2142,7 +2142,7 @@ _PILLAR_MONO = ("開出", "注數", "成本", "回收", "本局損益", "累積�
 
 
 def _mode_detail_df(rows: list[dict], mode: str | None) -> pd.DataFrame:
-    """流水表:1800碰 的欄位講「倍數 / 注數 / 碰」,二合講「車數 / 顆數」。"""
+    """流水表:1800碰 的欄位講「支數 / 注數 / 碰」,二合講「車數 / 顆數」。"""
     return _pillar_detail_df(rows) if mode == storage.PILLAR else _detail_df(rows)
 
 
@@ -2268,7 +2268,7 @@ def _render_full_ledger(user: str, rows: list[dict], mode: str | None = None):
             data=pd.DataFrame(rows).to_csv(index=False).encode("utf-8-sig"),
             file_name=f"erhe_ledger{suffix}.csv", mime="text/csv")
         st.markdown("**修改 / 刪除指定的一筆**")
-        unit = "倍" if is_pillar else "車"
+        unit = "支" if is_pillar else "車"
         opts = {
             f"#{i + 1} {r['draw_date']} {games.get(r['game']).name} "
             f"{int(r['cars'])}{unit} "
@@ -2431,11 +2431,12 @@ def _pillar_formula_note(cfg: dict, game):
         "",
         "**本局損益**(§4.3)",
         "```",
-        f"成本 = {total:,} 注 × 每注成本 × 倍數 = {total:,} × {cost:,.0f} × 倍數",
-        f"回收 = 命中注數 × 中一注可得 × 倍數 = 命中注數 × {prize:,.0f} × 倍數",
+        f"單支成本 = {total:,} 注 × 每注成本 = {total:,} × {cost:,.0f} = {cost * total:,.0f}",
+        f"本局成本 = 單支成本 × 支數 = {cost * total:,.0f} × 支數",
+        f"本局回收 = 命中注數 × 中一注可得 × 支數 = 命中注數 × {prize:,.0f} × 支數",
         "損益 = 回收 − 成本",
         "```",
-        f"所以 1 倍時:成本 {cost * total:,.0f};"
+        f"所以下 1 支時:成本 {cost * total:,.0f};"
         + "、".join(
             f"中{h}碰回收 {h * prize:,.0f}(損益 {h * prize - cost * total:+,.0f})"
             for h in sorted(probs, reverse=True) if h)
@@ -2459,9 +2460,9 @@ def _pillar_formula_note(cfg: dict, game):
         f"這個倍率({be / cost:.1f})就是**單注三合的公平賠率**,"
         "跟買幾注無關 —— 包牌的成本與回收都線性於注數,所以會約掉。",
         "",
-        f"**中{best}碰每倍淨利** = {best} × {prize:,.0f} − {cost * total:,.0f} = "
+        f"**中{best}碰每支淨利** = {best} × {prize:,.0f} − {cost * total:,.0f} = "
         f"**{pillar.best_case_net_per_multiple(cost, prize, nm, pk):+,.0f}**"
-        + ";≤ 0 代表中最大獎也只是打平,加倍追不回過去的虧損。",
+        + ";≤ 0 代表中最大獎也只是打平,多下幾支也追不回過去的虧損。",
     ]
     _note("\n".join(lines), "損益是怎麼算的(代入你現在的盤口)")
 
@@ -2477,7 +2478,8 @@ def _pillar_odds_panel(cfg: dict, game):
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("每注成本", f"{cost:,.0f}")
     c2.metric("中一注可得", f"{prize:,.0f}")
-    c3.metric(f"{total:,} 注總成本", f"{cost * total:,.0f}")
+    c3.metric("單支成本", f"{cost * total:,.0f}",
+              delta=f"{total:,} 注 × {cost:,.0f}", delta_color="off")
     c4.metric("返還率", f"{rate:.2%}",
               delta=f"期望 {ev:+,.0f}/期", delta_color="off")
     st.caption(
@@ -2500,7 +2502,7 @@ def _pillar_hits_options(game) -> list[int]:
 
 
 def _render_pillar_today(user: str, cfgs: dict, cum: float):
-    st.subheader("一、這一期下幾倍")
+    st.subheader("一、這一期下幾支")
     if not PILLAR_GAMES:
         st.info("目前沒有適用 1800碰 的遊戲(需要 39 選 5)。")
         return
@@ -2523,9 +2525,10 @@ def _render_pillar_today(user: str, cfgs: dict, cum: float):
     draw_date = c1.date_input("下注日期", value=dt.date.today(), format="YYYY-MM-DD",
                               key="pillar_date")
     mult = int(c2.number_input(
-        "下幾倍", min_value=1, max_value=1000, step=1,
+        "下幾支", min_value=1, max_value=1000, step=1,
         value=int(cfg["pillar_base"]), key="pillar_mult",
-        help=f"1 倍 = 買滿 {total_bets:,} 注。倍數只是等比放大,不會改變機率。"))
+        help=f"1 支 = 買滿 {total_bets:,} 注,單支成本 {cost_per_bet * total_bets:,.0f}。"
+             f"支數只是等比放大,不會改變機率。"))
     issue_in = ""
     if issue_opts:
         issue_in = c3.selectbox(
@@ -2571,7 +2574,7 @@ def _render_pillar_today(user: str, cfgs: dict, cum: float):
 
     m1, m2, m3 = st.columns(3)
     m1.metric("目前累積", f"{cum:+,.0f}")
-    m2.metric("這一期成本", f"{cost:,.0f}", delta=f"{mult} 倍 × {total_bets:,} 注",
+    m2.metric("這一期成本", f"{cost:,.0f}", delta=f"{mult} 支 × {total_bets:,} 注",
               delta_color="off")
     m3.metric("期望損益", f"{pillar.expected_net(cost_per_bet, prize, mult, g.num_max, g.pick):+,.0f}",
               delta=f"過關率 {pillar.pass_prob(g.num_max, g.pick):.2%}", delta_color="off")
@@ -2617,7 +2620,7 @@ def _render_pillar_pending(rows: list[dict]):
         c1.markdown(
             f"**{r['draw_date']} {g.label}**"
             + (f"　第 {r['issue']} 期" if r.get("issue") else "")
-            + f"  \n{int(r['cars'])} 倍 × {int(r['numbers']):,} 注,"
+            + f"  \n{int(r['cars'])} 支 × {int(r['numbers']):,} 注,"
               f"成本 {r['cost']:,.0f},每中 1 注 +"
               f"{int(r['cars']) * float(r['payout_rate'] or 0):,.0f}")
         if got:
@@ -2643,7 +2646,7 @@ def _render_pillar_pending(rows: list[dict]):
 
 
 def _pillar_detail_df(rows: list[dict]) -> pd.DataFrame:
-    """1800碰 的流水表:欄位講的是「倍數 / 注數 / 碰」,不是「車數 / 顆數」。"""
+    """1800碰 的流水表:欄位講的是「支數 / 注數 / 碰」,不是「車數 / 顆數」。"""
     any_issue = any(str(r.get("issue") or "").strip() for r in rows)
     out = []
     for i, r in enumerate(rows):
@@ -2655,7 +2658,7 @@ def _pillar_detail_df(rows: list[dict]) -> pd.DataFrame:
             "日期": r["draw_date"],
             **({"期號": str(r.get("issue") or "—")} if any_issue else {}),
             "遊戲": g.label,
-            "倍數": f"{int(r['cars'])} 倍",
+            "支數": f"{int(r['cars'])} 支",
             "注數": f"{int(r['numbers']) * int(r['cars']):,}",
             "開出": " ".join(f"{n:02d}" for n in drawn) if drawn else "—",
             "柱分佈": _pillar_dist_text(counts) if counts else "—",
@@ -2669,8 +2672,8 @@ def _pillar_detail_df(rows: list[dict]) -> pd.DataFrame:
 
 
 def _render_pillar_recovery(cfgs: dict, cum: float):
-    """回本要下幾倍 —— 以「中四碰」為單期回收上限。"""
-    st.subheader("四、回本要下幾倍(三柱1800碰)")
+    """回本要下幾支 —— 以「中四碰」為單期回收上限。"""
+    st.subheader("四、回本要下幾支(三柱1800碰)")
     if cum >= 0:
         st.success(f"1800碰 目前累積 {cum:+,.0f},沒有虧損要追。")
         return
@@ -2683,26 +2686,26 @@ def _render_pillar_recovery(cfgs: dict, cum: float):
                                              base=int(cfg["pillar_base"]))
         best = pillar.max_hits(g.num_max, g.pick)
         if not res["feasible"]:
-            rows.append({"遊戲": g.label, "回本倍數": "無解", "本局成本": "—",
+            rows.append({"遊戲": g.label, "回本支數": "無解", "本局成本": "—",
                          f"中{best}碰可得": f"{best * prize:,.0f}",
                          "中後累積": f"中{best}碰也回不了本"})
             continue
         gross = best * prize * res["multiplier"]
         rows.append({
             "遊戲": g.label,
-            "回本倍數": f"{res['multiplier']:,} 倍",
+            "回本支數": f"{res['multiplier']:,} 支",
             "本局成本": f"{res['cost']:,.0f}",
             f"中{best}碰可得": f"{gross:,.0f}",
             "中後累積": f"{cum + gross - res['cost']:+,.0f}",
         })
     st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
     _note(
-        "- 倍數 = ⌈目前虧損 ÷ 中四碰每倍淨利⌉,而**中四碰每倍淨利 = "
+        "- 支數 = ⌈目前虧損 ÷ 中四碰每支淨利⌉,而**中四碰每支淨利 = "
         "4 × 中一注可得 − 1800 × 每注成本**。\n"
         "- 顯示「無解」代表這個盤口的中四碰淨利 ≤ 0 —— 官方 39樂合彩三合"
-        "(25 / 11,250)恰好就是 0,也就是**中最大獎也只是打平**,加倍完全追不回虧損。"
+        "(25 / 11,250)恰好就是 0,也就是**中最大獎也只是打平**,多下幾支完全追不回虧損。"
         "這不是算式壞了,是這個玩法本來就沒有回本的能力。\n"
-        "- 加倍也不會改變 55.36% 的過關率;它只等比放大成本與回收。",
+        "- 多下幾支也不會改變 55.36% 的過關率;它只等比放大成本與回收。",
         "這張表怎麼算的")
 
 
@@ -2892,9 +2895,9 @@ def _render_totals_tab(user: str, cfgs: dict, cum: float, rows: list[dict]):
     rec = _recovery_rows(cfgs, cum, None)
     st.dataframe(_recovery_df(rec), width="stretch", hide_index=True)
     st.caption(
-        "三柱1800碰 不列在這張表 —— 它算的是「下幾倍」而不是「下幾車」,"
-        "而且單期回收的上限固定在中四碰。要看它的回本倍數請到 "
-        "🟣 三柱1800碰 分頁的「四、回本要下幾倍」。")
+        "三柱1800碰 不列在這張表 —— 它算的是「下幾支」而不是「下幾車」,"
+        "而且單期回收的上限固定在中四碰。要看它的回本支數請到 "
+        "🟣 三柱1800碰 分頁的「四、回本要下幾支」。")
     ok = [r for r in rec if r["_cost"] != float("inf")]
     if ok:
         best = min(ok, key=lambda r: r["_cost"])
@@ -3090,7 +3093,7 @@ def page_settings(user: str):
                 p2.number_input("中一注可得", min_value=1.0, max_value=10_000_000.0,
                                 value=float(cfg["bet_prize"]), step=250.0, key=kp,
                                 on_change=_persist_setting, args=(skey, "bet_prize", kp))
-                p3.number_input("預設下幾倍", min_value=1, max_value=1000,
+                p3.number_input("預設下幾支", min_value=1, max_value=1000,
                                 value=int(cfg["pillar_base"]), step=1, key=kb,
                                 on_change=_persist_setting,
                                 args=(skey, "pillar_base", kb))
@@ -3102,7 +3105,7 @@ def page_settings(user: str):
                     f"整包成本 {cost * total:,.0f};返還率 {rate:.2%}"
                     f"(期望 {pillar.expected_net(cost, prize, 1, g.num_max, g.pick):+,.0f}/期);"
                     f"損益兩平的中一注可得 {be:,.1f}(目前 {prize:,.0f});"
-                    f"中{pillar.max_hits(g.num_max, g.pick)}碰每倍淨利 {gain:+,.0f}"
+                    f"中{pillar.max_hits(g.num_max, g.pick)}碰每支淨利 {gain:+,.0f}"
                     + ("(≤ 0 = 中最大獎也追不回虧損)" if gain <= 0 else ""))
                 if prize > be:
                     st.error(
