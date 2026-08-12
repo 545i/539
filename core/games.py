@@ -28,10 +28,13 @@ class GameConfig:
     default_cost_per_car: float = 2755.0   # 每車成本
     default_win_payout: float = 21200.0    # 每車中獎可得
     # ── 三柱 1800碰 的盤口預設值(只有 39 選 5 的款用得到)──
-    # 預設抓官方 39樂合彩三合:每注 25 元、全中一注派彩 11,250 元。
-    # 跟民間盤下的人可以在「設定 → 盤口設定」改成自己的價碼。
-    default_bet_cost: float = 25.0         # 每注(三合)成本
-    default_bet_prize: float = 11_250.0    # 中一注可得
+    # 用實際在跑的民間盤:每注 63 元、中一注 57,000 元 → 1 支 = 1800 × 63 = 113,400。
+    # (官方 39樂合彩三合是 25 / 11,250,返還率只有 49.24%,見 core.pillar 的
+    #  OFFICIAL_* 常數;民間盤這組是 99.00%,差很多,拿官方當預設會誤導。)
+    # 兩平上限是 913.9 × 每注成本 = 57,575.7,57,000 剛好在線下一點點。
+    # 個別帳號要用別的價碼就在「設定 → 盤口設定」改,存進 erhe_settings 蓋過預設。
+    default_bet_cost: float = 63.0         # 每注(三合)成本
+    default_bet_prize: float = 57_000.0    # 中一注可得
 
     @property
     def label(self) -> str:
