@@ -2399,6 +2399,73 @@ def _pillar_intro(game):
         )
 
 
+def _pillar_formula_note(cfg: dict, game):
+    """1800碰 的損益算式,數字用當下的盤口現算。
+
+    算式本身在 539-SPEC.md:命中注數 §4.2、損益 §4.3、期望值 §4.6、
+    兩平點 §4.7.4。這裡不是重寫一份,是把那幾條式子代入你現在的盤口,
+    讓每個數字都看得出從哪來 —— 損益頁上的每一個金額都是這樣算的。
+    """
+    cost, prize = float(cfg["bet_cost"]), float(cfg["bet_prize"])
+    nm, pk = game.num_max, game.pick
+    total = pillar.total_bets(nm)
+    k1, k2, k3 = pillar.sizes(nm)
+    e_hits = pillar.expected_hits(nm, pk)
+    best = pillar.max_hits(nm, pk)
+    be = pillar.breakeven_prize(cost, nm, pk)
+    ev = pillar.expected_net(cost, prize, 1, nm, pk)
+    probs = pillar.hit_probs(nm, pk)
+
+    lines = [
+        "**注數**(§4.2)",
+        f"三柱各取一號的全組合 = {k1} × {k2} × {k3} = **{total:,} 注**,"
+        "每一注就是一注「39樂合彩三合」。",
+        "",
+        "**命中注數**(§4.2)",
+        "```",
+        "命中注數 = n₁ × n₂ × n₃      (n_i = 開獎號碼落在第 i 柱的顆數)",
+        "```",
+        f"n₁+n₂+n₃ = {pk} 且每項要 ≥ 1,所以值域只有 "
+        + "、".join(f"**{h}**" for h in sorted(probs, reverse=True) if h)
+        + " 和 **0**(任一柱掛蛋 → 整期歸零)。",
+        "",
+        "**本局損益**(§4.3)",
+        "```",
+        f"成本 = {total:,} 注 × 每注成本 × 倍數 = {total:,} × {cost:,.0f} × 倍數",
+        f"回收 = 命中注數 × 中一注可得 × 倍數 = 命中注數 × {prize:,.0f} × 倍數",
+        "損益 = 回收 − 成本",
+        "```",
+        f"所以 1 倍時:成本 {cost * total:,.0f};"
+        + "、".join(
+            f"中{h}碰回收 {h * prize:,.0f}(損益 {h * prize - cost * total:+,.0f})"
+            for h in sorted(probs, reverse=True) if h)
+        + f";斷柱 0(損益 {-cost * total:+,.0f})。",
+        "",
+        "**期望值**(§4.6)",
+        "```",
+        f"E[命中注數] = {total:,} × C({pk},3)/C({nm},3) = {e_hits:.5f}",
+        f"期望回收   = {e_hits:.5f} × {prize:,.0f} = {e_hits * prize:,.0f}",
+        f"期望損益   = {e_hits * prize:,.0f} − {cost * total:,.0f} = {ev:+,.0f} / 期",
+        f"返還率     = 期望回收 ÷ 成本 = "
+        f"{pillar.return_rate(cost, prize, nm, pk):.2%}",
+        "```",
+        "",
+        "**損益兩平**(§4.7.4)",
+        "```",
+        f"中一注可得要 = {total:,} × 每注成本 ÷ {e_hits:.5f}",
+        f"             = C({nm},3)/C({pk},3) × 每注成本",
+        f"             = {be / cost:.1f} × {cost:,.0f} = {be:,.1f}",
+        "```",
+        f"這個倍率({be / cost:.1f})就是**單注三合的公平賠率**,"
+        "跟買幾注無關 —— 包牌的成本與回收都線性於注數,所以會約掉。",
+        "",
+        f"**中{best}碰每倍淨利** = {best} × {prize:,.0f} − {cost * total:,.0f} = "
+        f"**{pillar.best_case_net_per_multiple(cost, prize, nm, pk):+,.0f}**"
+        + ";≤ 0 代表中最大獎也只是打平,加倍追不回過去的虧損。",
+    ]
+    _note("\n".join(lines), "損益是怎麼算的(代入你現在的盤口)")
+
+
 def _pillar_odds_panel(cfg: dict, game):
     """目前這款的 1800碰 盤口與它的期望值判定。"""
     cost, prize = float(cfg["bet_cost"]), float(cfg["bet_prize"])
@@ -2418,6 +2485,7 @@ def _pillar_odds_panel(cfg: dict, game):
         f"C({game.pick},3),與買幾注無關)。金額要改請到"
         "**設定 → 盤口設定 → 三柱 1800碰**。"
     )
+    _pillar_formula_note(cfg, game)
     if prize > be:
         st.error(
             f"目前設定的 {prize:,.0f} 高於兩平點 {be:,.1f},算出來會是**正期望值**"
