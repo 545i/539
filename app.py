@@ -352,6 +352,63 @@ def page_stats():
     _render_stats(fdf, game)
 
 
+# ── 直柱提醒:選號單上某一整行連續幾期沒開 ──────────────
+# 「柱」在這裡是**選號單上的直行**(01 11 21 31 這種尾數相同的一群),
+# 跟 core.pillar 的三柱(1800碰 的 10~18 / 20~29 / 其餘)是兩件不同的事。
+def _column_alert_text(a: dict) -> str:
+    extra = f"(歷史最長 {a['max_gap']} 期)" if a["max_gap"] > a["current"] else ""
+    return f"`{a['label']}`　連續 **{a['current']}** 期沒開{extra}"
+
+
+def _render_column_missing(fdf: pd.DataFrame, game):
+    """統計分析裡的直柱遺漏:整行的目前連續沒開與歷史最長。"""
+    st.subheader("直柱遺漏(選號單上的直行)")
+    st.caption(
+        "選號單一列 10 格,所以一個直行就是尾數相同的那一群:"
+        "01 11 21 31、02 12 22 32…,10 20 30 是尾數 0 那行。"
+        "那一行**有任何一個號碼**開出就算開了,整行都沒中才累計。\n\n"
+        f"注意 **{stats.column_label(0, game.num_max)}** 那行只有 "
+        f"{len(stats.columns(game.num_max)[0])} 個號碼(其餘是 "
+        f"{len(stats.columns(game.num_max)[1])} 個),本來就比較容易整行落空,"
+        "它的期數要跟其他行分開看。")
+
+    cm = stats.column_missing(fdf, game.num_max)
+    table = pd.DataFrame([{
+        "直柱": v["label"],
+        "目前連續沒開": v["current"],
+        "歷史最長": v["max_gap"],
+    } for v in cm.values()]).sort_values("目前連續沒開", ascending=False)
+    tables.html_table(table, mono_cols=("直柱",))
+
+    alerts = stats.column_alerts(fdf, game.num_max)
+    if alerts:
+        st.warning("🔔 **連續 "
+                   f"{stats.COLUMN_ALERT_DRAWS} 期以上整行沒開**\n\n"
+                   + "\n\n".join("- " + _column_alert_text(a) for a in alerts))
+    else:
+        st.success(f"目前沒有任何直柱連續 {stats.COLUMN_ALERT_DRAWS} 期以上沒開。")
+    st.caption(
+        "提醒只是把「這一行多久沒出現」講出來。每期開獎是獨立事件,"
+        "久沒開不會讓它下一期比較容易開 —— 這是描述過去,不是預測未來。")
+
+
+def _render_column_alert_banner():
+    """下注頁頂端的直柱提醒:三款一起看,哪一行連續幾期沒開。"""
+    hits = []
+    for g in GAME_LIST:
+        for a in stats.column_alerts(load_df(g.key), g.num_max):
+            hits.append((g, a))
+    if not hits:
+        return
+    hits.sort(key=lambda t: -t[1]["current"])
+    st.warning(
+        f"🔔 **直柱提醒** —— 這幾行已經連續 {stats.COLUMN_ALERT_DRAWS} 期以上"
+        "整行沒開(選號單上尾數相同的那一行):\n\n"
+        + "\n\n".join(f"- **{g.label}**　" + _column_alert_text(a)
+                       for g, a in hits)
+        + "\n\n完整的直柱遺漏表在「統計分析 → 遺漏值」。")
+
+
 def _render_stats(fdf: pd.DataFrame, game):
     nmax = game.num_max
     n_bands = len(stats.tens_bands(nmax))
@@ -407,6 +464,9 @@ def _render_stats(fdf: pd.DataFrame, game):
         miss_df = pd.DataFrame(rows).sort_values("目前遺漏", ascending=False).head(10)
         st.subheader("遺漏最久 Top10")
         st.dataframe(miss_df, width='stretch', hide_index=True)
+
+        st.divider()
+        _render_column_missing(fdf, game)
 
     # 間隔 / 連號
     with tabs[3]:
@@ -2762,6 +2822,7 @@ def _render_totals_tab(user: str, cfgs: dict, cum: float, rows: list[dict]):
 # ── 策略頁主體 ───────────────────────────────────────────
 def page_strategy(user: str):
     st.header("二合買牌")
+    _render_column_alert_banner()
     _note(
         "- 四個分頁:🟢 **單顆下注**、🟠 **多顆下注**、🟣 **三柱1800碰**、"
         "📊 **總損益**。三個下注頁的底色與按鈕顏色都不一樣,別下錯頁。\n"
