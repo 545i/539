@@ -1205,60 +1205,53 @@ GAME_LIST = list(games.GAMES.values())          # 目前可下注的遊戲
 # 三柱 1800碰 只吃 39 選 5(9/10/20 三柱、1800 注的結構就是這樣長出來的)
 PILLAR_GAMES = [g for g in GAME_LIST if pillar.supports(g)]
 
-# 三種下法各自一套配色。下錯分頁的代價是真金白銀,所以整塊視覺都要不一樣,
-# 不能只靠分頁標題那幾個字。
+# 每種下法的識別。以前是「一種下法一個顏色」,整塊背景 + 左色條 + 按鈕全部
+# 跟著染色,四種下法四種顏色,畫面亂到讀不下去。
+#
+# 改成靠**內容**分辨,不靠顏色:每一頁最上面一張中性的卡,寫清楚
+#   1. 這是哪一種下法、它在做什麼
+#   2. **這個下法自己的累積損益與局數**
+# 第 2 點才是真正防呆的東西 —— 各下法的累積本來就不一樣,數字對不上就是走錯頁,
+# 比「這頁是橘色的」可靠得多,而且不吃任何顏色預算。
 MODE_THEME = {
-    storage.SINGLE: {"color": "#0d9488", "emoji": "🟢", "name": "單顆",
-                     "tab": "單顆下注",
+    storage.SINGLE: {"name": "單顆", "tab": "單顆下注",
                      "desc": "每款固定押 1 顆,只能調車數"},
-    storage.MULTI: {"color": "#d97706", "emoji": "🟠", "name": "多顆",
-                    "tab": "多顆下注",
-                    "desc": "每款可自訂押幾顆"},
-    storage.PILLAR: {"color": "#7c3aed", "emoji": "🟣", "name": "三柱1800碰",
-                     "tab": "三柱1800碰",
+    storage.MULTI: {"name": "多顆", "tab": "多顆下注",
+                    "desc": "每款圈幾顆就押幾顆"},
+    storage.PILLAR: {"name": "三柱1800碰", "tab": "三柱1800碰",
                      "desc": "包下三柱全組合 1800 注,三柱各開到一顆就中"},
-    storage.COMBO: {"color": "#db2777", "emoji": "⭐", "name": "連碰",
-                    "tab": "連碰",
+    storage.COMBO: {"name": "連碰", "tab": "連碰",
                     "desc": "連碰 / 立柱 / 拖膽 —— 注數 = C(拖幾顆, 星數 − 膽幾顆)"},
 }
-TOTALS_COLOR = "#4f46e5"
 
 
-def _mode_css() -> str:
-    """每種下法各一組色條 / 按鈕 / 標題配色。
+def _mode_header(mode: str | None, cum: float, rows: list[dict]):
+    """分頁最上面的識別卡:這是哪一種下法 + 它自己的成績。
 
-    以前是三段幾乎一樣的 CSS 手寫在字串裡,加一種下法就得再複製一次;
-    改成依 MODE_THEME 產生,新增下法只要在字典裡多一列。
+    不上色 —— 用文字與數字辨認就夠,而且更可靠(見 MODE_THEME 的說明)。
     """
-    blocks = [
-        """
-.mode-banner {
-  padding: 0.5rem 0.8rem; border-radius: 8px; color: #fff !important;
-  font-weight: 700; margin: 0.2rem 0 0.8rem 0; line-height: 1.45;
-}
-.mode-banner small { color: rgba(255,255,255,0.92) !important; font-weight: 400; }
-"""
-    ]
-    for key, color in [(f"mode_{m}", t["color"]) for m, t in MODE_THEME.items()] \
-            + [("mode_totals", TOTALS_COLOR)]:
-        blocks.append(f"""
-/* 整個分頁內容掛上左側色條 + 淡底,一眼看得出現在在哪一種下法 */
-.st-key-{key} {{
-  border-left: 5px solid {color}; background: {color}0f;
-  padding: 0.6rem 0.7rem; border-radius: 0 10px 10px 0;
-}}
-/* 主要按鈕(記帳)跟著該下法的顏色走 */
-.st-key-{key} [data-testid="stBaseButton-primary"] {{
-  background-color: {color} !important; border-color: {color} !important;
-  color: #fff !important;
-}}
-/* 區塊標題也上色,捲到一半也知道自己在哪 */
-.st-key-{key} h3 {{ color: {color} !important; }}
-""")
-    return "<style>" + "".join(blocks) + "</style>"
-
-
-_MODE_CSS = _mode_css()
+    if mode is None:
+        name, desc = "總損益", "單顆 + 多顆 + 三柱1800碰 + 連碰 合計"
+    else:
+        t = MODE_THEME[mode]
+        name, desc = f"{t['name']}下注", t["desc"]
+    settled = [r for r in rows if not r["pending"]]
+    wins = sum(1 for r in settled if float(r["payout"] or 0) > 0)
+    with st.container(border=True):
+        c1, c2 = st.columns([3, 2], vertical_alignment="center")
+        c1.markdown(
+            f"<div style='font-size:1.15rem;font-weight:700;line-height:1.3'>{name}</div>"
+            f"<div style='color:#64748b;font-size:.85rem'>{desc}</div>",
+            unsafe_allow_html=True)
+        tone = "#dc2626" if cum < 0 else "#16a34a"
+        c2.markdown(
+            f"<div style='text-align:right'>"
+            f"<span style='color:#64748b;font-size:.8rem'>這一頁的累積損益</span><br>"
+            f"<span style='font-size:1.35rem;font-weight:700;color:{tone}'>"
+            f"{cum:+,.0f}</span><br>"
+            f"<span style='color:#94a3b8;font-size:.8rem'>{len(rows)} 局"
+            f"{f'・中獎 {wins} 局' if settled else '・尚未對獎'}</span></div>",
+            unsafe_allow_html=True)
 
 
 def _numeric_keyboard():
@@ -1294,18 +1287,6 @@ def _numeric_keyboard():
         </script>
         """,
         height=0,
-    )
-
-
-def _mode_banner(mode: str):
-    """分頁最上方的色條,寫明現在這一頁是哪一種下法。"""
-    t = MODE_THEME[mode]
-    st.markdown(
-        f'<div class="mode-banner" style="background:{t["color"]}">'
-        f'{t["emoji"]} 現在是「{t["name"]}下注」'
-        f'<br><small>{t["desc"]} — 這一頁的下注、回填、紀錄、清除都只作用在'
-        f'{t["name"]}</small></div>',
-        unsafe_allow_html=True,
     )
 
 
@@ -1613,55 +1594,32 @@ def _pad_key(mode: str, game_key: str) -> str:
 
 
 def _picked_map(picks: list[str], mode: str) -> dict[str, list[int]]:
-    """讀各款目前圈了哪些號(沒開過號碼盤就是空的)。
-
-    這也是「填數量 / 選號碼」的自動判斷依據 —— 圈了號就存號碼,
-    沒圈就跟以前一樣只記數量,不必再叫使用者先選模式。
-    """
+    """讀各款目前圈了哪些號。"""
     return {k: numpad.get_picked(_pad_key(mode, k)) for k in picks}
 
 
-@st.dialog("圈選號碼", width="large", on_dismiss="rerun")
-def _pick_dialog(game_key: str, mode: str, single: bool, preset_n: int):
-    """號碼盤彈窗:在這裡點號碼,關掉後押幾顆就跟著圈的顆數走。
+def _render_pads(picks: list[str], mode: str, single: bool) -> dict[str, list[int]]:
+    """號碼盤:**直接畫在頁面上**,不用彈窗。
 
-    st.dialog 繼承 st.fragment 的行為 —— 在彈窗裡點號碼只會重跑這個函式,
-    不會重跑整個頁面,所以彈窗自己會保持開著,**不需要**外部旗標去撐住它。
-    (先前用旗標撐,結果按 X 關掉後旗標還在,之後隨便點個東西彈窗就又跳出來。)
-    on_dismiss="rerun":使用者按 X / ESC / 點外面關掉後重跑一次,
-    外面的按鈕才會即時換成剛圈好的號碼。
+    以前是「按一顆按鈕開彈窗」—— 多一次點擊、彈窗裡看不到旁邊的試算、
+    在手機上還會蓋掉整個畫面。現在號碼盤就在下注表旁邊,圈完馬上看得到
+    車數與成本跟著變。
+
+    下多款時一款一個子分頁(不是全部攤開)—— 三款的盤疊起來會長到
+    要捲很久才看得到「記帳」。
     """
-    g = games.get(game_key)
     cap = 1 if single else MAX_PICK_MULTI
-    st.caption(
-        f"**{g.name}** — 1~{g.num_max} 號,每期開 {g.pick} 顆。"
-        + ("這個 tab 固定押 **1 顆**,點另一顆會直接換過去。" if single else
-           f"圈幾顆就押幾顆(目前設定 {preset_n} 顆,最多 {cap} 顆)。"))
-    numpad.number_pad(key=_pad_key(mode, game_key), num_max=g.num_max, max_pick=cap)
-    c1, c2 = st.columns([1, 1])
-    if c1.button("完成", type="primary", width="stretch", key=f"pad_ok_{mode}_{game_key}"):
-        st.rerun()                      # 關掉彈窗並重跑,外面才看得到新號碼
-    if c2.button("不選號(改用填數量)", width="stretch", key=f"pad_cancel_{mode}_{game_key}"):
-        numpad.clear(_pad_key(mode, game_key))
-        st.rerun()
-
-
-def _pad_buttons(picks: list[str], mode: str, nums_map: dict,
-                 single: bool, cfgs: dict) -> None:
-    """表格底下的「選號碼」按鈕列:一款一顆,順便顯示已經圈了什麼。
-
-    直接在按鈕的 if 裡叫彈窗 —— 只有真的按下這顆按鈕才會開,
-    切換遊戲、改車數之類的重跑都不會誤觸。
-    """
-    cols = st.columns(len(picks))
-    for col, k in zip(cols, picks):
-        got = nums_map.get(k) or []
-        label = (f"🎯 {games.get(k).label}　" +
-                 (" ".join(f"{n:02d}" for n in got) if got else "選號碼"))
-        if col.button(label, key=f"{mode}_openpad_{k}", width="stretch",
-                      type="primary" if got else "secondary",
-                      help="打開號碼盤圈號;圈了號就會連號碼一起存,開獎後可自動對獎。"):
-            _pick_dialog(k, mode, single, int(cfgs[k]["n_numbers"]))
+    st.markdown("**圈號碼**")
+    st.caption(("這一頁固定押 1 顆,點另一顆會直接換過去" if single
+                else f"圈幾顆就押幾顆(最多 {cap} 顆)")
+               + ";號碼會跟著紀錄存下來,開獎後自動對獎。")
+    holders = ([st.container()] if len(picks) == 1
+               else list(st.tabs([games.get(k).label for k in picks])))
+    for holder, k in zip(holders, picks):
+        g = games.get(k)
+        with holder:
+            numpad.number_pad(key=_pad_key(mode, k), num_max=g.num_max, max_pick=cap)
+    return _picked_map(picks, mode)
 
 
 def _pred_panel(picks: list[str], mode: str, single: bool, draw_date) -> None:
@@ -1784,10 +1742,13 @@ def _render_today(user: str, cfgs: dict, cum: float, mode: str = storage.MULTI):
         st.info("勾選至少一款,系統就會算出今天要下幾車。")
         return
 
-    # ── 輸入方式自動判斷:圈了號碼就用號碼,沒圈就跟以前一樣只記數量 ──
-    nums_map = _picked_map(picks, mode)
-    by_pick = any(nums_map.values())
-    # 有圈號的款,押幾顆一律以圈的顆數為準(沒圈的維持設定值)
+    # ── 號碼是必填 ──────────────────────────────────────
+    # 以前可以「只填幾顆、不記號碼」,那種紀錄事後對不了獎(不知道你圈了什麼),
+    # 只能靠人自己記得中幾顆再手動填 —— 錯了也查不出來。現在一律圈號碼,
+    # 押幾顆就是圈幾顆,開獎後全部自動對獎。
+    nums_map = _render_pads(picks, mode, single)
+    missing = [games.get(k).label for k in picks if not nums_map.get(k)]
+    # 押幾顆一律以圈的顆數為準(還沒圈的先用設定值試算,記帳時會擋下來)
     cfgs = {k: {**v, "n_numbers": (len(nums_map.get(k) or []) or v["n_numbers"])}
             for k, v in cfgs.items()}
 
@@ -1870,13 +1831,13 @@ def _render_today(user: str, cfgs: dict, cum: float, mode: str = storage.MULTI):
     )
 
     loss = max(0.0, -cum)
-    # 只有真的圈過號才多一欄「號碼」;純填數量的人看到的表跟以前一模一樣
+
     def _row_nums(k: str) -> str:
         got = nums_map.get(k) or []
-        return " ".join(f"{n:02d}" for n in got) if got else "—"
+        return " ".join(f"{n:02d}" for n in got) if got else "(還沒圈)"
 
     num_col = {"號碼": st.column_config.TextColumn(
-        "號碼", help="在下方號碼盤圈的號碼;沒圈號的款顯示「—」,一樣只記數量。")}
+        "號碼", help="上面號碼盤圈的號碼。要改請回號碼盤加減,這一格改不動。")}
 
     # 期號:表格裡就是下拉,直接在那一格選。預設帶開獎資料算出來的下一期,
     # 往回幾期給補登、往前幾期給預先下注 —— 期號打錯不會有任何提示,
@@ -1893,7 +1854,7 @@ def _render_today(user: str, cfgs: dict, cum: float, mode: str = storage.MULTI):
         table = pd.DataFrame([{
             "遊戲": games.get(k).label,
             **({"期號": issue_now[k]} if has_issue else {}),
-            **({"號碼": _row_nums(k)} if by_pick else {}),
+            "號碼": _row_nums(k),
             "下幾車": int(res["cars"][k]),
             "開獎結果": SINGLE_HITS_REV[hits_state.get(k)],
         } for k in picks], index=list(picks))
@@ -1904,7 +1865,7 @@ def _render_today(user: str, cfgs: dict, cum: float, mode: str = storage.MULTI):
             "開獎結果": st.column_config.SelectboxColumn(
                 "開獎結果", options=list(SINGLE_HITS), required=True,
                 help="押 1 顆只有中或沒中兩種結果;還沒開獎就留「待開獎」。"),
-            **(num_col if by_pick else {}),
+            **num_col,
             **(issue_col if has_issue else {}),
         }
     else:
@@ -1912,7 +1873,7 @@ def _render_today(user: str, cfgs: dict, cum: float, mode: str = storage.MULTI):
         table = pd.DataFrame([{
             "遊戲": games.get(k).label,
             **({"期號": issue_now[k]} if has_issue else {}),
-            **({"號碼": _row_nums(k)} if by_pick else {}),
+            "號碼": _row_nums(k),
             "押幾顆": int(cfgs[k]["n_numbers"]),
             "下幾車": int(res["cars"][k]),
             "中獎顆數": (PENDING_LABEL if hits_state.get(k) is None
@@ -1921,9 +1882,7 @@ def _render_today(user: str, cfgs: dict, cum: float, mode: str = storage.MULTI):
         col_cfg = {
             "押幾顆": st.column_config.NumberColumn(
                 "押幾顆", min_value=1, max_value=20, step=1, required=True,
-                help=("由上面圈了幾顆決定,改這裡沒有用 —— 要改請回號碼盤加減。"
-                      if by_pick else
-                      "今天這款要押幾個號碼。改了會一併更新「設定」頁的盤口。")),
+                help="由上面圈了幾顆決定,改這裡沒有用 —— 要改請回號碼盤加減。"),
             "下幾車": st.column_config.NumberColumn(
                 "下幾車", min_value=1, max_value=100_000, step=1, required=True,
                 help="可直接修改。你改過的那款會固定住,其餘款依剩下的成本重算。"),
@@ -1931,15 +1890,13 @@ def _render_today(user: str, cfgs: dict, cum: float, mode: str = storage.MULTI):
                 "中獎顆數", options=hit_opts, required=True,
                 help="中了幾顆就選幾;還沒開獎就留「待開獎」,"
                      "之後在「二、開獎後回填」補。"),
-            **(num_col if by_pick else {}),
+            **num_col,
             **(issue_col if has_issue else {}),
         }
 
     st.markdown("**填這裡**")
-    # 有圈號的款「押幾顆」是號碼盤算出來的,鎖住避免兩邊打架;
-    # 「號碼」欄只是顯示,要改請回號碼盤
-    locked = (["遊戲"] + (["押幾顆"] if (by_pick and not single) else [])
-              + (["號碼"] if by_pick else []))
+    # 「押幾顆」與「號碼」都是號碼盤算出來的,鎖住避免兩邊打架
+    locked = ["遊戲", "號碼"] + ([] if single else ["押幾顆"])
     edited = st.data_editor(
         table, key=f"{mode}_today_editor", hide_index=True, width="stretch",
         disabled=locked, column_config=col_cfg,
@@ -1958,19 +1915,12 @@ def _render_today(user: str, cfgs: dict, cum: float, mode: str = storage.MULTI):
     if bad_issue:
         st.error(f"**{'、'.join(bad_issue)}** 選到的期號不是這一款的 —— "
                  "各款期號各自編號,請重選。")
-    _pad_buttons(picks, mode, nums_map, single, cfgs)
     _pred_panel(picks, mode, single, draw_date)
 
     # 比對「送進表格的值」與「改完的值」,不同的就是使用者手動指定的。
     # 押幾顆存進設定,車數/顆數存進 session,再重跑一次讓建議依它重算。
     changed = False
     for k in picks:                      # 以遊戲代號取值,排序過也不會對錯行
-        if not single and not by_pick:   # 選號模式的顆數來自號碼盤,不寫回設定
-            n_new = edited.loc[k, "押幾顆"]
-            if n_new and int(n_new) != int(table.loc[k, "押幾顆"]):
-                storage.set_setting(cfgs[k]["skey"], "n_numbers", int(n_new))
-                st.session_state.pop(f"set_n_{k}", None)
-                changed = True
         v = edited.loc[k, "下幾車"]
         if v and int(v) != int(table.loc[k, "下幾車"]):
             fixed[k] = int(v)
@@ -2066,14 +2016,22 @@ def _render_today(user: str, cfgs: dict, cum: float, mode: str = storage.MULTI):
     # 單顆只有中/沒中兩種結果,沒有「中更多顆」可看,那顆按鈕就不放了
     cols = st.columns([2, 1] if single else [2, 1.2, 1])
     b1, b_last = cols[0], cols[-1]
+    # 記帳鈕永遠可按 —— disabled 的按鈕按下去毫無反應,使用者只會覺得壞了。
+    # 缺什麼按了才講。
     if b1.button(
             "記帳" + ("(留「待開獎」的就當作還沒對獎)" if single
                       else "(中獎顆數留空的就當作待開獎)"),
-            key=f"{mode}_record", type="primary", width="stretch",
-            disabled=bool(bad_hits or bad_issue)):
-        # 圈了號的款連號碼一起存,沒圈的只存數量 —— 同一次記帳可以混著來
-        _record(user, cfgs, picks, cars, draw_date, hits, mode=mode,
-                nums=nums_map, issues=issues_in)
+            key=f"{mode}_record", type="primary", width="stretch"):
+        if missing:
+            st.error(
+                f"**{'、'.join(missing)}** 還沒圈號碼 —— 請在上面的號碼盤把要下的"
+                + ("那 1 顆點出來。" if single else "號碼點出來(圈幾顆就押幾顆)。"),
+                icon="🚫")
+        elif bad_hits or bad_issue:
+            st.error("上面有紅字要先處理,才能記帳。", icon="🚫")
+        else:
+            _record(user, cfgs, picks, cars, draw_date, hits, mode=mode,
+                    nums=nums_map, issues=issues_in)
     if not single and cols[1].button(
             "查看中更多顆的金額", key=f"{mode}_more", width="stretch",
             help="依你填的車數,列出中 1 顆、2 顆…各拿多少、累積會變多少。"):
@@ -2890,25 +2848,6 @@ def _combo_play_of(dans: int) -> str:
         combo.PLAYS[1].name if dans == 1 else combo.PLAYS[2].name)
 
 
-@st.dialog("圈選號碼", width="large", on_dismiss="rerun")
-def _combo_pick_dialog(game_key: str, stars: int, dans_wanted):
-    """連碰的號碼盤:圈要下的號碼,膽在外面指定。"""
-    g = games.get(game_key)
-    st.caption(
-        f"**{g.name}** — 1~{g.num_max} 號,每期開 {g.pick} 顆。"
-        f"圈幾顆就從幾顆裡湊 {stars} 星"
-        + (f",其中 {dans_wanted} 顆等一下要指定成膽。" if dans_wanted else "。")
-        + f"　最多圈 {_COMBO_MAX_PICK} 顆。")
-    numpad.number_pad(key=_COMBO_LEDGER_PAD, num_max=g.num_max,
-                      max_pick=_COMBO_MAX_PICK)
-    c1, c2 = st.columns(2)
-    if c1.button("完成", type="primary", width="stretch", key="ledger_pad_ok"):
-        st.rerun()
-    if c2.button("清空重選", width="stretch", key="ledger_pad_clear"):
-        numpad.clear(_COMBO_LEDGER_PAD)
-        st.rerun()
-
-
 def _combo_odds_panel(cfg: dict, game, stars: int, drag: int, dans: int):
     """目前這張牌的盤口與它的期望值判定。"""
     per_bet, odds = _combo_odds(cfg, stars)
@@ -2957,15 +2896,15 @@ def _render_combo_today(user: str, cfgs: dict, cum: float):
     st.caption(f"**{p.name}** — {p.desc}。")
 
     # 圈號碼(必填)—— 沒有號碼就沒辦法自動對獎,也算不出拖幾顆
-    picked = numpad.get_picked(_COMBO_LEDGER_PAD)
+    st.markdown("**圈號碼**")
+    st.caption(
+        f"{g.name} 1~{g.num_max} 號,每期開 {g.pick} 顆。圈幾顆就從幾顆裡湊 "
+        f"{combo.star_name(stars)}"
+        + (f",其中 {p.dans} 顆等一下指定成膽" if p.dans else "")
+        + f"。最多圈 {_COMBO_MAX_PICK} 顆;號碼會跟著紀錄存下來,開獎後自動對獎。")
+    picked = numpad.number_pad(key=_COMBO_LEDGER_PAD, num_max=g.num_max,
+                               max_pick=_COMBO_MAX_PICK)
     dan_max = min(int(stars) - 1, len(picked))
-    if st.button(
-            ("🎯 " + " ".join(f"{n:02d}" for n in picked)) if picked
-            else "🎯 圈選要下的號碼",
-            key="lcombo_openpad", width="stretch",
-            type="primary" if picked else "secondary",
-            help="打開號碼盤圈號;圈好的號碼會跟著紀錄一起存,開獎後可自動對獎。"):
-        _combo_pick_dialog(key, stars, p.dans)
 
     dan_nums: list[int] = []
     if p.dans != 0 and picked:
@@ -3365,24 +3304,20 @@ def _render_mode_recovery(cfgs: dict, cum: float, mode: str):
 
     st.dataframe(_recovery_df(rows, drop_mode=True), width="stretch", hide_index=True)
     st.caption(f"這裡用的是**{name}自己的累積損益**({cum:+,.0f}),不含其他下法;"
-               "三者合計看「📊 總損益」那頁。")
+               "三者合計看「總損益」那頁。")
     _note(_RECOVERY_NOTE, "這張表怎麼算的")
 
 
 # ── 總損益分頁:三種下法的合計與對照 ────────────────────────
 def _render_totals_tab(user: str, cfgs: dict, cum: float, rows: list[dict]):
-    st.markdown(
-        f'<div class="mode-banner" style="background:{TOTALS_COLOR}">'
-        f'📊 總損益(單顆 + 多顆 + 三柱1800碰 + 連碰 合計)'
-        f'<br><small>四種下法共用同一個損益池,這一頁看的是合起來的結果</small></div>',
-        unsafe_allow_html=True,
-    )
+    _mode_header(None, cum, rows)
+    st.caption("四種下法共用同一個損益池,這一頁看的是合起來的結果。")
     _render_scoreboard(storage.totals(user))
 
     st.markdown("**各種下法的成績**")
     per_mode = {m: storage.totals(user, m) for m in storage.MODES}
     st.dataframe(pd.DataFrame([{
-        "下法": f"{MODE_THEME[m]['emoji']} {storage.MODE_NAMES[m]}",
+        "下法": storage.MODE_NAMES[m],
         "局數": t["rounds"], "中獎局": t["wins"],
         "投入": f"{t['cost']:,.0f}", "回收": f"{t['payout']:,.0f}",
         "損益": f"{t['net']:+,.0f}",
@@ -3411,7 +3346,7 @@ def _render_totals_tab(user: str, cfgs: dict, cum: float, rows: list[dict]):
     st.caption(
         "三柱1800碰 與 連碰 不列在這張表 —— 它們算的是「下幾支」而不是"
         "「下幾車」,回收的級距也完全不同。要看它們的回本支數請到 "
-        "🟣 三柱1800碰 / ⭐ 連碰 分頁的「四、回本要下幾支」。")
+        "三柱1800碰 / 連碰 分頁的「四、回本要下幾支」。")
     ok = [r for r in rec if r["_cost"] != float("inf")]
     if ok:
         best = min(ok, key=lambda r: r["_cost"])
@@ -3426,17 +3361,18 @@ def page_strategy(user: str):
     st.header("二合買牌")
     _render_pillar_alert_banner()
     _note(
-        "- 五個分頁:🟢 **單顆下注**、🟠 **多顆下注**、🟣 **三柱1800碰**、"
-        "⭐ **連碰**、📊 **總損益**。四個下注頁的底色與按鈕顏色都不一樣,別下錯頁。\n"
+        "- 五個分頁:**單顆下注**、**多顆下注**、**三柱1800碰**、**連碰**、"
+        "**總損益**。每頁最上面那張卡會寫明你在哪一頁,右邊是**那一頁自己的"
+        "累積損益** —— 數字對不上就代表走錯頁了。\n"
         "- 下注、回填、紀錄、清除、建議車數**全部跟著你所在的分頁走**,"
         "互不干擾 —— 清單顆不會動到多顆。\n"
         "- **每種下法各算各的累積**:單顆頁的建議車數只追單顆的虧損,"
-        "多顆頁只追多顆的。三者合起來的數字看「📊 總損益」那頁。\n"
+        "多顆頁只追多顆的。四者合起來的數字看「總損益」那頁。\n"
         "- 多顆中得勤但回本慢,單顆中得少但一中就整碗端回去。\n"
-        "- 🟣 **三柱1800碰** 是完全不同的玩法:不押膽號,而是把號碼切成三柱、"
+        "- **三柱1800碰** 是完全不同的玩法:不押膽號,而是把號碼切成三柱、"
         "買下三柱全組合共 1800 注三合。只要三柱各開到一顆就中,過關率 55.36%,"
         "但官方賠率下**中最大獎也只是打平**,細節在那一頁裡。\n"
-        "- ⭐ **連碰** 是民間那一套:連碰 / 立柱 / 拖膽 × 二 / 三 / 四星,"
+        "- **連碰** 是民間那一套:連碰 / 立柱 / 拖膽 × 二 / 三 / 四星,"
         "**注數 = C(拖幾顆, 星數 − 膽幾顆)**。一注要那幾顆全開才中,中獎率低"
         "但一中就是好幾倍,細節同樣在那一頁。要先試算或列注單請用側邊欄的"
         "「連碰計算機」。\n"
@@ -3445,7 +3381,6 @@ def page_strategy(user: str):
         "- 中獎顆數可以先填,也可以開獎後再回填。",
         "這頁怎麼用")
 
-    st.markdown(_MODE_CSS, unsafe_allow_html=True)
     cfgs = {g.key: _game_settings(user, g) for g in GAME_LIST}
     rows = storage.load_rounds(user)
     cum = storage.current_cumulative(user)
@@ -3453,18 +3388,18 @@ def page_strategy(user: str):
 
     # 一層 tab:三種下法各自獨立(下注 / 回填 / 紀錄 / 建議車數都跟著它),
     # 再加一個看合計的總損益頁。
-    labels = [f"{MODE_THEME[m]['emoji']} {MODE_THEME[m]['tab']}({counts[m]})"
-              for m in storage.MODES] + ["📊 總損益"]
+    labels = [f"{MODE_THEME[m]['tab']}({counts[m]})"
+              for m in storage.MODES] + ["總損益"]
     # 給 key 讓分頁記住選了哪一頁 —— 否則每次重跑(記帳、開關號碼盤、改車數)
     # 都會跳回第一頁,人在多顆頁操作卻被彈回單顆頁。
     tabs = st.tabs(labels, key="mode_tabs")
 
     for tab, mode in zip(tabs, storage.MODES):
         with tab, st.container(key=f"mode_{mode}"):
-            _mode_banner(mode)
-            # 建議車數用「這一種下法自己的累積」,不被另外兩種的盈虧帶偏
+            # 建議車數用「這一種下法自己的累積」,不被另外三種的盈虧帶偏
             mode_rows = storage.load_rounds(user, mode)
             mode_cum = storage.current_cumulative(user, mode)
+            _mode_header(mode, mode_cum, mode_rows)
             if mode == storage.PILLAR:
                 # 1800碰 是包牌,沒有「押幾顆 / 幾車」那組輸入,整頁自己一套
                 _render_pillar_tab(user, cfgs, mode_rows, mode_cum)
@@ -3479,7 +3414,7 @@ def page_strategy(user: str):
             st.divider()
             _render_pending(mode_rows)
             _render_mode_records(user, mode, mode_rows)
-            # 多顆頁不放回本試算 —— 「📊 總損益」那頁的對照表已經涵蓋
+            # 多顆頁不放回本試算 —— 「總損益」那頁的對照表已經涵蓋
             if mode == storage.SINGLE:
                 st.divider()
                 _render_mode_recovery(cfgs, mode_cum, mode)
@@ -3743,7 +3678,7 @@ def page_combo():
         "(72.5 × 53 = 3,842.5)。\n"
         "- **二 / 三 / 四星各有各的每注價**,切換星數上面的金額會跟著換。\n"
         "- 這頁只做試算**不會記帳**。要把輸贏記起來、看累積損益,"
-        "請到「二合買牌 → ⭐ 連碰」。\n\n"
+        "請到「二合買牌 → 連碰」。\n\n"
         "**誠實提醒**:注數算得再精準,也改變不了每一注都是負期望。"
         f"{combo.star_name(stars)}在 {game.name} 的公平賠率是 "
         f"{combo.fair_odds(stars, game.num_max, game.pick):,.1f},"

@@ -56,9 +56,17 @@ def _record_button(at):
     raise AssertionError("找不到記帳按鈕")
 
 
+def _circle(at, keys, mode=storage.SINGLE, nums=(1,)):
+    """在號碼盤圈號(盤是直接畫在頁面上的,狀態就存在 session_state)。"""
+    for k in keys:
+        at.session_state[f"{mode}_pad_{k}__picked"] = list(nums)
+    at.run()
+
+
 def test_recording_two_games_does_not_blow_up(app):
     """勾 2 款以上按記帳 —— 這是 mode 被 radio 蓋掉時會 ValueError 的那條路。"""
     _pick_games(app, ["lotto539", "fantasy5"])
+    _circle(app, ["lotto539", "fantasy5"])
     assert not app.exception
     _record_button(app).click().run()
     assert not app.exception, [str(e.value) for e in app.exception]
@@ -67,6 +75,36 @@ def test_recording_two_games_does_not_blow_up(app):
     assert len(rows) == 2
     assert {r["mode"] for r in rows} <= set(storage.MODES)
     assert {r["game"] for r in rows} == {"lotto539", "fantasy5"}
+    assert all(r["picked"] for r in rows), "號碼是必填,每一筆都要存下來"
+
+
+def test_recording_without_numbers_is_refused(app):
+    """沒圈號碼不准記帳 —— 那種紀錄事後對不了獎,只能靠人自己記得。
+
+    但按鈕還是要能按、要講清楚缺哪一款,不能靜悄悄什麼都不做。
+    """
+    _pick_games(app, ["lotto539"])
+    btn = _record_button(app)
+    assert not btn.disabled, "記帳鈕不該是 disabled,那樣按了完全沒反應"
+    btn.click().run()
+    assert not app.exception, [str(e.value) for e in app.exception]
+    assert not storage.load_rounds("apptest"), "沒號碼不該記進去"
+    assert any("還沒圈號碼" in e.value for e in app.error), [e.value for e in app.error]
+
+
+def test_picked_count_drives_how_many_you_bet(app):
+    """多顆下法:**圈幾顆就押幾顆**,不再有「手寫幾顆」那條路。"""
+    app.session_state["multi_today_games"] = ["lotto539"]
+    app.session_state["multi_pad_lotto539__picked"] = [3, 7, 11, 25]
+    app.run()
+    assert not app.exception, [str(e.value) for e in app.exception]
+    _button(app, "multi_record").click().run()
+    assert not app.exception, [str(e.value) for e in app.exception]
+
+    rows = [r for r in storage.load_rounds("apptest") if r["mode"] == storage.MULTI]
+    assert len(rows) == 1
+    assert rows[0]["numbers"] == 4, "押幾顆要等於圈的顆數"
+    assert rows[0]["picked"] == [3, 7, 11, 25]
 
 
 def test_share_mode_radio_does_not_reset_the_table(app):
@@ -264,6 +302,7 @@ def test_combo_calculator_page_renders(app):
 def test_issue_column_is_a_dropdown_in_the_table(app):
     """期號在表格裡就是下拉,不是唯讀欄位 —— 使用者要能直接在那一格選。"""
     _pick_games(app, ["fantasy5"])
+    _circle(app, ["fantasy5"])
     assert not app.exception
     # AppTest 沒辦法驅動 data_editor 的儲存格,所以改驗最終結果:
     # 不改任何東西直接記帳,存下的期號要是開獎資料算出來的下一期
