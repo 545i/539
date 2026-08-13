@@ -3007,42 +3007,57 @@ def _render_combo_today(user: str, cfgs: dict, cum: float):
     issue_in = predictor.issue_of_label(when.iloc[0]["期號"]) if has_issue else ""
 
     # ── 各星別下多少(一星別一列)────────────────────────
+    # 碰數預設是「圈幾顆的全包」= C(拖, 星數 − 膽),但**可以改** ——
+    # 組頭賣的有時是固定碰數的包(三星 56 碰、四星 70 碰),或你只買其中一部分。
+    # 成本 = 每注成本 × 碰數 × 支數;得獎 = 每注成本 × **中的碰數** × 倍率 × 支數。
     plan = pd.DataFrame([{
         "星別": combo.star_name(k),
-        "注數": combo.bets(k, drag, dans),
+        "碰數": combo.bets(k, drag, dans),
         "每注成本": _combo_odds(cfg, k)[0],
-        "中一注可得": combo.prize_per_bet(*_combo_odds(cfg, k)),
         "下幾支": int(cfg["combo_base"]),
-        "返還率": combo.return_rate(k, _combo_odds(cfg, k)[1], g.num_max, g.pick),
+        "單支成本": _combo_odds(cfg, k)[0] * combo.bets(k, drag, dans),
+        "中一碰可得": combo.prize_per_bet(*_combo_odds(cfg, k)),
     } for k in star_list], index=[str(k) for k in star_list])
     st.markdown("**各星別下多少**")
     plan_edited = st.data_editor(
         plan, key="lcombo_plan", hide_index=True, width="stretch",
-        disabled=["星別", "注數", "每注成本", "中一注可得", "返還率"],
+        disabled=["星別", "每注成本", "單支成本", "中一碰可得"],
         column_config={
-            "注數": st.column_config.NumberColumn("注數", format="%d 注"),
+            "碰數": st.column_config.NumberColumn(
+                "碰數", min_value=0, max_value=1_000_000, step=1, required=True,
+                help="一支買幾碰。預設是你圈的號碼全包(C(拖, 星數 − 膽)),"
+                     "組頭賣固定碰數的包、或你只買一部分時可以改。"),
             "每注成本": st.column_config.NumberColumn("每注成本", format="%.10g"),
-            "中一注可得": st.column_config.NumberColumn("中一注可得", format="%.10g"),
             "下幾支": st.column_config.NumberColumn(
                 "下幾支", min_value=0, max_value=1000, step=1, required=True,
                 help="填 0 就是這一期不下這種星別。支數只是等比放大,不改變機率。"),
-            "返還率": st.column_config.NumberColumn("返還率", format="percent"),
+            "單支成本": st.column_config.NumberColumn("單支成本", format="%.10g"),
+            "中一碰可得": st.column_config.NumberColumn("中一碰可得", format="%.10g"),
         },
     )
 
-    # 真正要下的:注數 > 0 且支數 > 0 的星別
-    bets_plan = []
+    # 真正要下的:碰數 > 0 且支數 > 0 的星別
+    bets_plan, partial = [], []
     for k in star_list:
-        n = combo.bets(k, drag, dans)
+        full = combo.bets(k, drag, dans)
+        n = int(plan_edited.loc[str(k), "碰數"] or 0)
         sheets = int(plan_edited.loc[str(k), "下幾支"] or 0)
-        if n > 0 and sheets > 0:
-            per_bet, odds = _combo_odds(cfg, k)
-            bets_plan.append({
-                "stars": k, "bets": n, "sheets": sheets,
-                "cost": combo.round_cost(k, drag, per_bet, dans, sheets),
-                "prize": combo.prize_per_bet(per_bet, odds),
-                "per_bet": per_bet, "odds": odds,
-            })
+        if n <= 0 or sheets <= 0:
+            continue
+        per_bet, odds = _combo_odds(cfg, k)
+        if full and n != full:
+            partial.append(f"{combo.star_name(k)}({n} / 全包 {full})")
+        bets_plan.append({
+            "stars": k, "bets": n, "sheets": sheets, "full": full,
+            "cost": per_bet * n * sheets,
+            "prize": combo.prize_per_bet(per_bet, odds),
+            "per_bet": per_bet, "odds": odds,
+        })
+    if partial:
+        st.warning(
+            "碰數不是全包:" + "、".join(partial)
+            + "。**成本照你填的碰數算**,但機率與自動對獎是照「全包」推的 —— "
+              "少買的那幾碰要是剛好開出來,實際會比表上算的少中。", icon="⚠️")
     short = [combo.star_name(k) for k in star_list if combo.bets(k, drag, dans) <= 0]
     if short and picked:
         st.warning(
@@ -3052,9 +3067,14 @@ def _render_combo_today(user: str, cfgs: dict, cum: float):
     total_cost = sum(b["cost"] for b in bets_plan)
     if bets_plan:
         st.caption(
-            "這一期總成本 **" + _amt(total_cost) + "**("
-            + "、".join(f"{combo.star_name(b['stars'])} {b['sheets']} 支 × "
-                        f"{b['bets']:,} 注 × {_amt(b['per_bet'])} = {_amt(b['cost'])}"
+            "**成本** = 每注成本 × 碰數 × 支數 —— 這一期總共 **"
+            + _amt(total_cost) + "**("
+            + "、".join(f"{combo.star_name(b['stars'])} {_amt(b['per_bet'])} × "
+                        f"{b['bets']:,} 碰 × {b['sheets']} 支 = {_amt(b['cost'])}"
+                        for b in bets_plan)
+            + ")　|　**得獎** = 每注成本 × **中的碰數** × 倍率 × 支數("
+            + "、".join(f"{combo.star_name(b['stars'])}中 1 碰 = {_amt(b['per_bet'])}"
+                        f" × 1 × {_amt(b['odds'])} = {_amt(b['prize'])}"
                         for b in bets_plan)
             + ")。價碼要改請到**設定 → 盤口設定 → 連碰**。")
 
@@ -3070,7 +3090,11 @@ def _render_combo_today(user: str, cfgs: dict, cum: float):
             rows_out.append({
                 "對中幾顆": f"{o['matched']} 顆",
                 "機率": f"{o['prob']:.4%}",
-                **{combo.star_name(b["stars"]): combo.result_text(o["hits"][b["stars"]])
+                # 一格講完「中幾碰 → 那一種星別拿多少」,不必自己乘
+                **{combo.star_name(b["stars"]):
+                   (f"中 {o['hits'][b['stars']]} 碰 = "
+                    f"{_amt(o['hits'][b['stars']] * b['prize'] * b['sheets'])}"
+                    if o["hits"][b["stars"]] else "槓龜")
                    for b in bets_plan},
                 "回收": _amt(gross),
                 "成本": _amt(total_cost),
