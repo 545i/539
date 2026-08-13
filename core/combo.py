@@ -292,10 +292,22 @@ def star_hit_probs(stars: int, picked: int, num_max: int = 39,
 
 
 def star_expected_hits(stars: int, picked: int, num_max: int = 39,
-                       pick: int = 5) -> float:
-    """星碰每期期望中幾碰。"""
-    return sum(h * p for h, p in
-               star_hit_probs(stars, picked, num_max, pick).items())
+                       pick: int = 5, bets_bought: int | None = None) -> float:
+    """星碰每期期望中幾碰 = 買的碰數 × **單碰**中獎機率。
+
+    這裡是先前算錯的地方。我本來用「至少重 K 顆的機率 × 固定碰數」
+    (三星 4.91% × 5 = 0.245),那算的是「這一期有沒有中」,不是期望中幾碰;
+    拿它算返還率會得到 394%,大得離譜。
+
+    正確的是一碰一碰算:每一碰是 K 個號碼,要那 K 顆全在開出的 pick 顆裡,
+    機率 C(pick,K)/C(num_max,K) —— 三星 10/9,139、四星 5/82,251。
+    每一碰的中獎機率都一樣,期望值可以直接相加,所以乘上買的碰數就好。
+
+    代進實際盤口:三星 56 碰 → 0.06128 碰、四星 70 碰 → 0.00426 碰,
+    返還率 99.0% 與 91.2%,兩者都剛好落在兩平點下面一點(組頭的抽成)。
+    """
+    n = star_bets(stars, picked) if bets_bought is None else int(bets_bought)
+    return n * single_bet_prob(stars, num_max, pick)
 
 
 def star_win_prob(stars: int, picked: int, num_max: int = 39,
@@ -314,14 +326,15 @@ def star_return_rate(stars: int, picked: int, odds: float, num_max: int = 39,
     n = star_bets(stars, picked) if bets_bought is None else int(bets_bought)
     if n <= 0:
         return 0.0
-    return star_expected_hits(stars, picked, num_max, pick) * float(odds) / n
+    return (star_expected_hits(stars, picked, num_max, pick, n)
+            * float(odds) / n)
 
 
 def star_fair_odds(stars: int, picked: int, num_max: int = 39,
                    pick: int = 5, bets_bought: int | None = None) -> float:
     """星碰損益兩平的倍率 = 買的碰數 ÷ 期望中的碰數。"""
     n = star_bets(stars, picked) if bets_bought is None else int(bets_bought)
-    e = star_expected_hits(stars, picked, num_max, pick)
+    e = star_expected_hits(stars, picked, num_max, pick, n)
     return n / e if e else float("inf")
 
 

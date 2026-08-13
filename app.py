@@ -3135,9 +3135,18 @@ def _render_combo_today(user: str, cfgs: dict, cum: float):
                 "之後累積": f"{cum + gross - total_cost:+,.0f}",
             })
         st.dataframe(pd.DataFrame(rows_out), width="stretch", hide_index=True)
-        exp = sum(o["prob"] * sum(o["hits"][b["stars"]] * b["prize"] * b["sheets"]
-                                  for b in bets_plan)
-                  for o in outcomes)
+        if star_mode:
+            # 期望中幾碰 = 買的碰數 × **單碰**中獎機率(每一碰中的機率都一樣,
+            # 期望值可以直接相加)。不能用「至少重 K 顆的機率 × 中的碰數」——
+            # 那算的是「這一期有沒有中」,不是期望中幾碰,會高估 4 倍
+            # (三星算出 394% 那次就是踩到這個)。
+            exp = sum(combo.star_expected_hits(b["stars"], len(picked), g.num_max,
+                                               g.pick, b["bets"])
+                      * b["prize"] * b["sheets"] for b in bets_plan)
+        else:
+            exp = sum(o["prob"] * sum(o["hits"][b["stars"]] * b["prize"] * b["sheets"]
+                                      for b in bets_plan)
+                      for o in outcomes)
         rate = exp / total_cost if total_cost else 0.0
         st.caption(
             f"期望回收 {_amt(exp)} − 成本 {_amt(total_cost)} = "

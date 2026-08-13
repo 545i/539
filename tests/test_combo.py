@@ -184,20 +184,23 @@ def test_market_odds_are_all_below_fair():
         assert combo.return_rate(k, odds) < 1.0
 
 
-def test_theoretical_return_does_not_reconcile():
-    """**未解的矛盾,刻意留著**:照使用者給的成本與派彩,返還率是 394% / 333%。
+def test_star_return_reconciles_with_the_per_combo_probability():
+    """返還率要用**單碰**中獎機率算,不是「至少重 K 顆的機率」。
 
-    成本(三星 63×56、四星 50×70)與派彩(5 碰 × 57,000、4 碰 × 750,000)
-    都是使用者實際在付 / 實際領到的;機率則是拿他自己的 819 期開獎回測出來的
-    (重 3 顆 4.88%、重 4 顆 0.39%,與理論吻合)。三者湊起來卻是正期望 ——
-    一定有個地方還沒對上,但那不是程式該自己猜著改的。
-
-    UI 會把這個矛盾明講(見 app 裡 star_mode and rate > 1 那段警告),
-    這條測試則確保矛盾還在時沒有人「順手把它調成好看的數字」。
+    先前用後者(三星 4.91%)乘上中的碰數,算出 394% —— 那算的是「這一期
+    有沒有中」,不是期望中幾碰,高估了 4 倍。改成一碰一碰算:
+      三星 56 碰 × C(5,3)/C(39,3) = 0.06128 碰 × 57,000 ÷ 3,528 = 99.0%
+      四星 70 碰 × C(5,4)/C(39,4) = 0.00426 碰 × 750,000 ÷ 3,500 = 91.2%
+    兩者都剛好落在兩平點下面一點,那個差額就是組頭的抽成。
     """
-    for k, per, hits in ((3, 57_000, 5), (4, 750_000, 4)):
-        cost = combo.MARKET_COST[k] * combo.star_bets(k)
-        assert combo.star_win_prob(k, 8) * hits * per / cost > 3, k
+    for k, n, want in ((3, 56, 0.990), (4, 70, 0.912)):
+        cost = combo.MARKET_COST[k] * n
+        e = combo.star_expected_hits(k, 8, bets_bought=n)
+        assert e == pytest.approx(n * combo.single_bet_prob(k))
+        rate = e * combo.MARKET_PRIZE[k] / cost
+        assert rate == pytest.approx(want, abs=0.005), (k, rate)
+        # 組頭報的每碰派彩低於兩平點,差額就是抽成
+        assert combo.MARKET_PRIZE[k] < cost / e
 
 def test_real_payouts_match_what_the_bookie_pays():
     """使用者的實際派彩:八顆三星中 5 碰共 285,000、四星中 4 碰共 3,000,000。
