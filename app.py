@@ -2836,6 +2836,16 @@ def _render_pillar_tab(user: str, cfgs: dict, mode_rows: list, mode_cum: float):
 _COMBO_LEDGER_PAD = "ledger_combo_pad"
 
 
+def _amt(v: float) -> str:
+    """金額字樣。整數就不補小數,72.5 這種保留 —— 連碰的每注價會有 .5,
+    用 .0f 印會變成「72」,跟旁邊用 72.5 算出來的總成本對不起來。
+    """
+    v = float(v)
+    if abs(v - round(v)) < 1e-9:
+        return f"{v:,.0f}"
+    return f"{v:,.2f}".rstrip("0").rstrip(".")
+
+
 def _combo_odds(cfg: dict, stars: int) -> tuple[float, float]:
     """該款在這個星數下的(每注成本, 倍率)。
 
@@ -2901,12 +2911,12 @@ def _combo_odds_panel(cfg: dict, game, stars: int, drag: int, dans: int):
     ev = combo.expected_net(stars, drag, per_bet, odds, dans, nm, pk)
 
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("每注成本", f"{per_bet:,.0f}", delta=f"1 賠 {odds:,.0f}",
+    c1.metric("每注成本", _amt(per_bet), delta=f"1 賠 {_amt(odds)}",
               delta_color="off")
-    c2.metric("中一注可得", f"{prize:,.0f}", delta=f"{per_bet:,.0f} × {odds:,.0f}",
+    c2.metric("中一注可得", _amt(prize), delta=f"{_amt(per_bet)} × {_amt(odds)}",
               delta_color="off")
-    c3.metric("單支成本", f"{combo.total_cost(stars, drag, per_bet, dans):,.0f}",
-              delta=f"{n:,} 注 × {per_bet:,.0f}", delta_color="off")
+    c3.metric("單支成本", _amt(combo.total_cost(stars, drag, per_bet, dans)),
+              delta=f"{n:,} 注 × {_amt(per_bet)}", delta_color="off")
     c4.metric("返還率", f"{rate:.2%}", delta=f"期望 {ev:+,.0f}/期", delta_color="off")
     st.caption(
         f"返還率 = 倍率 ÷ 公平賠率 = {odds:,.0f} ÷ {fair:,.1f} —— "
@@ -3570,14 +3580,14 @@ def _combo_formula_note(game, stars: int, drag: int, dans: int,
         "",
         "**成本與獎金**",
         "```",
-        f"總成本   = 注數 × 每注 = {n:,} × {per_bet:,.0f} = {cost:,.0f}",
-        f"中一注可得 = 每注 × 倍率 = {per_bet:,.0f} × {odds:,.0f} = {prize:,.0f}",
+        f"總成本   = 注數 × 每注 = {n:,} × {_amt(per_bet)} = {_amt(cost)}",
+        f"中一注可得 = 每注 × 倍率 = {_amt(per_bet)} × {_amt(odds)} = {_amt(prize)}",
         "```",
-        f"倍率是**幾倍**不是幾元 —— 下 {per_bet:,.0f} 中 {prize:,.0f}。",
+        f"倍率是**幾倍**不是幾元 —— 下 {_amt(per_bet)} 中 {_amt(prize)}。",
         "",
         "**要中幾注才打平**",
         "```",
-        f"打平注數 = 總成本 ÷ 中一注可得 = {cost:,.0f} ÷ {prize:,.0f}",
+        f"打平注數 = 總成本 ÷ 中一注可得 = {_amt(cost)} ÷ {_amt(prize)}",
         f"         = 注數 ÷ 倍率 = {n:,} ÷ {odds:,.0f} = {n / odds:,.2f} 注",
         "```",
         "每注下多少會約掉 —— 成本與獎金都線性於它,所以打平點跟下多大無關,"
@@ -3596,7 +3606,7 @@ def _combo_formula_note(game, stars: int, drag: int, dans: int,
         f"單注中獎機率 = C({pk},{stars})/C({nm},{stars}) = 1 / {fair:,.1f}",
         f"E[中幾注]    = 注數 × 單注機率 = {n:,} × 1/{fair:,.1f} = {e:.5f}",
         f"返還率       = 倍率 ÷ 公平賠率 = {odds:,.0f} ÷ {fair:,.1f} = {rate:.2%}",
-        f"期望損益     = {e:.5f} × {prize:,.0f} − {cost:,.0f} = "
+        f"期望損益     = {e:.5f} × {_amt(prize)} − {_amt(cost)} = "
         f"{combo.expected_net(stars, drag, per_bet, odds, dans, nm, pk):+,.0f} / 期",
         "```",
         f"**返還率只由倍率決定** —— 拖幾顆、幾顆膽、每注下多少都改變不了它。"
@@ -3630,9 +3640,9 @@ def _combo_results(game, stars: int, drag: int, dans: int,
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("組數(注數)", f"{n:,}",
               delta=f"C({drag}, {stars - dans})", delta_color="off")
-    c2.metric("總成本", f"{cost:,.0f}", delta=f"{n:,} × {per_bet:,.0f}",
+    c2.metric("總成本", _amt(cost), delta=f"{n:,} × {_amt(per_bet)}",
               delta_color="off")
-    c3.metric("中一注可得", f"{prize:,.0f}", delta=f"{per_bet:,.0f} × {odds:,.0f}",
+    c3.metric("中一注可得", _amt(prize), delta=f"{_amt(per_bet)} × {_amt(odds)}",
               delta_color="off")
     c4.metric("要中幾注才打平", f"{be:,.2f} 注",
               delta="中 1 注就回本" if be <= 1 else f"中 {ceil(be):,} 注才夠",
@@ -3657,7 +3667,7 @@ def _combo_results(game, stars: int, drag: int, dans: int,
         st.dataframe(pd.DataFrame([{
             "中幾注": f"{h:,}",
             "機率": f"{probs[h]:.4%}",
-            "回收": f"{h * prize:,.0f}",
+            "回收": _amt(h * prize),
             "本局損益": f"{h * prize - cost:+,.0f}",
         } for h in sorted(probs, reverse=True)]), width="stretch", hide_index=True)
     _combo_formula_note(game, stars, drag, dans, per_bet, odds)
@@ -3727,7 +3737,7 @@ def page_combo():
     o1, o2 = st.columns(2)
     per_bet = float(o1.number_input(
         f"{combo.star_name(stars)}每注多少錢", min_value=0.01, max_value=1_000_000.0,
-        value=float(combo.MARKET_COST.get(stars, 50.0)), step=1.0,
+        value=float(combo.MARKET_COST.get(stars, 50.0)), step=0.5,
         key=f"combo_cost_{stars}"))
     odds = float(o2.number_input(
         f"{combo.star_name(stars)}倍率(1 賠幾)", min_value=1.0,
@@ -3746,7 +3756,7 @@ def page_combo():
         "連碰是「沒有膽」、立柱是「1 顆膽」、拖膽的膽數由你決定。\n"
         "- 「天二 / 天三」是二星 / 三星連碰的別名,算式完全一樣。\n"
         "- **倍率是「賠率幾倍」不是「幾元」**:二星 1賠53 指的是每注成本 × 53"
-        "(下 50 中 2,650)。\n"
+        "(72.5 × 53 = 3,842.5)。\n"
         "- **二 / 三 / 四星各有各的每注價**,切換星數上面的金額會跟著換。\n"
         "- 這頁只做試算**不會記帳**。要把輸贏記起來、看累積損益,"
         "請到「二合買牌 → ⭐ 連碰」。\n\n"
@@ -3900,13 +3910,14 @@ def page_settings(user: str):
             "這一組跟上面兩套盤口**完全分開**。\n\n"
             "連碰買的是「一注 K 個號碼」的組合,所以這裡填的是**每注**多少錢,"
             "以及**倍率**。\n\n"
-            "**二 / 三 / 四星各有各的價**(這邊實際在跑的是三星 63、四星 50),"
+            "**二 / 三 / 四星各有各的價**(這邊實際在跑的是二星 72.5、三星 63、"
+            "四星 50),"
             "所以每一種星數都要各填一組,不是共用一個金額。\n\n"
             "**倍率是「賠率幾倍」不是「幾元」** —— 二星 1賠53 指的是"
-            "每注成本 × 53(下 50 中 2,650),不是中一注只給 53 元。\n\n"
+            "每注成本 × 53(72.5 × 53 = 3,842.5),不是中一注只給 53 元。\n\n"
             "倍率的上限是**單注的公平賠率**:39 選 5 下二星 74.1、三星 913.9、"
             "四星 16,450.2。超過就代表正期望值,現實中不存在。\n\n"
-            "市場參考價是二星 53、三星 580、四星 7,500 —— 各家組頭不同,"
+            "倍率的市場參考是二星 53、三星 580、四星 7,500 —— 各家組頭不同,"
             "以你自己的盤口為準。",
             "這幾個數字是什麼")
         for g in GAME_LIST:
@@ -3929,8 +3940,8 @@ def page_settings(user: str):
                     max_value=1_000_000.0, value=float(odds), step=1.0, key=ko,
                     on_change=_persist_setting, args=(skey, f"combo_odds{k}", ko))
                 c3.markdown(
-                    f"中一注可得 **{combo.prize_per_bet(cost, odds):,.0f}**"
-                    f"({cost:,.0f} × {odds:,.0f})  \n"
+                    f"中一注可得 **{_amt(combo.prize_per_bet(cost, odds))}**"
+                    f"({_amt(cost)} × {_amt(odds)})  \n"
                     f"返還率 **{rate:.2%}**　公平賠率 {fair:,.1f}")
                 if rate >= 1:
                     st.error(

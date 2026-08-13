@@ -77,10 +77,16 @@ def test_bet_list_puts_the_dan_in_every_bet():
 
 # ── 成本與打平 ───────────────────────────────────────────
 def test_odds_are_a_multiplier_not_an_amount():
-    """二星 1賠53 = 下 50 中 2,650,不是中 53 元。"""
-    assert combo.prize_per_bet(50, 53) == 2_650
-    assert combo.prize_per_bet(50, 580) == 29_000
+    """倍率乘的是每注成本,不是「中幾元」。"""
+    assert combo.prize_per_bet(72.5, 53) == 3_842.5
+    assert combo.prize_per_bet(63, 580) == 36_540
     assert combo.prize_per_bet(50, 7500) == 375_000
+
+
+def test_each_star_level_has_its_own_cost():
+    """二星 72.5、三星 63、四星 50 —— 三個價都不一樣,不能共用一個數字。"""
+    assert combo.MARKET_COST == {2: 72.5, 3: 63.0, 4: 50.0}
+    assert len(set(combo.MARKET_COST.values())) == 3
 
 
 def test_total_cost_is_bets_times_per_bet():

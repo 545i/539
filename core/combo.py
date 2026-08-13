@@ -19,10 +19,10 @@
 膽全中時中的注數 = C(拖中幾顆, K−D)。
 
 倍率是「賠率幾倍」不是「幾元」—— 二星 1賠53 指的是每注成本 × 53
-(下 50 中 2,650),跟 core.star 的三星 570 是同一個意思。
+(72.5 × 53 = 3,842.5),不是中一注只給 53 元。
 
-core.star(三星 / 四星 記帳)是本模組在 N=8、D=0 的特例,它另外還管
-對獎與流水;這裡只做試算,不碰資料庫。
+記帳與對獎走 core.storage 的 combo 模式(它多存 stars 與 dans 兩欄);
+本模組只管算式,不碰資料庫。
 """
 from __future__ import annotations
 
@@ -37,9 +37,9 @@ STAR_NAMES = {2: "二星", 3: "三星", 4: "四星"}
 MARKET_ODDS: dict[int, float] = {2: 53.0, 3: 580.0, 4: 7500.0}
 
 # 每注成本 —— **三種星數各有各的價**,不是共用一個數字。
-# 三星 63、四星 50 是這邊實際在跑的價碼;二星沿用市場例子裡的 50
-# (「下 50 中 2,650」)。合成一個數字算出來的成本與損益都會是錯的。
-MARKET_COST: dict[int, float] = {2: 50.0, 3: 63.0, 4: 50.0}
+# 二星 72.5、三星 63、四星 50,都是這邊實際在跑的價碼。
+# 合成一個數字算出來的成本與損益都會是錯的。
+MARKET_COST: dict[int, float] = {2: 72.5, 3: 63.0, 4: 50.0}
 
 # 對照表預設列出的顆數範圍
 TABLE_SIZES = tuple(range(4, 16))
@@ -108,7 +108,7 @@ def total_cost(stars: int, drag: int, per_bet: float, dans: int = 0) -> float:
 
 
 def prize_per_bet(per_bet: float, odds: float) -> float:
-    """中一注可得 = 每注成本 × 倍率(二星 50 × 53 = 2,650)。"""
+    """中一注可得 = 每注成本 × 倍率(二星 72.5 × 53 = 3,842.5)。"""
     return float(per_bet) * float(odds)
 
 
