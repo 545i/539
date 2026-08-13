@@ -184,21 +184,21 @@ def test_market_odds_are_all_below_fair():
         assert combo.return_rate(k, odds) < 1.0
 
 
-def test_theoretical_return_does_not_reconcile_yet():
-    """**未解的矛盾,刻意留著**:用實際成本與派彩算,返還率是 397% / 331%。
+def test_star_return_rates_reconcile_with_the_real_payouts():
+    """實際派彩配上實際機率,返還率要落在合理區間 —— 這是成本基數的檢查。
 
-    成本(三星 63×56、四星 50×70)與派彩(5 碰 × 57,000、4 碰 × 750,000)
-    都是使用者實際在付 / 實際領到的,是事實;所以錯的是「中獎機率」這一側 ——
-    我推的是「8 顆裡重 3 顆(4.91%)/ 重 4 顆(0.39%)」,但要讓返還率落在
-    ~80%,機率得再低 4~5 倍,代表真正的中獎條件比「重幾顆」更嚴。
-
-    在問清楚之前,UI 不顯示期望值與返還率(只顯示成本 / 回收 / 損益這些
-    真實金額),這條測試就是提醒:別把這個機率模型當真。
+    819 期真實開獎回測:8 顆重 3 顆 4.88%、重 4 顆 0.39%(與理論吻合)。
+    中一次三星 5 × 57,000 = 285,000、四星 4 × 750,000 = 3,000,000。
+      一支 280 碰 → 79% / 83%   ← 兩種同時合理
+      一支 56/70 碰 → 394% / 333% ← 正期望,組頭不可能這樣開
     """
-    for k, cost, per, hits in ((3, 63 * 56, 57_000, 5), (4, 50 * 70, 750_000, 4)):
-        pw = combo.star_win_prob(k, 8)
-        assert pw * hits * per / cost > 3, k     # 正期望,不可能是真的
-
+    for k, per, hits in ((3, 57_000, 5), (4, 750_000, 4)):
+        cost = combo.MARKET_COST[k] * combo.star_bets(k)
+        rate = combo.star_win_prob(k, 8) * hits * per / cost
+        assert 0.6 < rate < 1.0, (k, rate)
+        # 用只算 C(8,K) 的成本基數會算出不可能的正期望
+        assert combo.star_win_prob(k, 8) * hits * per / (
+            combo.MARKET_COST[k] * comb(8, k)) > 3
 
 def test_real_payouts_match_what_the_bookie_pays():
     """使用者的實際派彩:八顆三星中 5 碰共 285,000、四星中 4 碰共 3,000,000。
@@ -331,15 +331,12 @@ def test_star_hits_is_picked_minus_stars_not_a_combination():
     assert combo.star_hits(3, 8, 4) != comb(4, 3) * 4
 
 
-def test_star_bets_is_the_number_of_star_groups():
-    """一支買的碰數 = C(選幾顆, 星數) —— 選 8 顆時三星 56、四星 70。
-
-    對應使用者實際在付的單支成本:63 × 56 = 3,528、50 × 70 = 3,500。
-    """
-    assert combo.star_bets(3, 8) == comb(8, 3) == 56
-    assert combo.star_bets(4, 8) == comb(8, 4) == 70
-    assert 63 * combo.star_bets(3) == 3_528     # 預設就是 8 顆
-    assert 50 * combo.star_bets(4) == 3_500
+def test_star_bets_is_every_star_group_times_every_partner():
+    """一支買的碰數 = C(選幾顆, 星數) × (選幾顆 − 星數) —— 選 8 顆都是 280。"""
+    assert combo.star_bets(3, 8) == comb(8, 3) * 5 == 280
+    assert combo.star_bets(4, 8) == comb(8, 4) * 4 == 280
+    assert 63 * combo.star_bets(3) == 17_640    # 預設就是 8 顆
+    assert 50 * combo.star_bets(4) == 14_000
     assert combo.star_bets(3, 3) == 0
 
 

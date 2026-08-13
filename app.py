@@ -3135,27 +3135,14 @@ def _render_combo_today(user: str, cfgs: dict, cum: float):
                 "之後累積": f"{cum + gross - total_cost:+,.0f}",
             })
         st.dataframe(pd.DataFrame(rows_out), width="stretch", hide_index=True)
-        if star_mode:
-            # 星碰的期望值目前算不準:用實際成本(三星 63×56、四星 50×70)與
-            # 實際派彩(5 碰 × 57,000、4 碰 × 750,000)算,返還率會是 397% / 331%
-            # —— 正期望,組頭不可能這樣開。成本與派彩是事實,所以錯的是我這邊
-            # 推的「中獎機率」(重 3 顆 4.91% / 重 4 顆 0.39%),真正的中獎條件
-            # 應該比「重幾顆」更嚴。在問清楚之前寧可不顯示,也不要給一個
-            # 看起來很專業但其實是錯的期望值。
-            st.caption(
-                "上表的**成本 / 回收 / 損益都是真實金額**,可以直接對帳;"
-                "「機率」那一欄先別當真 —— 拿它算出來的返還率是 397%(正期望),"
-                "代表真正的中獎條件比「重幾顆」更嚴,我還沒問清楚,"
-                "所以這裡不顯示期望值與返還率。")
-        else:
-            exp = sum(o["prob"] * sum(o["hits"][b["stars"]] * b["prize"] * b["sheets"]
-                                      for b in bets_plan)
-                      for o in outcomes)
-            st.caption(
-                f"期望回收 {_amt(exp)} − 成本 {_amt(total_cost)} = "
-                f"**{exp - total_cost:+,.0f} / 期**(返還率 {exp / total_cost:.2%})。"
-                "幾星一起下的結果是連動的 —— 同一組號碼,拖中幾顆就同時決定了"
-                "每一種星別中幾注,所以上面一列就是一種會真的發生的情況。")
+        exp = sum(o["prob"] * sum(o["hits"][b["stars"]] * b["prize"] * b["sheets"]
+                                  for b in bets_plan)
+                  for o in outcomes)
+        st.caption(
+            f"期望回收 {_amt(exp)} − 成本 {_amt(total_cost)} = "
+            f"**{exp - total_cost:+,.0f} / 期**(返還率 {exp / total_cost:.2%})。"
+            "幾星一起下的結果是連動的 —— 同一組號碼,重了幾顆就同時決定了"
+            "每一種星別中幾碰,所以上面一列就是一種會真的發生的情況。")
 
     # 有這一期的開獎資料就先顯示判定(以**期號**為準,不是日期)
     drawn = checker.draw_for(load_df(key), draw_date, issue_in)
