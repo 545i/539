@@ -149,22 +149,38 @@ def test_three_and_four_star_have_their_own_cost(app):
     assert r["payout_rate"] == 50 * 7500                   # 四星倍率
 
 
-def test_combo_pending_autofills_from_the_draw(app):
-    """待回填要能用存下的號碼自動對獎:對中 3 顆 → 三星中 C(3,3) = 1 注。"""
+def _draw_rows(game_key="fantasy5", n=2):
+    """開獎資料最後 n 期的 (日期, 期號, 號碼)。"""
+    from core import games, loader
+    g = games.get(game_key)
+    df = loader.load_history(APP.parent / "data" / g.data_file)
+    cols = loader.detect_num_cols(df)
+    out = []
+    for _, row in df.tail(n).iterrows():
+        out.append((str(row["date"].date()), str(row["issue"]).strip(),
+                    sorted(int(row[c]) for c in cols)))
+    return out
+
+
+def test_combo_autosettles_without_any_button(app):
+    """開獎資料到了就自己結算 —— 沒有「開獎後回填」那一段要按。
+
+    對中 3 顆 → 三星中 C(3,3) = 1 注。
+    """
     date, drawn = _latest_draw()
     others = [n for n in range(1, 40) if n not in drawn][:5]
     storage.add_round("apptest", "lotto539", date, 56, 1, None, 3528.0, 36540.0,
                       mode=storage.COMBO, picked=sorted(drawn[:3] + others), stars=3)
     app.run()
-    _button(app, "lcombo_fill_all").click().run()
     assert not app.exception, [str(e.value) for e in app.exception]
 
     r = storage.load_rounds("apptest", storage.COMBO)[0]
-    assert not r["pending"] and r["hits"] == 1
+    assert not r["pending"], "有開獎資料就該自己結算,不該還掛在待對獎"
+    assert r["hits"] == 1
     assert r["payout"] == 36_540 and r["net"] == 36_540 - 3_528
 
 
-def test_combo_autofill_respects_the_dan(app):
+def test_combo_autosettle_respects_the_dan(app):
     """膽沒開出來整張歸零 —— 即使拖那邊中了 3 顆。"""
     date, drawn = _latest_draw()
     miss = [n for n in range(1, 40) if n not in drawn][0]      # 這一顆沒開
@@ -173,9 +189,52 @@ def test_combo_autofill_respects_the_dan(app):
     storage.add_round("apptest", "lotto539", date, 56, 1, None, 3528.0, 36540.0,
                       mode=storage.COMBO, picked=picked, stars=3, dans=[miss])
     app.run()
-    _button(app, "lcombo_fill_all").click().run()
     assert not app.exception, [str(e.value) for e in app.exception]
-    assert storage.load_rounds("apptest", storage.COMBO)[0]["hits"] == 0
+    r = storage.load_rounds("apptest", storage.COMBO)[0]
+    assert not r["pending"] and r["hits"] == 0
+
+
+def test_combo_settles_by_issue_not_by_date(app):
+    """有期號就以**期號**為準 —— 日期不等於一期。
+
+    實際踩過:同一天記了第 11967、11968 兩期,兩筆都被比對到那天開的
+    11966,而 11968 根本還沒開獎 —— 結果用錯的號碼結算,錢就寫錯了。
+
+    這裡刻意把號碼挑成「用對的那一期會中、用日期查到的那一期不會中」,
+    所以只要退回用日期查,這個測試就會紅。
+    """
+    (d_old, i_old, n_old), (d_new, i_new, n_new) = _draw_rows("fantasy5", 2)
+    assert i_old != i_new
+    # 圈 i_new 的 3 顆 + 5 顆兩期都沒開的 → 用 i_new 結算會中 C(3,3)=1 注,
+    # 用 i_old(日期查到的那期)結算則一注都不中
+    fillers = [n for n in range(1, 40) if n not in set(n_old) | set(n_new)][:5]
+    picked = sorted(n_new[:3] + fillers)
+    from core import combo
+    assert combo.hits_of(3, n_new, picked) == 1
+    assert combo.hits_of(3, n_old, picked) == 0, "測試資料要能分辨兩期才有意義"
+
+    # **日期記成舊那期的日期**,期號記成新那期 —— 這正是會踩到的情境
+    storage.add_round("apptest", "fantasy5", d_old, 56, 1, None, 3528.0, 36540.0,
+                      mode=storage.COMBO, picked=picked, stars=3, issue=i_new)
+    app.run()
+    assert not app.exception, [str(e.value) for e in app.exception]
+
+    r = storage.load_rounds("apptest", storage.COMBO)[0]
+    assert r["hits"] == 1, (
+        f"第 {i_new} 期該用它自己的開獎號碼 {n_new} 結算,"
+        f"不是用日期 {d_old} 查到的 {n_old}")
+
+
+def test_combo_leaves_undrawn_issues_pending(app):
+    """還沒開獎的期就靜靜留著待開獎,不准拿別期的號碼硬套。"""
+    d_old, i_old, _ = _draw_rows("fantasy5", 1)[0]
+    future = str(int(i_old) + 5)            # 這一期一定還沒開
+    storage.add_round("apptest", "fantasy5", d_old, 56, 1, None, 3528.0, 36540.0,
+                      mode=storage.COMBO, picked=[1, 2, 3, 4, 5, 6, 7, 8],
+                      stars=3, issue=future)
+    app.run()
+    assert not app.exception, [str(e.value) for e in app.exception]
+    assert storage.load_rounds("apptest", storage.COMBO)[0]["pending"]
 
 
 def test_combo_record_button_always_responds(app):

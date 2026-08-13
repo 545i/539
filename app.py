@@ -2109,7 +2109,8 @@ def _balls(nums: list[int], hit: set[int] | None = None) -> str:
 
 def _auto_check(r: dict) -> dict:
     """用該款的開獎資料替一筆紀錄對獎(沒選號或沒資料就回 ok=False)。"""
-    return checker.check(load_df(r["game"]), r["draw_date"], r.get("picked") or [])
+    return checker.check(load_df(r["game"]), r["draw_date"], r.get("picked") or [],
+                         r.get("issue"))
 
 
 def _render_pending(rows: list[dict]):
@@ -2205,7 +2206,8 @@ def _marked_numbers(r: dict) -> str:
         return "—"
     matched: set[int] = set()
     if not r["pending"]:
-        res = checker.check(load_df(r["game"]), r["draw_date"], picked)
+        res = checker.check(load_df(r["game"]), r["draw_date"], picked,
+                            r.get("issue"))
         if res["ok"]:
             matched = set(res["matched"])
     return " ".join(f"【{n:02d}】" if n in matched else f"{n:02d}" for n in picked)
@@ -2232,10 +2234,15 @@ def _detail_df(rows: list[dict]) -> pd.DataFrame:
     } for i, r in enumerate(rows)])
 
 
-def _render_mode_records(user: str, mode: str, rows: list[dict]):
-    """三、紀錄:只顯示目前這個下法的紀錄,撤銷與清除也只作用在它身上。"""
+def _render_mode_records(user: str, mode: str, rows: list[dict],
+                        index: str = "三"):
+    """紀錄:只顯示目前這個下法的紀錄,撤銷與清除也只作用在它身上。
+
+    index 是段落編號 —— 連碰沒有「開獎後回填」那一段(它自動結算),
+    所以在那一頁是「二、」而不是「三、」。
+    """
     name = storage.MODE_NAMES[mode]
-    st.subheader(f"三、紀錄({name})")
+    st.subheader(f"{index}、紀錄({name})")
     if not rows:
         st.info(f"還沒有{name}下注的紀錄。用上面的「記帳」送出第一筆。")
         return
@@ -2590,9 +2597,10 @@ def _render_pillar_today(user: str, cfgs: dict, cum: float):
             format_func=lambda s, d=issue_default: predictor.issue_label(s, d),
             help="預設是開獎資料算出來的下一期;補登或預先下注就改這裡。")
 
-    # 有這一天的開獎資料就直接判定 —— 1800碰 買的是全組合,結果完全由開獎號碼決定,
+    # 有這一期的開獎資料就直接判定 —— 1800碰 買的是全組合,結果完全由開獎號碼決定,
     # 不像二合要先知道你圈了哪幾顆,所以這裡可以全自動。
-    drawn = checker.draw_of(load_df(key), draw_date)
+    # 以**期號**為準:同一天可能剛開完上一期、你要下的是還沒開的下一期。
+    drawn = checker.draw_for(load_df(key), draw_date, issue_in)
     auto_hits = None
     if drawn and len(drawn) == g.pick:
         counts = pillar.pillar_counts(drawn, g.num_max)
@@ -2654,7 +2662,7 @@ def _render_pillar_pending(rows: list[dict]):
     resolved = {}
     for r in pend:
         g = games.get(r["game"])
-        d = checker.draw_of(load_df(r["game"]), r["draw_date"])
+        d = checker.draw_for(load_df(r["game"]), r["draw_date"], r.get("issue"))
         if d and len(d) == g.pick:
             resolved[int(r["id"])] = (d, pillar.pillar_counts(d, g.num_max))
 
@@ -2704,7 +2712,8 @@ def _pillar_detail_df(rows: list[dict]) -> pd.DataFrame:
     out = []
     for i, r in enumerate(rows):
         g = games.get(r["game"])
-        drawn = checker.draw_of(load_df(r["game"]), r["draw_date"]) or []
+        drawn = checker.draw_for(load_df(r["game"]), r["draw_date"],
+                                 r.get("issue")) or []
         counts = pillar.pillar_counts(drawn, g.num_max) if len(drawn) == g.pick else None
         out.append({
             "#": i + 1,
@@ -2999,8 +3008,8 @@ def _render_combo_today(user: str, cfgs: dict, cum: float):
             format_func=lambda s, d=issue_default: predictor.issue_label(s, d),
             help="預設是開獎資料算出來的下一期;補登或預先下注就改這裡。")
 
-    # 有這一天的開獎資料就直接判定
-    drawn = checker.draw_of(load_df(key), draw_date)
+    # 有這一期的開獎資料就直接判定(以**期號**為準,不是日期)
+    drawn = checker.draw_for(load_df(key), draw_date, issue_in)
     auto_hits = None
     if n_bets > 0 and drawn and len(drawn) == g.pick:
         matched = sorted(set(picked) & set(drawn))
@@ -3075,67 +3084,30 @@ def _render_combo_today(user: str, cfgs: dict, cum: float):
     st.caption("記完帳號碼會留著,下一期沿用;要換號就再點一次上面的號碼按鈕。")
 
 
-def _render_combo_pending(rows: list[dict]):
-    """待回填:存了號碼與膽就能跟開獎比對,按一下補完。"""
-    pend = [r for r in rows if r["pending"]]
-    if not pend:
-        return
-    st.subheader(f"二、開獎後回填({len(pend)} 筆待對獎)")
+def _combo_autosettle(user: str, rows: list[dict]) -> int:
+    """把已經開獎的待對獎紀錄直接結算掉,回傳結算了幾筆。
 
-    resolved = {}
-    for r in pend:
+    連碰的結果**完全由開獎號碼決定** —— 你圈的號碼與膽都跟著紀錄存下來了,
+    沒有任何需要人判斷的地方。開獎資料本身已經會自動更新(core.autoupdate),
+    再叫使用者按一次「回填」只是多一道手續,所以這裡直接寫進去,
+    不再有回填清單。
+
+    還沒開獎的那幾期就靜靜留著,等資料到了下次進頁面自動結算。
+    判定錯了(例如期號記錯)可以在「完整流水 → 逐筆明細」改單筆。
+    """
+    done = 0
+    for r in rows:
+        if not r["pending"] or not r.get("picked"):
+            continue
         g = games.get(r["game"])
-        d = checker.draw_of(load_df(r["game"]), r["draw_date"])
-        if d and len(d) == g.pick and r.get("picked"):
-            stars, _, _ = _combo_row_plan(r)
-            resolved[int(r["id"])] = (
-                d, combo.hits_of(stars, d, r["drag"], r["dans"]))
-
-    if resolved:
-        st.caption(f"其中 {len(resolved)} 筆已經比對到開獎號碼,可以直接回填。")
-        if st.button(f"✅ 一次回填這 {len(resolved)} 筆", type="primary",
-                     key="lcombo_fill_all"):
-            for rid, (_, h) in resolved.items():
-                storage.update_round_result(rid, h)
-            st.rerun()
-
-    for r in pend:
-        g = games.get(r["game"])
-        stars, drag, dans = _combo_row_plan(r)
-        got = resolved.get(int(r["id"]))
-        c1, c2 = st.columns([5, 1.8])
-        c1.markdown(
-            f"**{r['draw_date']} {g.label}·{_combo_play_of(dans)}"
-            f"{combo.star_name(stars)}**"
-            + (f"　第 {r['issue']} 期" if r.get("issue") else "")
-            + f"  \n{int(r['cars'])} 支 × {int(r['numbers']):,} 注,"
-              f"成本 {r['cost']:,.0f},每中 1 注 +"
-              f"{int(r['cars']) * float(r['payout_rate'] or 0):,.0f}")
-        drawn = got[0] if got else []
-        matched = set(r["picked"]) & set(drawn)
-        if r.get("picked"):
-            c1.markdown("我的號碼　" + _balls(r["picked"], matched)
-                        + ("　(膽 " + " ".join(f"{n:02d}" for n in r["dans"]) + ")"
-                           if r["dans"] else ""),
-                        unsafe_allow_html=True)
-        if got:
-            c1.markdown("開獎號碼　" + _balls(drawn, matched), unsafe_allow_html=True)
-            c1.success(f"對中 {len(matched)} 顆 → {combo.result_text(got[1])}",
-                       icon="🎯")
-            default = got[1]
-        else:
-            c1.info("還沒有這一期的開獎資料(可到「設定 → 開獎資料」更新後再試)。",
-                    icon="⏳")
-            default = 0
-        opts = _combo_hits_options(stars, drag, dans, g)
-        pick_hits = c2.selectbox(
-            "結果", opts, index=opts.index(default) if default in opts else len(opts) - 1,
-            format_func=combo.result_text, key=f"lcombo_fill_{r['id']}",
-            label_visibility="collapsed")
-        if c2.button("回填", key=f"lcombo_fill_btn_{r['id']}", type="primary"):
-            storage.update_round_result(int(r["id"]), int(pick_hits))
-            st.rerun()
-    st.divider()
+        d = checker.draw_for(load_df(r["game"]), r["draw_date"], r.get("issue"))
+        if not d or len(d) != g.pick:
+            continue
+        stars, _, _ = _combo_row_plan(r)
+        storage.update_round_result(
+            int(r["id"]), combo.hits_of(stars, d, r["drag"], r["dans"]))
+        done += 1
+    return done
 
 
 def _combo_detail_df(rows: list[dict]) -> pd.DataFrame:
@@ -3145,7 +3117,8 @@ def _combo_detail_df(rows: list[dict]) -> pd.DataFrame:
     for i, r in enumerate(rows):
         g = games.get(r["game"])
         stars, drag, dans = _combo_row_plan(r)
-        drawn = checker.draw_of(load_df(r["game"]), r["draw_date"]) or []
+        drawn = checker.draw_for(load_df(r["game"]), r["draw_date"],
+                                 r.get("issue")) or []
         got = len(drawn) == g.pick and bool(r.get("picked"))
         out.append({
             "#": i + 1,
@@ -3292,15 +3265,26 @@ def _render_combo_history(cfgs: dict, rows: list[dict]):
 
 
 def _render_combo_tab(user: str, cfgs: dict, mode_rows: list, mode_cum: float):
-    """下注 → 回填 → 紀錄,就這三段。
+    """下注 → 紀錄,就這兩段。
 
+    沒有「開獎後回填」那一段 —— 開獎資料會自動更新,結果又完全由開獎號碼
+    決定,所以進頁面就自己結算完了(見 _combo_autosettle)。
     回本試算與歷史檢驗收進摺疊區 —— 它們是偶爾看一次的東西,攤在主畫面上
     會把「這一期要下什麼」擠到看不見。
     """
+    settled = _combo_autosettle(user, mode_rows)
+    if settled:
+        # 結算會動到損益,重跑一次讓整頁(含累積、流水)都拿到新數字
+        st.session_state["lcombo_settled"] = settled
+        st.rerun()
+    just_settled = st.session_state.pop("lcombo_settled", None)
+    if just_settled:
+        st.success(f"開獎後已自動結算 {just_settled} 筆,結果看下面的「二、紀錄」。",
+                   icon="✅")
+
     _render_combo_today(user, cfgs, mode_cum)
     st.divider()
-    _render_combo_pending(mode_rows)
-    _render_mode_records(user, storage.COMBO, mode_rows)
+    _render_mode_records(user, storage.COMBO, mode_rows, index="二")
     st.divider()
     with st.expander("回本要下幾支"):
         _render_combo_recovery(cfgs, mode_cum, mode_rows)
