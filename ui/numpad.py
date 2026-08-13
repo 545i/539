@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import streamlit as st
+import streamlit.components.v1 as components
 
 # 分柱的定義住在 core.pillar(三柱 1800碰 的算式也用同一份),
 # 這裡只轉出來用 —— 兩邊各寫一份的話,哪天調了邊界就會對不起來。
@@ -79,23 +80,93 @@ div[class*="lotto-pad-"] .stButton > button:active { transform: scale(.94); }
 
 
 def _scoped_css() -> str:
-    """替三柱各產生一組配色規則。"""
+    """替三柱各產生一組配色規則。
+
+    `.pad-on` / `.pad-off` 是**樂觀更新**用的:點下去先由瀏覽器立刻套上,
+    不等伺服器來回(見 _optimistic_js)。伺服器回來重畫後由 kind 接手,
+    所以它們的樣式必須跟 primary / secondary 完全一樣。
+    """
     out = []
     for i, tone in enumerate(_TONE, start=1):
         out.append(f"""
-div[class*="lotto-pad-p{i}"] .stButton > button[kind="secondary"] {{
+div[class*="lotto-pad-p{i}"] .stButton > button[kind="secondary"],
+div[class*="lotto-pad-p{i}"] .stButton > button.pad-off {{
     background: #fff !important; color: {tone} !important;
     border-color: {tone}55 !important;
+    box-shadow: none !important;
 }}
 div[class*="lotto-pad-p{i}"] .stButton > button[kind="secondary"]:hover {{
     border-color: {tone} !important;
 }}
-div[class*="lotto-pad-p{i}"] .stButton > button[kind="primary"] {{
+div[class*="lotto-pad-p{i}"] .stButton > button[kind="primary"],
+div[class*="lotto-pad-p{i}"] .stButton > button.pad-on {{
     background: {tone} !important; color: #fff !important;
     border-color: {tone} !important;
     box-shadow: 0 2px 6px {tone}66;
 }}""")
     return "\n".join(out)
+
+
+# 點下去到畫面更新,實測本機約 160~200ms(伺服器只佔 23ms,其餘是 Streamlit 的
+# client 往返 + React 重繪),經過網路只會更久 —— 那就是「選號有延遲」的來源。
+# 伺服器端已經沒東西可壓了,所以改成**先在瀏覽器把顏色換掉**:點擊當下就套用
+# .pad-on / .pad-off,伺服器回來重畫時再以它為準。狀態仍然完全由伺服器決定,
+# 這裡只是把「看得到的回饋」提前,不會改變任何一次下注的內容。
+#
+# 選滿之後再點別顆,伺服器會擋下來(見 _toggle),所以這裡也要照同一條規則
+# 判斷 —— 不然會先亮起來再被打回去,閃一下反而更糟。
+_OPTIMISTIC_JS = """
+<script>
+(function () {
+  var doc = window.parent.document;
+  if (doc.__lottoPadOptimistic) return;   // 整頁只掛一次
+  doc.__lottoPadOptimistic = true;
+  doc.addEventListener('click', function (e) {
+    var btn = e.target.closest('div[class*="lotto-pad-"] .stButton > button');
+    if (!btn) return;
+    var pad = btn.closest('div[class*="lotto-pad-"]').className.match(/lotto-pad-p\\d+-(\\S+)/);
+    var scope = pad ? pad[1] : null;
+    var cap = Number(doc.body.dataset['padCap_' + scope] || 0);
+    var on = function (b) {
+      return b.classList.contains('pad-on') ||
+             (b.getAttribute('kind') === 'primary' && !b.classList.contains('pad-off'));
+    };
+    if (on(btn)) {                       // 取消:一定成立,直接熄掉
+      btn.classList.remove('pad-on'); btn.classList.add('pad-off');
+      return;
+    }
+    if (cap === 1) {                     // 單顆:其餘全熄,這顆亮
+      var sel = '[class*="lotto-pad-"] .stButton > button';
+      Array.prototype.forEach.call(doc.querySelectorAll(sel), function (b) {
+        if (b.closest('div[class*="-' + scope + '"]') && on(b)) {
+          b.classList.remove('pad-on'); b.classList.add('pad-off');
+        }
+      });
+      btn.classList.remove('pad-off'); btn.classList.add('pad-on');
+      return;
+    }
+    if (cap > 1) {                       // 多顆:選滿就不亮(伺服器也會擋)
+      var n = 0, sel2 = '[class*="lotto-pad-"] .stButton > button';
+      Array.prototype.forEach.call(doc.querySelectorAll(sel2), function (b) {
+        if (b.closest('div[class*="-' + scope + '"]') && on(b)) n++;
+      });
+      if (n >= cap) return;
+    }
+    btn.classList.remove('pad-off'); btn.classList.add('pad-on');
+  }, true);
+})();
+</script>
+"""
+
+
+def _inject_optimistic() -> None:
+    """把樂觀更新的腳本送進頁面。
+
+    st.markdown 不會執行 <script>,所以跟 app._numeric_keyboard 一樣走
+    components.html(高度 0)再回頭操作 parent document。腳本自己會擋重複掛載。
+    純屬體驗優化 —— 哪天 Streamlit 改了 DOM 讓它失效,也只是退回原本的等待。
+    """
+    components.html(_OPTIMISTIC_JS, height=0)
 
 
 def inject_css() -> None:
@@ -144,6 +215,11 @@ def number_pad(
         st.session_state[state] = sorted(set(default or []))
 
     inject_css()
+    _inject_optimistic()
+    # 把這個盤的上限告訴樂觀更新腳本(它要照同一條規則決定亮不亮)
+    components.html(
+        f"<script>window.parent.document.body.dataset['padCap_{key}'] = "
+        f"'{int(max_pick)}';</script>", height=0)
     if label:
         st.markdown(f"**{label}**")
 
