@@ -240,12 +240,21 @@ def match_probs(picked: int, num_max: int = 39,
             for m in range(top + 1)}
 
 
-def star_bets(stars: int, picked: int) -> int:
-    """星碰一支買幾碰 = C(選幾顆, 星數) × (選幾顆 − 星數)。"""
+# 星碰固定選 8 顆 —— 組頭賣的就是這個規格(三星 63 × 56、四星 50 × 70),
+# 顆數一變成本與派彩都不是這組數字了,所以 UI 上直接鎖死 8 顆。
+STAR_PICK = 8
+
+
+def star_bets(stars: int, picked: int = STAR_PICK) -> int:
+    """星碰一支買幾碰 = C(選幾顆, 星數)。
+
+    選 8 顆時三星 56 碰、四星 70 碰 —— 對應單支成本 63 × 56 = 3,528、
+    50 × 70 = 3,500(使用者實際在付的價)。
+    """
     k, n = int(stars), int(picked)
     if n <= k or k <= 0:
         return 0
-    return comb(n, k) * (n - k)
+    return comb(n, k)
 
 
 def star_hits(stars: int, picked: int, matched: int) -> int:

@@ -2982,9 +2982,13 @@ def _render_combo_today(user: str, cfgs: dict, cum: float):
         f"{g.name} 1~{g.num_max} 號,每期開 {g.pick} 顆。"
         f"這組號碼會同時用在 {'、'.join(combo.star_name(k) for k in star_list)}"
         + (f",其中 {p.dans} 顆等一下指定成膽" if p.dans else "")
-        + f"。最多圈 {_COMBO_MAX_PICK} 顆;號碼會跟著紀錄存下來,開獎後自動對獎。")
+        + (f"。星碰**固定選 {combo.STAR_PICK} 顆**(組頭賣的就是這個規格,"
+           "顆數一變成本與派彩都不是這組數字了)"
+           if p.key == "star" else f"。最多圈 {_COMBO_MAX_PICK} 顆")
+        + ";號碼會跟著紀錄存下來,開獎後自動對獎。")
+    cap = combo.STAR_PICK if p.key == "star" else _COMBO_MAX_PICK
     picked = numpad.number_pad(key=_COMBO_LEDGER_PAD, num_max=g.num_max,
-                               max_pick=_COMBO_MAX_PICK)
+                               max_pick=cap)
 
     dan_nums: list[int] = []
     if p.dans != 0 and picked:
@@ -3131,14 +3135,27 @@ def _render_combo_today(user: str, cfgs: dict, cum: float):
                 "之後累積": f"{cum + gross - total_cost:+,.0f}",
             })
         st.dataframe(pd.DataFrame(rows_out), width="stretch", hide_index=True)
-        exp = sum(o["prob"] * sum(o["hits"][b["stars"]] * b["prize"] * b["sheets"]
-                                  for b in bets_plan)
-                  for o in outcomes)
-        st.caption(
-            f"期望回收 {_amt(exp)} − 成本 {_amt(total_cost)} = "
-            f"**{exp - total_cost:+,.0f} / 期**(返還率 {exp / total_cost:.2%})。"
-            "幾星一起下的結果是連動的 —— 同一組號碼,拖中幾顆就同時決定了"
-            "每一種星別中幾注,所以上面一列就是一種會真的發生的情況。")
+        if star_mode:
+            # 星碰的期望值目前算不準:用實際成本(三星 63×56、四星 50×70)與
+            # 實際派彩(5 碰 × 57,000、4 碰 × 750,000)算,返還率會是 397% / 331%
+            # —— 正期望,組頭不可能這樣開。成本與派彩是事實,所以錯的是我這邊
+            # 推的「中獎機率」(重 3 顆 4.91% / 重 4 顆 0.39%),真正的中獎條件
+            # 應該比「重幾顆」更嚴。在問清楚之前寧可不顯示,也不要給一個
+            # 看起來很專業但其實是錯的期望值。
+            st.caption(
+                "上表的**成本 / 回收 / 損益都是真實金額**,可以直接對帳;"
+                "「機率」那一欄先別當真 —— 拿它算出來的返還率是 397%(正期望),"
+                "代表真正的中獎條件比「重幾顆」更嚴,我還沒問清楚,"
+                "所以這裡不顯示期望值與返還率。")
+        else:
+            exp = sum(o["prob"] * sum(o["hits"][b["stars"]] * b["prize"] * b["sheets"]
+                                      for b in bets_plan)
+                      for o in outcomes)
+            st.caption(
+                f"期望回收 {_amt(exp)} − 成本 {_amt(total_cost)} = "
+                f"**{exp - total_cost:+,.0f} / 期**(返還率 {exp / total_cost:.2%})。"
+                "幾星一起下的結果是連動的 —— 同一組號碼,拖中幾顆就同時決定了"
+                "每一種星別中幾注,所以上面一列就是一種會真的發生的情況。")
 
     # 有這一期的開獎資料就先顯示判定(以**期號**為準,不是日期)
     drawn = checker.draw_for(load_df(key), draw_date, issue_in)
@@ -3171,6 +3188,11 @@ def _render_combo_today(user: str, cfgs: dict, cum: float):
     if st.button("記帳", key="lcombo_record", type="primary", width="stretch"):
         if not picked:
             st.error("還沒圈號碼 —— 請先在上面的號碼盤把要下的號碼點出來。", icon="🚫")
+        elif star_mode and len(picked) != combo.STAR_PICK:
+            st.error(
+                f"星碰要**剛好 {combo.STAR_PICK} 顆**,目前 {len(picked)} 顆。"
+                f"單支成本(三星 63×56、四星 50×70)與派彩都是照 "
+                f"{combo.STAR_PICK} 顆報的,顆數不對就整組對不上。", icon="🚫")
         elif not bets_plan:
             st.error("沒有任何一種星別要下 —— 請確認「下幾支」不是 0,"
                      "而且圈的號碼湊得出注。", icon="🚫")

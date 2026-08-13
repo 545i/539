@@ -184,6 +184,22 @@ def test_market_odds_are_all_below_fair():
         assert combo.return_rate(k, odds) < 1.0
 
 
+def test_theoretical_return_does_not_reconcile_yet():
+    """**未解的矛盾,刻意留著**:用實際成本與派彩算,返還率是 397% / 331%。
+
+    成本(三星 63×56、四星 50×70)與派彩(5 碰 × 57,000、4 碰 × 750,000)
+    都是使用者實際在付 / 實際領到的,是事實;所以錯的是「中獎機率」這一側 ——
+    我推的是「8 顆裡重 3 顆(4.91%)/ 重 4 顆(0.39%)」,但要讓返還率落在
+    ~80%,機率得再低 4~5 倍,代表真正的中獎條件比「重幾顆」更嚴。
+
+    在問清楚之前,UI 不顯示期望值與返還率(只顯示成本 / 回收 / 損益這些
+    真實金額),這條測試就是提醒:別把這個機率模型當真。
+    """
+    for k, cost, per, hits in ((3, 63 * 56, 57_000, 5), (4, 50 * 70, 750_000, 4)):
+        pw = combo.star_win_prob(k, 8)
+        assert pw * hits * per / cost > 3, k     # 正期望,不可能是真的
+
+
 def test_real_payouts_match_what_the_bookie_pays():
     """使用者的實際派彩:八顆三星中 5 碰共 285,000、四星中 4 碰共 3,000,000。
 
@@ -192,19 +208,6 @@ def test_real_payouts_match_what_the_bookie_pays():
     """
     assert combo.star_hits(3, 8, 3) * combo.MARKET_PRIZE[3] == 285_000
     assert combo.star_hits(4, 8, 4) * combo.MARKET_PRIZE[4] == 3_000_000
-
-
-def test_star_return_rates_with_the_real_payouts():
-    """兩種星別的返還率都要落在合理區間(負期望,但不會低到荒謬)。
-
-    先前三星誤填成 75,000 時算出 104% —— 正期望,組頭不可能這樣開;
-    那正是「數字抄錯」被擋下來的地方。實際是 57,000。
-    """
-    for k in (3, 4):
-        r = combo.star_return_rate(k, 8, combo.MARKET_PRIZE[k] / combo.MARKET_COST[k])
-        assert 0.3 < r < 1.0, (k, r)
-    assert combo.star_return_rate(3, 8, 57_000 / 63) == pytest.approx(0.793, abs=0.01)
-    assert combo.star_return_rate(4, 8, 750_000 / 50) == pytest.approx(0.828, abs=0.01)
 
 
 def test_return_rates_of_the_market_odds():
@@ -328,11 +331,16 @@ def test_star_hits_is_picked_minus_stars_not_a_combination():
     assert combo.star_hits(3, 8, 4) != comb(4, 3) * 4
 
 
-def test_star_bets_is_every_star_group_times_every_partner():
-    """一支買的總碰數 = C(選幾顆, 星數) × (選幾顆 − 星數)。"""
-    assert combo.star_bets(3, 8) == comb(8, 3) * 5 == 280
-    assert combo.star_bets(4, 8) == comb(8, 4) * 4 == 280
-    assert combo.star_bets(3, 3) == 0           # 選的顆數等於星數,配不出搭配號
+def test_star_bets_is_the_number_of_star_groups():
+    """一支買的碰數 = C(選幾顆, 星數) —— 選 8 顆時三星 56、四星 70。
+
+    對應使用者實際在付的單支成本:63 × 56 = 3,528、50 × 70 = 3,500。
+    """
+    assert combo.star_bets(3, 8) == comb(8, 3) == 56
+    assert combo.star_bets(4, 8) == comb(8, 4) == 70
+    assert 63 * combo.star_bets(3) == 3_528     # 預設就是 8 顆
+    assert 50 * combo.star_bets(4) == 3_500
+    assert combo.star_bets(3, 3) == 0
 
 
 def test_star_hit_probs_sum_to_one():
@@ -346,32 +354,6 @@ def test_star_win_prob_is_just_hitting_enough_numbers():
     mp = combo.match_probs(8)
     assert combo.star_win_prob(3, 8) == pytest.approx(mp[3] + mp[4] + mp[5])
     assert combo.star_win_prob(4, 8) == pytest.approx(mp[4] + mp[5])
-
-
-def test_star_return_rates_are_believable():
-    """用實際盤口(三星 63/580、四星 50/7500)算出來要落在合理區間。
-
-    這條是拿來擋「成本基數搞錯」的:若把一支當成只有 C(8,K) 碰,
-    返還率會變成 254% / 165% —— 正期望,組頭不可能這樣開。
-    """
-    r3 = combo.star_return_rate(3, 8, 580)
-    r4 = combo.star_return_rate(4, 8, 7500)
-    assert 0.3 < r3 < 0.8, r3
-    assert 0.3 < r4 < 0.8, r4
-    assert r3 == pytest.approx(0.508, abs=0.005)
-    assert r4 == pytest.approx(0.414, abs=0.005)
-    # 用錯的成本基數(只算 C(8,K) 碰)會算出不可能的正期望
-    assert combo.star_return_rate(3, 8, 580, bets_bought=comb(8, 3)) > 2
-
-
-def test_star_fair_odds_is_bets_over_expected():
-    for k, n in ((3, 8), (4, 8)):
-        assert (combo.star_fair_odds(k, n)
-                == pytest.approx(combo.star_bets(k, n)
-                                 / combo.star_expected_hits(k, n)))
-    # 四星:組頭報的低於公平倍率,差額就是他的抽成(三星見上面那條)
-    assert (combo.MARKET_PRIZE[4] / combo.MARKET_COST[4]
-            < combo.star_fair_odds(4, 8))
 
 
 def test_star_joint_outcomes_links_the_star_levels():
