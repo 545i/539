@@ -159,7 +159,7 @@ def test_combo_records_a_round_with_the_numbers(app):
     assert r["stars"] == 3 and r["dans"] == []
     # 每注成本是**跟星數綁的**(三星 63、四星 50),不是三種共用一個數字
     assert r["cost"] == 63 * 280                        # 三星每注 63 × 280 碰
-    assert r["payout_rate"] == 75_000                    # 三星中一碰可得
+    assert r["payout_rate"] == 57_000                    # 三星中一碰可得
     assert r["picked"] == [1, 2, 3, 4, 5, 6, 7, 8]
     assert r["drag"] == r["picked"], "沒有膽時,拖就是全部圈的號碼"
     assert r["pending"], "沒選結果就該是待開獎"

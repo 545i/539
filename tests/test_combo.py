@@ -176,32 +176,35 @@ def test_fair_odds():
     assert combo.fair_odds(4) == pytest.approx(16_450.2, abs=0.05)
 
 
-def test_market_odds_are_below_fair_for_the_connected_play():
-    """連碰:二星與四星的實際盤口都低於公平賠率(負期望)。
-
-    三星不在這裡 —— 見 test_three_star_return_is_still_above_one,
-    那個數字目前算出來大於 1,是還沒對清楚的地方,不是這條測試該掩蓋的。
-    """
-    for k in (2, 4):
+def test_market_odds_are_all_below_fair():
+    """實際盤口都低於公平賠率 —— 三種星別都是負期望。"""
+    for k in combo.STARS:
         odds = combo.MARKET_PRIZE[k] / combo.MARKET_COST[k]
         assert odds < combo.fair_odds(k)
         assert combo.return_rate(k, odds) < 1.0
 
 
-def test_three_star_return_is_still_above_one():
-    """**留著當警示**:用目前的三星盤口與成本基數,返還率算出來 > 100%。
+def test_real_payouts_match_what_the_bookie_pays():
+    """使用者的實際派彩:八顆三星中 5 碰共 285,000、四星中 4 碰共 3,000,000。
 
-    每注 63、中一碰 75,000(使用者給的實際派彩)、一支 280 碰 →
-    期望回收 18,410 ÷ 成本 17,640 = 104%。組頭不可能開正期望的盤,
-    所以三星的「一支到底幾碰 / 每注多少」還有一個數字沒對上。
-    這條測試不是在驗「對的行為」,是把這個未解的矛盾釘在版控裡,
-    等實際單支成本確認後再改。
+    這兩個數字同時釘住「中幾碰」與「每碰多少」—— 對得起來才代表星碰的
+    碰數規則沒推錯。
     """
-    odds = combo.MARKET_PRIZE[3] / combo.MARKET_COST[3]
-    assert combo.star_return_rate(3, 8, odds) > 1.0
-    # 四星同樣算法就正常,所以不是算式本身壞掉
-    assert combo.star_return_rate(4, 8, combo.MARKET_PRIZE[4]
-                                  / combo.MARKET_COST[4]) < 1.0
+    assert combo.star_hits(3, 8, 3) * combo.MARKET_PRIZE[3] == 285_000
+    assert combo.star_hits(4, 8, 4) * combo.MARKET_PRIZE[4] == 3_000_000
+
+
+def test_star_return_rates_with_the_real_payouts():
+    """兩種星別的返還率都要落在合理區間(負期望,但不會低到荒謬)。
+
+    先前三星誤填成 75,000 時算出 104% —— 正期望,組頭不可能這樣開;
+    那正是「數字抄錯」被擋下來的地方。實際是 57,000。
+    """
+    for k in (3, 4):
+        r = combo.star_return_rate(k, 8, combo.MARKET_PRIZE[k] / combo.MARKET_COST[k])
+        assert 0.3 < r < 1.0, (k, r)
+    assert combo.star_return_rate(3, 8, 57_000 / 63) == pytest.approx(0.793, abs=0.01)
+    assert combo.star_return_rate(4, 8, 750_000 / 50) == pytest.approx(0.828, abs=0.01)
 
 
 def test_return_rates_of_the_market_odds():
