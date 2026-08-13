@@ -3138,11 +3138,25 @@ def _render_combo_today(user: str, cfgs: dict, cum: float):
         exp = sum(o["prob"] * sum(o["hits"][b["stars"]] * b["prize"] * b["sheets"]
                                   for b in bets_plan)
                   for o in outcomes)
+        rate = exp / total_cost if total_cost else 0.0
         st.caption(
             f"期望回收 {_amt(exp)} − 成本 {_amt(total_cost)} = "
-            f"**{exp - total_cost:+,.0f} / 期**(返還率 {exp / total_cost:.2%})。"
+            f"**{exp - total_cost:+,.0f} / 期**(返還率 {rate:.2%})。"
             "幾星一起下的結果是連動的 —— 同一組號碼,重了幾顆就同時決定了"
             "每一種星別中幾碰,所以上面一列就是一種會真的發生的情況。")
+        if star_mode and rate > 1:
+            # 不把矛盾藏起來:成本與派彩是使用者給的事實,機率是他自己的開獎
+            # 資料回測出來的,三者湊在一起卻是正期望 —— 一定有個地方還沒對上。
+            st.warning(
+                f"**這個返還率({rate:.0%})不可能是真的** —— 大於 100% 代表"
+                "長期下去會贏錢,組頭不會開這種盤。上表的**成本 / 回收 / 損益"
+                "都是照你給的金額算的,可以對帳**;是「機率 × 派彩 ÷ 成本」"
+                "這三者兜不起來。\n\n"
+                "你的 819 期開獎回測顯示 8 顆重 3 顆的機率是 4.88%"
+                "(約 21 期一次)、重 4 顆 0.39%(約 258 期一次),這一側是準的。"
+                "所以要嘛中獎條件比「重幾顆」更嚴(還有我不知道的規則),"
+                "要嘛單支成本或每碰派彩還有一個數字沒對齊 —— "
+                "下次中獎時組頭實際匯多少,一個數字就能定案。", icon="⚠️")
 
     # 有這一期的開獎資料就先顯示判定(以**期號**為準,不是日期)
     drawn = checker.draw_for(load_df(key), draw_date, issue_in)
