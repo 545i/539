@@ -154,10 +154,11 @@ def test_combo_records_a_round_with_the_numbers(app):
     rows = storage.load_rounds("apptest", storage.COMBO)
     assert len(rows) == 1
     r = rows[0]
-    assert r["numbers"] == 56 and r["cars"] == 1        # 預設三星,C(8,3)
-    assert r["stars"] == 3 and r["dans"] == []          # 沒指定膽 = 連碰
+    # 預設玩法是**星碰**:一支 = C(8,3) 組星 × 剩下 5 顆搭配 = 280 碰
+    assert r["numbers"] == 280 and r["cars"] == 1
+    assert r["stars"] == 3 and r["dans"] == []
     # 每注成本是**跟星數綁的**(三星 63、四星 50),不是三種共用一個數字
-    assert r["cost"] == 63 * 56                         # 三星每注 63 × 56 注
+    assert r["cost"] == 63 * 280                        # 三星每注 63 × 280 碰
     assert r["payout_rate"] == 63 * 580                 # 倍率是幾倍,不是幾元
     assert r["picked"] == [1, 2, 3, 4, 5, 6, 7, 8]
     assert r["drag"] == r["picked"], "沒有膽時,拖就是全部圈的號碼"
@@ -178,9 +179,9 @@ def test_three_and_four_star_have_their_own_cost(app):
     assert not app.exception, [str(e.value) for e in app.exception]
 
     r = storage.load_rounds("apptest", storage.COMBO)[0]
-    assert r["stars"] == 4 and r["numbers"] == 70          # C(8,4)
-    assert r["cost"] == 50 * 70 == 3_500                   # 四星每注 50
-    assert r["cost"] != 63 * 70, "四星不該套到三星的每注成本"
+    assert r["stars"] == 4 and r["numbers"] == 280         # C(8,4) × 剩 4 顆
+    assert r["cost"] == 50 * 280 == 14_000                 # 四星每注 50
+    assert r["cost"] != 63 * 280, "四星不該套到三星的每注成本"
     assert r["payout_rate"] == 50 * 7500                   # 四星倍率
 
 
@@ -205,9 +206,9 @@ def test_three_and_four_star_share_one_pick(app):
     assert by_star[3]["picked"] == by_star[4]["picked"] == [1, 2, 3, 4, 5, 6, 7, 8]
     assert by_star[3]["draw_date"] == by_star[4]["draw_date"]
     assert by_star[3]["issue"] == by_star[4]["issue"]
-    # 但注數與成本各算各的
-    assert by_star[3]["numbers"] == 56 and by_star[3]["cost"] == 63 * 56
-    assert by_star[4]["numbers"] == 70 and by_star[4]["cost"] == 50 * 70
+    # 但成本各算各的(星碰:選 8 顆時兩種都是 280 碰,每注價不同)
+    assert by_star[3]["numbers"] == 280 and by_star[3]["cost"] == 63 * 280
+    assert by_star[4]["numbers"] == 280 and by_star[4]["cost"] == 50 * 280
 
 
 def _draw_rows(game_key="fantasy5", n=2):

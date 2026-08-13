@@ -2868,6 +2868,18 @@ def _combo_odds(cfg: dict, stars: int) -> tuple[float, float]:
     return float(cfg[f"combo_cost{stars}"]), float(cfg[f"combo_odds{stars}"])
 
 
+def _row_is_star(r: dict) -> bool:
+    """這一筆是不是星碰。
+
+    星碰不存膽,而且一支的碰數 = C(選幾顆, 星數) × (選幾顆 − 星數) ——
+    拿存下來的號碼與碰數回推就分得出來,不必再多開一個欄位。
+    """
+    stars = r.get("stars")
+    picked = len(r.get("picked") or [])
+    return bool(stars and not r.get("dans")
+                and int(r["numbers"]) == combo.star_bets(int(stars), picked))
+
+
 def _combo_row_plan(r: dict) -> tuple[int, int, int]:
     """流水的這一列是(幾星, 拖幾顆, 膽幾顆)。
 
@@ -2888,15 +2900,21 @@ def _combo_hits_options(stars: int, drag: int = 0, dans: int = 0,
     return combo.possible_hits(stars, drag, dans, g.num_max, g.pick)
 
 
-def _combo_play_of(dans: int) -> str:
-    """膽幾顆決定它叫什麼:0 顆是連碰、1 顆是立柱、更多是拖膽。"""
-    return combo.PLAYS[0].name if dans == 0 else (
-        combo.PLAYS[1].name if dans == 1 else combo.PLAYS[2].name)
+def _combo_play_of(dans: int, star_mode: bool = False) -> str:
+    """這一筆叫什麼玩法。
+
+    star_mode 是星碰(碰數 = 選幾顆 − 星數);其餘看膽幾顆:
+    0 顆是連碰、1 顆是立柱、更多是拖膽。
+    """
+    if star_mode:
+        return combo.play("star").name
+    return (combo.play("combo").name if dans == 0 else
+            combo.play("pillar").name if dans == 1 else combo.play("dan").name)
 
 
-def _combo_play_short(dans: int) -> str:
+def _combo_play_short(dans: int, star_mode: bool = False) -> str:
     """表格用的短名:「連碰(全碰)」在流水表裡太長,那個括號不必每列都看。"""
-    return _combo_play_of(dans).split("(")[0]
+    return _combo_play_of(dans, star_mode).split("(")[0]
 
 
 def _combo_odds_panel(cfg: dict, game, stars: int, drag: int, dans: int):
@@ -2974,6 +2992,10 @@ def _render_combo_today(user: str, cfgs: dict, cum: float):
             help="膽會出現在每一注裡,要全部開出才有注中獎。")
     drag_nums = [n for n in picked if n not in set(dan_nums)]
     drag, dans = len(drag_nums), len(dan_nums)
+    star_mode = p.key == "star"
+    # 星碰沒有膽的概念,一碰 = 一組星 + 一顆你剩下的號碼
+    bets_of = (lambda k: combo.star_bets(k, len(picked))) if star_mode else \
+              (lambda k: combo.bets(k, drag, dans))
     if p.dans is not None and dans != p.dans and picked:
         st.info(f"{p.name}要**剛好 {p.dans} 顆膽**,目前 {dans} 顆 —— "
                 f"現在算的是「{_combo_play_of(dans)}」。", icon="ℹ️")
@@ -3012,10 +3034,10 @@ def _render_combo_today(user: str, cfgs: dict, cum: float):
     # 成本 = 每注成本 × 碰數 × 支數;得獎 = 每注成本 × **中的碰數** × 倍率 × 支數。
     plan = pd.DataFrame([{
         "星別": combo.star_name(k),
-        "碰數": combo.bets(k, drag, dans),
+        "碰數": bets_of(k),
         "每注成本": _combo_odds(cfg, k)[0],
         "下幾支": int(cfg["combo_base"]),
-        "單支成本": _combo_odds(cfg, k)[0] * combo.bets(k, drag, dans),
+        "單支成本": _combo_odds(cfg, k)[0] * bets_of(k),
         "中一碰可得": combo.prize_per_bet(*_combo_odds(cfg, k)),
     } for k in star_list], index=[str(k) for k in star_list])
     st.markdown("**各星別下多少**")
@@ -3039,7 +3061,7 @@ def _render_combo_today(user: str, cfgs: dict, cum: float):
     # 真正要下的:碰數 > 0 且支數 > 0 的星別
     bets_plan, partial = [], []
     for k in star_list:
-        full = combo.bets(k, drag, dans)
+        full = bets_of(k)
         n = int(plan_edited.loc[str(k), "碰數"] or 0)
         sheets = int(plan_edited.loc[str(k), "下幾支"] or 0)
         if n <= 0 or sheets <= 0:
@@ -3083,8 +3105,12 @@ def _render_combo_today(user: str, cfgs: dict, cum: float):
         # 只列回收會讓人以為中了就賺。多星別一起下時成本是**相加**的。
         st.markdown("**中獎試算(已扣掉成本)**")
         rows_out = []
-        for o in combo.joint_outcomes([b["stars"] for b in bets_plan], drag, dans,
-                                      g.num_max, g.pick):
+        outcomes = (combo.star_joint_outcomes([b["stars"] for b in bets_plan],
+                                              len(picked), g.num_max, g.pick)
+                    if star_mode else
+                    combo.joint_outcomes([b["stars"] for b in bets_plan], drag, dans,
+                                         g.num_max, g.pick))
+        for o in outcomes:
             gross = sum(o["hits"][b["stars"]] * b["prize"] * b["sheets"]
                         for b in bets_plan)
             rows_out.append({
@@ -3104,8 +3130,7 @@ def _render_combo_today(user: str, cfgs: dict, cum: float):
         st.dataframe(pd.DataFrame(rows_out), width="stretch", hide_index=True)
         exp = sum(o["prob"] * sum(o["hits"][b["stars"]] * b["prize"] * b["sheets"]
                                   for b in bets_plan)
-                  for o in combo.joint_outcomes([b["stars"] for b in bets_plan],
-                                                drag, dans, g.num_max, g.pick))
+                  for o in outcomes)
         st.caption(
             f"期望回收 {_amt(exp)} − 成本 {_amt(total_cost)} = "
             f"**{exp - total_cost:+,.0f} / 期**(返還率 {exp / total_cost:.2%})。"
@@ -3123,7 +3148,8 @@ def _render_combo_today(user: str, cfgs: dict, cum: float):
         dan_hit = set(dan_nums) <= set(drawn)
         lines, gross = [], 0.0
         for b in bets_plan:
-            h = combo.hits_of(b["stars"], drawn, drag_nums, dan_nums)
+            h = (combo.star_hits_of(b["stars"], drawn, picked) if star_mode
+                 else combo.hits_of(b["stars"], drawn, drag_nums, dan_nums))
             got = h * b["prize"] * b["sheets"]
             gross += got
             lines.append(f"{combo.star_name(b['stars'])} {combo.result_text(h)}"
@@ -3181,8 +3207,9 @@ def _combo_autosettle(user: str, rows: list[dict]) -> int:
         if not d or len(d) != g.pick:
             continue
         stars, _, _ = _combo_row_plan(r)
-        storage.update_round_result(
-            int(r["id"]), combo.hits_of(stars, d, r["drag"], r["dans"]))
+        h = (combo.star_hits_of(stars, d, r["picked"]) if _row_is_star(r)
+             else combo.hits_of(stars, d, r["drag"], r["dans"]))
+        storage.update_round_result(int(r["id"]), h)
         done += 1
     return done
 
@@ -3231,6 +3258,7 @@ def _combo_detail_df(rows: list[dict]) -> pd.DataFrame:
         drawn = _row_draw(head) or []
         got = len(drawn) == g.pick and bool(head.get("picked"))
         plays = "+".join(combo.star_name(_combo_row_plan(r)[0]) for r in grp)
+        is_star = _row_is_star(head)
         sheets = {int(r["cars"]) for r in grp}
         result = ("待開獎" if all(r["pending"] for r in grp) else "、".join(
             f"{combo.star_name(_combo_row_plan(r)[0])}"
@@ -3241,7 +3269,7 @@ def _combo_detail_df(rows: list[dict]) -> pd.DataFrame:
             "日期": head["draw_date"],
             **({"期號": str(head.get("issue") or "—")} if any_issue else {}),
             "遊戲": g.label,
-            "玩法": f"{_combo_play_short(dans)} {plays}"
+            "玩法": f"{_combo_play_short(dans, is_star)} {plays}"
                     + (f"　{sheets.pop()} 支" if len(sheets) == 1 else "　支數不同"),
             "結果": result,
             "總成本": _amt(sum(float(r["cost"] or 0) for r in grp)),

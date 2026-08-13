@@ -55,6 +55,8 @@ class Play:
 
 
 PLAYS: tuple[Play, ...] = (
+    Play("star", "星碰", 0,
+         "重到星數就成一組星,你剩下的每一顆各配成一碰 —— 碰數 = 選幾顆 − 星數"),
     Play("combo", "連碰(全碰)", 0,
          "選幾顆就任意湊,每一注的號碼全部從你圈的裡面挑"),
     Play("pillar", "立柱", 1,
@@ -200,6 +202,122 @@ def sheets_for_recovery(loss: float, hits_: int, stars: int, drag: int,
     return {"feasible": True, "sheets": sheets,
             "cost": round_cost(stars, drag, per_bet, dans, sheets),
             "gain_per_sheet": gain}
+
+
+# ── 星碰(民間三星 / 四星碰)────────────────────────────────
+# 跟上面的連碰是**不同的玩法**,別搞混:
+#
+#   連碰  一注 = K 個號碼,那 K 顆全開才中,中的注數 = C(拖中幾顆, K−膽)
+#   星碰  一碰 = 一組「星」(K 顆全開)+ 一顆你的其他號碼
+#
+# 星碰的中獎顆數固定:重到 K 顆就成一組星,你剩下的 (選幾顆 − K) 顆
+# 每一顆各配成一碰 —— 所以中的碰數 = 選幾顆 − 星數,跟重了幾顆無關。
+#
+#   選 8 顆:三星中 8−3 = 5 碰、四星中 8−4 = 4 碰
+#
+# 一支買的總碰數 = C(選幾顆, 星數) × (選幾顆 − 星數) —— 每一組可能的星
+# 各配所有可能的搭配號碼。選 8 顆時三星與四星都剛好是 280 碰。
+# (用這個成本基數,63/580 與 50/7500 的返還率是 50.8% 與 41.4%;
+#  若把成本當成只有 C(8,K) 碰,返還率會變成 254% 與 165% —— 不可能存在,
+#  這也是拿來檢查基數有沒有搞錯的方法。)
+
+
+def match_probs(picked: int, num_max: int = 39,
+                pick: int = 5) -> dict[int, float]:
+    """自選 picked 顆時,重(對中)m 顆的機率 —— 超幾何分布。
+
+    C(picked,m) · C(num_max−picked, pick−m) / C(num_max,pick)。
+    星碰的中獎與否只看重幾顆,所以它是整個星碰機率的底層。
+    """
+    total = comb(int(num_max), int(pick))
+    top = min(int(picked), int(pick))
+    return {m: comb(int(picked), m)
+               * comb(int(num_max) - int(picked), int(pick) - m) / total
+            for m in range(top + 1)}
+
+
+def star_bets(stars: int, picked: int) -> int:
+    """星碰一支買幾碰 = C(選幾顆, 星數) × (選幾顆 − 星數)。"""
+    k, n = int(stars), int(picked)
+    if n <= k or k <= 0:
+        return 0
+    return comb(n, k) * (n - k)
+
+
+def star_hits(stars: int, picked: int, matched: int) -> int:
+    """星碰中幾碰 = 選幾顆 − 星數(重不到星數就是 0)。
+
+    重更多顆不會中更多碰 —— 一組星就是一組星,配的還是你剩下那幾顆。
+    """
+    k, n = int(stars), int(picked)
+    return (n - k) if int(matched) >= k and n > k else 0
+
+
+def star_hits_of(stars: int, drawn, nums) -> int:
+    """由開獎號碼直接算星碰中幾碰。"""
+    nums = {int(x) for x in nums}
+    return star_hits(stars, len(nums), len(nums & {int(x) for x in drawn}))
+
+
+def star_hit_probs(stars: int, picked: int, num_max: int = 39,
+                   pick: int = 5) -> dict[int, float]:
+    """星碰:中的碰數 → 機率。"""
+    out: dict[int, float] = {}
+    for m, p in match_probs(picked, num_max, pick).items():
+        h = star_hits(stars, picked, m)
+        out[h] = out.get(h, 0.0) + p
+    return dict(sorted(out.items()))
+
+
+def star_expected_hits(stars: int, picked: int, num_max: int = 39,
+                       pick: int = 5) -> float:
+    """星碰每期期望中幾碰。"""
+    return sum(h * p for h, p in
+               star_hit_probs(stars, picked, num_max, pick).items())
+
+
+def star_win_prob(stars: int, picked: int, num_max: int = 39,
+                  pick: int = 5) -> float:
+    """星碰至少中一碰的機率 = 重到星數以上的機率。"""
+    return sum(p for h, p in
+               star_hit_probs(stars, picked, num_max, pick).items() if h > 0)
+
+
+def star_return_rate(stars: int, picked: int, odds: float, num_max: int = 39,
+                     pick: int = 5, bets_bought: int | None = None) -> float:
+    """星碰返還率 = 期望中的碰數 × 倍率 ÷ 買的碰數。
+
+    每碰成本會約掉(成本與回收都線性於它),所以只看倍率與碰數結構。
+    """
+    n = star_bets(stars, picked) if bets_bought is None else int(bets_bought)
+    if n <= 0:
+        return 0.0
+    return star_expected_hits(stars, picked, num_max, pick) * float(odds) / n
+
+
+def star_fair_odds(stars: int, picked: int, num_max: int = 39,
+                   pick: int = 5, bets_bought: int | None = None) -> float:
+    """星碰損益兩平的倍率 = 買的碰數 ÷ 期望中的碰數。"""
+    n = star_bets(stars, picked) if bets_bought is None else int(bets_bought)
+    e = star_expected_hits(stars, picked, num_max, pick)
+    return n / e if e else float("inf")
+
+
+def star_joint_outcomes(stars_list, picked: int, num_max: int = 39,
+                        pick: int = 5) -> list[dict]:
+    """同一組號碼同時下多種星別時,每種結果組合的機率(星碰版)。
+
+    幾星都是拿同一組號碼去對,重了幾顆同時決定每一種星別中幾碰,
+    所以要一起列舉,不能各算各的(理由同 joint_outcomes)。
+    """
+    out = []
+    for m, p in sorted(match_probs(picked, num_max, pick).items(), reverse=True):
+        out.append({
+            "matched": m,
+            "prob": p,
+            "hits": {int(k): star_hits(int(k), picked, m) for k in stars_list},
+        })
+    return out
 
 
 # ── 多種星別共用同一張牌 ──────────────────────────────────

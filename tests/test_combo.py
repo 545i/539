@@ -273,3 +273,94 @@ def test_bets_table_matches_bets():
     for row in combo.bets_table(1):
         for k in combo.STARS:
             assert (row[k] or 0) == combo.bets(k, row["drag"], 1)
+
+
+# ── 星碰(民間三星 / 四星碰)────────────────────────────────
+# 使用者給的實例:下 05 11 13 15 20 23 31 35,開 05 11 13 15 27
+#   重 4 顆 → 那 4 顆組成一組四星,剩下的 4 顆(20 23 31 35)各配一碰 = 4 碰
+#   同一期三星是 5 碰 —— 一組三星 + 你剩下的 5 顆
+_NUMS = [5, 11, 13, 15, 20, 23, 31, 35]
+_DRAWN = [5, 11, 13, 15, 27]
+
+
+def test_star_hits_matches_the_real_example():
+    assert combo.star_hits_of(4, _DRAWN, _NUMS) == 4
+    assert combo.star_hits_of(3, _DRAWN, _NUMS) == 5
+
+
+def test_star_hits_is_picked_minus_stars_not_a_combination():
+    """碰數 = 選幾顆 − 星數,**跟重了幾顆無關**(重到門檻就是那個數)。
+
+    這是星碰跟連碰最容易搞混的地方:連碰是 C(重的顆數, 星數),
+    重越多中越多;星碰重再多也還是同一組星配同樣那幾顆。
+    """
+    for m in (3, 4, 5):
+        assert combo.star_hits(3, 8, m) == 5
+    for m in (4, 5):
+        assert combo.star_hits(4, 8, m) == 4
+    assert combo.star_hits(3, 8, 2) == 0        # 重不到 3 顆就是槓龜
+    assert combo.star_hits(4, 8, 3) == 0
+    # 不是 C(重,星) × 剩餘 —— 重 4 顆的三星是 5 碰,不是 C(4,3)×4 = 16
+    assert combo.star_hits(3, 8, 4) != comb(4, 3) * 4
+
+
+def test_star_bets_is_every_star_group_times_every_partner():
+    """一支買的總碰數 = C(選幾顆, 星數) × (選幾顆 − 星數)。"""
+    assert combo.star_bets(3, 8) == comb(8, 3) * 5 == 280
+    assert combo.star_bets(4, 8) == comb(8, 4) * 4 == 280
+    assert combo.star_bets(3, 3) == 0           # 選的顆數等於星數,配不出搭配號
+
+
+def test_star_hit_probs_sum_to_one():
+    for k in (2, 3, 4):
+        for n in (6, 8, 10):
+            assert sum(combo.star_hit_probs(k, n).values()) == pytest.approx(1.0)
+
+
+def test_star_win_prob_is_just_hitting_enough_numbers():
+    """至少中一碰 = 重到星數以上 —— 中的碰數固定,所以兩者是同一件事。"""
+    mp = combo.match_probs(8)
+    assert combo.star_win_prob(3, 8) == pytest.approx(mp[3] + mp[4] + mp[5])
+    assert combo.star_win_prob(4, 8) == pytest.approx(mp[4] + mp[5])
+
+
+def test_star_return_rates_are_believable():
+    """用實際盤口(三星 63/580、四星 50/7500)算出來要落在合理區間。
+
+    這條是拿來擋「成本基數搞錯」的:若把一支當成只有 C(8,K) 碰,
+    返還率會變成 254% / 165% —— 正期望,組頭不可能這樣開。
+    """
+    r3 = combo.star_return_rate(3, 8, 580)
+    r4 = combo.star_return_rate(4, 8, 7500)
+    assert 0.3 < r3 < 0.8, r3
+    assert 0.3 < r4 < 0.8, r4
+    assert r3 == pytest.approx(0.508, abs=0.005)
+    assert r4 == pytest.approx(0.414, abs=0.005)
+    # 用錯的成本基數(只算 C(8,K) 碰)會算出不可能的正期望
+    assert combo.star_return_rate(3, 8, 580, bets_bought=comb(8, 3)) > 2
+
+
+def test_star_fair_odds_is_bets_over_expected():
+    for k, n in ((3, 8), (4, 8)):
+        assert (combo.star_fair_odds(k, n)
+                == pytest.approx(combo.star_bets(k, n)
+                                 / combo.star_expected_hits(k, n)))
+        # 組頭報的一定低於公平倍率,差額就是他的抽成
+        assert combo.MARKET_ODDS[k] < combo.star_fair_odds(k, n)
+
+
+def test_star_joint_outcomes_links_the_star_levels():
+    """三星 + 四星 一起下時,重幾顆同時決定兩邊中幾碰。"""
+    rows = combo.star_joint_outcomes([3, 4], 8)
+    assert sum(r["prob"] for r in rows) == pytest.approx(1.0)
+    by_m = {r["matched"]: r["hits"] for r in rows}
+    assert by_m[4] == {3: 5, 4: 4}      # 重 4 顆:三星 5 碰、四星 4 碰
+    assert by_m[3] == {3: 5, 4: 0}      # 重 3 顆:只有三星中
+    assert by_m[2] == {3: 0, 4: 0}
+    # 邊際分布要跟各自算的一致
+    for k in (3, 4):
+        marg = {}
+        for r in rows:
+            marg[r["hits"][k]] = marg.get(r["hits"][k], 0) + r["prob"]
+        ref = combo.star_hit_probs(k, 8)
+        assert all(marg[h] == pytest.approx(ref[h]) for h in ref)
