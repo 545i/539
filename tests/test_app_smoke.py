@@ -159,7 +159,7 @@ def test_combo_records_a_round_with_the_numbers(app):
     assert r["stars"] == 3 and r["dans"] == []
     # 每注成本是**跟星數綁的**(三星 63、四星 50),不是三種共用一個數字
     assert r["cost"] == 63 * 280                        # 三星每注 63 × 280 碰
-    assert r["payout_rate"] == 63 * 580                 # 倍率是幾倍,不是幾元
+    assert r["payout_rate"] == 75_000                    # 三星中一碰可得
     assert r["picked"] == [1, 2, 3, 4, 5, 6, 7, 8]
     assert r["drag"] == r["picked"], "沒有膽時,拖就是全部圈的號碼"
     assert r["pending"], "沒選結果就該是待開獎"
@@ -182,7 +182,7 @@ def test_three_and_four_star_have_their_own_cost(app):
     assert r["stars"] == 4 and r["numbers"] == 280         # C(8,4) × 剩 4 顆
     assert r["cost"] == 50 * 280 == 14_000                 # 四星每注 50
     assert r["cost"] != 63 * 280, "四星不該套到三星的每注成本"
-    assert r["payout_rate"] == 50 * 7500                   # 四星倍率
+    assert r["payout_rate"] == 750_000                     # 四星中一碰可得
 
 
 def test_three_and_four_star_share_one_pick(app):

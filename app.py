@@ -1308,7 +1308,7 @@ def _game_settings(user: str, g) -> dict:
 
     前四項是二合買牌(單顆 / 多顆)用的:每車成本 / 中獎可得 / 押幾顆 / 起始車數。
     bet_cost / bet_prize 是三柱 1800碰 用的**每注**價碼;combo_per_bet /
-    combo_odds{k} 是連碰用的每注成本與倍率(1 賠幾)。三套盤口互不相干,
+    combo_prize{k} 是連碰用的每注成本與中一碰可得。三套盤口互不相干,
     改哪一邊都不會動到另一邊。
 
     連碰的預設值取自 core.combo(玩法本身的市場報價),不放進 GameConfig ——
@@ -1330,8 +1330,8 @@ def _game_settings(user: str, g) -> dict:
         **{f"combo_cost{k}": storage.get_setting(skey, f"combo_cost{k}",
                                                  combo.MARKET_COST[k])
            for k in combo.STARS},
-        **{f"combo_odds{k}": storage.get_setting(skey, f"combo_odds{k}",
-                                                 combo.MARKET_ODDS[k])
+        **{f"combo_prize{k}": storage.get_setting(skey, f"combo_prize{k}",
+                                                  combo.MARKET_PRIZE[k])
            for k in combo.STARS},
         "combo_base": int(storage.get_setting(skey, "combo_base", 1)),
     }
@@ -2860,12 +2860,16 @@ def _amt(v: float) -> str:
 
 
 def _combo_odds(cfg: dict, stars: int) -> tuple[float, float]:
-    """該款在這個星數下的(每注成本, 倍率)。
+    """該款在這個星數下的(每注成本, **中一碰可得**)。
 
-    **每注成本是跟星數綁的**(三星 63、四星 50 本來就不同價),
-    不能三種共用一個數字 —— 那樣算出來的成本與損益都是錯的。
+    兩個都是跟星數綁的(三星 63 / 75,000、四星 50 / 750,000 本來就不同),
+    三種共用一個數字算出來的成本與損益都是錯的。
+
+    中一碰可得直接存金額,不存倍率 —— 組頭本來就是報「中一碰給你多少」,
+    多一層「乘每注成本」的換算只會多一個出錯的地方。要看倍率的話
+    倍率 = 中一碰可得 ÷ 每注成本(顯示時現算)。
     """
-    return float(cfg[f"combo_cost{stars}"]), float(cfg[f"combo_odds{stars}"])
+    return float(cfg[f"combo_cost{stars}"]), float(cfg[f"combo_prize{stars}"])
 
 
 def _row_is_star(r: dict) -> bool:
@@ -2919,10 +2923,10 @@ def _combo_play_short(dans: int, star_mode: bool = False) -> str:
 
 def _combo_odds_panel(cfg: dict, game, stars: int, drag: int, dans: int):
     """目前這張牌的盤口與它的期望值判定。"""
-    per_bet, odds = _combo_odds(cfg, stars)
+    per_bet, prize = _combo_odds(cfg, stars)
+    odds = prize / per_bet if per_bet else 0.0
     nm, pk = game.num_max, game.pick
     n = combo.bets(stars, drag, dans)
-    prize = combo.prize_per_bet(per_bet, odds)
     fair = combo.fair_odds(stars, nm, pk)
     rate = combo.return_rate(stars, odds, nm, pk)
     ev = combo.expected_net(stars, drag, per_bet, odds, dans, nm, pk)
@@ -3038,7 +3042,7 @@ def _render_combo_today(user: str, cfgs: dict, cum: float):
         "每注成本": _combo_odds(cfg, k)[0],
         "下幾支": int(cfg["combo_base"]),
         "單支成本": _combo_odds(cfg, k)[0] * bets_of(k),
-        "中一碰可得": combo.prize_per_bet(*_combo_odds(cfg, k)),
+        "中一碰可得": _combo_odds(cfg, k)[1],
     } for k in star_list], index=[str(k) for k in star_list])
     st.markdown("**各星別下多少**")
     plan_edited = st.data_editor(
@@ -3066,14 +3070,14 @@ def _render_combo_today(user: str, cfgs: dict, cum: float):
         sheets = int(plan_edited.loc[str(k), "下幾支"] or 0)
         if n <= 0 or sheets <= 0:
             continue
-        per_bet, odds = _combo_odds(cfg, k)
+        per_bet, prize = _combo_odds(cfg, k)
         if full and n != full:
             partial.append(f"{combo.star_name(k)}({n} / 全包 {full})")
         bets_plan.append({
             "stars": k, "bets": n, "sheets": sheets, "full": full,
             "cost": per_bet * n * sheets,
-            "prize": combo.prize_per_bet(per_bet, odds),
-            "per_bet": per_bet, "odds": odds,
+            "prize": prize,
+            "per_bet": per_bet, "odds": prize / per_bet if per_bet else 0.0,
         })
     if partial:
         st.warning(
@@ -3094,9 +3098,8 @@ def _render_combo_today(user: str, cfgs: dict, cum: float):
             + "、".join(f"{combo.star_name(b['stars'])} {_amt(b['per_bet'])} × "
                         f"{b['bets']:,} 碰 × {b['sheets']} 支 = {_amt(b['cost'])}"
                         for b in bets_plan)
-            + ")　|　**得獎** = 每注成本 × **中的碰數** × 倍率 × 支數("
-            + "、".join(f"{combo.star_name(b['stars'])}中 1 碰 = {_amt(b['per_bet'])}"
-                        f" × 1 × {_amt(b['odds'])} = {_amt(b['prize'])}"
+            + ")　|　**得獎** = 中一碰可得 × **中的碰數** × 支數("
+            + "、".join(f"{combo.star_name(b['stars'])} 中 1 碰 = {_amt(b['prize'])}"
                         for b in bets_plan)
             + ")。價碼要改請到**設定 → 盤口設定 → 連碰**。")
 
@@ -3294,7 +3297,8 @@ def _render_combo_recovery(cfgs: dict, cum: float, rows: list[dict]):
     last = rows[-1]
     g = games.get(last["game"])
     stars, drag, dans = _combo_row_plan(last)
-    per_bet, odds = _combo_odds(cfgs[last["game"]], stars)
+    per_bet, prize = _combo_odds(cfgs[last["game"]], stars)
+    odds = prize / per_bet if per_bet else 0.0
     st.caption(
         f"用你**最後記的那一張**來算:{g.label}·{_combo_play_of(dans)}"
         f"{combo.star_name(stars)},拖 {drag} 顆"
@@ -3366,11 +3370,12 @@ def _render_combo_history(cfgs: dict, rows: list[dict]):
         format_func=lambda n: f"全部 {n} 期" if n == len(draws) else f"{n} 期",
         key="lcombo_hist_span")
     s = combo.history_stats(draws[-int(span):], stars, drag_nums, dan_nums, g.pick)
-    per_bet, odds = _combo_odds(cfgs[key], stars)
+    per_bet, prize = _combo_odds(cfgs[key], stars)
+    odds = prize / per_bet if per_bet else 0.0
     theory = combo.win_prob(stars, drag, dans, g.num_max, g.pick)
     rate = combo.return_rate(stars, odds, g.num_max, g.pick)
     spent = s["rounds"] * combo.total_cost(stars, drag, per_bet, dans)
-    back = s["total_hits"] * combo.prize_per_bet(per_bet, odds)
+    back = s["total_hits"] * prize
 
     st.markdown(f"**這一張牌**({src})　" + _balls(picked, set(dan_nums))
                 + ("　← 綠色是膽" if dan_nums else ""), unsafe_allow_html=True)
@@ -3863,7 +3868,8 @@ def page_combo():
     odds = float(o2.number_input(
         f"{combo.star_name(stars)}倍率(1 賠幾)", min_value=1.0,
         max_value=1_000_000.0,
-        value=float(combo.MARKET_ODDS.get(stars, 100.0)), step=1.0,
+        value=float(combo.MARKET_PRIZE.get(stars, 5000.0)
+                    / combo.MARKET_COST.get(stars, 50.0)), step=1.0,
         key=f"combo_odds_{stars}",
         help="組頭報的賠率。市場參考:二星 53、三星 580、四星 7,500 —— "
              "各家不同,以你自己的盤口為準。"))
@@ -4047,22 +4053,23 @@ def page_settings(user: str):
             # 一星數一列:每注成本與倍率各自獨立 —— 三星 63、四星 50 不同價,
             # 共用一個成本欄位會把損益算錯。
             for k in combo.STARS:
-                cost, odds = _combo_odds(cfg, k)
+                cost, prize = _combo_odds(cfg, k)
+                odds = prize / cost if cost else 0.0
                 fair = combo.fair_odds(k, g.num_max, g.pick)
                 rate = combo.return_rate(k, odds, g.num_max, g.pick)
-                kc, ko = f"set_combo_cost{k}_{g.key}", f"set_combo_odds{k}_{g.key}"
+                kc, ko = f"set_combo_cost{k}_{g.key}", f"set_combo_prize{k}_{g.key}"
                 c1, c2, c3 = st.columns([1, 1, 2])
                 c1.number_input(
                     f"{combo.star_name(k)}每注成本", min_value=0.01,
                     max_value=100_000.0, value=float(cost), step=1.0, key=kc,
                     on_change=_persist_setting, args=(skey, f"combo_cost{k}", kc))
                 c2.number_input(
-                    f"{combo.star_name(k)}倍率(1 賠幾)", min_value=1.0,
-                    max_value=1_000_000.0, value=float(odds), step=1.0, key=ko,
-                    on_change=_persist_setting, args=(skey, f"combo_odds{k}", ko))
+                    f"{combo.star_name(k)}中一碰可得", min_value=1.0,
+                    max_value=100_000_000.0, value=float(prize), step=100.0, key=ko,
+                    on_change=_persist_setting, args=(skey, f"combo_prize{k}", ko))
                 c3.markdown(
-                    f"中一注可得 **{_amt(combo.prize_per_bet(cost, odds))}**"
-                    f"({_amt(cost)} × {_amt(odds)})  \n"
+                    f"中一碰可得 **{_amt(prize)}**"
+                    f"(= 每注 {_amt(cost)} 的 {odds:,.1f} 倍)  \n"
                     f"返還率 **{rate:.2%}**　公平賠率 {fair:,.1f}")
                 if rate >= 1:
                     st.error(
