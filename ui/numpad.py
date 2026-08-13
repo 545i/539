@@ -28,20 +28,19 @@ from core.pillar import (PILLAR_NAMES, pillar_counts,  # noqa: F401  (轉出給�
 # 三柱各自的球色(未選中時的邊框與字色;選中時填滿同色)
 _TONE = ("#2563eb", "#ea580c", "#0f766e")     # 藍 / 橘 / 墨綠
 
+# 一列 10 顆時整列的寬度上限。球是「一列平分寬度 + 正方形」長出來的,
+# 所以沒有上限的話,號碼盤放在整頁寬的地方每顆會撐到 90px 以上,大得誇張。
+# 420px / 10 顆 ≈ 40px,是手指好按又不佔版面的尺寸;螢幕比這窄就照螢幕縮。
+_ROW_MAX_PX = 420
+
 _CSS = """
 <style>
 /* ── 號碼球:把 Streamlit 的方形按鈕改成圓形彩球 ───────────── */
-/* 號碼盤所在的彈窗:Streamlit 內外兩層各留了 8~24px 內距,手機上會把球擠到
-   剩 27px。這兩層一起收窄,球才有 33px 以上可以點。 */
-div[data-testid="stDialog"]:has([class*="lotto-pad-"]) > div > div,
-div[data-testid="stDialog"]:has([class*="lotto-pad-"]) > div > div > div {
-    padding-left: .5rem !important;
-    padding-right: .5rem !important;
-}
 div[class*="lotto-pad-"] div[data-testid="stHorizontalBlock"] {
     flex-wrap: nowrap !important;   /* 一列就是一列,窄螢幕也不准換行 */
     gap: .16rem !important;
     container-type: inline-size;    /* 讓球的字體能跟著這一列的寬度縮放 */
+    max-width: %ROWMAX%px;          /* 見 _ROW_MAX_PX:不加上限球會撐爆 */
 }
 div[class*="lotto-pad-"] div[data-testid="stColumn"] {
     min-width: 0 !important;        /* 讓 10 欄能一起壓縮而不是擠爆 */
@@ -66,7 +65,7 @@ div[class*="lotto-pad-"] .stButton > button {
     white-space: nowrap !important; /* 「01」不准拆成兩行 */
     overflow: hidden;
     /* 一列 10 顆,每顆約佔 10cqw;字大約取球徑的 4 成 */
-    font-size: clamp(9px, 3.8cqw, 16px) !important;
+    font-size: clamp(9px, 3.8cqw, 17px) !important;
     line-height: 1 !important;
     border-width: 2px !important;
     transition: transform .08s ease;
@@ -101,7 +100,9 @@ div[class*="lotto-pad-p{i}"] .stButton > button[kind="primary"] {{
 
 def inject_css() -> None:
     """把號碼球的樣式送進頁面(整頁只需要一次;重複送也無害)。"""
-    st.markdown(_CSS.replace("%SCOPED%", _scoped_css()), unsafe_allow_html=True)
+    st.markdown(
+        _CSS.replace("%SCOPED%", _scoped_css()).replace("%ROWMAX%", str(_ROW_MAX_PX)),
+        unsafe_allow_html=True)
 
 
 def _state_key(key: str) -> str:

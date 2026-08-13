@@ -959,7 +959,7 @@ def _render_autoupdate_panel():
                                        f"新增 {res['added']} 期,資料已到 {res['latest']}。"))
                 except Exception as e:      # noqa: BLE001 — 抓取失敗照實顯示
                     msgs.append((False, f"**{g.label}**:抓取失敗 — {e}"))
-        load_df.clear()
+        _clear_data_caches()
         st.session_state["_catchup_msgs"] = msgs
         st.rerun()
     c2.caption("備用方案:排程還沒跑到、或想立刻拿到剛開出的號碼時按這裡,"
@@ -1337,6 +1337,13 @@ def _game_settings(user: str, g) -> dict:
     }
 
 
+def _clear_data_caches() -> None:
+    """開獎資料更新後要清的快取 —— 兩份都清,不然畫面會停在舊資料。"""
+    load_df.clear()
+    _draws_of_key.clear()
+    _draw_lookup.clear()
+
+
 def _start_autoupdate():
     """啟動開獎資料的背景排程(整個行程只起一條)。
 
@@ -1348,7 +1355,7 @@ def _start_autoupdate():
     整個行程只會有一條排程執行緒。
     """
     autoupdate.start_scheduler(
-        {g.key: game_data_path(g) for g in GAME_LIST}, on_done=load_df.clear)
+        {g.key: game_data_path(g) for g in GAME_LIST}, on_done=_clear_data_caches)
 
 
 # ── 戰績列 ───────────────────────────────────────────────
@@ -1715,8 +1722,17 @@ def _pred_panel(picks: list[str], mode: str, single: bool, draw_date) -> None:
                     st.rerun()
 
 
+@st.fragment
 def _render_today(user: str, cfgs: dict, cum: float, mode: str = storage.MULTI):
     """今天要下哪幾款的輸入 + 試算。
+
+    **整段是一個 fragment**:在號碼盤點一顆球只會重跑這一段,不會把五個分頁、
+    流水表、走勢圖整組重畫。以前號碼盤在彈窗裡(彈窗本來就是 fragment)所以
+    很順,改成內嵌之後每點一顆球都要付整頁重跑的代價,顏色要等半秒才變。
+    包成 fragment 就把那個代價收回來了。
+
+    要動到這一段以外的東西(記帳、車數重設)照樣呼叫 st.rerun() ——
+    它預設 scope="app",會重跑整頁,所以紀錄與累積損益一樣會更新。
 
     mode="multi"  每款可自訂押幾顆(現行玩法)。
     mode="single" 每款固定押 1 顆,只能改車數 —— 成本係數 k 小很多,
@@ -2164,10 +2180,7 @@ def _marked_numbers(r: dict) -> str:
         return "—"
     matched: set[int] = set()
     if not r["pending"]:
-        res = checker.check(load_df(r["game"]), r["draw_date"], picked,
-                            r.get("issue"))
-        if res["ok"]:
-            matched = set(res["matched"])
+        matched = set(picked) & set(_row_draw(r) or [])
     return " ".join(f"【{n:02d}】" if n in matched else f"{n:02d}" for n in picked)
 
 
@@ -2366,18 +2379,52 @@ def _pillar_dist_text(counts) -> str:
     return " + ".join(str(c) for c in counts)
 
 
-def _draws_of(game) -> list[list[int]]:
-    """某款的全部開獎號碼(舊 → 新);顆數不齊的期照樣回傳,由呼叫端決定怎麼處理。"""
-    df = load_df(game.key)
+@st.cache_data(show_spinner=False)
+def _draws_of_key(game_key: str) -> list[list[int]]:
+    """某款的全部開獎號碼(舊 → 新);顆數不齊的期照樣回傳,由呼叫端處理。
+
+    **這裡是整頁最燙的一段**,所以做了兩件事:
+      1. 快取住 —— 斷柱提醒、1800碰 歷史、連碰 歷史一次重跑就要各叫一遍,
+         沒快取的話同一份資料要重掃三次。
+      2. 不用 df.iterrows() —— 它每一列都生一個 Series,掃幾千期要花掉
+         大半秒;改成先 to_numpy() 再跑,快兩個數量級。
+
+    以前這段沒快取又用 iterrows,結果**點一顆號碼球要等半秒才變色**
+    (點球會觸發整頁重跑,整頁重跑就重掃三次歷史)。
+
+    資料更新後要 _draws_of_key.clear(),不然會拿到舊的(見 _start_autoupdate)。
+    """
+    df = load_df(game_key)
     if df is None or df.empty:
         return []
     cols = loader.detect_num_cols(df)
     if not cols:
         return []
     out = []
-    for _, r in df.iterrows():
-        out.append(sorted(int(r[c]) for c in cols if not pd.isna(r[c])))
+    for row in df[cols].to_numpy():
+        out.append(sorted(int(v) for v in row if not pd.isna(v)))
     return out
+
+
+def _draws_of(game) -> list[list[int]]:
+    """同 _draws_of_key,但收 GameConfig(呼叫端手上通常是它)。"""
+    return _draws_of_key(game.key)
+
+
+@st.cache_data(show_spinner=False)
+def _draw_lookup(game_key: str, draw_date: str, issue: str | None) -> list[int] | None:
+    """查一筆下注對應的開獎號碼(快取版)。
+
+    checker.draw_for 每叫一次就掃一遍整份開獎資料;流水表是**一列叫一次**,
+    幾十筆紀錄就掃幾十遍同一份資料。查詢結果只跟 (款, 日期, 期號) 有關,
+    快取住就好。資料更新後要清(見 _clear_data_caches)。
+    """
+    return checker.draw_for(load_df(game_key), draw_date, issue)
+
+
+def _row_draw(r: dict) -> list[int] | None:
+    """某一筆流水對應的開獎號碼。"""
+    return _draw_lookup(r["game"], str(r["draw_date"]), r.get("issue") or None)
 
 
 def _pillar_intro(game):
@@ -2620,7 +2667,7 @@ def _render_pillar_pending(rows: list[dict]):
     resolved = {}
     for r in pend:
         g = games.get(r["game"])
-        d = checker.draw_for(load_df(r["game"]), r["draw_date"], r.get("issue"))
+        d = _row_draw(r)
         if d and len(d) == g.pick:
             resolved[int(r["id"])] = (d, pillar.pillar_counts(d, g.num_max))
 
@@ -2670,8 +2717,7 @@ def _pillar_detail_df(rows: list[dict]) -> pd.DataFrame:
     out = []
     for i, r in enumerate(rows):
         g = games.get(r["game"])
-        drawn = checker.draw_for(load_df(r["game"]), r["draw_date"],
-                                 r.get("issue")) or []
+        drawn = _row_draw(r) or []
         counts = pillar.pillar_counts(drawn, g.num_max) if len(drawn) == g.pick else None
         out.append({
             "#": i + 1,
@@ -2878,7 +2924,9 @@ def _combo_odds_panel(cfg: dict, game, stars: int, drag: int, dans: int):
             "的定義,不要直接相信這個獲利預測。")
 
 
+@st.fragment
 def _render_combo_today(user: str, cfgs: dict, cum: float):
+    """這一期要下什麼 + 試算。整段是一個 fragment,理由同 _render_today。"""
     st.subheader("一、這一期下幾支")
     keys = [g.key for g in GAME_LIST]
     key = st.segmented_control(
@@ -2930,22 +2978,43 @@ def _render_combo_today(user: str, cfgs: dict, cum: float):
     if n_bets > 0:
         _combo_odds_panel(cfg, g, stars, drag, dans)
 
+    # 下注日期 / 下幾支 / 期號 排成一列表格,跟二合那頁同一種填法 ——
+    # 三個獨立的 widget 各佔一段高度、標籤又長短不一,排起來散;
+    # 一列表格填完就走,手機上也不用一直捲。
     issue_opts, issue_default = _issue_options(key, storage.COMBO)
-    c1, c2, c3 = st.columns([1.3, 1, 1])
-    draw_date = c1.date_input("下注日期", value=dt.date.today(), format="YYYY-MM-DD",
-                              key="lcombo_date")
-    sheets = int(c2.number_input(
-        "下幾支", min_value=1, max_value=1000, step=1,
-        value=int(cfg["combo_base"]), key="lcombo_sheets",
-        help=f"1 支 = 買滿這張的全部 {n_bets:,} 注。支數只是等比放大,"
-             "不會改變機率。"))
-    issue_in = ""
-    if issue_opts:
-        issue_in = c3.selectbox(
-            "期號", issue_opts, index=issue_opts.index(issue_default),
-            key=_issue_key(key, storage.COMBO),
-            format_func=lambda s, d=issue_default: predictor.issue_label(s, d),
-            help="預設是開獎資料算出來的下一期;補登或預先下注就改這裡。")
+    has_issue = bool(issue_opts)
+    issue_label_now = (predictor.issue_label(issue_default, issue_default)
+                       if has_issue else "")
+    form = pd.DataFrame([{
+        "下注日期": dt.date.today(),
+        "下幾支": int(cfg["combo_base"]),
+        **({"期號": issue_label_now} if has_issue else {}),
+    }])
+    st.markdown("**填這裡**")
+    edited = st.data_editor(
+        form, key="lcombo_form", hide_index=True, width="stretch",
+        column_config={
+            "下注日期": st.column_config.DateColumn(
+                "下注日期", format="YYYY-MM-DD", required=True,
+                help="這一注是哪一天下的;補登過去的日期也可以。"),
+            "下幾支": st.column_config.NumberColumn(
+                "下幾支", min_value=1, max_value=1000, step=1, required=True,
+                help=f"1 支 = 買滿這張的全部 {n_bets:,} 注。"
+                     "支數只是等比放大,不會改變機率。"),
+            **({"期號": st.column_config.SelectboxColumn(
+                "期號",
+                options=[predictor.issue_label(o, issue_default) for o in issue_opts],
+                required=True,
+                help="預設是開獎資料算出來的下一期;補登或預先下注就改這裡。")}
+               if has_issue else {}),
+        },
+    )
+    row = edited.iloc[0]
+    draw_date = row["下注日期"]
+    if hasattr(draw_date, "date"):
+        draw_date = draw_date.date()
+    sheets = int(row["下幾支"] or 1)
+    issue_in = predictor.issue_of_label(row["期號"]) if has_issue else ""
 
     # 有這一期的開獎資料就直接判定(以**期號**為準,不是日期)
     drawn = checker.draw_for(load_df(key), draw_date, issue_in)
@@ -3039,7 +3108,7 @@ def _combo_autosettle(user: str, rows: list[dict]) -> int:
         if not r["pending"] or not r.get("picked"):
             continue
         g = games.get(r["game"])
-        d = checker.draw_for(load_df(r["game"]), r["draw_date"], r.get("issue"))
+        d = _row_draw(r)
         if not d or len(d) != g.pick:
             continue
         stars, _, _ = _combo_row_plan(r)
@@ -3056,8 +3125,7 @@ def _combo_detail_df(rows: list[dict]) -> pd.DataFrame:
     for i, r in enumerate(rows):
         g = games.get(r["game"])
         stars, drag, dans = _combo_row_plan(r)
-        drawn = checker.draw_for(load_df(r["game"]), r["draw_date"],
-                                 r.get("issue")) or []
+        drawn = _row_draw(r) or []
         got = len(drawn) == g.pick and bool(r.get("picked"))
         out.append({
             "#": i + 1,
