@@ -202,6 +202,43 @@ def sheets_for_recovery(loss: float, hits_: int, stars: int, drag: int,
             "gain_per_sheet": gain}
 
 
+# ── 多種星別共用同一張牌 ──────────────────────────────────
+def joint_outcomes(stars_list, drag: int, dans: int = 0, num_max: int = 39,
+                   pick: int = 5) -> list[dict]:
+    """同一組號碼同時下多種星別時,每種「結果組合」的機率。
+
+    幾星都是拿**同一組拖與膽**去對,所以結果完全連動 —— 拖中 4 顆時
+    「三星中 4 注」與「四星中 1 注」是同一件事發生,不是兩件獨立的事。
+    各星別各算一張機率表再把損益相加會低估變異(也算不出「同時中」那一列),
+    所以這裡把底層的 (膽中幾顆, 拖中幾顆) 列舉一次,兩邊都由它推出來。
+
+    回傳 [{"matched": 總對中顆數, "matched_dans", "matched_drag",
+           "prob", "hits": {星別: 中幾注}}],依總對中顆數由大到小。
+    """
+    d, m = int(dans), int(drag)
+    rest = int(num_max) - d - m
+    if rest < 0:
+        raise ValueError(f"膽 {d} + 拖 {m} 顆超過號碼總數 {num_max}")
+    total = comb(int(num_max), int(pick))
+    out = []
+    for a in range(min(d, pick) + 1):
+        for b in range(min(m, pick - a) + 1):
+            c = int(pick) - a - b
+            if c < 0 or c > rest:
+                continue
+            ways = comb(d, a) * comb(m, b) * comb(rest, c)
+            if not ways:
+                continue
+            out.append({
+                "matched": a + b,
+                "matched_dans": a,
+                "matched_drag": b,
+                "prob": ways / total,
+                "hits": {int(k): hits(int(k), b, d, a) for k in stars_list},
+            })
+    return sorted(out, key=lambda r: (-r["matched"], -r["matched_drag"]))
+
+
 # ── 歷史檢驗 ─────────────────────────────────────────────
 def history_stats(draws, stars: int, drag_nums, dan_nums=(),
                   pick: int = 5) -> dict:

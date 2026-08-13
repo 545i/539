@@ -171,11 +171,8 @@ def test_three_and_four_star_have_their_own_cost(app):
     成本必須換成四星那一組。
     """
     app.session_state["ledger_combo_pad__picked"] = [1, 2, 3, 4, 5, 6, 7, 8]
+    app.session_state["lcombo_stars"] = [4]
     app.run()
-    for sc in app.segmented_control:
-        if sc.key == "lcombo_stars":
-            sc.set_value(4).run()
-            break
     assert not app.exception, [str(e.value) for e in app.exception]
     _button(app, "lcombo_record").click().run()
     assert not app.exception, [str(e.value) for e in app.exception]
@@ -185,6 +182,32 @@ def test_three_and_four_star_have_their_own_cost(app):
     assert r["cost"] == 50 * 70 == 3_500                   # 四星每注 50
     assert r["cost"] != 63 * 70, "四星不該套到三星的每注成本"
     assert r["payout_rate"] == 50 * 7500                   # 四星倍率
+
+
+def test_three_and_four_star_share_one_pick(app):
+    """三星 + 四星 一起下:號碼只圈一次,寫成兩筆但共用同一組號碼。
+
+    注數、每注成本、倍率、中獎注數各星別都不同,塞不進同一筆;
+    使用者要的是「不用再圈一次號碼」,那是輸入端的事。
+    """
+    app.session_state["ledger_combo_pad__picked"] = [1, 2, 3, 4, 5, 6, 7, 8]
+    app.session_state["lcombo_stars"] = [3, 4]
+    app.run()
+    assert not app.exception, [str(e.value) for e in app.exception]
+    _button(app, "lcombo_record").click().run()
+    assert not app.exception, [str(e.value) for e in app.exception]
+
+    rows = storage.load_rounds("apptest", storage.COMBO)
+    assert len(rows) == 2, "一次記帳寫兩筆"
+    by_star = {r["stars"]: r for r in rows}
+    assert set(by_star) == {3, 4}
+    # 同一組號碼、同一天、同一期
+    assert by_star[3]["picked"] == by_star[4]["picked"] == [1, 2, 3, 4, 5, 6, 7, 8]
+    assert by_star[3]["draw_date"] == by_star[4]["draw_date"]
+    assert by_star[3]["issue"] == by_star[4]["issue"]
+    # 但注數與成本各算各的
+    assert by_star[3]["numbers"] == 56 and by_star[3]["cost"] == 63 * 56
+    assert by_star[4]["numbers"] == 70 and by_star[4]["cost"] == 50 * 70
 
 
 def _draw_rows(game_key="fantasy5", n=2):

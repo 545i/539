@@ -2148,7 +2148,7 @@ def _render_pending(rows: list[dict]):
 # 流水表裡要靠等寬字型對齊的欄(號碼與金額)
 _LEDGER_MONO = ("號碼", "成本", "回收", "本局損益", "累積損益")
 _PILLAR_MONO = ("開出", "注數", "成本", "回收", "本局損益", "累積損益")
-_COMBO_MONO = ("號碼", "膽", "開出", "注數", "成本", "回收", "本局損益", "累積損益")
+_COMBO_MONO = ("下注號碼", "開獎號碼", "總成本", "回收", "本局損益", "累積損益")
 
 
 def _mode_detail_df(rows: list[dict], mode: str | None) -> pd.DataFrame:
@@ -2894,6 +2894,11 @@ def _combo_play_of(dans: int) -> str:
         combo.PLAYS[1].name if dans == 1 else combo.PLAYS[2].name)
 
 
+def _combo_play_short(dans: int) -> str:
+    """表格用的短名:「連碰(全碰)」在流水表裡太長,那個括號不必每列都看。"""
+    return _combo_play_of(dans).split("(")[0]
+
+
 def _combo_odds_panel(cfg: dict, game, stars: int, drag: int, dans: int):
     """目前這張牌的盤口與它的期望值判定。"""
     per_bet, odds = _combo_odds(cfg, stars)
@@ -2926,7 +2931,12 @@ def _combo_odds_panel(cfg: dict, game, stars: int, drag: int, dans: int):
 
 @st.fragment
 def _render_combo_today(user: str, cfgs: dict, cum: float):
-    """這一期要下什麼 + 試算。整段是一個 fragment,理由同 _render_today。"""
+    """這一期要下什麼 + 試算。整段是一個 fragment,理由同 _render_today。
+
+    星別可以**複選** —— 三星、四星常常是同一組號碼一起下,分兩次記帳等於
+    要把號碼再圈一遍。這裡圈一次、勾幾種星別就寫幾筆(注數、每注成本、
+    倍率、中獎注數各星別都不一樣,塞不進同一筆),流水表再把它們併成一列顯示。
+    """
     st.subheader("一、這一期下幾支")
     keys = [g.key for g in GAME_LIST]
     key = st.segmented_control(
@@ -2938,69 +2948,51 @@ def _render_combo_today(user: str, cfgs: dict, cum: float):
     p = combo.play(st.segmented_control(
         "下法", pkeys, selection_mode="single", default=pkeys[0],
         format_func=lambda k: combo.play(k).name, key="lcombo_play") or pkeys[0])
-    stars = st.segmented_control(
-        "幾星", list(combo.STARS), selection_mode="single", default=3,
-        format_func=combo.star_name, key="lcombo_stars") or 3
-    st.caption(f"**{p.name}** — {p.desc}。")
+    star_sel = st.segmented_control(
+        "幾星(可複選,一次下多種)", list(combo.STARS), selection_mode="multi",
+        default=[3], format_func=combo.star_name, key="lcombo_stars")
+    star_list = sorted(star_sel or [3])
+    st.caption(f"{p.desc}。")
 
     # 圈號碼(必填)—— 沒有號碼就沒辦法自動對獎,也算不出拖幾顆
     st.markdown("**圈號碼**")
     st.caption(
-        f"{g.name} 1~{g.num_max} 號,每期開 {g.pick} 顆。圈幾顆就從幾顆裡湊 "
-        f"{combo.star_name(stars)}"
+        f"{g.name} 1~{g.num_max} 號,每期開 {g.pick} 顆。"
+        f"這組號碼會同時用在 {'、'.join(combo.star_name(k) for k in star_list)}"
         + (f",其中 {p.dans} 顆等一下指定成膽" if p.dans else "")
         + f"。最多圈 {_COMBO_MAX_PICK} 顆;號碼會跟著紀錄存下來,開獎後自動對獎。")
     picked = numpad.number_pad(key=_COMBO_LEDGER_PAD, num_max=g.num_max,
                                max_pick=_COMBO_MAX_PICK)
-    dan_max = min(int(stars) - 1, len(picked))
 
     dan_nums: list[int] = []
     if p.dans != 0 and picked:
         want = p.dans if p.dans is not None else None
         dan_nums = st.multiselect(
             "哪幾顆當膽", picked, format_func=lambda n: f"{n:02d}",
-            key="lcombo_dans", max_selections=want if want is not None else dan_max,
+            key="lcombo_dans",
+            max_selections=want if want is not None else max(min(star_list) - 1, 0),
             help="膽會出現在每一注裡,要全部開出才有注中獎。")
     drag_nums = [n for n in picked if n not in set(dan_nums)]
     drag, dans = len(drag_nums), len(dan_nums)
-    n_bets = combo.bets(stars, drag, dans)
-
-    if n_bets <= 0:
-        st.warning(
-            f"目前湊不出任何一注:{combo.star_name(stars)}扣掉 {dans} 顆膽,"
-            f"還要從拖裡挑 {stars - dans} 顆,但拖只有 {drag} 顆。"
-            f"請再圈幾顆(或少指定一顆膽)。", icon="⚠️")
     if p.dans is not None and dans != p.dans and picked:
         st.info(f"{p.name}要**剛好 {p.dans} 顆膽**,目前 {dans} 顆 —— "
                 f"現在算的是「{_combo_play_of(dans)}」。", icon="ℹ️")
 
-    per_bet, odds = _combo_odds(cfg, stars)
-    if n_bets > 0:
-        _combo_odds_panel(cfg, g, stars, drag, dans)
-
-    # 下注日期 / 下幾支 / 期號 排成一列表格,跟二合那頁同一種填法 ——
-    # 三個獨立的 widget 各佔一段高度、標籤又長短不一,排起來散;
-    # 一列表格填完就走,手機上也不用一直捲。
+    # ── 這一期(日期 / 期號)──────────────────────────────
     issue_opts, issue_default = _issue_options(key, storage.COMBO)
     has_issue = bool(issue_opts)
-    issue_label_now = (predictor.issue_label(issue_default, issue_default)
-                       if has_issue else "")
-    form = pd.DataFrame([{
-        "下注日期": dt.date.today(),
-        "下幾支": int(cfg["combo_base"]),
-        **({"期號": issue_label_now} if has_issue else {}),
-    }])
-    st.markdown("**填這裡**")
-    edited = st.data_editor(
-        form, key="lcombo_form", hide_index=True, width="stretch",
+    st.markdown("**這一期**")
+    when = st.data_editor(
+        pd.DataFrame([{
+            "下注日期": dt.date.today(),
+            **({"期號": predictor.issue_label(issue_default, issue_default)}
+               if has_issue else {}),
+        }]),
+        key="lcombo_when", hide_index=True, width="stretch",
         column_config={
             "下注日期": st.column_config.DateColumn(
                 "下注日期", format="YYYY-MM-DD", required=True,
                 help="這一注是哪一天下的;補登過去的日期也可以。"),
-            "下幾支": st.column_config.NumberColumn(
-                "下幾支", min_value=1, max_value=1000, step=1, required=True,
-                help=f"1 支 = 買滿這張的全部 {n_bets:,} 注。"
-                     "支數只是等比放大,不會改變機率。"),
             **({"期號": st.column_config.SelectboxColumn(
                 "期號",
                 options=[predictor.issue_label(o, issue_default) for o in issue_opts],
@@ -3009,87 +3001,140 @@ def _render_combo_today(user: str, cfgs: dict, cum: float):
                if has_issue else {}),
         },
     )
-    row = edited.iloc[0]
-    draw_date = row["下注日期"]
+    draw_date = when.iloc[0]["下注日期"]
     if hasattr(draw_date, "date"):
         draw_date = draw_date.date()
-    sheets = int(row["下幾支"] or 1)
-    issue_in = predictor.issue_of_label(row["期號"]) if has_issue else ""
+    issue_in = predictor.issue_of_label(when.iloc[0]["期號"]) if has_issue else ""
 
-    # 有這一期的開獎資料就直接判定(以**期號**為準,不是日期)
+    # ── 各星別下多少(一星別一列)────────────────────────
+    plan = pd.DataFrame([{
+        "星別": combo.star_name(k),
+        "注數": combo.bets(k, drag, dans),
+        "每注成本": _combo_odds(cfg, k)[0],
+        "中一注可得": combo.prize_per_bet(*_combo_odds(cfg, k)),
+        "下幾支": int(cfg["combo_base"]),
+        "返還率": combo.return_rate(k, _combo_odds(cfg, k)[1], g.num_max, g.pick),
+    } for k in star_list], index=[str(k) for k in star_list])
+    st.markdown("**各星別下多少**")
+    plan_edited = st.data_editor(
+        plan, key="lcombo_plan", hide_index=True, width="stretch",
+        disabled=["星別", "注數", "每注成本", "中一注可得", "返還率"],
+        column_config={
+            "注數": st.column_config.NumberColumn("注數", format="%d 注"),
+            "每注成本": st.column_config.NumberColumn("每注成本", format="%.10g"),
+            "中一注可得": st.column_config.NumberColumn("中一注可得", format="%.10g"),
+            "下幾支": st.column_config.NumberColumn(
+                "下幾支", min_value=0, max_value=1000, step=1, required=True,
+                help="填 0 就是這一期不下這種星別。支數只是等比放大,不改變機率。"),
+            "返還率": st.column_config.NumberColumn("返還率", format="percent"),
+        },
+    )
+
+    # 真正要下的:注數 > 0 且支數 > 0 的星別
+    bets_plan = []
+    for k in star_list:
+        n = combo.bets(k, drag, dans)
+        sheets = int(plan_edited.loc[str(k), "下幾支"] or 0)
+        if n > 0 and sheets > 0:
+            per_bet, odds = _combo_odds(cfg, k)
+            bets_plan.append({
+                "stars": k, "bets": n, "sheets": sheets,
+                "cost": combo.round_cost(k, drag, per_bet, dans, sheets),
+                "prize": combo.prize_per_bet(per_bet, odds),
+                "per_bet": per_bet, "odds": odds,
+            })
+    short = [combo.star_name(k) for k in star_list if combo.bets(k, drag, dans) <= 0]
+    if short and picked:
+        st.warning(
+            f"**{'、'.join(short)}** 湊不出任何一注:扣掉 {dans} 顆膽還要從拖裡挑,"
+            f"但拖只有 {drag} 顆。請再圈幾顆,或少指定一顆膽。", icon="⚠️")
+
+    total_cost = sum(b["cost"] for b in bets_plan)
+    if bets_plan:
+        st.caption(
+            "這一期總成本 **" + _amt(total_cost) + "**("
+            + "、".join(f"{combo.star_name(b['stars'])} {b['sheets']} 支 × "
+                        f"{b['bets']:,} 注 × {_amt(b['per_bet'])} = {_amt(b['cost'])}"
+                        for b in bets_plan)
+            + ")。價碼要改請到**設定 → 盤口設定 → 連碰**。")
+
+        # 試算:**扣掉成本之後**的損益。回收看起來很大,但每一支的成本
+        # (三星 63 × 56 = 3,528、四星 50 × 70 = 3,500)要先付出去,
+        # 只列回收會讓人以為中了就賺。多星別一起下時成本是**相加**的。
+        st.markdown("**中獎試算(已扣掉成本)**")
+        rows_out = []
+        for o in combo.joint_outcomes([b["stars"] for b in bets_plan], drag, dans,
+                                      g.num_max, g.pick):
+            gross = sum(o["hits"][b["stars"]] * b["prize"] * b["sheets"]
+                        for b in bets_plan)
+            rows_out.append({
+                "對中幾顆": f"{o['matched']} 顆",
+                "機率": f"{o['prob']:.4%}",
+                **{combo.star_name(b["stars"]): combo.result_text(o["hits"][b["stars"]])
+                   for b in bets_plan},
+                "回收": _amt(gross),
+                "成本": _amt(total_cost),
+                "本局損益": f"{gross - total_cost:+,.0f}",
+                "之後累積": f"{cum + gross - total_cost:+,.0f}",
+            })
+        st.dataframe(pd.DataFrame(rows_out), width="stretch", hide_index=True)
+        exp = sum(o["prob"] * sum(o["hits"][b["stars"]] * b["prize"] * b["sheets"]
+                                  for b in bets_plan)
+                  for o in combo.joint_outcomes([b["stars"] for b in bets_plan],
+                                                drag, dans, g.num_max, g.pick))
+        st.caption(
+            f"期望回收 {_amt(exp)} − 成本 {_amt(total_cost)} = "
+            f"**{exp - total_cost:+,.0f} / 期**(返還率 {exp / total_cost:.2%})。"
+            "幾星一起下的結果是連動的 —— 同一組號碼,拖中幾顆就同時決定了"
+            "每一種星別中幾注,所以上面一列就是一種會真的發生的情況。")
+
+    # 有這一期的開獎資料就先顯示判定(以**期號**為準,不是日期)
     drawn = checker.draw_for(load_df(key), draw_date, issue_in)
-    auto_hits = None
-    if n_bets > 0 and drawn and len(drawn) == g.pick:
+    if bets_plan and drawn and len(drawn) == g.pick:
         matched = sorted(set(picked) & set(drawn))
-        auto_hits = combo.hits_of(stars, drawn, drag_nums, dan_nums)
         st.markdown(f"**{draw_date} 開出**　" + _balls(drawn, set(matched)),
                     unsafe_allow_html=True)
         st.markdown("**你的號碼**　" + _balls(picked, set(matched)),
                     unsafe_allow_html=True)
         dan_hit = set(dan_nums) <= set(drawn)
+        lines, gross = [], 0.0
+        for b in bets_plan:
+            h = combo.hits_of(b["stars"], drawn, drag_nums, dan_nums)
+            got = h * b["prize"] * b["sheets"]
+            gross += got
+            lines.append(f"{combo.star_name(b['stars'])} {combo.result_text(h)}"
+                         f"(回收 {_amt(got)} − 成本 {_amt(b['cost'])} = "
+                         f"{got - b['cost']:+,.0f})")
         st.success(
             f"對中 {len(matched)} 顆"
             + (f"(膽{'全中' if dan_hit else '沒全中 → 整張歸零'})" if dans else "")
-            + f" → **{combo.result_text(auto_hits)}**", icon="🎯")
-    elif n_bets > 0:
-        st.caption("還沒有這一天的開獎資料,結果請自己選;留「待開獎」之後再回填也可以。")
+            + "　" + "、".join(lines)
+            + (f"　→ **合計 {gross - total_cost:+,.0f}**" if len(lines) > 1 else ""),
+            icon="🎯")
+        st.caption("記帳後會依這個結果自動結算,不必再回填。")
 
-    opts = [None] + (_combo_hits_options(stars, drag, dans, g) if n_bets > 0 else [0])
-    default_idx = opts.index(auto_hits) if auto_hits in opts else 0
-    hits = st.radio("這一期的結果", opts, index=default_idx, horizontal=True,
-                    format_func=combo.result_text, key="lcombo_hits")
-
-    if n_bets > 0:
-        cost = combo.round_cost(stars, drag, per_bet, dans, sheets)
-        probs = combo.hit_probs(stars, drag, dans, g.num_max, g.pick)
-        st.markdown("**試算結果**")
-        st.dataframe(pd.DataFrame([{
-            "結果": combo.result_text(h),
-            "機率": f"{probs[h]:.4%}",
-            "回收": f"{combo.round_payout(h, per_bet, odds, sheets):,.0f}",
-            "本局損益": f"{combo.round_payout(h, per_bet, odds, sheets) - cost:+,.0f}",
-            "之後累積":
-                f"{cum + combo.round_payout(h, per_bet, odds, sheets) - cost:+,.0f}",
-        } for h in sorted(probs, reverse=True)]), width="stretch", hide_index=True)
-
-        m1, m2, m3 = st.columns(3)
-        m1.metric("目前累積", f"{cum:+,.0f}")
-        m2.metric("這一期成本", f"{cost:,.0f}",
-                  delta=f"{sheets} 支 × {n_bets:,} 注", delta_color="off")
-        m3.metric(
-            "期望損益",
-            f"{combo.expected_net(stars, drag, per_bet, odds, dans, g.num_max, g.pick) * sheets:+,.0f}",
-            delta=f"至少中一注 "
-                  f"{combo.win_prob(stars, drag, dans, g.num_max, g.pick):.2%}",
-            delta_color="off")
-    else:
-        cost = 0.0
-
-    # 按鈕**永遠可按**。以前號碼沒圈滿時把它設成 disabled,結果按下去毫無反應、
-    # 也不說為什麼 —— 使用者只會覺得「這顆鈕壞了」。改成按了才講缺什麼。
-    if st.button("記帳" + ("(選「待開獎」就當作還沒對獎)" if hits is None else ""),
-                 key="lcombo_record", type="primary", width="stretch"):
+    # 按鈕**永遠可按**。以前缺東西時把它設成 disabled,按下去毫無反應也不說
+    # 為什麼,使用者只會覺得「這顆鈕壞了」。改成按了才講缺什麼。
+    if st.button("記帳", key="lcombo_record", type="primary", width="stretch"):
         if not picked:
-            st.error("還沒圈號碼 —— 請先點上面的「🎯 圈選要下的號碼」把要下的號碼點出來。",
-                     icon="🚫")
-        elif n_bets <= 0:
-            st.error(
-                f"圈的號碼湊不出任何一注:{combo.star_name(stars)}扣掉 {dans} 顆膽,"
-                f"還要從拖裡挑 {stars - dans} 顆,但拖只有 {drag} 顆。"
-                f"請再多圈幾顆,或少指定一顆膽。", icon="🚫")
+            st.error("還沒圈號碼 —— 請先在上面的號碼盤把要下的號碼點出來。", icon="🚫")
+        elif not bets_plan:
+            st.error("沒有任何一種星別要下 —— 請確認「下幾支」不是 0,"
+                     "而且圈的號碼湊得出注。", icon="🚫")
         else:
-            storage.add_round(
-                user, key, draw_date.isoformat(), n_bets, sheets, hits,
-                cost, combo.prize_per_bet(per_bet, odds), mode=storage.COMBO,
-                picked=picked, issue=(issue_in.strip() or None),
-                stars=stars, dans=dan_nums,
-            )
+            # 一星別一筆(注數 / 成本 / 倍率 / 中獎注數都不同,塞不進同一筆);
+            # 號碼、日期、期號共用,流水表會把它們併成一列顯示。
+            for b in bets_plan:
+                storage.add_round(
+                    user, key, draw_date.isoformat(), b["bets"], b["sheets"], None,
+                    b["cost"], b["prize"], mode=storage.COMBO,
+                    picked=picked, issue=(issue_in.strip() or None),
+                    stars=b["stars"], dans=dan_nums,
+                )
             _bump_issue(key, issue_in.strip(), storage.COMBO)
             _clear_issue_choice(key, storage.COMBO)
             st.rerun()
-    # 二合記完帳會清空號碼盤,這裡刻意不清:連碰通常是同一組號碼長期打,
-    # 每期重點一次太累。要換號直接點上面那顆按鈕改。
-    st.caption("記完帳號碼會留著,下一期沿用;要換號就再點一次上面的號碼按鈕。")
+    st.caption("記完帳號碼會留著,下一期沿用;結果不必填 —— 開獎資料到了會自動結算。")
 
 
 def _combo_autosettle(user: str, rows: list[dict]) -> int:
@@ -3118,32 +3163,69 @@ def _combo_autosettle(user: str, rows: list[dict]) -> int:
     return done
 
 
+def _combo_group_key(r: dict) -> tuple:
+    """同一次記帳寫出來的幾筆,這個 key 會一樣。
+
+    一次記帳可以同時下三星與四星 —— 兩筆共用日期 / 期號 / 遊戲 / 號碼 / 膽,
+    只有星別、注數、成本、倍率不同。流水表要把它們併成一列顯示。
+    """
+    return (str(r["draw_date"]), str(r.get("issue") or ""), r["game"],
+            tuple(r.get("picked") or ()), tuple(r.get("dans") or ()))
+
+
+def _combo_groups(rows: list[dict]) -> list[list[dict]]:
+    """把流水依「同一次記帳」分組(順序不變)。
+
+    同一組裡星別不會重複 —— 真的重複就代表是**另外下的一注**(同號碼同期
+    再下一次),要拆成不同組,不然兩次下注會被併成一列、金額看起來翻倍。
+    """
+    groups: list[list[dict]] = []
+    for r in rows:
+        key, stars = _combo_group_key(r), _combo_row_plan(r)[0]
+        for grp in reversed(groups):
+            if _combo_group_key(grp[0]) == key and \
+                    all(_combo_row_plan(x)[0] != stars for x in grp):
+                grp.append(r)
+                break
+        else:
+            groups.append([r])
+    return groups
+
+
 def _combo_detail_df(rows: list[dict]) -> pd.DataFrame:
-    """連碰的流水表:欄位講「玩法 / 支數 / 注數 / 對中」。"""
+    """連碰的流水表:**一次記帳一列**(三星 + 四星 併在一起)。
+
+    成本 / 回收 / 損益是同一組的合計 —— 你那一期實際花了多少、拿回多少,
+    本來就該一起看;分成兩列反而要自己加。累積損益取該組最後一筆的值。
+    """
     any_issue = any(str(r.get("issue") or "").strip() for r in rows)
     out = []
-    for i, r in enumerate(rows):
-        g = games.get(r["game"])
-        stars, drag, dans = _combo_row_plan(r)
-        drawn = _row_draw(r) or []
-        got = len(drawn) == g.pick and bool(r.get("picked"))
+    for i, grp in enumerate(_combo_groups(rows)):
+        head = grp[0]
+        g = games.get(head["game"])
+        dans = len(head.get("dans") or [])
+        drawn = _row_draw(head) or []
+        got = len(drawn) == g.pick and bool(head.get("picked"))
+        plays = "+".join(combo.star_name(_combo_row_plan(r)[0]) for r in grp)
+        sheets = {int(r["cars"]) for r in grp}
+        result = ("待開獎" if all(r["pending"] for r in grp) else "、".join(
+            f"{combo.star_name(_combo_row_plan(r)[0])}"
+            f"{'待開獎' if r['pending'] else combo.result_text(int(r['hits']))}"
+            for r in grp))
         out.append({
             "#": i + 1,
-            "日期": r["draw_date"],
-            **({"期號": str(r.get("issue") or "—")} if any_issue else {}),
+            "日期": head["draw_date"],
+            **({"期號": str(head.get("issue") or "—")} if any_issue else {}),
             "遊戲": g.label,
-            "玩法": f"{_combo_play_of(dans)}{combo.star_name(stars)}",
-            "支數": f"{int(r['cars'])} 支",
-            "注數": f"{int(r['numbers']) * int(r['cars']):,}",
-            "號碼": _marked_numbers(r),
-            "膽": " ".join(f"{n:02d}" for n in r["dans"]) if r["dans"] else "—",
-            "開出": " ".join(f"{n:02d}" for n in drawn) if drawn else "—",
-            "對中": f"{len(set(r['picked']) & set(drawn))} 顆" if got else "—",
-            "結果": "待開獎" if r["pending"] else combo.result_text(int(r["hits"])),
-            "成本": f"{r['cost']:,.0f}",
-            "回收": f"{r['payout']:,.0f}",
-            "本局損益": f"{r['net']:+,.0f}",
-            "累積損益": f"{r['cumulative']:+,.0f}",
+            "玩法": f"{_combo_play_short(dans)} {plays}"
+                    + (f"　{sheets.pop()} 支" if len(sheets) == 1 else "　支數不同"),
+            "結果": result,
+            "總成本": _amt(sum(float(r["cost"] or 0) for r in grp)),
+            "回收": _amt(sum(float(r["payout"] or 0) for r in grp)),
+            "本局損益": f"{sum(float(r['net'] or 0) for r in grp):+,.0f}",
+            "累積損益": f"{float(grp[-1]['cumulative'] or 0):+,.0f}",
+            "下注號碼": _marked_numbers(head),
+            "開獎號碼": " ".join(f"{n:02d}" for n in drawn) if got else "—",
         })
     return pd.DataFrame(out)
 
