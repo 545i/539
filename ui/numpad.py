@@ -88,18 +88,31 @@ def _scoped_css() -> str:
     """
     out = []
     for i, tone in enumerate(_TONE, start=1):
+        # 先寫伺服器狀態(kind),樂觀狀態(.pad-on/.pad-off)一定要**排在後面**
+        # 而且特異度要更高 —— 兩者都帶 !important,`button.pad-off` 與
+        # `button[kind="primary"]` 的特異度**完全一樣**,只靠順序決勝負。
+        # 之前 .pad-off 寫在 primary 前面,結果「取消選取」根本蓋不掉顏色,
+        # 只有選取看起來即時、取消要等伺服器回來。用 .pad-off.pad-off 重複一次
+        # 把特異度墊高,順序改了也不會再壞。
         out.append(f"""
-div[class*="lotto-pad-p{i}"] .stButton > button[kind="secondary"],
-div[class*="lotto-pad-p{i}"] .stButton > button.pad-off {{
+div[class*="lotto-pad-p{i}"] .stButton > button[kind="secondary"] {{
     background: #fff !important; color: {tone} !important;
     border-color: {tone}55 !important;
-    box-shadow: none !important;
 }}
 div[class*="lotto-pad-p{i}"] .stButton > button[kind="secondary"]:hover {{
     border-color: {tone} !important;
 }}
-div[class*="lotto-pad-p{i}"] .stButton > button[kind="primary"],
-div[class*="lotto-pad-p{i}"] .stButton > button.pad-on {{
+div[class*="lotto-pad-p{i}"] .stButton > button[kind="primary"] {{
+    background: {tone} !important; color: #fff !important;
+    border-color: {tone} !important;
+    box-shadow: 0 2px 6px {tone}66;
+}}
+div[class*="lotto-pad-p{i}"] .stButton > button.pad-off.pad-off {{
+    background: #fff !important; color: {tone} !important;
+    border-color: {tone}55 !important;
+    box-shadow: none !important;
+}}
+div[class*="lotto-pad-p{i}"] .stButton > button.pad-on.pad-on {{
     background: {tone} !important; color: #fff !important;
     border-color: {tone} !important;
     box-shadow: 0 2px 6px {tone}66;
