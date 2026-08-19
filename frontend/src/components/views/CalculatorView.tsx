@@ -31,45 +31,29 @@ export const CalculatorView: React.FC = () => {
     }
   };
 
-  // Combinations formula C(n, k)
-  // TODO(api): 連碰計算端點 —— 目前碰數/成本/組合展開都在前端算,
-  // 後端若補上「連碰注數計算」就改成打端點(含拖膽、星碰、立柱的注數規則)。
-  const combination = (n: number, k: number): number => {
-    if (k < 0 || k > n) return 0;
-    if (k === 0 || k === n) return 1;
-    let c = 1;
-    for (let i = 1; i <= k; i++) {
-      c = (c * (n - (k - i))) / i;
-    }
-    return Math.round(c);
-  };
-
   const n = selectedBalls.length;
-  const comboCount = combination(n, star);
-  const totalCost = comboCount * costPerBet;
 
-  // Generate sample combinations
-  const generateSampleCombos = () => {
-    if (selectedBalls.length < star) return [];
-    const sorted = [...selectedBalls].sort((a, b) => a - b);
-    const results: number[][] = [];
-    const recurse = (startIdx: number, current: number[]) => {
-      if (current.length === star) {
-        results.push([...current]);
-        return;
-      }
-      for (let i = startIdx; i < sorted.length; i++) {
-        if (results.length >= 10) return; // limit to 10 previews
-        current.push(sorted[i]);
-        recurse(i + 1, current);
-        current.pop();
-      }
-    };
-    recurse(0, []);
-    return results;
-  };
+  // 碰數 / 成本走後端 core.combo(連碰 = 選幾顆任意湊,沒有膽),
+  // 注單展開也由後端出 —— 前端不再自己算 C(n,k),兩邊才不會各有一套規則。
+  const { data: calc } = useAsync(
+    () =>
+      api.comboCalc({
+        game: gameKey,
+        play: 'combo',
+        stars: star,
+        picked: n,
+        per_bet: costPerBet,
+      }),
+    [gameKey, star, n, costPerBet],
+  );
+  const { data: expand } = useAsync(
+    () => api.comboBets(gameKey, star, selectedBalls, [], 10),
+    [gameKey, star, selectedBalls],
+  );
 
-  const sampleCombos = generateSampleCombos();
+  const comboCount = calc?.bets ?? 0;
+  const totalCost = calc?.total_cost ?? 0;
+  const sampleCombos = expand?.list ?? [];
 
   return (
     <div className="space-y-5 animate-in fade-in duration-200">
@@ -167,8 +151,8 @@ export const CalculatorView: React.FC = () => {
             </div>
 
             {/* Cost Per Bet Config */}
-            {/* TODO(api): 連碰盤口端點 —— 單碰價格目前是寫死的四段預設,
-                後端 GameDTO 只有單顆/三柱的 default_*,沒有連碰單碰價。 */}
+            {/* 這四段只是常用價的快選鈕;選到的值當 per_bet 送給 /api/combo/calc,
+                成本由後端算(不填則用 core.combo 的市場價 72.5/63/50)。 */}
             <div className="flex items-center justify-between pt-1">
               <label className="text-[10px] uppercase tracking-[0.2em] font-semibold text-neutral-400">
                 單碰基準成本 (元)

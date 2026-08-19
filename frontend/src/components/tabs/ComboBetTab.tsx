@@ -13,6 +13,15 @@ import { BetRecord, LotteryGame } from '../../types';
 import { api, GameKey } from '../../api/client';
 import { useAsync } from '../../api/useAsync';
 
+// UI 的中文玩法名 → core.combo 的 play key(注數規則由後端依這個決定)
+type PlayMethod = '星碰' | '連碰(全碰)' | '立柱' | '拖膽';
+const PLAY_KEYS: Record<PlayMethod, 'star' | 'combo' | 'pillar' | 'dan'> = {
+  '星碰': 'star',
+  '連碰(全碰)': 'combo',
+  '立柱': 'pillar',
+  '拖膽': 'dan',
+};
+
 export const ComboBetTab: React.FC = () => {
   const { data: games, loading: gamesLoading, error: gamesError } = useAsync(() => api.games(), []);
   const [records, setRecords] = useState<BetRecord[]>(INITIAL_COMBO_RECORDS);
@@ -21,7 +30,7 @@ export const ComboBetTab: React.FC = () => {
   // 清單還沒回來前沿用今彩539 的規格,避免首屏數字跳動
   const gameName = (gameCfg?.name ?? '今彩539') as LotteryGame;
   const numMax = gameCfg?.num_max ?? 39;
-  const [playMethod, setPlayMethod] = useState<'星碰' | '連碰(全碰)' | '立柱' | '拖膽'>('星碰');
+  const [playMethod, setPlayMethod] = useState<PlayMethod>('星碰');
   const [starCount, setStarCount] = useState<'二星' | '三星' | '四星'>('三星');
   const [selectedBalls, setSelectedBalls] = useState<number[]>([3, 6, 12, 15, 22, 25, 32, 35]);
   const [units, setUnits] = useState<number>(12);
@@ -37,25 +46,19 @@ export const ComboBetTab: React.FC = () => {
     }
   };
 
-  // Combination formula C(n, k)
   const n = selectedBalls.length;
   const k = starCount === '二星' ? 2 : (starCount === '三星' ? 3 : 4);
-  const getComb = (total: number, pick: number) => {
-    if (total < pick) return 0;
-    let res = 1;
-    for (let i = 1; i <= pick; i++) {
-      res = (res * (total - i + 1)) / i;
-    }
-    return res;
-  };
-  const totalComb = getComb(n, k);
-  const costPerComb = 74; // standard base // TODO(api): 需要「每碰成本」欄位(GameDTO 只有三合的 default_bet_cost)
-  const currentCost = Math.round(totalComb * costPerComb * (units / 6));
-  // 三星每碰彩金 = 後端 default_bet_prize;二星 / 四星後端還沒有對應欄位,先留 v2 原值
-  // TODO(api): 需要 default_star_prize(二星 / 四星每碰彩金)
-  const prizePerHitComb = starCount === '二星'
-    ? 5700
-    : (starCount === '三星' ? (gameCfg?.default_bet_prize ?? 57000) : 800000);
+
+  // 碰數 / 每碰成本 / 每碰彩金全部走後端 core.combo —— 四種玩法的碰數規則不同
+  // (星碰 C(選幾顆,星數)、立柱多一顆膽),前端自己算 C(n,k) 會把它們算成同一個。
+  const { data: calc } = useAsync(
+    () => api.comboCalc({game: gameKey, play: PLAY_KEYS[playMethod], stars: k, picked: n}),
+    [gameKey, playMethod, k, n],
+  );
+  const totalComb = calc?.bets ?? 0;
+  const prizePerHitComb = calc?.prize_per_hit ?? 0;
+  // 一支 = 買滿這張的全部碰數;UI 的「支數」以 6 支為基準等比放大
+  const currentCost = Math.round((calc?.total_cost ?? 0) * (units / 6));
 
   const handleRecord = (status: string = '待開獎') => {
     const isWin = status === '中三星 (1碰)';

@@ -171,6 +171,138 @@ export interface PillarHistoryDTO {
   max_streak: number;
 }
 
+// 二合(二星)買牌試算
+export interface ErheHitDTO {
+  hits: number; // 中幾顆
+  prob: number;
+  payout: number; // 回收 = 中幾顆 × 車數 × 中獎可得
+  pnl: number; // 本局損益 = 回收 − 成本
+}
+
+export interface ErhePlanDTO {
+  game: GameKey;
+  n_numbers: number;
+  cars: number;
+  cost_per_car: number;
+  win_payout: number;
+  notes_per_car: number; // 1 車的注數(碰數)
+  dan_prob: number; // 單顆命中率 = pick / num_max
+  any_hit_prob: number; // 押 n 顆至少中 1 顆
+  total_cost: number;
+  payout_per_hit: number;
+  ev_rate: number;
+  kelly_fraction: number;
+  per_car_1hit_net: number;
+  breakeven_hits: number | null;
+  hits: ErheHitDTO[];
+}
+
+// 盤口覆寫:不給就用後端 GameConfig 的預設值
+export interface ErheOdds {
+  cost_per_car?: number;
+  win_payout?: number;
+}
+
+export interface ErheRecoveryDTO {
+  next_cars: number | null; // null = 中 1 顆再多車也追不回來
+  per_car_1hit: number;
+  recovered: boolean;
+  can_recover_1hit: boolean;
+  next_cost: number | null;
+}
+
+export interface ErheProgressionDTO {
+  per_round_ev: number;
+  rows: {
+    round: number;
+    cars: number;
+    round_cost: number;
+    cumulative_cost: number;
+    payout_per_hit: number;
+    break_even_hits: number | null;
+    busted: boolean;
+  }[];
+}
+
+export interface ErheMartingaleDTO {
+  multiplier: number;
+  bust_round: number | null;
+  steps: {
+    round: number;
+    cars: number;
+    round_cost: number;
+    cumulative_cost: number;
+    cars_to_break_even: number | null;
+  }[];
+}
+
+export interface ErheSimultaneousDTO {
+  k: number;
+  share: number;
+  feasible: boolean;
+  cars: Record<string, number>;
+  total_cost: number | null;
+  worst_after: number | null;
+  all_hit_after: number | null;
+  recovered: boolean;
+  short: string[];
+}
+
+// 連碰 / 星碰 / 立柱 / 拖膽 試算
+export interface ComboCalcIn {
+  game: GameKey;
+  play: string; // 'star' | 'combo' | 'pillar' | 'dan'
+  stars: number;
+  picked: number;
+  dans?: number;
+  per_bet?: number;
+  prize?: number;
+  sheets?: number;
+}
+
+export interface ComboCalcDTO {
+  game: string;
+  play: {key: string; name: string; dans: number | null; desc: string};
+  stars: number;
+  star_name: string;
+  picked: number;
+  dans: number;
+  drag: number;
+  bets: number;
+  per_bet: number;
+  prize_per_hit: number;
+  odds: number | null;
+  sheets: number;
+  total_cost: number;
+  round_cost: number;
+  breakeven_bets: number | null;
+  fair_odds: number | null;
+  win_prob: number;
+  expected_hits: number;
+  expected_net: number;
+  return_rate: number;
+  possible_hits: number[];
+  hit_probs: {hits: number; prob: number}[];
+}
+
+export interface ComboBetsDTO {
+  bets: number;
+  stars: number;
+  dans: number;
+  drag: number;
+  limit: number;
+  truncated: boolean;
+  list: number[][];
+}
+
+function qs(params: Record<string, string | number | undefined>): string {
+  const sp = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined) sp.set(k, String(v));
+  }
+  return sp.toString();
+}
+
 // ── API 函式 ──────────────────────────────────────────────
 export const api = {
   // auth
@@ -211,4 +343,82 @@ export const api = {
     ),
   pillarHistory: (game: GameKey, periods = 200) =>
     get<PillarHistoryDTO>(`pillar/history?game=${game}&periods=${periods}`),
+
+  // erhe 二合買牌(單顆 / 多顆下注試算)
+  erhePlan: (game: GameKey, nNumbers: number, cars: number, odds: ErheOdds = {}) =>
+    get<ErhePlanDTO>(
+      `erhe/plan?${qs({game, n_numbers: nNumbers, cars, ...odds})}`,
+    ),
+  erheRecovery: (
+    game: GameKey,
+    cumulativeNet: number,
+    nNumbers: number,
+    odds: ErheOdds = {},
+    baseCars = 3,
+  ) =>
+    get<ErheRecoveryDTO>(
+      `erhe/recovery?${qs({
+        game,
+        cumulative_net: cumulativeNet,
+        n_numbers: nNumbers,
+        base_cars: baseCars,
+        ...odds,
+      })}`,
+    ),
+  erheProgression: (
+    game: GameKey,
+    progression: number[],
+    nNumbers: number,
+    odds: ErheOdds = {},
+    capital = 500000,
+  ) =>
+    get<ErheProgressionDTO>(
+      `erhe/progression?${qs({
+        game,
+        progression: progression.join(','),
+        n_numbers: nNumbers,
+        capital,
+        ...odds,
+      })}`,
+    ),
+  erheMartingale: (
+    game: GameKey,
+    baseCars = 3,
+    multiplier = 2,
+    rounds = 12,
+    odds: ErheOdds = {},
+    capital?: number,
+  ) =>
+    get<ErheMartingaleDTO>(
+      `erhe/martingale?${qs({
+        game,
+        base_cars: baseCars,
+        multiplier,
+        rounds,
+        capital,
+        ...odds,
+      })}`,
+    ),
+  // plans: {遊戲代號: [押幾顆, 每車成本, 中獎可得]}
+  erheSimultaneous: (
+    cumulativeNet: number,
+    plans: Record<string, [number, number, number]>,
+    opts: {fixed?: Record<string, number>; base_cars?: number; share?: number} = {},
+  ) =>
+    post<ErheSimultaneousDTO>('erhe/simultaneous', {
+      cumulative_net: cumulativeNet,
+      plans,
+      ...opts,
+    }),
+
+  // combo 連碰家族試算(連碰 / 星碰 / 立柱 / 拖膽)
+  comboCalc: (body: ComboCalcIn) => post<ComboCalcDTO>('combo/calc', body),
+  comboBets: (
+    game: GameKey,
+    stars: number,
+    nums: number[],
+    danNums: number[] = [],
+    limit = 10,
+  ) =>
+    post<ComboBetsDTO>('combo/bets', {game, stars, nums, dan_nums: danNums, limit}),
 };

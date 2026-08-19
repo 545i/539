@@ -50,13 +50,14 @@ export const SingleBetTab: React.FC = () => {
     }
   ]);
 
-  // 每車成本 / 每車中獎可得 = 後端二合買牌盤口預設值(core.games 的 GameConfig)
-  const costPerCar = game?.default_cost_per_car ?? 2755;
-  const prizePerWin = game?.default_win_payout ?? 21200;
-  // 單顆命中率 = 每期開出顆數 / 號碼上限(今彩539 = 5/39 = 12.82%)
-  const winRate = ((pick / numMax) * 100).toFixed(2);
-  const currentCost = Math.round(cars * costPerCar);
-  const potentialPrize = Math.round(cars * prizePerWin);
+  // 成本 / 命中彩金 / 命中率都由後端 core.erhe 算(押 1 顆 = 單顆下注),
+  // 盤口不覆寫,直接用該遊戲 GameConfig 的每車成本與中獎可得。
+  const { data: plan } = useAsync(() => api.erhePlan(gameKey, 1, cars), [gameKey, cars]);
+  // plan 還沒回來前先用遊戲規格的估值,避免首屏數字跳動
+  const winRate = ((plan?.any_hit_prob ?? pick / numMax) * 100).toFixed(2);
+  const notesPerCar = plan?.notes_per_car ?? numMax - 1;
+  const currentCost = Math.round(plan?.total_cost ?? cars * (game?.default_cost_per_car ?? 2755));
+  const potentialPrize = Math.round(plan?.payout_per_hit ?? cars * (game?.default_win_payout ?? 21200));
   const potentialNet = potentialPrize - currentCost;
 
   const handleToggleBall = (num: number) => {
@@ -201,7 +202,7 @@ export const SingleBetTab: React.FC = () => {
                   下注車數 (Cars)
                 </label>
                 <span className="text-xs font-mono font-bold text-neutral-900 dark:text-white">
-                  {cars} 車 ({numMax - 1} 碰)
+                  {cars} 車 ({notesPerCar} 碰)
                 </span>
               </div>
 

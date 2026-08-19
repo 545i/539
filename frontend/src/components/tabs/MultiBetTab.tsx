@@ -50,10 +50,21 @@ export const MultiBetTab: React.FC = () => {
   // (今彩539 → 2755/20 = 137.75、21200/4 = 5300,與 v2 完全一致)
   const costPerCarPerBall = (game?.default_cost_per_car ?? 2755) / 20;
   const prizePerHitPerCar = (game?.default_win_payout ?? 21200) / 4;
-  const currentCost = Math.round(cars * ballCount * costPerCarPerBall);
-  const prize1Hit = Math.round(cars * prizePerHitPerCar);
-  const prize2Hits = Math.round(cars * prizePerHitPerCar * 2);
-  const prize3Hits = Math.round(cars * prizePerHitPerCar * 3);
+  // 成本與各段中獎回收由後端 core.erhe 算(押 ballCount 顆),盤口帶上面換算後的值
+  const { data: plan } = useAsync(
+    () => api.erhePlan(gameKey, ballCount, cars, {
+      cost_per_car: costPerCarPerBall,
+      win_payout: prizePerHitPerCar,
+    }),
+    [gameKey, ballCount, cars, costPerCarPerBall, prizePerHitPerCar],
+  );
+  // plan 還沒回來前先用換算比例自估,避免首屏數字跳動
+  const payoutOf = (hits: number) =>
+    Math.round(plan?.hits.find(h => h.hits === hits)?.payout ?? cars * prizePerHitPerCar * hits);
+  const currentCost = Math.round(plan?.total_cost ?? cars * ballCount * costPerCarPerBall);
+  const prize1Hit = payoutOf(1);
+  const prize2Hits = payoutOf(2);
+  const prize3Hits = payoutOf(3);
 
   const handleToggleBall = (num: number) => {
     if (selectedBalls.includes(num)) {
