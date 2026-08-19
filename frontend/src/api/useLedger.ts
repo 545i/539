@@ -1,0 +1,164 @@
+import {useCallback, useEffect, useMemo, useState} from 'react';
+import {api, LedgerEntryDTO, LedgerMode} from './client';
+import {useAuth} from './useAuth';
+import {BetRecord} from '../types';
+
+// 各下注分頁的流水帳。
+//
+// **登入時**紀錄存後端(重整 / 換裝置都在),**未登入時**退回原本的前端 state
+// (優雅降級,不登入照樣能試算記帳,只是關掉頁面就沒了)。
+//
+// index 與 cumPnl 一律由這裡依順序重算,不存進資料庫 —— 撤銷中間某一筆之後
+// 編號與累積損益才不會跟流水對不起來。
+
+// 記一筆時只給「這局發生了什麼」;編號與累積損益是推導出來的,不用自己算。
+export type NewBetRecord = Omit<BetRecord, 'id' | 'index' | 'cumPnl'>;
+
+/** 依流水順序補上編號與累積損益。 */
+function withRunning(rows: BetRecord[]): BetRecord[] {
+  let running = 0;
+  return rows.map((r, i) => {
+    running += r.pnl;
+    return {...r, index: i + 1, cumPnl: running};
+  });
+}
+
+/** 後端紀錄 → BetRecord;id 用資料庫給的(撤銷要靠它)。 */
+function toRecord(entry: LedgerEntryDTO): BetRecord {
+  return {
+    ...(entry.record as unknown as BetRecord),
+    id: String(entry.id),
+    index: 0,
+    cumPnl: 0,
+  };
+}
+
+export function useLedger(mode: LedgerMode, demoRecords: BetRecord[] = []) {
+  const {loggedIn} = useAuth();
+  // 未登入時用的本地流水(沿用 v2 行為,含原本的示範資料)
+  const [local, setLocal] = useState<BetRecord[]>(demoRecords);
+  // 登入時用的後端流水;null = 還沒載到
+  const [remote, setRemote] = useState<BetRecord[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!loggedIn) {
+      setRemote(null);
+      setError(null);
+      return;
+    }
+    let alive = true;
+    setLoading(true);
+    setError(null);
+    api
+      .ledgerList(mode)
+      .then(rows => {
+        if (alive) setRemote(rows.map(toRecord));
+      })
+      .catch((e: Error) => {
+        if (alive) setError(e.message);
+      })
+      .finally(() => {
+        if (alive) setLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [loggedIn, mode]);
+
+  const add = useCallback(
+    async (rec: NewBetRecord) => {
+      if (!loggedIn) {
+        setLocal(prev => [
+          ...prev,
+          {...rec, id: `local-${Date.now()}-${prev.length}`, index: 0, cumPnl: 0},
+        ]);
+        return;
+      }
+      setError(null);
+      try {
+        const entry = await api.ledgerAdd(mode, rec as unknown as Record<string, unknown>);
+        setRemote(prev => [...(prev ?? []), toRecord(entry)]);
+      } catch (e) {
+        setError((e as Error).message);
+      }
+    },
+    [loggedIn, mode],
+  );
+
+  /** 撤銷最後輸入的那一筆。 */
+  const undo = useCallback(async () => {
+    if (!loggedIn) {
+      setLocal(prev => prev.slice(0, -1));
+      return;
+    }
+    const rows = remote ?? [];
+    const last = rows[rows.length - 1];
+    if (!last) return;
+    setError(null);
+    try {
+      await api.ledgerDelete(Number(last.id));
+      setRemote(prev => (prev ?? []).filter(r => r.id !== last.id));
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }, [loggedIn, remote]);
+
+  /** 清空這個下法的全部紀錄。 */
+  const clear = useCallback(async () => {
+    if (!loggedIn) {
+      setLocal([]);
+      return;
+    }
+    setError(null);
+    try {
+      await api.ledgerClear(mode);
+      setRemote([]);
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }, [loggedIn, mode]);
+
+  const records = useMemo(
+    () => withRunning(loggedIn ? remote ?? [] : local),
+    [loggedIn, remote, local],
+  );
+
+  return {records, add, undo, clear, loading, error, loggedIn};
+}
+
+/** 總損益頁用:一次撈四種下法的紀錄(未登入回空陣列)。 */
+export function useAllLedger() {
+  const {loggedIn} = useAuth();
+  const [entries, setEntries] = useState<LedgerEntryDTO[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!loggedIn) {
+      setEntries([]);
+      setError(null);
+      return;
+    }
+    let alive = true;
+    setLoading(true);
+    setError(null);
+    api
+      .ledgerList()
+      .then(rows => {
+        if (alive) setEntries(rows);
+      })
+      .catch((e: Error) => {
+        if (alive) setError(e.message);
+      })
+      .finally(() => {
+        if (alive) setLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [loggedIn]);
+
+  return {entries, loading, error, loggedIn};
+}

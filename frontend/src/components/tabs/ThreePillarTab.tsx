@@ -13,13 +13,16 @@ import {
   Plus
 } from 'lucide-react';
 import { INITIAL_PILLAR_RECORDS, PILLAR_THEORY_ROWS } from '../../data/lotteryData';
-import { BetRecord, LotteryGame } from '../../types';
+import { LotteryGame } from '../../types';
 import { api, GameKey, PartialBetsDTO } from '../../api/client';
 import { useAsync } from '../../api/useAsync';
+import { useLedger } from '../../api/useLedger';
 import { LotteryBallPad } from '../LotteryBallPad';
 
 export const ThreePillarTab: React.FC = () => {
-  const [records, setRecords] = useState<BetRecord[]>(INITIAL_PILLAR_RECORDS);
+  // 登入時流水存後端;未登入沿用 v2 的前端 state(含示範資料)
+  const ledger = useLedger('pillar1800', INITIAL_PILLAR_RECORDS);
+  const records = ledger.records;
   const [gameKey, setGameKey] = useState<GameKey>('lotto539');
   const [units, setUnits] = useState<number>(1);
   const [issue, setIssue] = useState<string>('115000201');
@@ -67,12 +70,8 @@ export const ThreePillarTab: React.FC = () => {
     if (resultType === '中 4 碰') payout = units * prize4;
     if (resultType === '中 3 碰') payout = units * prize3;
     const pnl = resultType === '待開獎' ? 0 : payout - currentCost;
-    const prevCum = records.length > 0 ? records[records.length - 1].cumPnl : 0;
-    const newCum = prevCum + pnl;
 
-    const newRec: BetRecord = {
-      id: `p-${Date.now()}`,
-      index: records.length + 1,
+    ledger.add({
       date: betDate,
       issue,
       game,
@@ -86,22 +85,13 @@ export const ThreePillarTab: React.FC = () => {
       result: resultType,
       cost: currentCost,
       payout,
-      pnl,
-      cumPnl: newCum
-    };
-
-    setRecords([...records, newRec]);
-  };
-
-  const handleUndo = () => {
-    if (records.length > 0) {
-      setRecords(records.slice(0, -1));
-    }
+      pnl
+    });
   };
 
   const totalSpent = records.reduce((acc, r) => acc + r.cost, 0);
   const totalReturn = records.reduce((acc, r) => acc + r.payout, 0);
-  const cumPnl = records.length > 0 ? records[records.length - 1].cumPnl : -148050;
+  const cumPnl = records.length > 0 ? records[records.length - 1].cumPnl : 0;
   const winCount = records.filter(r => r.payout > 0).length;
 
   return (
@@ -555,7 +545,7 @@ export const ThreePillarTab: React.FC = () => {
               </h3>
               <button
                 type="button"
-                onClick={handleUndo}
+                onClick={ledger.undo}
                 disabled={records.length === 0}
                 className="text-[11px] font-semibold text-neutral-500 hover:text-neutral-900 dark:hover:text-white disabled:opacity-30 transition-colors flex items-center gap-1 active:scale-95"
               >
@@ -563,6 +553,14 @@ export const ThreePillarTab: React.FC = () => {
                 撤銷上一筆
               </button>
             </div>
+
+            {ledger.loading && <div className="text-xs text-neutral-400">載入流水帳中…</div>}
+            {ledger.error && <div className="text-xs text-rose-500">{ledger.error}</div>}
+            {!ledger.loggedIn && (
+              <div className="text-[11px] text-neutral-400">
+                未登入:紀錄只留在這個瀏覽器分頁,重整就會消失。
+              </div>
+            )}
 
             {/* Mobile View: Vertical Clean Cards (No Horizontal Scrolling) */}
             <div className="space-y-2.5 sm:hidden">

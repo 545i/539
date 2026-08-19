@@ -1,16 +1,17 @@
-import React, { useState } from 'react';
-import { 
-  TrendingDown, 
+import React, { useMemo } from 'react';
+import {
+  TrendingDown,
   TrendingUp,
   Info,
   Layers,
   ArrowUpRight,
   ShieldAlert
 } from 'lucide-react';
-// TODO(api): 各策略績效彙整目前仍是 client-side 流水帳,沒有後端總損益端點
+// 未登入時沒有後端流水可彙整,沿用 v2 的示範數字
 import { TOTAL_STRATEGY_PERFORMANCE } from '../../data/lotteryData';
-import { api, GameKey } from '../../api/client';
+import { api, GameKey, LedgerMode } from '../../api/client';
 import { useAsync } from '../../api/useAsync';
+import { useAllLedger } from '../../api/useLedger';
 
 // 追平方案的「哪一款 × 哪種下法 × 幾車」沿用 v2 原本的 client-side 設定,
 // 只有每車成本 / 每車彩金改讀後端 GameDTO。
@@ -29,8 +30,72 @@ const RECOVERY_PLANS: {
   { key: 'marksix', label: '六合彩', mode: 'multi', balls: 20, cars: 58 },
 ];
 
+// 四種下法在績效表上的顯示順序與名稱
+const MODE_ROWS: { mode: LedgerMode; name: string }[] = [
+  { mode: 'single', name: '單顆下注' },
+  { mode: 'multi', name: '多顆下注' },
+  { mode: 'pillar1800', name: '三柱1800碰' },
+  { mode: 'combo', name: '連碰 (星碰/立柱)' },
+];
+
+const num = (v: unknown): number => (typeof v === 'number' && isFinite(v) ? v : 0);
+const signed = (v: number) => (v >= 0 ? `+${v.toLocaleString()}` : v.toLocaleString());
+
 export const TotalPnLTab: React.FC = () => {
   const { data: games, loading: gamesLoading, error: gamesError } = useAsync(() => api.games(), []);
+  // 登入時四種下法的紀錄都在後端,直接彙整;未登入退回示範數字
+  const { entries, loading: ledgerLoading, error: ledgerError, loggedIn } = useAllLedger();
+
+  const perfRows = useMemo(() => {
+    if (!loggedIn) return TOTAL_STRATEGY_PERFORMANCE;
+    return MODE_ROWS.map(({ mode, name }) => {
+      const rows = entries.filter(e => e.mode === mode).map(e => e.record);
+      const cost = rows.reduce((a, r) => a + num(r.cost), 0);
+      const payout = rows.reduce((a, r) => a + num(r.payout), 0);
+      const pnl = rows.reduce((a, r) => a + num(r.pnl), 0);
+      return {
+        name,
+        rounds: rows.length,
+        hits: rows.filter(r => num(r.payout) > 0).length,
+        cost,
+        payout,
+        pnl,
+        roi: `${cost ? ((pnl / cost) * 100).toFixed(1) : '0.0'}%`,
+      };
+    });
+  }, [loggedIn, entries]);
+
+  const totals = useMemo(() => {
+    const cost = perfRows.reduce((a, r) => a + r.cost, 0);
+    const payout = perfRows.reduce((a, r) => a + r.payout, 0);
+    const pnl = perfRows.reduce((a, r) => a + r.pnl, 0);
+    const rounds = perfRows.reduce((a, r) => a + r.rounds, 0);
+    const hits = perfRows.reduce((a, r) => a + r.hits, 0);
+    return {
+      cost, payout, pnl, rounds, hits,
+      roi: cost ? (pnl / cost) * 100 : 0,
+      winRate: rounds ? (hits / rounds) * 100 : 0,
+    };
+  }, [perfRows]);
+
+  // 淨值走勢:登入時依流水順序累加,未登入沒有逐筆資料就不畫
+  const curve = useMemo(() => {
+    if (!loggedIn || entries.length === 0) return null;
+    let running = 0;
+    const cums = [0, ...entries.map(e => (running += num(e.record.pnl)))];
+    const hi = Math.max(...cums);
+    const lo = Math.min(...cums);
+    const x = (i: number) => (cums.length > 1 ? 40 + (410 * i) / (cums.length - 1) : 245);
+    const y = (v: number) => (hi === lo ? 50 : 15 + ((hi - v) * 75) / (hi - lo));
+    return {
+      cums,
+      points: cums.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' '),
+      dots: cums.map((v, i) => ({ cx: x(i), cy: y(v), v })),
+      last: cums[cums.length - 1],
+      firstDate: String(entries[0].record.date ?? ''),
+      lastDate: String(entries[entries.length - 1].record.date ?? ''),
+    };
+  }, [loggedIn, entries]);
 
   const recoveryRows = RECOVERY_PLANS.map(p => {
     const g = games?.find(x => x.key === p.key);
@@ -78,12 +143,14 @@ export const TotalPnLTab: React.FC = () => {
         <div className="flex items-center justify-between md:justify-end gap-4 border-t md:border-t-0 pt-2.5 md:pt-0 border-black/[0.06] dark:border-white/[0.06]">
           <div className="text-left md:text-right">
             <span className="text-[10px] uppercase tracking-wider text-neutral-400 block">整體帳號淨損益</span>
-            <div className="text-xl sm:text-2xl font-mono font-bold text-rose-600 dark:text-rose-400">
-              -232,386
+            <div className={`text-xl sm:text-2xl font-mono font-bold ${
+              totals.pnl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
+            }`}>
+              {signed(totals.pnl)}
             </div>
           </div>
           <div className="text-right text-[11px] font-mono text-neutral-400">
-            4 局・中獎 2 局 (50%)
+            {totals.rounds} 局・中獎 {totals.hits} 局 ({totals.winRate.toFixed(0)}%)
           </div>
         </div>
       </div>
@@ -92,45 +159,59 @@ export const TotalPnLTab: React.FC = () => {
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 sm:gap-3">
         <div className="p-3.5 sm:p-4 rounded-xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] col-span-2 sm:col-span-1">
           <div className="text-[10px] uppercase tracking-wider text-neutral-400">累積淨損益</div>
-          <div className="text-lg sm:text-xl font-bold font-mono text-rose-600 dark:text-rose-400 mt-0.5">
-            -232,386
+          <div className={`text-lg sm:text-xl font-bold font-mono mt-0.5 ${
+            totals.pnl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
+          }`}>
+            {signed(totals.pnl)}
           </div>
-          <div className="text-[10px] text-rose-500 dark:text-rose-400 mt-0.5 flex items-center gap-0.5">
-            <TrendingDown className="w-3 h-3" /> 需執行追平
-          </div>
+          {totals.pnl < 0 && (
+            <div className="text-[10px] text-rose-500 dark:text-rose-400 mt-0.5 flex items-center gap-0.5">
+              <TrendingDown className="w-3 h-3" /> 需執行追平
+            </div>
+          )}
         </div>
 
         <div className="p-3.5 sm:p-4 rounded-xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08]">
           <div className="text-[10px] uppercase tracking-wider text-neutral-400">總投入成本</div>
           <div className="text-base sm:text-lg font-bold font-mono text-neutral-900 dark:text-white mt-0.5">
-            311,136
+            {totals.cost.toLocaleString()}
           </div>
         </div>
 
         <div className="p-3.5 sm:p-4 rounded-xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08]">
           <div className="text-[10px] uppercase tracking-wider text-neutral-400">總回收彩金</div>
           <div className="text-base sm:text-lg font-bold font-mono text-emerald-600 dark:text-emerald-400 mt-0.5">
-            78,750
+            {totals.payout.toLocaleString()}
           </div>
         </div>
 
         <div className="p-3.5 sm:p-4 rounded-xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08]">
           <div className="text-[10px] uppercase tracking-wider text-neutral-400">報酬率 (ROI)</div>
-          <div className="text-base sm:text-lg font-bold font-mono text-rose-600 dark:text-rose-400 mt-0.5">
-            -74.7%
+          <div className={`text-base sm:text-lg font-bold font-mono mt-0.5 ${
+            totals.roi >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
+          }`}>
+            {totals.roi.toFixed(1)}%
           </div>
         </div>
 
         <div className="p-3.5 sm:p-4 rounded-xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08]">
           <div className="text-[10px] uppercase tracking-wider text-neutral-400">綜合勝率</div>
           <div className="text-base sm:text-lg font-bold font-mono text-neutral-900 dark:text-white mt-0.5">
-            50.0%
+            {totals.winRate.toFixed(1)}%
           </div>
           <div className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-0.5">
-            中 2 / 4 局
+            中 {totals.hits} / {totals.rounds} 局
           </div>
         </div>
       </div>
+
+      {ledgerLoading && <div className="text-xs text-neutral-400">載入流水帳中…</div>}
+      {ledgerError && <div className="text-xs text-rose-500">{ledgerError}</div>}
+      {!loggedIn && (
+        <div className="text-[11px] text-neutral-400">
+          未登入:以下為示範數字。登入後這裡會彙整你實際記在四個分頁的流水帳。
+        </div>
+      )}
 
       {/* Dual Column: Performance Breakdown & Recovery Planner */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5">
@@ -146,7 +227,7 @@ export const TotalPnLTab: React.FC = () => {
 
             {/* Mobile View: Cards */}
             <div className="space-y-2 sm:hidden">
-              {TOTAL_STRATEGY_PERFORMANCE.map((row, i) => (
+              {perfRows.map((row, i) => (
                 <div key={i} className="p-3 rounded-xl border border-black/[0.08] dark:border-white/[0.08] bg-black/[0.01] dark:bg-white/[0.02] space-y-1.5">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-neutral-900 dark:text-white">{row.name}</span>
@@ -178,7 +259,7 @@ export const TotalPnLTab: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {TOTAL_STRATEGY_PERFORMANCE.map((row, i) => (
+                  {perfRows.map((row, i) => (
                     <tr key={i}>
                       <td className="font-semibold text-neutral-900 dark:text-white text-xs">{row.name}</td>
                       <td className="font-mono text-xs">{row.rounds}</td>
@@ -211,32 +292,55 @@ export const TotalPnLTab: React.FC = () => {
                 <line x1="20" y1="50" x2="480" y2="50" stroke="currentColor" className="text-black/[0.05] dark:text-white/[0.05]" strokeWidth="1" />
                 <line x1="20" y1="85" x2="480" y2="85" stroke="currentColor" className="text-black/[0.05] dark:text-white/[0.05]" strokeWidth="1" />
 
-                <polyline
-                  fill="none"
-                  stroke="currentColor"
-                  className="text-neutral-900 dark:text-white"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  points="40,15 170,40 310,65 450,90"
-                />
+                {curve ? (
+                  <>
+                    <polyline
+                      fill="none"
+                      stroke="currentColor"
+                      className="text-neutral-900 dark:text-white"
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      points={curve.points}
+                    />
 
-                <circle cx="40" cy="15" r="4" className="fill-neutral-900 dark:fill-white" />
-                <circle cx="170" cy="40" r="4" className="fill-neutral-900 dark:fill-white" />
-                <circle cx="310" cy="65" r="4" className="fill-neutral-900 dark:fill-white" />
-                <circle cx="450" cy="90" r="4.5" className="fill-rose-500 stroke-white dark:stroke-black stroke-2" />
+                    {curve.dots.map((d, i) => (
+                      <circle
+                        key={i}
+                        cx={d.cx}
+                        cy={d.cy}
+                        r={i === curve.dots.length - 1 ? 4.5 : 4}
+                        className={
+                          i === curve.dots.length - 1
+                            ? `${curve.last >= 0 ? 'fill-emerald-500' : 'fill-rose-500'} stroke-white dark:stroke-black stroke-2`
+                            : 'fill-neutral-900 dark:fill-white'
+                        }
+                      />
+                    ))}
 
-                <text x="40" y="10" textAnchor="middle" className="text-[10px] font-mono fill-neutral-400">NT$ 0</text>
-                <text x="170" y="34" textAnchor="middle" className="text-[10px] font-mono fill-neutral-400">-68k</text>
-                <text x="310" y="59" textAnchor="middle" className="text-[10px] font-mono fill-neutral-400">-148k</text>
-                <text x="450" y="84" textAnchor="middle" className="text-[10px] font-mono font-bold fill-rose-500">-232,386</text>
+                    <text x={curve.dots[0].cx} y={curve.dots[0].cy - 8} textAnchor="middle" className="text-[10px] font-mono fill-neutral-400">
+                      NT$ 0
+                    </text>
+                    <text
+                      x={curve.dots[curve.dots.length - 1].cx}
+                      y={curve.dots[curve.dots.length - 1].cy - 8}
+                      textAnchor="end"
+                      className={`text-[10px] font-mono font-bold ${curve.last >= 0 ? 'fill-emerald-500' : 'fill-rose-500'}`}
+                    >
+                      {signed(curve.last)}
+                    </text>
+                  </>
+                ) : (
+                  <text x="250" y="55" textAnchor="middle" className="text-[10px] font-mono fill-neutral-400">
+                    {loggedIn ? '尚無流水紀錄' : '登入後顯示實際淨值走勢'}
+                  </text>
+                )}
               </svg>
 
               <div className="flex justify-between px-2 sm:px-4 text-[10px] font-mono text-neutral-400 pt-1 border-t border-black/[0.06] dark:border-white/[0.06]">
-                <span>08/12 起始</span>
-                <span>08/12 #196</span>
-                <span>08/12 #197</span>
-                <span>08/13 #196</span>
+                <span>{curve ? `${curve.firstDate} 起始` : '起始'}</span>
+                <span>{curve ? `${entries.length} 筆紀錄` : '—'}</span>
+                <span>{curve ? curve.lastDate : '最新'}</span>
               </div>
             </div>
           </div>
@@ -252,7 +356,7 @@ export const TotalPnLTab: React.FC = () => {
                 03 / 追平回本方案矩陣
               </h3>
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-600 dark:text-rose-400 font-bold">
-                目標: +232k
+                目標: {signed(Math.max(0, -totals.pnl))}
               </span>
             </div>
 
@@ -262,7 +366,7 @@ export const TotalPnLTab: React.FC = () => {
                 <span>最佳追平途徑推薦</span>
               </div>
               <p className="text-neutral-500 dark:text-neutral-400 text-[11px] leading-relaxed">
-                欲一次填平 <strong>232,386</strong> 虧損，建議採用「六合彩・單顆」下注 {bestPlan.cars} 車 (成本僅 {bestPlan.cost}，命中可獲 {bestPlan.prize})，以最低風險回本。
+                欲一次填平 <strong>{Math.max(0, -totals.pnl).toLocaleString()}</strong> 虧損，建議採用「六合彩・單顆」下注 {bestPlan.cars} 車 (成本僅 {bestPlan.cost}，命中可獲 {bestPlan.prize})，以最低風險回本。
               </p>
             </div>
 

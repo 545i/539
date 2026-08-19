@@ -11,10 +11,35 @@ function apiUrl(path: string): string {
 }
 
 // ── 登入 token(localStorage)──────────────────────────────
+// token 一變(登入 / 登出 / 過期被踢)就通知訂閱者,useAuth 靠這個讓全站
+// 同步切換登入狀態 —— 不然要嘛整頁 reload,要嘛各元件各自記一份會不同步。
 const TOKEN_KEY = 'lotto539_token';
+const USER_KEY = 'lotto539_user';
+const authListeners = new Set<() => void>();
+
+function notifyAuth() {
+  authListeners.forEach(fn => fn());
+}
+
+export function subscribeAuth(fn: () => void): () => void {
+  authListeners.add(fn);
+  return () => authListeners.delete(fn);
+}
+
 export const getToken = (): string | null => localStorage.getItem(TOKEN_KEY);
-export const setToken = (t: string) => localStorage.setItem(TOKEN_KEY, t);
-export const clearToken = () => localStorage.removeItem(TOKEN_KEY);
+export const getUsername = (): string | null => localStorage.getItem(USER_KEY);
+
+export const setToken = (t: string, username?: string) => {
+  localStorage.setItem(TOKEN_KEY, t);
+  if (username) localStorage.setItem(USER_KEY, username);
+  notifyAuth();
+};
+
+export const clearToken = () => {
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(USER_KEY);
+  notifyAuth();
+};
 
 export class ApiError extends Error {
   status: number;
@@ -33,9 +58,12 @@ async function request<T>(path: string, opts: RequestInit = {}): Promise<T> {
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
   const res = await fetch(apiUrl(path), {...opts, headers});
-  if (res.status === 401) {
+  // 401 分兩種:登入表單被打槍(要顯示「帳號或密碼錯誤」)vs. 帶著的 token
+  // 過期被踢(要清掉 token 讓全站切回未登入)。後者才動 token。
+  const isLoginAttempt = path.startsWith('auth/login') || path.startsWith('auth/register');
+  if (res.status === 401 && token && !isLoginAttempt) {
     clearToken();
-    throw new ApiError(401, '請重新登入');
+    throw new ApiError(401, '登入已過期,請重新登入');
   }
   if (!res.ok) {
     let msg = `HTTP ${res.status}`;
@@ -53,6 +81,7 @@ async function request<T>(path: string, opts: RequestInit = {}): Promise<T> {
 const get = <T>(path: string) => request<T>(path);
 const post = <T>(path: string, body: unknown) =>
   request<T>(path, {method: 'POST', body: JSON.stringify(body)});
+const del = <T>(path: string) => request<T>(path, {method: 'DELETE'});
 
 // ── 型別(對應後端回傳)────────────────────────────────────
 export type GameKey = 'lotto539' | 'fantasy5' | 'marksix';
@@ -295,6 +324,18 @@ export interface ComboBetsDTO {
   list: number[][];
 }
 
+// 記帳流水帳(需登入)
+// mode 對應各下注分頁;record 就是前端的 BetRecord,後端原封不動存成 JSON,
+// 所以這裡刻意用寬鬆型別 —— 後端不解讀內容,欄位增減不必兩邊同步改。
+export type LedgerMode = 'single' | 'multi' | 'pillar1800' | 'combo';
+
+export interface LedgerEntryDTO {
+  id: number;
+  mode: LedgerMode;
+  record: Record<string, unknown>;
+  created: string;
+}
+
 function qs(params: Record<string, string | number | undefined>): string {
   const sp = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) {
@@ -315,6 +356,16 @@ export const api = {
       invite_code,
     }),
   me: () => get<{username: string}>('auth/me'),
+
+  // ledger 記帳流水帳(需登入;未登入時前端自己用 state 撐著)
+  ledgerList: (mode?: LedgerMode) =>
+    get<LedgerEntryDTO[]>(`ledger${mode ? `?mode=${mode}` : ''}`),
+  ledgerAdd: (mode: LedgerMode, record: Record<string, unknown>) =>
+    post<LedgerEntryDTO>('ledger', {mode, record}),
+  ledgerDelete: (id: number) =>
+    del<{ok: boolean; deleted: number}>(`ledger/${id}`),
+  ledgerClear: (mode?: LedgerMode) =>
+    del<{ok: boolean; deleted: number}>(`ledger${mode ? `?mode=${mode}` : ''}`),
 
   // games
   games: () => get<GameDTO[]>('games'),

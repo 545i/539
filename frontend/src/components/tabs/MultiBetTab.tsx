@@ -13,6 +13,29 @@ import { LotteryBallPad } from '../LotteryBallPad';
 import { BetRecord, LotteryGame } from '../../types';
 import { api, GameKey } from '../../api/client';
 import { useAsync } from '../../api/useAsync';
+import { useLedger } from '../../api/useLedger';
+
+// 未登入時的示範流水(登入後改用後端自己的紀錄)
+const DEMO_RECORDS: BetRecord[] = [
+  {
+    id: 'mb-demo-1',
+    index: 1,
+    date: '2026-08-18',
+    issue: '115000200',
+    game: '今彩539',
+    mode: 'multi',
+    units: 5,
+    cars: 5,
+    betsCount: 10,
+    selectedBalls: [3, 5, 8, 12, 17, 21, 24, 28, 33, 37],
+    drawBalls: [5, 11, 12, 17, 18],
+    result: '中了 3 顆',
+    cost: 6887,
+    payout: 79500,
+    pnl: 72613,
+    cumPnl: 72613
+  }
+];
 
 export const MultiBetTab: React.FC = () => {
   const { data: games, loading: gamesLoading, error: gamesError } = useAsync(() => api.games(), []);
@@ -24,26 +47,9 @@ export const MultiBetTab: React.FC = () => {
   const [selectedBalls, setSelectedBalls] = useState<number[]>([3, 5, 8, 12, 17, 21, 24, 28, 33, 37]);
   const [cars, setCars] = useState<number>(5);
   const [betDate, setBetDate] = useState<string>('2026-08-19');
-  const [records, setRecords] = useState<BetRecord[]>([
-    {
-      id: 'mb-demo-1',
-      index: 1,
-      date: '2026-08-18',
-      issue: '115000200',
-      game: '今彩539',
-      mode: 'multi',
-      units: 5,
-      cars: 5,
-      betsCount: 10,
-      selectedBalls: [3, 5, 8, 12, 17, 21, 24, 28, 33, 37],
-      drawBalls: [5, 11, 12, 17, 18],
-      result: '中了 3 顆',
-      cost: 6887,
-      payout: 79500,
-      pnl: 72613,
-      cumPnl: 72613
-    }
-  ]);
+  // 登入時流水存後端;未登入沿用 v2 的前端 state(含示範資料)
+  const ledger = useLedger('multi', DEMO_RECORDS);
+  const records = ledger.records;
 
   const ballCount = selectedBalls.length || 10;
   // 多顆盤口沿用 v2 的換算比例:每顆每車成本 = 每車成本 ÷ 20、每顆每車彩金 = 每車中獎可得 ÷ 4
@@ -79,11 +85,8 @@ export const MultiBetTab: React.FC = () => {
   const handleRecord = (status: string = '待開獎', hits: number = 0) => {
     const payout = hits > 0 ? hits * prize1Hit : 0;
     const pnl = status === '待開獎' ? 0 : payout - currentCost;
-    const lastCum = records.length > 0 ? records[records.length - 1].cumPnl : 0;
 
-    const newRecord: BetRecord = {
-      id: `mb-${Date.now()}`,
-      index: records.length + 1,
+    ledger.add({
       date: betDate,
       issue: '115000201',
       game: gameName,
@@ -96,17 +99,8 @@ export const MultiBetTab: React.FC = () => {
       result: status,
       cost: currentCost,
       payout,
-      pnl,
-      cumPnl: lastCum + pnl
-    };
-
-    setRecords([...records, newRecord]);
-  };
-
-  const handleUndo = () => {
-    if (records.length > 0) {
-      setRecords(records.slice(0, -1));
-    }
+      pnl
+    });
   };
 
   const cumPnl = records.length > 0 ? records[records.length - 1].cumPnl : 0;
@@ -366,7 +360,7 @@ export const MultiBetTab: React.FC = () => {
               </h3>
               <button
                 type="button"
-                onClick={handleUndo}
+                onClick={ledger.undo}
                 disabled={records.length === 0}
                 className="text-[11px] font-semibold text-neutral-500 hover:text-neutral-900 dark:hover:text-white disabled:opacity-30 transition-colors flex items-center gap-1 active:scale-95"
               >
@@ -374,6 +368,14 @@ export const MultiBetTab: React.FC = () => {
                 撤銷上一筆
               </button>
             </div>
+
+            {ledger.loading && <div className="text-xs text-neutral-400">載入流水帳中…</div>}
+            {ledger.error && <div className="text-xs text-rose-500">{ledger.error}</div>}
+            {!ledger.loggedIn && (
+              <div className="text-[11px] text-neutral-400">
+                未登入:紀錄只留在這個瀏覽器分頁,重整就會消失。
+              </div>
+            )}
 
             {/* Mobile View: Vertical Clean Cards (No Horizontal Scrolling) */}
             <div className="space-y-2.5 sm:hidden">

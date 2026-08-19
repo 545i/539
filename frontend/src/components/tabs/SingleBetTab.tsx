@@ -16,6 +16,29 @@ import { LotteryBallPad } from '../LotteryBallPad';
 import { BetRecord, LotteryGame } from '../../types';
 import { api, GameKey } from '../../api/client';
 import { useAsync } from '../../api/useAsync';
+import { useLedger } from '../../api/useLedger';
+
+// 未登入時的示範流水(登入後改用後端自己的紀錄)
+const DEMO_RECORDS: BetRecord[] = [
+  {
+    id: 'sb-demo-1',
+    index: 1,
+    date: '2026-08-18',
+    issue: '115000200',
+    game: '今彩539',
+    mode: 'single',
+    units: 3,
+    cars: 3,
+    betsCount: 1,
+    selectedBalls: [12],
+    drawBalls: [5, 11, 12, 17, 18],
+    result: '中了 1 顆 (中獎)',
+    cost: 8265,
+    payout: 63600,
+    pnl: 55335,
+    cumPnl: 55335
+  }
+];
 
 export const SingleBetTab: React.FC = () => {
   const { data: games, loading: gamesLoading, error: gamesError } = useAsync(() => api.games(), []);
@@ -29,26 +52,9 @@ export const SingleBetTab: React.FC = () => {
   const [cars, setCars] = useState<number>(3);
   const [betDate, setBetDate] = useState<string>('2026-08-19');
   const [isCompareOpen, setIsCompareOpen] = useState(false);
-  const [records, setRecords] = useState<BetRecord[]>([
-    {
-      id: 'sb-demo-1',
-      index: 1,
-      date: '2026-08-18',
-      issue: '115000200',
-      game: '今彩539',
-      mode: 'single',
-      units: 3,
-      cars: 3,
-      betsCount: 1,
-      selectedBalls: [12],
-      drawBalls: [5, 11, 12, 17, 18],
-      result: '中了 1 顆 (中獎)',
-      cost: 8265,
-      payout: 63600,
-      pnl: 55335,
-      cumPnl: 55335
-    }
-  ]);
+  // 登入時流水存後端;未登入沿用 v2 的前端 state(含示範資料)
+  const ledger = useLedger('single', DEMO_RECORDS);
+  const records = ledger.records;
 
   // 成本 / 命中彩金 / 命中率都由後端 core.erhe 算(押 1 顆 = 單顆下注),
   // 盤口不覆寫,直接用該遊戲 GameConfig 的每車成本與中獎可得。
@@ -72,11 +78,8 @@ export const SingleBetTab: React.FC = () => {
     const isWin = status === '中了 1 顆 (中獎)';
     const payout = isWin ? potentialPrize : 0;
     const pnl = isWin ? potentialNet : (status === '槓龜 (沒中)' ? -currentCost : 0);
-    const lastCum = records.length > 0 ? records[records.length - 1].cumPnl : 0;
 
-    const newRecord: BetRecord = {
-      id: `sb-${Date.now()}`,
-      index: records.length + 1,
+    ledger.add({
       date: betDate,
       issue: '115000201',
       game: gameName,
@@ -89,17 +92,8 @@ export const SingleBetTab: React.FC = () => {
       result: status,
       cost: currentCost,
       payout,
-      pnl,
-      cumPnl: lastCum + pnl
-    };
-
-    setRecords([...records, newRecord]);
-  };
-
-  const handleUndo = () => {
-    if (records.length > 0) {
-      setRecords(records.slice(0, -1));
-    }
+      pnl
+    });
   };
 
   const cumPnl = records.length > 0 ? records[records.length - 1].cumPnl : 0;
@@ -359,7 +353,7 @@ export const SingleBetTab: React.FC = () => {
               </h3>
               <button
                 type="button"
-                onClick={handleUndo}
+                onClick={ledger.undo}
                 disabled={records.length === 0}
                 className="text-[11px] font-semibold text-neutral-500 hover:text-neutral-900 dark:hover:text-white disabled:opacity-30 transition-colors flex items-center gap-1 active:scale-95"
               >
@@ -367,6 +361,14 @@ export const SingleBetTab: React.FC = () => {
                 撤銷上一筆
               </button>
             </div>
+
+            {ledger.loading && <div className="text-xs text-neutral-400">載入流水帳中…</div>}
+            {ledger.error && <div className="text-xs text-rose-500">{ledger.error}</div>}
+            {!ledger.loggedIn && (
+              <div className="text-[11px] text-neutral-400">
+                未登入:紀錄只留在這個瀏覽器分頁,重整就會消失。
+              </div>
+            )}
 
             {/* Mobile View: Vertical Clean Cards (No Horizontal Scrolling) */}
             <div className="space-y-2.5 sm:hidden">

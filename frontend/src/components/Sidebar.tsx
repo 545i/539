@@ -13,10 +13,13 @@ import {
   HelpCircle, 
   ShieldAlert,
   Dices,
-  Layers
+  Layers,
+  LogIn
 } from 'lucide-react';
 import { NavItem, ThemeMode } from '../types';
 import { GAME_LIST } from '../data/lotteryData';
+import { useAuth } from '../api/useAuth';
+import { LoginModal } from './LoginModal';
 
 interface Props {
   activeNav: NavItem;
@@ -40,6 +43,8 @@ export const Sidebar: React.FC<Props> = ({
   onCloseMobile
 }) => {
   const [isDisclaimerExpanded, setIsDisclaimerExpanded] = useState(false);
+  const [isLoginOpen, setIsLoginOpen] = useState(false);
+  const { loggedIn, username, logout } = useAuth();
 
   const navItems: { id: NavItem; label: string; icon: React.ReactNode; tag?: string }[] = [
     { id: 'duo_bet', label: '二合買牌', icon: <Dices className="w-4 h-4" />, tag: 'Core' },
@@ -84,21 +89,39 @@ export const Sidebar: React.FC<Props> = ({
             </div>
           </div>
 
-          {/* User Account Strip */}
+          {/* User Account Strip:登入後記帳存後端,未登入只留在這個瀏覽器分頁 */}
           <div className="mt-5 pt-3 border-t border-black/[0.06] dark:border-white/[0.06] flex items-center justify-between">
-            <div className="flex items-center gap-2 text-xs text-neutral-600 dark:text-neutral-400 font-medium">
-              <div className="w-2 h-2 rounded-full bg-emerald-500 ring-2 ring-emerald-500/20"></div>
-              <span className="font-mono text-[11px] tracking-wide">lyrwu1886</span>
+            <div className="flex items-center gap-2 text-xs text-neutral-600 dark:text-neutral-400 font-medium min-w-0">
+              <div className={`w-2 h-2 rounded-full shrink-0 ${
+                loggedIn
+                  ? 'bg-emerald-500 ring-2 ring-emerald-500/20'
+                  : 'bg-neutral-400 ring-2 ring-neutral-400/20'
+              }`}></div>
+              <span className="font-mono text-[11px] tracking-wide truncate">
+                {loggedIn ? username || '已登入' : '未登入 (紀錄不會保存)'}
+              </span>
             </div>
-            <button
-              type="button"
-              id="logout-btn"
-              onClick={() => alert('已登出系統 (前端展示)')}
-              className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] uppercase tracking-wider font-semibold rounded-full border border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5 text-neutral-700 dark:text-neutral-300 transition-colors"
-            >
-              <LogOut className="w-3 h-3" />
-              登出
-            </button>
+            {loggedIn ? (
+              <button
+                type="button"
+                id="logout-btn"
+                onClick={logout}
+                className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] uppercase tracking-wider font-semibold rounded-full border border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5 text-neutral-700 dark:text-neutral-300 transition-colors shrink-0"
+              >
+                <LogOut className="w-3 h-3" />
+                登出
+              </button>
+            ) : (
+              <button
+                type="button"
+                id="login-btn"
+                onClick={() => setIsLoginOpen(true)}
+                className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] uppercase tracking-wider font-semibold rounded-full bg-black text-white dark:bg-white dark:text-black hover:opacity-90 transition-opacity shrink-0"
+              >
+                <LogIn className="w-3 h-3" />
+                登入
+              </button>
+            )}
           </div>
 
           {/* Theme Toggle Pill */}
@@ -255,6 +278,8 @@ export const Sidebar: React.FC<Props> = ({
           </button>
         </div>
       </aside>
+
+      <LoginModal isOpen={isLoginOpen} onClose={() => setIsLoginOpen(false)} />
     </>
   );
 };

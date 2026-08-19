@@ -9,9 +9,10 @@ import {
 } from 'lucide-react';
 import { INITIAL_COMBO_RECORDS } from '../../data/lotteryData';
 import { LotteryBallPad } from '../LotteryBallPad';
-import { BetRecord, LotteryGame } from '../../types';
+import { LotteryGame } from '../../types';
 import { api, GameKey } from '../../api/client';
 import { useAsync } from '../../api/useAsync';
+import { useLedger } from '../../api/useLedger';
 
 // UI 的中文玩法名 → core.combo 的 play key(注數規則由後端依這個決定)
 type PlayMethod = '星碰' | '連碰(全碰)' | '立柱' | '拖膽';
@@ -24,7 +25,9 @@ const PLAY_KEYS: Record<PlayMethod, 'star' | 'combo' | 'pillar' | 'dan'> = {
 
 export const ComboBetTab: React.FC = () => {
   const { data: games, loading: gamesLoading, error: gamesError } = useAsync(() => api.games(), []);
-  const [records, setRecords] = useState<BetRecord[]>(INITIAL_COMBO_RECORDS);
+  // 登入時流水存後端;未登入沿用 v2 的前端 state(含示範資料)
+  const ledger = useLedger('combo', INITIAL_COMBO_RECORDS);
+  const records = ledger.records;
   const [gameKey, setGameKey] = useState<GameKey>('lotto539');
   const gameCfg = games?.find(g => g.key === gameKey) ?? null;
   // 清單還沒回來前沿用今彩539 的規格,避免首屏數字跳動
@@ -64,11 +67,8 @@ export const ComboBetTab: React.FC = () => {
     const isWin = status === '中三星 (1碰)';
     const payout = isWin ? Math.round(prizePerHitComb * (units / 6)) : 0;
     const pnl = status === '待開獎' ? 0 : payout - currentCost;
-    const lastCum = records.length > 0 ? records[records.length - 1].cumPnl : 0;
 
-    const newRec: BetRecord = {
-      id: `c-${Date.now()}`,
-      index: records.length + 1,
+    ledger.add({
       date: betDate,
       issue: '115000201',
       game: gameName,
@@ -82,21 +82,13 @@ export const ComboBetTab: React.FC = () => {
       result: status,
       cost: currentCost,
       payout,
-      pnl,
-      cumPnl: lastCum + pnl
-    };
-    setRecords([...records, newRec]);
-  };
-
-  const handleUndo = () => {
-    if (records.length > 0) {
-      setRecords(records.slice(0, -1));
-    }
+      pnl
+    });
   };
 
   const totalSpent = records.reduce((acc, r) => acc + r.cost, 0);
   const totalReturn = records.reduce((acc, r) => acc + r.payout, 0);
-  const cumPnl = records.length > 0 ? records[records.length - 1].cumPnl : -84336;
+  const cumPnl = records.length > 0 ? records[records.length - 1].cumPnl : 0;
   const winCount = records.filter(r => r.payout > 0).length;
 
   return (
@@ -379,7 +371,7 @@ export const ComboBetTab: React.FC = () => {
               </h3>
               <button
                 type="button"
-                onClick={handleUndo}
+                onClick={ledger.undo}
                 disabled={records.length === 0}
                 className="text-[11px] font-semibold text-neutral-500 hover:text-neutral-900 dark:hover:text-white disabled:opacity-30 transition-colors flex items-center gap-1 active:scale-95"
               >
@@ -387,6 +379,14 @@ export const ComboBetTab: React.FC = () => {
                 撤銷上一筆
               </button>
             </div>
+
+            {ledger.loading && <div className="text-xs text-neutral-400">載入流水帳中…</div>}
+            {ledger.error && <div className="text-xs text-rose-500">{ledger.error}</div>}
+            {!ledger.loggedIn && (
+              <div className="text-[11px] text-neutral-400">
+                未登入:紀錄只留在這個瀏覽器分頁,重整就會消失。
+              </div>
+            )}
 
             {/* Mobile View: Vertical Clean Cards (No Horizontal Scrolling) */}
             <div className="space-y-2.5 sm:hidden">
