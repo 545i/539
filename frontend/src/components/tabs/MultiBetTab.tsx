@@ -1,0 +1,499 @@
+import React, { useState } from 'react';
+import { 
+  FileText, 
+  CheckCircle2, 
+  XCircle,
+  TrendingUp,
+  RotateCcw,
+  Sparkles,
+  Minus,
+  Plus
+} from 'lucide-react';
+import { LotteryBallPad } from '../LotteryBallPad';
+import { BetRecord, LotteryGame } from '../../types';
+import { api, GameKey } from '../../api/client';
+import { useAsync } from '../../api/useAsync';
+
+export const MultiBetTab: React.FC = () => {
+  const { data: games, loading: gamesLoading, error: gamesError } = useAsync(() => api.games(), []);
+  const [gameKey, setGameKey] = useState<GameKey>('lotto539');
+  const game = games?.find(g => g.key === gameKey) ?? null;
+  // 清單還沒回來前沿用今彩539 的規格,避免首屏數字跳動
+  const gameName = (game?.name ?? '今彩539') as LotteryGame;
+  const numMax = game?.num_max ?? 39;
+  const [selectedBalls, setSelectedBalls] = useState<number[]>([3, 5, 8, 12, 17, 21, 24, 28, 33, 37]);
+  const [cars, setCars] = useState<number>(5);
+  const [betDate, setBetDate] = useState<string>('2026-08-19');
+  const [records, setRecords] = useState<BetRecord[]>([
+    {
+      id: 'mb-demo-1',
+      index: 1,
+      date: '2026-08-18',
+      issue: '115000200',
+      game: '今彩539',
+      mode: 'multi',
+      units: 5,
+      cars: 5,
+      betsCount: 10,
+      selectedBalls: [3, 5, 8, 12, 17, 21, 24, 28, 33, 37],
+      drawBalls: [5, 11, 12, 17, 18],
+      result: '中了 3 顆',
+      cost: 6887,
+      payout: 79500,
+      pnl: 72613,
+      cumPnl: 72613
+    }
+  ]);
+
+  const ballCount = selectedBalls.length || 10;
+  // 多顆盤口沿用 v2 的換算比例:每顆每車成本 = 每車成本 ÷ 20、每顆每車彩金 = 每車中獎可得 ÷ 4
+  // (今彩539 → 2755/20 = 137.75、21200/4 = 5300,與 v2 完全一致)
+  const costPerCarPerBall = (game?.default_cost_per_car ?? 2755) / 20;
+  const prizePerHitPerCar = (game?.default_win_payout ?? 21200) / 4;
+  const currentCost = Math.round(cars * ballCount * costPerCarPerBall);
+  const prize1Hit = Math.round(cars * prizePerHitPerCar);
+  const prize2Hits = Math.round(cars * prizePerHitPerCar * 2);
+  const prize3Hits = Math.round(cars * prizePerHitPerCar * 3);
+
+  const handleToggleBall = (num: number) => {
+    if (selectedBalls.includes(num)) {
+      setSelectedBalls(selectedBalls.filter(n => n !== num));
+    } else {
+      if (selectedBalls.length < 20) {
+        setSelectedBalls([...selectedBalls, num]);
+      }
+    }
+  };
+
+  const handleRecord = (status: string = '待開獎', hits: number = 0) => {
+    const payout = hits > 0 ? hits * prize1Hit : 0;
+    const pnl = status === '待開獎' ? 0 : payout - currentCost;
+    const lastCum = records.length > 0 ? records[records.length - 1].cumPnl : 0;
+
+    const newRecord: BetRecord = {
+      id: `mb-${Date.now()}`,
+      index: records.length + 1,
+      date: betDate,
+      issue: '115000201',
+      game: gameName,
+      mode: 'multi',
+      units: cars,
+      cars,
+      betsCount: selectedBalls.length,
+      selectedBalls: [...selectedBalls],
+      drawBalls: [5, 11, 12, 17, 18],
+      result: status,
+      cost: currentCost,
+      payout,
+      pnl,
+      cumPnl: lastCum + pnl
+    };
+
+    setRecords([...records, newRecord]);
+  };
+
+  const handleUndo = () => {
+    if (records.length > 0) {
+      setRecords(records.slice(0, -1));
+    }
+  };
+
+  const cumPnl = records.length > 0 ? records[records.length - 1].cumPnl : 0;
+  const totalSpent = records.reduce((acc, r) => acc + r.cost, 0);
+  const totalReturn = records.reduce((acc, r) => acc + r.payout, 0);
+  const winCount = records.filter(r => r.payout > 0).length;
+
+  return (
+    <div className="space-y-4 sm:space-y-5 animate-in fade-in duration-200 w-full overflow-hidden">
+      {/* Top Banner Bar */}
+      <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-4">
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] uppercase tracking-[0.25em] text-neutral-400 dark:text-neutral-500 font-semibold">
+              Multi-Ball Portfolio Strategy
+            </span>
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-black/5 dark:bg-white/10 text-neutral-600 dark:text-neutral-300">
+              {ballCount} 顆分佈
+            </span>
+          </div>
+          <div className="text-base sm:text-xl font-display font-bold text-neutral-900 dark:text-white mt-0.5">
+            多顆下注控制台
+          </div>
+          <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
+            挑選 8~15 顆潛力號碼矩陣，命中 1 顆即按比例回收彩金。
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between md:justify-end gap-4 border-t md:border-t-0 pt-2.5 md:pt-0 border-black/[0.06] dark:border-white/[0.06]">
+          <div className="text-left md:text-right">
+            <span className="text-[10px] uppercase tracking-wider text-neutral-400 block">多顆累積損益</span>
+            <div className={`text-xl sm:text-2xl font-mono font-bold ${cumPnl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+              {cumPnl >= 0 ? `+${cumPnl.toLocaleString()}` : cumPnl.toLocaleString()}
+            </div>
+          </div>
+          <div className="text-right text-[11px] font-mono text-neutral-400">
+            {records.length} 局・中 {winCount} 局
+          </div>
+        </div>
+      </div>
+
+      {/* Main Dual-Column Workbench Layout */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5">
+        
+        {/* Left Column (5/12) - Configuration & Execution Panel */}
+        <div className="lg:col-span-5 space-y-4">
+          
+          <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] space-y-4">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-display font-bold uppercase tracking-wider text-neutral-900 dark:text-white">
+                01 / 多顆組合參數
+              </span>
+              <span className="text-[11px] font-mono text-neutral-400">
+                期號: 115000201
+              </span>
+            </div>
+
+            {/* Game Selector */}
+            <div>
+              <label className="block text-[10px] uppercase tracking-[0.2em] font-semibold text-neutral-400 mb-1.5">
+                彩券種類
+              </label>
+              <div className="grid grid-cols-3 gap-1 p-1 rounded-xl bg-black/[0.03] dark:bg-white/[0.04] border border-black/[0.06] dark:border-white/[0.06]">
+                {(games ?? []).map(g => (
+                  <button
+                    key={g.key}
+                    type="button"
+                    onClick={() => setGameKey(g.key)}
+                    className={`py-1.5 px-1 sm:px-2 rounded-lg text-xs font-semibold truncate transition-all ${
+                      gameKey === g.key
+                        ? 'bg-black text-white dark:bg-white dark:text-black shadow-xs'
+                        : 'text-neutral-600 dark:text-neutral-400 hover:text-black dark:hover:text-white'
+                    }`}
+                  >
+                    {g.short_name}
+                  </button>
+                ))}
+              </div>
+              {gamesLoading && <div className="text-xs text-neutral-400 mt-1">載入遊戲清單…</div>}
+              {gamesError && <div className="text-xs text-rose-500 mt-1">{gamesError}</div>}
+            </div>
+
+            {/* Ball Selector Matrix */}
+            <div>
+              <LotteryBallPad
+                selectedBalls={selectedBalls}
+                onToggleBall={handleToggleBall}
+                onClear={() => setSelectedBalls([])}
+                onQuickSelect={(balls) => setSelectedBalls(balls)}
+                maxBalls={15}
+                totalBalls={numMax}
+                label={`選取組合號碼 (建議 8~15 顆)`}
+              />
+            </div>
+
+            {/* Car Stepper for Mobile */}
+            <div className="space-y-2 pt-1">
+              <div className="flex items-center justify-between">
+                <label className="text-[10px] uppercase tracking-[0.2em] font-semibold text-neutral-400">
+                  下注車數 (Cars)
+                </label>
+                <span className="text-xs font-mono font-bold text-neutral-900 dark:text-white">
+                  {cars} 車 ({selectedBalls.length} 顆矩陣)
+                </span>
+              </div>
+
+              {/* Stepper with Large Buttons */}
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setCars(Math.max(1, cars - 1))}
+                  className="w-10 h-10 rounded-xl border border-black/10 dark:border-white/10 flex items-center justify-center text-neutral-700 dark:text-neutral-200 hover:bg-black/5 dark:hover:bg-white/5 active:scale-95 transition-all"
+                >
+                  <Minus className="w-4 h-4" />
+                </button>
+                
+                <div className="flex-1 h-10 rounded-xl border border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.03] flex items-center justify-center font-mono font-bold text-sm text-neutral-900 dark:text-white">
+                  {cars} 車
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setCars(cars + 1)}
+                  className="w-10 h-10 rounded-xl border border-black/10 dark:border-white/10 flex items-center justify-center text-neutral-700 dark:text-neutral-200 hover:bg-black/5 dark:hover:bg-white/5 active:scale-95 transition-all"
+                >
+                  <Plus className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Quick Car Selection Pills */}
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                {[1, 2, 3, 5, 8, 10, 15].map(c => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => setCars(c)}
+                    className={`flex-1 min-w-[42px] py-1 text-xs font-mono font-semibold rounded-lg border transition-all active:scale-95 ${
+                      cars === c
+                        ? 'bg-black text-white dark:bg-white dark:text-black border-black dark:border-white'
+                        : 'border-black/10 dark:border-white/10 text-neutral-700 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5'
+                    }`}
+                  >
+                    {c}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Live Financial Preview Card */}
+            <div className="p-3.5 sm:p-4 rounded-xl bg-black/[0.02] dark:bg-white/[0.03] border border-black/[0.06] dark:border-white/[0.06] space-y-2">
+              <div className="text-[10px] uppercase tracking-wider text-neutral-400 font-semibold">
+                多顆損益階梯試算 (Live HUD)
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div>
+                  <span className="text-neutral-500 block text-[10px]">總投入成本:</span>
+                  <span className="font-mono font-bold text-sm text-neutral-900 dark:text-white">
+                    NT$ {currentCost.toLocaleString()}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-neutral-500 block text-[10px]">中 1 顆拿回:</span>
+                  <span className="font-mono font-bold text-sm text-neutral-900 dark:text-white">
+                    NT$ {prize1Hit.toLocaleString()}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-neutral-500 block text-[10px]">中 2 顆拿回:</span>
+                  <span className="font-mono font-bold text-sm text-emerald-600 dark:text-emerald-400">
+                    NT$ {prize2Hits.toLocaleString()}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-neutral-500 block text-[10px]">中 3 顆大賺:</span>
+                  <span className="font-mono font-bold text-sm text-emerald-600 dark:text-emerald-400">
+                    NT$ {prize3Hits.toLocaleString()}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Action Buttons Panel */}
+            <div className="pt-2 flex flex-col sm:flex-row gap-2">
+              <button
+                type="button"
+                onClick={() => handleRecord('待開獎', 0)}
+                className="w-full py-3 px-4 rounded-xl sm:rounded-full text-xs uppercase tracking-wider font-semibold bg-black text-white dark:bg-white dark:text-black hover:opacity-90 transition-opacity flex items-center justify-center gap-2 shadow-xs active:scale-98"
+              >
+                <FileText className="w-4 h-4" />
+                送出記帳 (待開獎)
+              </button>
+
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleRecord('中了 2 顆', 2)}
+                  className="py-2.5 px-3 rounded-xl sm:rounded-full text-xs uppercase tracking-wider font-semibold border border-emerald-600/30 text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 transition-colors flex items-center justify-center gap-1 active:scale-95"
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  模擬中2顆
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleRecord('槓龜 (0顆)', 0)}
+                  className="py-2.5 px-3 rounded-xl sm:rounded-full text-xs uppercase tracking-wider font-semibold border border-rose-600/30 text-rose-700 dark:text-rose-400 bg-rose-500/10 hover:bg-rose-500/20 transition-colors flex items-center justify-center gap-1 active:scale-95"
+                >
+                  <XCircle className="w-3.5 h-3.5" />
+                  模擬沒中
+                </button>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        {/* Right Column (7/12) - Metrics & Live Ledger */}
+        <div className="lg:col-span-7 space-y-4">
+          
+          {/* Top 4 Metric Tiles */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3">
+            <div className="p-3.5 sm:p-4 rounded-xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08]">
+              <div className="text-[10px] uppercase tracking-wider text-neutral-400">總投入成本</div>
+              <div className="text-base sm:text-lg font-bold font-mono text-neutral-900 dark:text-white mt-0.5">
+                {totalSpent.toLocaleString()}
+              </div>
+            </div>
+
+            <div className="p-3.5 sm:p-4 rounded-xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08]">
+              <div className="text-[10px] uppercase tracking-wider text-neutral-400">總回收彩金</div>
+              <div className="text-base sm:text-lg font-bold font-mono text-emerald-600 dark:text-emerald-400 mt-0.5">
+                {totalReturn.toLocaleString()}
+              </div>
+            </div>
+
+            <div className="p-3.5 sm:p-4 rounded-xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08]">
+              <div className="text-[10px] uppercase tracking-wider text-neutral-400">累積淨損益</div>
+              <div className={`text-base sm:text-lg font-bold font-mono mt-0.5 ${cumPnl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                {cumPnl >= 0 ? `+${cumPnl.toLocaleString()}` : cumPnl.toLocaleString()}
+              </div>
+            </div>
+
+            <div className="p-3.5 sm:p-4 rounded-xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08]">
+              <div className="text-[10px] uppercase tracking-wider text-neutral-400">中獎率 / 局數</div>
+              <div className="text-base sm:text-lg font-bold font-mono text-neutral-900 dark:text-white mt-0.5">
+                {records.length > 0 ? `${((winCount / records.length) * 100).toFixed(0)}%` : '0%'}
+              </div>
+              <div className="text-[10px] text-neutral-400 font-mono">共 {records.length} 局</div>
+            </div>
+          </div>
+
+          {/* Records Ledger Section */}
+          <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs sm:text-sm font-display font-bold text-neutral-900 dark:text-white uppercase tracking-wide">
+                02 / 多顆流水帳與開獎核對
+              </h3>
+              <button
+                type="button"
+                onClick={handleUndo}
+                disabled={records.length === 0}
+                className="text-[11px] font-semibold text-neutral-500 hover:text-neutral-900 dark:hover:text-white disabled:opacity-30 transition-colors flex items-center gap-1 active:scale-95"
+              >
+                <RotateCcw className="w-3 h-3" />
+                撤銷上一筆
+              </button>
+            </div>
+
+            {/* Mobile View: Vertical Clean Cards (No Horizontal Scrolling) */}
+            <div className="space-y-2.5 sm:hidden">
+              {records.map((rec) => (
+                <div 
+                  key={rec.id}
+                  className="p-3.5 rounded-xl border border-black/[0.08] dark:border-white/[0.08] bg-black/[0.01] dark:bg-white/[0.02] space-y-2"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-5 h-5 rounded-full bg-black/5 dark:bg-white/10 text-[10px] font-mono font-bold flex items-center justify-center">
+                        {rec.index}
+                      </span>
+                      <span className="text-xs font-mono font-bold text-neutral-900 dark:text-white">
+                        {rec.issue}
+                      </span>
+                      <span className="text-[10px] text-neutral-400">
+                        {rec.date}
+                      </span>
+                    </div>
+
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
+                      rec.pnl > 0 
+                        ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 font-bold' 
+                        : rec.result === '待開獎' 
+                        ? 'bg-black/5 dark:bg-white/10 text-neutral-600 dark:text-neutral-400' 
+                        : 'bg-rose-500/10 text-rose-600 dark:text-rose-400'
+                    }`}>
+                      {rec.result}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2 pt-1 border-t border-black/[0.04] dark:border-white/[0.04] text-[11px]">
+                    <div>
+                      <span className="text-neutral-400 block text-[10px]">下注車數</span>
+                      <span className="font-mono font-bold text-neutral-800 dark:text-neutral-200">{rec.cars || rec.units} 車</span>
+                    </div>
+                    <div>
+                      <span className="text-neutral-400 block text-[10px]">投入成本</span>
+                      <span className="font-mono text-neutral-800 dark:text-neutral-200">{rec.cost.toLocaleString()}</span>
+                    </div>
+                    <div>
+                      <span className="text-neutral-400 block text-[10px]">本局損益</span>
+                      <span className={`font-mono font-bold ${rec.pnl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                        {rec.pnl >= 0 ? `+${rec.pnl.toLocaleString()}` : rec.pnl.toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1 text-[11px] pt-1 border-t border-black/[0.04] dark:border-white/[0.04]">
+                    <div className="flex items-center gap-1 flex-wrap">
+                      <span className="text-neutral-400 text-[10px]">下注:</span>
+                      {rec.selectedBalls.map(b => (
+                        <span key={b} className={`px-1 py-0.2 rounded font-mono text-[10px] ${rec.drawBalls.includes(b) ? 'bg-emerald-600 text-white font-bold' : 'bg-black/5 dark:bg-white/10'}`}>
+                          {b.toString().padStart(2, '0')}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Desktop Table View */}
+            <div className="lt-wrap border border-black/[0.08] dark:border-white/[0.08] rounded-xl hidden sm:block">
+              <table className="lt">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>期號</th>
+                    <th>遊戲</th>
+                    <th>車數</th>
+                    <th>狀態</th>
+                    <th>成本</th>
+                    <th>回收</th>
+                    <th>本局損益</th>
+                    <th>累積損益</th>
+                    <th>下注號碼</th>
+                    <th>開獎號碼</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {records.map((rec) => (
+                    <tr key={rec.id}>
+                      <td>{rec.index}</td>
+                      <td>
+                        <div className="text-xs font-mono font-bold">{rec.issue}</div>
+                        <div className="text-[10px] text-neutral-400">{rec.date}</div>
+                      </td>
+                      <td className="text-xs font-semibold">{rec.game.split('(')[0]}</td>
+                      <td className="font-mono text-xs font-bold">{rec.cars || rec.units} 車</td>
+                      <td>
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${
+                          rec.pnl > 0 
+                            ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 font-bold' 
+                            : rec.result === '待開獎' 
+                            ? 'bg-black/5 dark:bg-white/10 text-neutral-600 dark:text-neutral-400' 
+                            : 'bg-rose-500/10 text-rose-600 dark:text-rose-400'
+                        }`}>
+                          {rec.result}
+                        </span>
+                      </td>
+                      <td className="font-mono text-xs">{rec.cost.toLocaleString()}</td>
+                      <td className="font-mono text-xs text-emerald-600 dark:text-emerald-400 font-bold">{rec.payout.toLocaleString()}</td>
+                      <td className={`font-mono text-xs font-bold ${rec.pnl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                        {rec.pnl >= 0 ? `+${rec.pnl.toLocaleString()}` : rec.pnl.toLocaleString()}
+                      </td>
+                      <td className={`font-mono text-xs font-bold ${rec.cumPnl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                        {rec.cumPnl >= 0 ? `+${rec.cumPnl.toLocaleString()}` : rec.cumPnl.toLocaleString()}
+                      </td>
+                      <td className="font-mono text-xs">
+                        <div className="flex flex-wrap gap-1">
+                          {rec.selectedBalls.map(b => (
+                            <span key={b} className={`px-1 py-0.5 rounded ${rec.drawBalls.includes(b) ? 'bg-black text-white dark:bg-white dark:text-black font-bold' : ''}`}>
+                              {b.toString().padStart(2, '0')}
+                            </span>
+                          ))}
+                        </div>
+                      </td>
+                      <td className="font-mono text-xs">
+                        {rec.drawBalls.map(b => b.toString().padStart(2, '0')).join(' ')}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  );
+};

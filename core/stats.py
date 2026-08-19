@@ -196,6 +196,51 @@ def tens_band_stats(df: pd.DataFrame, num_max: int = NUM_MAX):
     return star_out, band_out, pattern_out
 
 
+# ── E3. 區間組合斷檔提醒(任意兩十位區段連續幾期都沒開)────────
+def tens_pair_alerts(df: pd.DataFrame, threshold: int = 3,
+                     num_max: int = NUM_MAX) -> list[dict]:
+    """任意兩個十位區段的配對,連續幾期都沒開出任何號碼。
+
+    區段沿用 tens_bands / _tens_index:01~09、10~19、20~29、30~39
+    (顯示標籤用民間慣用的開頭 01 / 11 / 21 / 31)。
+
+    對每組配對 (A, B),從最新一期往回數,streak = 連續幾期裡「A、B 兩區段
+    都沒開出任何號碼」;只要某期 A 或 B 有號,streak 即中斷歸零。
+    streak >= threshold(預設 3)時 alert=True,之後每新增一期 +1。
+
+    回傳依 streak 由大到小排序的清單,每組:
+      {"bands": (i, j), "labels": (str, str), "range": (str, str),
+       "streak": int, "alert": bool}
+    """
+    bands = tens_bands(num_max)
+    n_bands = len(bands)
+    draws = draws_as_lists(df)
+
+    # 每一期出現了哪些十位區段(band index 的集合)
+    present = [{_tens_index(n, n_bands) for n in draw} for draw in draws]
+
+    def _label(i: int) -> str:
+        return f"{i * 10 + 1:02d}"  # band0→"01"、band1→"11"、band2→"21"…
+
+    out = []
+    for i in range(n_bands):
+        for j in range(i + 1, n_bands):
+            streak = 0
+            for seen in reversed(present):
+                if i in seen or j in seen:
+                    break
+                streak += 1
+            out.append({
+                "bands": (i, j),
+                "labels": (_label(i), _label(j)),
+                "range": (bands[i], bands[j]),
+                "streak": streak,
+                "alert": streak >= threshold,
+            })
+    out.sort(key=lambda d: -d["streak"])
+    return out
+
+
 # ── F. 卡方適合度檢定 ────────────────────────────────────
 @dataclass
 class ChiSquareResult:

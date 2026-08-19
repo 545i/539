@@ -1,0 +1,128 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --bg-canvas: #F9F9F7;
+    --bg-surface: #FFFFFF;
+    --bg-surface-secondary: #F1F1EE;
+    --bg-surface-elevated: #FFFFFF;
+    --border-color: rgba(20, 20, 20, 0.09);
+    --border-subtle: rgba(20, 20, 20, 0.05);
+    --text-primary: #141414;
+    --text-secondary: #5A5A5A;
+    --text-muted: #8E8E8E;
+    
+    /* Table styles */
+    --lt-head: #F3F3F0;
+    --lt-head-fg: #1F1F1F;
+    --lt-line: rgba(20, 20, 20, 0.08);
+    --lt-zebra: #FAFAF8;
+    --lt-fg: #141414;
+  }
+
+  .dark {
+    --bg-canvas: #0A0A0A;
+    --bg-surface: #121212;
+    --bg-surface-secondary: #181818;
+    --bg-surface-elevated: #1E1E1E;
+    --border-color: rgba(255, 255, 255, 0.10);
+    --border-subtle: rgba(255, 255, 255, 0.05);
+    --text-primary: #EDEDED;
+    --text-secondary: #A0A0A0;
+    --text-muted: #666666;
+
+    /* Table styles for dark */
+    --lt-head: #141414;
+    --lt-head-fg: #E0E0E0;
+    --lt-line: rgba(255, 255, 255, 0.08);
+    --lt-zebra: #0F0F0F;
+    --lt-fg: #E5E5E5;
+  }
+}
+
+body {
+  background-color: var(--bg-canvas);
+  color: var(--text-primary);
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.font-display {
+  font-family: 'Cinzel', serif;
+}
+
+.font-mono-nums {
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Winning ball highlight badge */
+.lt-hit {
+  background-color: #15803d !important;
+  color: #ffffff !important;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 4px;
+  display: inline-block;
+}
+
+.lt-num {
+  font-family: 'JetBrains Mono', monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Custom table wrapper */
+.lt-wrap {
+  overflow-x: auto;
+  border-radius: 12px;
+}
+
+.lt {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.lt th, .lt td {
+  padding: 0.6rem 0.85rem;
+  text-align: left;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--lt-line);
+}
+
+.lt th {
+  background-color: var(--lt-head);
+  color: var(--lt-head-fg);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.lt tbody tr:nth-child(even) {
+  background-color: var(--lt-zebra);
+}
+
+.lt td {
+  color: var(--lt-fg);
+}
+
+/* Subtle custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(120, 120, 120, 0.2);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(120, 120, 120, 0.4);
+}
+
+

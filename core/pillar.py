@@ -118,6 +118,40 @@ def result_text(hits: int | None) -> str:
     return f"中 {hits} 碰"
 
 
+# ── 部分包牌(自選號碼,只買選中號碼的三柱笛卡兒積)───────────
+def partial_bets(picks, num_max: int = 39) -> dict:
+    """使用者自選一組號碼,只買「這些號碼」組成的三柱笛卡兒積。
+
+    選中的號碼落在三柱各 (a, b, c) 顆,注數 = a × b × c(每注三柱各取一號)。
+    任一柱掛 0 → 組不出任何一注(該柱沒號可取),buyable=False。
+
+    回傳:
+      {"pillars": ([...], [...], [...]),   # 選中號碼在各柱的清單
+       "counts": (a, b, c),
+       "bets": a*b*c,                       # 這組選號的注數
+       "total": total_bets(num_max),        # 全包基準注數(39 → 1800)
+       "coverage": bets/total,              # 相對全包的涵蓋率
+       "buyable": bool}                     # 三柱是否都至少選 1 顆
+    """
+    c1, c2, c3 = pillars(num_max)
+    s1, s2, s3 = set(c1), set(c2), set(c3)
+    picks = sorted({int(n) for n in picks})
+    p1 = [n for n in picks if n in s1]
+    p2 = [n for n in picks if n in s2]
+    p3 = [n for n in picks if n in s3]
+    a, b, c = len(p1), len(p2), len(p3)
+    bets = a * b * c
+    total = total_bets(num_max)
+    return {
+        "pillars": (p1, p2, p3),
+        "counts": (a, b, c),
+        "bets": bets,
+        "total": total,
+        "coverage": bets / total if total else 0.0,
+        "buyable": a > 0 and b > 0 and c > 0,
+    }
+
+
 # ── 機率(全部由組合數列舉,不寫死百分比)────────────────
 def total_draws(num_max: int = 39, pick: int = 5) -> int:
     """所有可能的開獎組合數 C(num_max, pick)。"""

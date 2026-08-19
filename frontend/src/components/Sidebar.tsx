@@ -1,0 +1,261 @@
+import React, { useState } from 'react';
+import { 
+  BarChart3, 
+  Calculator, 
+  Download, 
+  Trophy, 
+  Settings, 
+  Moon, 
+  Sun, 
+  LogOut, 
+  ChevronRight, 
+  ChevronDown, 
+  HelpCircle, 
+  ShieldAlert,
+  Dices,
+  Layers
+} from 'lucide-react';
+import { NavItem, ThemeMode } from '../types';
+import { GAME_LIST } from '../data/lotteryData';
+
+interface Props {
+  activeNav: NavItem;
+  onSelectNav: (nav: NavItem) => void;
+  theme: ThemeMode;
+  onToggleTheme: () => void;
+  onOpenFormula: () => void;
+  onOpenDisclaimer: () => void;
+  isMobileOpen?: boolean;
+  onCloseMobile?: () => void;
+}
+
+export const Sidebar: React.FC<Props> = ({
+  activeNav,
+  onSelectNav,
+  theme,
+  onToggleTheme,
+  onOpenFormula,
+  onOpenDisclaimer,
+  isMobileOpen = false,
+  onCloseMobile
+}) => {
+  const [isDisclaimerExpanded, setIsDisclaimerExpanded] = useState(false);
+
+  const navItems: { id: NavItem; label: string; icon: React.ReactNode; tag?: string }[] = [
+    { id: 'duo_bet', label: '二合買牌', icon: <Dices className="w-4 h-4" />, tag: 'Core' },
+    { id: 'calculator', label: '連碰計算機', icon: <Calculator className="w-4 h-4" /> },
+    { id: 'analysis', label: '統計分析', icon: <BarChart3 className="w-4 h-4" /> },
+    { id: 'export', label: '匯出', icon: <Download className="w-4 h-4" /> },
+    { id: 'leaderboard', label: '排行榜', icon: <Trophy className="w-4 h-4" /> },
+    { id: 'settings', label: '設定', icon: <Settings className="w-4 h-4" /> },
+  ];
+
+  return (
+    <>
+      {/* Mobile Backdrop */}
+      {isMobileOpen && (
+        <div 
+          onClick={onCloseMobile}
+          className="fixed inset-0 bg-black/70 z-40 lg:hidden backdrop-blur-xs transition-opacity"
+        />
+      )}
+
+      <aside
+        id="app-sidebar"
+        className={`fixed top-0 left-0 bottom-0 z-40 w-72 lg:w-72 bg-[#FFFFFF] dark:bg-[#0A0A0A] border-r border-black/[0.08] dark:border-white/[0.08] flex flex-col transition-transform duration-200 ease-in-out ${
+          isMobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+        }`}
+      >
+        {/* Sidebar Header / Brand */}
+        <div className="p-6 border-b border-black/[0.08] dark:border-white/[0.08]">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-full border border-black/20 dark:border-white/20 flex items-center justify-center bg-black dark:bg-white text-white dark:text-black font-display font-bold text-xs tracking-wider">
+                D
+              </div>
+              <div>
+                <h1 className="font-display font-bold text-base text-[#141414] dark:text-white tracking-[0.05em] uppercase">
+                  Dualis <span className="font-sans text-xs font-normal text-black/50 dark:text-white/50 lowercase italic">lottery</span>
+                </h1>
+                <p className="text-[10px] uppercase tracking-[0.2em] text-black/40 dark:text-white/40">
+                  Precision Analytics
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* User Account Strip */}
+          <div className="mt-5 pt-3 border-t border-black/[0.06] dark:border-white/[0.06] flex items-center justify-between">
+            <div className="flex items-center gap-2 text-xs text-neutral-600 dark:text-neutral-400 font-medium">
+              <div className="w-2 h-2 rounded-full bg-emerald-500 ring-2 ring-emerald-500/20"></div>
+              <span className="font-mono text-[11px] tracking-wide">lyrwu1886</span>
+            </div>
+            <button
+              type="button"
+              id="logout-btn"
+              onClick={() => alert('已登出系統 (前端展示)')}
+              className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] uppercase tracking-wider font-semibold rounded-full border border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5 text-neutral-700 dark:text-neutral-300 transition-colors"
+            >
+              <LogOut className="w-3 h-3" />
+              登出
+            </button>
+          </div>
+
+          {/* Theme Toggle Pill */}
+          <div className="mt-3.5 flex items-center justify-between p-2.5 rounded-xl bg-black/[0.03] dark:bg-white/[0.04] border border-black/[0.06] dark:border-white/[0.06]">
+            <div className="flex items-center gap-2 text-xs font-medium text-neutral-800 dark:text-neutral-200">
+              {theme === 'dark' ? (
+                <Moon className="w-3.5 h-3.5 text-neutral-300" />
+              ) : (
+                <Sun className="w-3.5 h-3.5 text-neutral-700" />
+              )}
+              <span className="text-[11px] uppercase tracking-wider">
+                {theme === 'dark' ? 'Midnight Dark' : 'Canvas Light'}
+              </span>
+            </div>
+            <button
+              type="button"
+              id="theme-pill-toggle"
+              onClick={onToggleTheme}
+              className="px-2.5 py-0.5 text-[10px] uppercase font-bold tracking-widest rounded-full bg-black text-white dark:bg-white dark:text-black transition-transform active:scale-95"
+            >
+              {theme === 'dark' ? 'Light' : 'Dark'}
+            </button>
+          </div>
+        </div>
+
+        {/* Scrollable Navigation & Info Area */}
+        <div className="flex-1 overflow-y-auto px-4 py-5 space-y-6 text-sm">
+          {/* Navigation Section */}
+          <div>
+            <div className="px-2 mb-2.5 text-[10px] uppercase tracking-[0.25em] text-neutral-400 dark:text-neutral-500 font-semibold">
+              Navigation
+            </div>
+            <nav className="space-y-1">
+              {navItems.map(item => {
+                const isActive = activeNav === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    id={`nav-${item.id}`}
+                    type="button"
+                    onClick={() => {
+                      onSelectNav(item.id);
+                      if (onCloseMobile) onCloseMobile();
+                    }}
+                    className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl font-medium text-xs transition-all duration-150 ${
+                      isActive
+                        ? 'bg-black text-white dark:bg-white dark:text-black font-semibold shadow-xs'
+                        : 'text-neutral-700 dark:text-neutral-300 hover:bg-black/[0.04] dark:hover:bg-white/[0.05]'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className={isActive ? 'text-white dark:text-black' : 'text-neutral-500 dark:text-neutral-400'}>
+                        {item.icon}
+                      </span>
+                      <span className="tracking-wide">{item.label}</span>
+                    </div>
+                    {item.tag && !isActive && (
+                      <span className="text-[9px] px-1.5 py-0.5 uppercase tracking-wider rounded border border-black/10 dark:border-white/10 text-neutral-400">
+                        {item.tag}
+                      </span>
+                    )}
+                    {isActive && (
+                      <div className="w-1.5 h-1.5 rounded-full bg-white dark:bg-black"></div>
+                    )}
+                  </button>
+                );
+              })}
+            </nav>
+          </div>
+
+          {/* Lottery Draw Status Area */}
+          <div className="pt-2 border-t border-black/[0.06] dark:border-white/[0.06]">
+            <div className="px-2 mb-2.5 text-[10px] uppercase tracking-[0.25em] text-neutral-400 dark:text-neutral-500 font-semibold">
+              Live Draw Database
+            </div>
+            <div className="space-y-2.5 text-xs">
+              {GAME_LIST.map(game => (
+                <div 
+                  key={game.id}
+                  className="p-3 rounded-xl bg-black/[0.02] dark:bg-white/[0.03] border border-black/[0.06] dark:border-white/[0.06]"
+                >
+                  <div className="font-semibold text-neutral-900 dark:text-neutral-100 flex items-center justify-between">
+                    <span className="tracking-tight">{game.name}</span>
+                    <span className="text-[10px] font-mono text-neutral-500 dark:text-neutral-400">
+                      {game.totalPeriods} 期
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1 flex items-center justify-between">
+                    <span className="text-[10px] font-mono">{game.latestDate}</span>
+                    <span className="font-mono text-[10px]">#{game.latestPeriod}</span>
+                  </div>
+                  <div className="mt-2 flex items-center gap-1 font-mono text-[11px]">
+                    {game.latestBalls.map((b, i) => (
+                      <span 
+                        key={i}
+                        className="px-1.5 py-0.5 rounded bg-black/5 dark:bg-white/10 text-neutral-900 dark:text-neutral-100 font-bold"
+                      >
+                        {b.toString().padStart(2, '0')}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Disclaimer Expander */}
+          <div className="pt-2 border-t border-black/[0.06] dark:border-white/[0.06]">
+            <div className="rounded-xl border border-black/[0.06] dark:border-white/[0.06] overflow-hidden bg-black/[0.01] dark:bg-white/[0.02]">
+              <button
+                type="button"
+                id="sidebar-disclaimer-btn"
+                onClick={() => setIsDisclaimerExpanded(!isDisclaimerExpanded)}
+                className="w-full px-3.5 py-2.5 flex items-center justify-between text-xs font-semibold text-neutral-700 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+              >
+                <div className="flex items-center gap-2 text-neutral-600 dark:text-neutral-400">
+                  <ShieldAlert className="w-3.5 h-3.5" />
+                  <span className="text-[11px] uppercase tracking-wider">免責聲明 (必讀)</span>
+                </div>
+                {isDisclaimerExpanded ? (
+                  <ChevronDown className="w-3.5 h-3.5 text-neutral-400" />
+                ) : (
+                  <ChevronRight className="w-3.5 h-3.5 text-neutral-400" />
+                )}
+              </button>
+
+              {isDisclaimerExpanded && (
+                <div className="p-3.5 pt-1 text-[11px] text-neutral-600 dark:text-neutral-400 space-y-2 border-t border-black/[0.06] dark:border-white/[0.06] leading-relaxed bg-white dark:bg-[#101010]">
+                  <p>
+                    今彩539 每期開獎為獨立隨機事件，長期期望報酬率約 <strong>-44.16%</strong>。
+                  </p>
+                  <button
+                    onClick={onOpenDisclaimer}
+                    className="text-neutral-900 dark:text-white underline font-semibold block mt-1"
+                  >
+                    查看完整精算法則
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Sidebar Footer Action */}
+        <div className="p-4 border-t border-black/[0.08] dark:border-white/[0.08] bg-black/[0.02] dark:bg-black/40">
+          <button
+            type="button"
+            id="formula-trigger-btn"
+            onClick={onOpenFormula}
+            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-semibold uppercase tracking-wider rounded-xl border border-black/10 dark:border-white/10 bg-white dark:bg-[#161616] text-neutral-800 dark:text-neutral-200 hover:bg-black/5 dark:hover:bg-white/5 shadow-xs transition-all active:scale-98"
+          >
+            <HelpCircle className="w-3.5 h-3.5 text-neutral-500" />
+            <span>說明 / 算式 (供驗算)</span>
+          </button>
+        </div>
+      </aside>
+    </>
+  );
+};
+
