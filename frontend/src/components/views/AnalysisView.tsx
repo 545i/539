@@ -1,15 +1,18 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, BarChart3, Bell, Flame, Snowflake, LayoutGrid, SlidersHorizontal } from 'lucide-react';
-import { api, PillarInfoDTO, TensPairDTO } from '../../api/client';
+import {
+  AlertTriangle, BarChart3, Bell, Flame, Snowflake, LayoutGrid, SlidersHorizontal,
+  Plus, Trash2, RotateCcw,
+} from 'lucide-react';
+import { api, IntervalGroupIn, IntervalPairDTO, PillarInfoDTO } from '../../api/client';
 import { useAsync } from '../../api/useAsync';
 import { useGame } from '../../api/useGame';
 
 const WINDOW = 830; // 冷熱號取樣上限(資料不足時以實際期數為準)
 const HIST_OPTIONS = [20, 30, 50, 100] as const;
-const THRESHOLD_OPTIONS = [3, 4, 5, 6] as const;
+const THRESHOLD_OPTIONS = [2, 3, 4, 5, 6] as const;
 
 // 區間組合提醒的使用者設定(存 localStorage,重整後保留)
-const WATCH_PAIRS_KEY = 'lotto539_watch_pairs';       // { [gameKey]: ["0-1", ...] }
+const INTERVALS_KEY = 'lotto539_intervals';             // { [gameKey]: [{label, nums}, ...] }
 const WATCH_THRESHOLD_KEY = 'lotto539_watch_threshold'; // 連續幾期未開才算警示
 
 // localStorage 在無痕/被停用時會直接丟例外,包起來免得整頁掛掉
@@ -29,17 +32,19 @@ const writeStore = (key: string, value: unknown) => {
   }
 };
 
-const pairKey = (bands: [number, number]) => `${bands[0]}-${bands[1]}`;
+const pairKey = (groups: [number, number]) => `${groups[0]}-${groups[1]}`;
 
-// 一列區間組合:alert=警示(amber)、quiet=有監看但還沒到門檻、muted=沒監看
-const PairRow: React.FC<{ p: TensPairDTO; tone: 'alert' | 'quiet' | 'muted' }> = ({ p, tone }) => (
+// 一列區間組合:alert=已達門檻(amber)、quiet=未開但還沒到門檻
+const PairRow: React.FC<{ p: IntervalPairDTO; detail: string; tone: 'alert' | 'quiet' }> = ({
+  p,
+  detail,
+  tone,
+}) => (
   <div
     className={`p-2.5 rounded-xl border flex items-center justify-between gap-2 ${
       tone === 'alert'
         ? 'bg-amber-500/10 border-amber-500/20'
-        : tone === 'quiet'
-          ? 'bg-black/[0.02] dark:bg-white/[0.03] border-black/[0.06] dark:border-white/[0.06]'
-          : 'border-dashed border-black/[0.06] dark:border-white/[0.06] opacity-50'
+        : 'bg-black/[0.02] dark:bg-white/[0.03] border-black/[0.06] dark:border-white/[0.06]'
     }`}
   >
     <div className="min-w-0">
@@ -55,16 +60,14 @@ const PairRow: React.FC<{ p: TensPairDTO; tone: 'alert' | 'quiet' | 'muted' }> =
           {p.labels[0]} × {p.labels[1]}
         </span>
       </div>
-      <div className="text-[10px] font-mono text-neutral-400 mt-0.5">
-        {p.range[0]} × {p.range[1]}
-      </div>
+      <div className="text-[10px] font-mono text-neutral-400 mt-0.5 truncate">{detail}</div>
     </div>
     <div
       className={`text-[11px] font-mono shrink-0 text-right ${
         tone === 'alert' ? 'text-amber-900 dark:text-amber-300 font-bold' : 'text-neutral-400'
       }`}
     >
-      {tone === 'alert' ? `連續 ${p.streak} 期兩區段都未開` : `${p.streak} 期未開`}
+      {tone === 'alert' ? `連續 ${p.streak} 期兩區間都未開` : `${p.streak} 期未開`}
     </div>
   </div>
 );
@@ -89,6 +92,47 @@ const bandIndex = (n: number) => (n <= 9 ? 0 : Math.floor(n / 10));
 const bandDot = (n: number) => BAND_DOT[bandIndex(n)] ?? BAND_DOT[BAND_DOT.length - 1];
 const pad2 = (n: number) => n.toString().padStart(2, '0');
 
+// 預設區間 = 十位四段(539/天天樂 01~09…30~39;六合彩多一段 40~49)
+const defaultIntervals = (numMax: number): IntervalGroupIn[] => {
+  const out: IntervalGroupIn[] = [];
+  for (let i = 0; i <= bandIndex(numMax); i++) {
+    const lo = i === 0 ? 1 : i * 10;
+    const hi = Math.min(i * 10 + 9, numMax);
+    const nums: number[] = [];
+    for (let n = lo; n <= hi; n++) nums.push(n);
+    out.push({ label: `${pad2(lo)}~${pad2(hi)}`, nums });
+  }
+  return out;
+};
+
+// 號碼輸入 parser:支援「1-15」「2,4,6,20-25」「1~9 12」等寫法,
+// 全形逗號/破折號也吃;超出號碼上限或重複的直接濾掉。
+const parseNums = (raw: string, numMax: number): number[] => {
+  const out = new Set<number>();
+  // ，=全形逗號 、=、 ；=全形分號 / ～=～ ー=ー －=－ —=— –=–
+  for (const part of raw.replace(/\s+/g, '').split(/[,;，、；]+/)) {
+    if (!part) continue;
+    const m = part.match(/^(\d+)(?:[-~～ー－—–](\d+))?$/);
+    if (!m) continue;
+    const a = Number(m[1]);
+    const b = m[2] === undefined ? a : Number(m[2]);
+    const lo = Math.min(a, b);
+    const hi = Math.max(a, b);
+    for (let n = lo; n <= hi; n++) if (n >= 1 && n <= numMax) out.add(n);
+  }
+  return [...out].sort((x, y) => x - y);
+};
+
+// 區間涵蓋號碼的摘要:連續就寫「01~15」,不連續就列號碼(太多只列前幾顆)
+const numsSummary = (nums: number[]): string => {
+  if (nums.length === 0) return '(無號碼)';
+  if (nums.length === 1) return pad2(nums[0]);
+  const contiguous = nums.length === nums[nums.length - 1] - nums[0] + 1;
+  if (contiguous) return `${pad2(nums[0])}~${pad2(nums[nums.length - 1])}`;
+  const shown = nums.slice(0, 8).map(pad2).join(',');
+  return nums.length > 8 ? `${shown}…(共 ${nums.length} 顆)` : shown;
+};
+
 export const AnalysisView: React.FC = () => {
   const { gameKey, game } = useGame();
   const [activeTab, setActiveTab] = useState<'draw_history' | 'hot_cold' | 'pillar_dist' | 'odd_even'>('draw_history');
@@ -98,13 +142,15 @@ export const AnalysisView: React.FC = () => {
     const v = readStore<number>(WATCH_THRESHOLD_KEY, 3);
     return (THRESHOLD_OPTIONS as readonly number[]).includes(v) ? v : 3;
   });
-  // 每款彩券各自記一份監看清單(六合彩 10 組、539/天天樂 6 組,不能共用)
-  const [watchMap, setWatchMap] = useState<Record<string, string[]>>(() =>
-    readStore<Record<string, string[]>>(WATCH_PAIRS_KEY, {}),
+  // 每款彩券各自記一份自訂區間(號碼上限不同,不能共用);沒存過就用預設十位分段
+  const [intervalMap, setIntervalMap] = useState<Record<string, IntervalGroupIn[]>>(() =>
+    readStore<Record<string, IntervalGroupIn[]>>(INTERVALS_KEY, {}),
   );
+  const [newLabel, setNewLabel] = useState('');
+  const [newNums, setNewNums] = useState('');
 
   useEffect(() => writeStore(WATCH_THRESHOLD_KEY, threshold), [threshold]);
-  useEffect(() => writeStore(WATCH_PAIRS_KEY, watchMap), [watchMap]);
+  useEffect(() => writeStore(INTERVALS_KEY, intervalMap), [intervalMap]);
 
   // 號碼上限跟著遊戲走(今彩539/天天樂 39、六合彩 49);後端還沒回來前先用 39 撐版面
   const numMax = game?.num_max ?? 39;
@@ -132,33 +178,59 @@ export const AnalysisView: React.FC = () => {
   );
   const parity = useAsync(() => api.parity(gameKey), [gameKey]);
   const drawHist = useAsync(() => api.history(gameKey, histN), [gameKey, histN]);
-  // 區間組合斷檔:alert 由後端依 threshold 算,所以門檻改了要重抓
-  const tensPairs = useAsync(() => api.tensPairs(gameKey, threshold), [gameKey, threshold]);
 
-  // 監看清單分組:端點已把「久的」排前面,這裡只做分堆不重排
-  const pairs = useMemo(() => tensPairs.data ?? [], [tensPairs.data]);
-  const allPairKeys = useMemo(() => pairs.map(p => pairKey(p.bands)), [pairs]);
-  // 沒存過設定 = 全部監看(預設就有提醒,不用先進設定勾一輪)
-  const watchedKeys = watchMap[gameKey];
-  const isWatched = (k: string) => (watchedKeys ? watchedKeys.includes(k) : true);
+  // 目前這款遊戲的區間清單:使用者存過就用他的,沒有就帶預設十位分段
+  const intervals = useMemo(
+    () => intervalMap[gameKey] ?? defaultIntervals(numMax),
+    [intervalMap, gameKey, numMax],
+  );
+  const isCustom = intervalMap[gameKey] !== undefined;
+  // 區間內容也是查詢條件,序列化後當 deps(陣列每次 render 都是新物件,不能直接當 dep)
+  const intervalsKey = useMemo(() => JSON.stringify(intervals), [intervals]);
+  // 區間組合斷檔:alert 由後端依 threshold 算,所以門檻/區間改了要重抓
+  const intervalPairs = useAsync<IntervalPairDTO[]>(
+    () =>
+      intervals.length >= 2
+        ? api.intervalPairs(gameKey, intervals, threshold)
+        : Promise.resolve([]),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [gameKey, threshold, intervalsKey],
+  );
 
+  // 端點已把「久的」排前面,這裡只依門檻分堆不重排
+  const pairs = useMemo(() => intervalPairs.data ?? [], [intervalPairs.data]);
   // 只顯示「未開」的組合(streak >= 1);已開(0 期)的不列出
-  const alertPairs = pairs.filter(p => isWatched(pairKey(p.bands)) && p.alert);
-  const quietPairs = pairs.filter(
-    p => isWatched(pairKey(p.bands)) && !p.alert && p.streak >= 1,
-  );
-  const mutedPairs = pairs.filter(
-    p => !isWatched(pairKey(p.bands)) && p.streak >= 1,
-  );
+  const alertPairs = pairs.filter(p => p.alert);
+  const quietPairs = pairs.filter(p => !p.alert && p.streak >= 1);
 
-  const toggleWatch = (k: string) =>
-    setWatchMap(prev => {
-      const cur = prev[gameKey] ?? allPairKeys;
-      const next = cur.includes(k) ? cur.filter(x => x !== k) : [...cur, k];
-      return { ...prev, [gameKey]: next };
+  // 區間管理:改動一律寫進 intervalMap[gameKey],之後就走使用者自己那份
+  const updateIntervals = (fn: (cur: IntervalGroupIn[]) => IntervalGroupIn[]) =>
+    setIntervalMap(prev => ({
+      ...prev,
+      [gameKey]: fn(prev[gameKey] ?? defaultIntervals(numMax)),
+    }));
+  const parsedNewNums = useMemo(() => parseNums(newNums, numMax), [newNums, numMax]);
+  const addInterval = () => {
+    if (parsedNewNums.length === 0) return;
+    const label = newLabel.trim() || numsSummary(parsedNewNums);
+    updateIntervals(cur => [...cur, { label, nums: parsedNewNums }]);
+    setNewLabel('');
+    setNewNums('');
+  };
+  const removeInterval = (idx: number) =>
+    updateIntervals(cur => cur.filter((_, i) => i !== idx));
+  const resetIntervals = () =>
+    setIntervalMap(prev => {
+      const next = { ...prev };
+      delete next[gameKey];
+      return next;
     });
-  const setAllWatched = (on: boolean) =>
-    setWatchMap(prev => ({ ...prev, [gameKey]: on ? allPairKeys : [] }));
+
+  // 提醒列要秀的號碼摘要:用後端回的 group index 去對回自己送出去的區間
+  const pairDetail = (p: IntervalPairDTO) =>
+    [p.groups[0], p.groups[1]]
+      .map(i => (intervals[i] ? numsSummary(intervals[i].nums) : '?'))
+      .join(' × ');
 
   // 開獎歷史走勢:最新一期排最上面
   const histRows = useMemo(
@@ -300,7 +372,7 @@ export const AnalysisView: React.FC = () => {
       {/* Draw History Distribution Matrix */}
       {activeTab === 'draw_history' && (
         <>
-        {/* 區間組合斷檔提醒(可自選要監看哪些配對) */}
+        {/* 區間組合斷檔提醒(區間由使用者自訂,預設帶十位分段) */}
         <div className="p-4 sm:p-6 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] space-y-4">
           <div className="flex items-center justify-between flex-wrap gap-3">
             <div className="flex items-center gap-2 text-neutral-900 dark:text-white font-display font-bold text-sm uppercase tracking-wide">
@@ -341,92 +413,121 @@ export const AnalysisView: React.FC = () => {
           </div>
 
           <div className="text-[11px] text-neutral-500 dark:text-neutral-400">
-            被監看的兩個十位區段連續 {threshold} 期都沒開出號碼就跳警示;
-            目前 {gameName} 共 {pairs.length} 組配對,已監看{' '}
-            {pairs.length - mutedPairs.length} 組。
+            自訂的兩個號碼區間連續 {threshold} 期都沒開出號碼就跳警示;
+            目前 {gameName} 有 {intervals.length} 個區間、共 {pairs.length} 組配對
+            {isCustom ? '(已套用自訂區間)' : '(預設十位分段)'}。
           </div>
 
-          {/* 監看設定:每組配對一個開關,選擇存在瀏覽器本機 */}
+          {/* 區間設定:自己定義要監看的號碼區間,存在瀏覽器本機 */}
           {showWatchSetup && (
             <div className="p-3 rounded-xl bg-black/[0.02] dark:bg-white/[0.03] border border-black/[0.06] dark:border-white/[0.06] space-y-3">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-[10px] uppercase tracking-wider text-neutral-400 font-semibold">
-                  要提醒哪些區間組合
+                  我的號碼區間({gameName} 01~{pad2(numMax)})
                 </span>
-                <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={resetIntervals}
+                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-neutral-600 dark:text-neutral-300 hover:text-black dark:hover:text-white"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  還原預設
+                </button>
+              </div>
+
+              {/* 目前區間清單 */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                {intervals.map((g, i) => (
+                  <div
+                    key={`${g.label}-${i}`}
+                    className="flex items-center justify-between gap-2 px-2.5 py-2 rounded-lg bg-white dark:bg-[#121212] border border-black/[0.12] dark:border-white/[0.12]"
+                  >
+                    <span className="min-w-0">
+                      <span className="block text-xs font-mono font-bold text-neutral-900 dark:text-white truncate">
+                        {g.label}
+                      </span>
+                      <span className="block text-[10px] font-mono text-neutral-400 truncate">
+                        {numsSummary(g.nums)}
+                      </span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => removeInterval(i)}
+                      title="刪除這個區間"
+                      className="p-1 rounded-lg text-neutral-400 hover:text-rose-500 hover:bg-rose-500/10 transition-all shrink-0"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+                {intervals.length === 0 && (
+                  <div className="text-[11px] text-neutral-400">
+                    還沒有任何區間 —— 在下面新增,或按「還原預設」拿回十位分段。
+                  </div>
+                )}
+              </div>
+
+              {/* 新增區間 */}
+              <div className="pt-1 border-t border-black/[0.06] dark:border-white/[0.06] space-y-2">
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <input
+                    type="text"
+                    value={newLabel}
+                    onChange={e => setNewLabel(e.target.value)}
+                    placeholder="區間名稱(可留空)"
+                    className="sm:w-40 px-2.5 py-1.5 rounded-lg bg-white dark:bg-[#121212] border border-black/[0.12] dark:border-white/[0.12] text-xs text-neutral-900 dark:text-white placeholder:text-neutral-400 focus:outline-none focus:border-black/30 dark:focus:border-white/30"
+                  />
+                  <input
+                    type="text"
+                    value={newNums}
+                    onChange={e => setNewNums(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') addInterval();
+                    }}
+                    placeholder="號碼,如 1-15 或 2,4,6,20-25"
+                    className="flex-1 px-2.5 py-1.5 rounded-lg bg-white dark:bg-[#121212] border border-black/[0.12] dark:border-white/[0.12] text-xs font-mono text-neutral-900 dark:text-white placeholder:text-neutral-400 focus:outline-none focus:border-black/30 dark:focus:border-white/30"
+                  />
                   <button
                     type="button"
-                    onClick={() => setAllWatched(true)}
-                    className="text-[11px] font-semibold text-neutral-600 dark:text-neutral-300 hover:text-black dark:hover:text-white"
+                    onClick={addInterval}
+                    disabled={parsedNewNums.length === 0}
+                    className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-black text-white dark:bg-white dark:text-black text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed transition-all"
                   >
-                    全選
-                  </button>
-                  <span className="text-neutral-300 dark:text-neutral-600">|</span>
-                  <button
-                    type="button"
-                    onClick={() => setAllWatched(false)}
-                    className="text-[11px] font-semibold text-neutral-600 dark:text-neutral-300 hover:text-black dark:hover:text-white"
-                  >
-                    全不選
+                    <Plus className="w-3.5 h-3.5" />
+                    新增
                   </button>
                 </div>
+                <p className="text-[10px] font-mono text-neutral-400">
+                  {newNums.trim()
+                    ? parsedNewNums.length > 0
+                      ? `將加入 ${parsedNewNums.length} 顆:${numsSummary(parsedNewNums)}`
+                      : `看不懂這組號碼,或都超出 01~${pad2(numMax)} 的範圍`
+                    : `支援「起-迄」與逗號:1-15、2,4,6,20-25;超過 ${pad2(numMax)} 的號碼會自動忽略。`}
+                </p>
               </div>
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
-                {pairs.map(p => {
-                  const k = pairKey(p.bands);
-                  const on = isWatched(k);
-                  return (
-                    <label
-                      key={k}
-                      className={`flex items-center gap-2 px-2.5 py-2 rounded-lg border cursor-pointer transition-all ${
-                        on
-                          ? 'bg-white dark:bg-[#121212] border-black/[0.12] dark:border-white/[0.12]'
-                          : 'border-black/[0.06] dark:border-white/[0.06] opacity-60 hover:opacity-100'
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={on}
-                        onChange={() => toggleWatch(k)}
-                        className="w-3.5 h-3.5 accent-amber-500 shrink-0"
-                      />
-                      <span className="min-w-0">
-                        <span className="block text-xs font-mono font-bold text-neutral-900 dark:text-white">
-                          {p.labels[0]} × {p.labels[1]}
-                        </span>
-                        <span className="block text-[10px] font-mono text-neutral-400">
-                          {p.range[0]} × {p.range[1]}
-                        </span>
-                      </span>
-                    </label>
-                  );
-                })}
-              </div>
+
               <p className="text-[10px] text-neutral-400">
-                設定會存在這台瀏覽器({gameName}單獨一份),重整後保留。
+                區間設定存在這台瀏覽器({gameName}單獨一份),重整後保留。
               </p>
             </div>
           )}
 
-          {tensPairs.loading && <div className="text-xs text-neutral-400">載入區間統計中…</div>}
-          {tensPairs.error && <div className="text-xs text-rose-500">{tensPairs.error}</div>}
+          {intervalPairs.loading && <div className="text-xs text-neutral-400">載入區間統計中…</div>}
+          {intervalPairs.error && <div className="text-xs text-rose-500">{intervalPairs.error}</div>}
 
-          {!tensPairs.loading && !tensPairs.error && (
+          {!intervalPairs.loading && !intervalPairs.error && (
             <div className="space-y-2">
               {alertPairs.map(p => (
-                <PairRow key={pairKey(p.bands)} p={p} tone="alert" />
+                <PairRow key={pairKey(p.groups)} p={p} detail={pairDetail(p)} tone="alert" />
               ))}
               {quietPairs.map(p => (
-                <PairRow key={pairKey(p.bands)} p={p} tone="quiet" />
+                <PairRow key={pairKey(p.groups)} p={p} detail={pairDetail(p)} tone="quiet" />
               ))}
-              {mutedPairs.map(p => (
-                <PairRow key={pairKey(p.bands)} p={p} tone="muted" />
-              ))}
-              {alertPairs.length + quietPairs.length + mutedPairs.length === 0 && (
+              {alertPairs.length + quietPairs.length === 0 && (
                 <div className="text-xs text-neutral-400">
-                  {watchedKeys && watchedKeys.length === 0
-                    ? '目前沒有監看任何區間組合 —— 按「設定監看區間」勾選要提醒的配對。'
-                    : '目前沒有未開的組合 —— 監看中的區段近期都有開出。'}
+                  {intervals.length < 2
+                    ? '至少要有兩個區間才能算組合提醒 —— 按「設定監看區間」新增。'
+                    : '目前沒有未開的組合 —— 監看中的區間近期都有開出。'}
                 </div>
               )}
             </div>

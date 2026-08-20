@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Query
+from pydantic import BaseModel, Field
 
 from backend.data import get_game, load_df
 from core import stats
@@ -47,6 +48,26 @@ def tens_pairs(game: str = Query(...), threshold: int = Query(3, ge=1)):
     g = get_game(game)
     df = load_df(game)
     return stats.tens_pair_alerts(df, threshold=threshold, num_max=g.num_max)
+
+
+class IntervalGroup(BaseModel):
+    label: str
+    nums: list[int] = Field(default_factory=list)
+
+
+class IntervalPairsIn(BaseModel):
+    game: str
+    threshold: int = Field(3, ge=1)
+    groups: list[IntervalGroup]
+
+
+@router.post("/interval-pairs")
+def interval_pairs(body: IntervalPairsIn):
+    """自訂區間的兩兩配對提醒:使用者自己定義區間(含號碼清單),回各配對連續幾期都沒開。"""
+    get_game(body.game)  # 驗證遊戲存在
+    df = load_df(body.game)
+    groups = [{"label": g.label, "nums": g.nums} for g in body.groups]
+    return stats.interval_pair_alerts(df, groups, threshold=body.threshold)
 
 
 @router.get("/tens-bands")

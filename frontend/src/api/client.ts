@@ -158,6 +158,18 @@ export interface TensPairDTO {
   alert: boolean;
 }
 
+// 自訂區間(使用者自己定義的號碼區間)
+export interface IntervalGroupIn {
+  label: string;
+  nums: number[];
+}
+export interface IntervalPairDTO {
+  groups: [number, number];
+  labels: [string, string];
+  streak: number;
+  alert: boolean;
+}
+
 // 三柱 1800碰
 export interface PillarInfoDTO {
   pillars: [number[], number[], number[]];
@@ -582,6 +594,12 @@ export const api = {
   frequency: (game: GameKey) => get<NumCount[]>(`stats/frequency?game=${game}`),
   tensPairs: (game: GameKey, threshold = 3) =>
     get<TensPairDTO[]>(`stats/tens-pairs?game=${game}&threshold=${threshold}`),
+  intervalPairs: (
+    game: GameKey,
+    groups: IntervalGroupIn[],
+    threshold = 3,
+  ) =>
+    post<IntervalPairDTO[]>('stats/interval-pairs', {game, threshold, groups}),
   tensBands: (game: GameKey) => get<TensBandsDTO>(`stats/tens-bands?game=${game}`),
   parity: (game: GameKey) => get<ParityDTO>(`stats/parity?game=${game}`),
 

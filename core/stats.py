@@ -241,6 +241,48 @@ def tens_pair_alerts(df: pd.DataFrame, threshold: int = 3,
     return out
 
 
+def interval_pair_alerts(df: pd.DataFrame, groups: list[dict],
+                         threshold: int = 3) -> list[dict]:
+    """自訂號碼區間的兩兩配對,連續幾期都沒開出任何號碼。
+
+    這是 tens_pair_alerts 的通用版 —— 區間不再固定十位,由呼叫端自訂:
+    groups = [{"label": "01~15", "nums": [1,2,...,15]}, ...]。
+
+    對每組配對 (A, B),從最新一期往回數,streak = 連續幾期裡「A、B 兩區間
+    都沒開出任何號碼」;只要某期 A 或 B 有號,streak 即中斷歸零。
+    streak >= threshold 時 alert=True。空的 nums 視為永遠沒開。
+
+    回傳依 streak 由大到小排序:
+      {"groups": (i, j), "labels": (str, str), "streak": int, "alert": bool}
+    """
+    sets = [(str(g.get("label", "")), {int(n) for n in g.get("nums", [])})
+            for g in groups]
+    draws = draws_as_lists(df)
+
+    # 每一期有開到號碼的區間 index 集合
+    present = []
+    for draw in draws:
+        ds = set(draw)
+        present.append({i for i, (_, s) in enumerate(sets) if s & ds})
+
+    out = []
+    for i in range(len(sets)):
+        for j in range(i + 1, len(sets)):
+            streak = 0
+            for seen in reversed(present):
+                if i in seen or j in seen:
+                    break
+                streak += 1
+            out.append({
+                "groups": (i, j),
+                "labels": (sets[i][0], sets[j][0]),
+                "streak": streak,
+                "alert": streak >= threshold,
+            })
+    out.sort(key=lambda d: -d["streak"])
+    return out
+
+
 # ── F. 卡方適合度檢定 ────────────────────────────────────
 @dataclass
 class ChiSquareResult:
