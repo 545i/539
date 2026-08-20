@@ -142,9 +142,14 @@ export const AnalysisView: React.FC = () => {
   const watchedKeys = watchMap[gameKey];
   const isWatched = (k: string) => (watchedKeys ? watchedKeys.includes(k) : true);
 
+  // 只顯示「未開」的組合(streak >= 1);已開(0 期)的不列出
   const alertPairs = pairs.filter(p => isWatched(pairKey(p.bands)) && p.alert);
-  const quietPairs = pairs.filter(p => isWatched(pairKey(p.bands)) && !p.alert);
-  const mutedPairs = pairs.filter(p => !isWatched(pairKey(p.bands)));
+  const quietPairs = pairs.filter(
+    p => isWatched(pairKey(p.bands)) && !p.alert && p.streak >= 1,
+  );
+  const mutedPairs = pairs.filter(
+    p => !isWatched(pairKey(p.bands)) && p.streak >= 1,
+  );
 
   const toggleWatch = (k: string) =>
     setWatchMap(prev => {
@@ -417,9 +422,11 @@ export const AnalysisView: React.FC = () => {
               {mutedPairs.map(p => (
                 <PairRow key={pairKey(p.bands)} p={p} tone="muted" />
               ))}
-              {pairs.length > 0 && alertPairs.length === 0 && mutedPairs.length === pairs.length && (
+              {alertPairs.length + quietPairs.length + mutedPairs.length === 0 && (
                 <div className="text-xs text-neutral-400">
-                  目前沒有監看任何區間組合 —— 按「設定監看區間」勾選要提醒的配對。
+                  {watchedKeys && watchedKeys.length === 0
+                    ? '目前沒有監看任何區間組合 —— 按「設定監看區間」勾選要提醒的配對。'
+                    : '目前沒有未開的組合 —— 監看中的區段近期都有開出。'}
                 </div>
               )}
             </div>
