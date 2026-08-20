@@ -1,10 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle, BarChart3, Bell, Flame, Snowflake, LayoutGrid, SlidersHorizontal,
-  Plus, Trash2, RotateCcw, Target,
+  Plus, Trash2, RotateCcw,
 } from 'lucide-react';
 import {
-  api, ComboTogetherDTO, ComboTogetherIn, IntervalGroupIn, IntervalPairDTO, PillarInfoDTO,
+  api, ComboAbsenceDTO, ComboTogetherDTO, ComboTogetherIn, IntervalGroupIn, PillarInfoDTO,
 } from '../../api/client';
 import { useAsync } from '../../api/useAsync';
 import { useGame } from '../../api/useGame';
@@ -37,64 +37,73 @@ const writeStore = (key: string, value: unknown) => {
   }
 };
 
-const pairKey = (groups: [number, number]) => `${groups[0]}-${groups[1]}`;
-
-// 一列區間組合:alert=已達門檻(amber)、quiet=未開但還沒到門檻
-const PairRow: React.FC<{ p: IntervalPairDTO; detail: string; tone: 'alert' | 'quiet' }> = ({
-  p,
-  detail,
-  tone,
-}) => (
+// 一列裡的一個數字:達門檻走 amber,沒達門檻低調顯示;note 有值就改秀說明文字
+const StatCell: React.FC<{
+  title: string;
+  hint: string;
+  streak?: number;
+  maxGap?: number;
+  alert: boolean;
+  note?: string;
+}> = ({ title, hint, streak, maxGap, alert, note }) => (
   <div
-    className={`p-2.5 rounded-xl border flex items-center justify-between gap-2 ${
-      tone === 'alert'
-        ? 'bg-amber-500/10 border-amber-500/20'
-        : 'bg-black/[0.02] dark:bg-white/[0.03] border-black/[0.06] dark:border-white/[0.06]'
+    className={`px-2.5 py-1.5 rounded-lg border text-right min-w-[7.5rem] ${
+      alert
+        ? 'bg-amber-500/10 border-amber-500/25'
+        : 'bg-black/[0.02] dark:bg-white/[0.04] border-black/[0.06] dark:border-white/[0.06]'
     }`}
+    title={hint}
   >
-    <div className="min-w-0">
-      <div className="flex items-center gap-1.5">
-        {tone === 'alert' && (
-          <AlertTriangle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
-        )}
-        <span
-          className={`text-xs font-mono font-bold ${
-            tone === 'alert' ? 'text-amber-900 dark:text-amber-300' : 'text-neutral-900 dark:text-white'
-          }`}
-        >
-          {p.labels[0]} × {p.labels[1]}
-        </span>
-      </div>
-      <div className="text-[10px] font-mono text-neutral-400 mt-0.5 truncate">{detail}</div>
-    </div>
     <div
-      className={`text-[11px] font-mono shrink-0 text-right ${
-        tone === 'alert' ? 'text-amber-900 dark:text-amber-300 font-bold' : 'text-neutral-400'
+      className={`text-[10px] font-semibold ${
+        alert ? 'text-amber-700 dark:text-amber-400' : 'text-neutral-400'
       }`}
     >
-      {tone === 'alert' ? `連續 ${p.streak} 期兩區間都未開` : `${p.streak} 期未開`}
+      {title}
     </div>
+    {note ? (
+      <div className="text-[10px] text-neutral-400 leading-tight mt-1 max-w-[9rem]">{note}</div>
+    ) : (
+      <>
+        <div
+          className={`text-xl font-mono font-bold leading-none mt-0.5 ${
+            alert ? 'text-amber-900 dark:text-amber-300' : 'text-neutral-900 dark:text-white'
+          }`}
+        >
+          {streak === undefined ? '—' : `${streak} 期`}
+        </div>
+        <div className="text-[10px] font-mono text-neutral-400 mt-0.5">
+          {maxGap === undefined ? ' ' : `歷史最長 ${maxGap} 期`}
+        </div>
+      </>
+    )}
   </div>
 );
 
-// 一組區間組合:streak = 距上次「所有區間同一期一起開出」幾期。達門檻走 amber,
-// 未達門檻(含 0 期,代表上一期剛好全開)也一律列出 —— 是使用者自己挑的組合。
+// 一組區間組合,同時顯示兩個數字:
+//   together = 距上次「所有區間在同一期各開出至少一顆」幾期(沒一起開)
+//   absence  = 所選區間號碼聯集,連續幾期整組一顆都沒開(都沒開)
+// 兩個數字各自依 threshold 判警示;聯集涵蓋全部號碼時「都沒開」不可能發生。
 const ComboRow: React.FC<{
   label: string;
   detail: string;
-  stat?: ComboTogetherDTO;
+  together?: ComboTogetherDTO;
+  absence?: ComboAbsenceDTO;
+  fullCoverage: boolean;
   onRemove: () => void;
-}> = ({ label, detail, stat, onRemove }) => {
-  const alert = stat?.alert ?? false;
+}> = ({ label, detail, together, absence, fullCoverage, onRemove }) => {
+  const togetherAlert = together?.alert ?? false;
+  const absenceAlert = !fullCoverage && (absence?.alert ?? false);
+  const alert = togetherAlert || absenceAlert;
   return (
     <div
-      className={`p-2.5 rounded-xl border flex items-center justify-between gap-2 ${
+      className={`p-2.5 rounded-xl border flex items-center justify-between gap-2 flex-wrap ${
         alert
           ? 'bg-amber-500/10 border-amber-500/20'
           : 'bg-black/[0.02] dark:bg-white/[0.03] border-black/[0.06] dark:border-white/[0.06]'
       }`}
     >
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
           {alert && (
             <AlertTriangle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
@@ -107,27 +116,34 @@ const ComboRow: React.FC<{
             {label}
           </span>
         </div>
-        <div className="text-[10px] font-mono text-neutral-400 mt-0.5 truncate">
-          {detail}
-          {stat ? ` · 歷史最長 ${stat.max_gap} 期` : ''}
-        </div>
-        {alert && stat && (
+        <div className="text-[10px] font-mono text-neutral-400 mt-0.5 truncate">{detail}</div>
+        {togetherAlert && together && (
           <div className="text-[10px] font-semibold text-amber-700 dark:text-amber-400 mt-0.5">
-            {label} 已連續 {stat.streak} 期沒有全部同時出現
+            已連續 {together.streak} 期沒有全部同時出現
+          </div>
+        )}
+        {absenceAlert && absence && (
+          <div className="text-[10px] font-semibold text-amber-700 dark:text-amber-400 mt-0.5">
+            已連續 {absence.streak} 期整組({absence.size} 顆)一顆都沒開
           </div>
         )}
       </div>
       <div className="flex items-center gap-2 shrink-0">
-        <div className="text-right">
-          <div className="text-[10px] text-neutral-400">距上次同時出現</div>
-          <div
-            className={`text-xl font-mono font-bold leading-none mt-0.5 ${
-              alert ? 'text-amber-900 dark:text-amber-300' : 'text-neutral-900 dark:text-white'
-            }`}
-          >
-            {stat ? `${stat.streak} 期` : '—'}
-          </div>
-        </div>
+        <StatCell
+          title="沒一起開"
+          hint="距上次「每個區間在同一期都至少開出一顆」過了幾期"
+          streak={together?.streak}
+          maxGap={together?.max_gap}
+          alert={togetherAlert}
+        />
+        <StatCell
+          title="都沒開"
+          hint="整組號碼(各區間聯集)連續幾期一顆都沒開"
+          streak={absence?.streak}
+          maxGap={absence?.max_gap}
+          alert={absenceAlert}
+          note={fullCoverage ? '涵蓋全部號碼,不可能整組沒開' : undefined}
+        />
         <button
           type="button"
           onClick={onRemove}
@@ -275,23 +291,6 @@ export const AnalysisView: React.FC = () => {
     [intervalMap, gameKey, numMax],
   );
   const isCustom = intervalMap[gameKey] !== undefined;
-  // 區間內容也是查詢條件,序列化後當 deps(陣列每次 render 都是新物件,不能直接當 dep)
-  const intervalsKey = useMemo(() => JSON.stringify(intervals), [intervals]);
-  // 區間組合斷檔:alert 由後端依 threshold 算,所以門檻/區間改了要重抓
-  const intervalPairs = useAsync<IntervalPairDTO[]>(
-    () =>
-      intervals.length >= 2
-        ? api.intervalPairs(gameKey, intervals, threshold)
-        : Promise.resolve([]),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [gameKey, threshold, intervalsKey],
-  );
-
-  // 端點已把「久的」排前面,這裡只依門檻分堆不重排
-  const pairs = useMemo(() => intervalPairs.data ?? [], [intervalPairs.data]);
-  // 只顯示「未開」的組合(streak >= 1);已開(0 期)的不列出
-  const alertPairs = pairs.filter(p => p.alert);
-  const quietPairs = pairs.filter(p => !p.alert && p.streak >= 1);
 
   // 區間管理:改動一律寫進 intervalMap[gameKey],之後就走使用者自己那份
   const updateIntervals = (fn: (cur: IntervalGroupIn[]) => IntervalGroupIn[]) =>
@@ -316,19 +315,23 @@ export const AnalysisView: React.FC = () => {
       return next;
     });
 
-  // 提醒列要秀的號碼摘要:用後端回的 group index 去對回自己送出去的區間
-  const pairDetail = (p: IntervalPairDTO) =>
-    [p.groups[0], p.groups[1]]
-      .map(i => (intervals[i] ? numsSummary(intervals[i].nums) : '?'))
-      .join(' × ');
-
-  // ── 特殊組合(整組全沒開)──────────────────────────────
+  // ── 區間組合提醒(同時看「沒一起開」與「都沒開」)────────────
   // 使用者刪光時是空陣列(不是 undefined),所以不會又被塞回預設範例
   const combos = useMemo(
     () => comboMap[gameKey] ?? defaultCombos(numMax),
     [comboMap, gameKey, numMax],
   );
   const combosKey = useMemo(() => JSON.stringify(combos), [combos]);
+  // 「都沒開」看的是整組聯集 —— 各區間號碼併起來去重,一個 combo 一組 nums
+  const unions = useMemo(
+    () => combos.map(c => [...new Set(c.groups.flat())].sort((a, b) => a - b)),
+    [combos],
+  );
+  const absenceCombos = useMemo<IntervalGroupIn[]>(
+    () => combos.map((c, i) => ({ label: c.label, nums: unions[i] })),
+    [combos, unions],
+  );
+
   // 共現斷檔:alert 由後端依 threshold 算,門檻/組合改了都要重抓
   const comboTogether = useAsync<ComboTogetherDTO[]>(
     () =>
@@ -338,23 +341,48 @@ export const AnalysisView: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [gameKey, threshold, combosKey],
   );
+  // 整組缺席:同一份組合清單,改餵聯集後的號碼
+  const comboAbsence = useAsync<ComboAbsenceDTO[]>(
+    () =>
+      absenceCombos.length > 0
+        ? api.comboAbsence(gameKey, absenceCombos, threshold)
+        : Promise.resolve([]),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [gameKey, threshold, combosKey],
+  );
 
-  // 後端把結果依 streak 重排過,對不回原本的順序 —— 用 label 配回本地清單拿 index
+  // 兩個端點都把結果依 streak 重排過,對不回原本的順序 —— 用 label 配回本地清單拿 index
   // (同名組合按出現順序逐一取用,不會互相錯位)
   const comboRows = useMemo(() => {
-    const byLabel = new Map<string, ComboTogetherDTO[]>();
-    for (const r of comboTogether.data ?? []) {
-      const bucket = byLabel.get(r.label);
-      if (bucket) bucket.push(r);
-      else byLabel.set(r.label, [r]);
-    }
-    const rows = combos.map((c, idx) => ({ combo: c, idx, stat: byLabel.get(c.label)?.shift() }));
-    // 沒有統計(還沒回來/對不到)的排最後
-    return rows.sort((a, b) => (b.stat?.streak ?? -1) - (a.stat?.streak ?? -1));
+    const bucketize = <T extends { label: string }>(list: T[]) => {
+      const m = new Map<string, T[]>();
+      for (const r of list) {
+        const b = m.get(r.label);
+        if (b) b.push(r);
+        else m.set(r.label, [r]);
+      }
+      return m;
+    };
+    const tg = bucketize(comboTogether.data ?? []);
+    const ab = bucketize(comboAbsence.data ?? []);
+    const rows = combos.map((c, idx) => ({
+      combo: c,
+      idx,
+      union: unions[idx] ?? [],
+      together: tg.get(c.label)?.shift(),
+      absence: ab.get(c.label)?.shift(),
+    }));
+    // 兩個數字取大的當排序依據,久沒動靜的排前面;沒統計的排最後
+    const rank = (r: (typeof rows)[number]) =>
+      Math.max(r.together?.streak ?? -1, r.absence?.streak ?? -1);
+    return rows.sort((a, b) => rank(b) - rank(a));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [comboTogether.data, combosKey]);
+  }, [comboTogether.data, comboAbsence.data, combosKey]);
 
-  const comboAlertCount = comboRows.filter(r => r.stat?.alert).length;
+  // 聯集蓋滿全部號碼時「都沒開」不可能成立,不算進警示數
+  const comboAlertCount = comboRows.filter(
+    r => r.together?.alert || (r.union.length < numMax && r.absence?.alert),
+  ).length;
 
   const updateCombos = (fn: (cur: ComboTogetherIn[]) => ComboTogetherIn[]) =>
     setComboMap(prev => ({ ...prev, [gameKey]: fn(prev[gameKey] ?? defaultCombos(numMax)) }));
@@ -375,6 +403,11 @@ export const AnalysisView: React.FC = () => {
   const pickedLabel = useMemo(
     () => pickedSorted.map(i => intervals[i]?.label).filter(Boolean).join(' + '),
     [pickedSorted, intervals],
+  );
+  // 預覽用的聯集顆數(「都沒開」看的就是這一組)
+  const pickedUnion = useMemo(
+    () => [...new Set(pickedGroups.flat())].sort((a, b) => a - b),
+    [pickedGroups],
   );
   // 至少兩個區間才有「同時出現」可言
   const canAddCombo = pickedGroups.length >= 2;
@@ -526,15 +559,15 @@ export const AnalysisView: React.FC = () => {
       {/* Draw History Distribution Matrix */}
       {activeTab === 'draw_history' && (
         <>
-        {/* 區間組合斷檔提醒(區間由使用者自訂,預設帶十位分段) */}
+        {/* 區間組合提醒:一組區間同時追「沒一起開」與「都沒開」兩個數字 */}
         <div className="p-4 sm:p-6 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] space-y-4">
           <div className="flex items-center justify-between flex-wrap gap-3">
             <div className="flex items-center gap-2 text-neutral-900 dark:text-white font-display font-bold text-sm uppercase tracking-wide">
               <Bell className="w-4 h-4 text-amber-500" />
-              <span>區間組合斷檔提醒</span>
-              {alertPairs.length > 0 && (
+              <span>區間組合提醒</span>
+              {comboAlertCount > 0 && (
                 <span className="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-300 text-[10px] font-mono font-bold">
-                  {alertPairs.length} 組警示
+                  {comboAlertCount} 組警示
                 </span>
               )}
             </div>
@@ -567,9 +600,10 @@ export const AnalysisView: React.FC = () => {
           </div>
 
           <div className="text-[11px] text-neutral-500 dark:text-neutral-400">
-            自訂的兩個號碼區間連續 {threshold} 期都沒開出號碼就跳警示;
-            目前 {gameName} 有 {intervals.length} 個區間、共 {pairs.length} 組配對
-            {isCustom ? '(已套用自訂區間)' : '(預設十位分段)'}。
+            勾幾個區間組成一組,每組同時看兩個數字:<b>沒一起開</b>(距上次各區間在同一期
+            都至少開出一顆)與<b>都沒開</b>(整組號碼聯集連續幾期一顆都沒開);任一個達
+            {threshold} 期就跳警示。目前 {gameName} 有 {intervals.length} 個區間
+            {isCustom ? '(已套用自訂區間)' : '(預設十位分段)'}、監看 {combos.length} 組組合。
           </div>
 
           {/* 區間設定:自己定義要監看的號碼區間,存在瀏覽器本機 */}
@@ -666,50 +700,12 @@ export const AnalysisView: React.FC = () => {
             </div>
           )}
 
-          {intervalPairs.loading && <div className="text-xs text-neutral-400">載入區間統計中…</div>}
-          {intervalPairs.error && <div className="text-xs text-rose-500">{intervalPairs.error}</div>}
-
-          {!intervalPairs.loading && !intervalPairs.error && (
-            <div className="space-y-2">
-              {alertPairs.map(p => (
-                <PairRow key={pairKey(p.groups)} p={p} detail={pairDetail(p)} tone="alert" />
-              ))}
-              {quietPairs.map(p => (
-                <PairRow key={pairKey(p.groups)} p={p} detail={pairDetail(p)} tone="quiet" />
-              ))}
-              {alertPairs.length + quietPairs.length === 0 && (
-                <div className="text-xs text-neutral-400">
-                  {intervals.length < 2
-                    ? '至少要有兩個區間才能算組合提醒 —— 按「設定監看區間」新增。'
-                    : '目前沒有未開的組合 —— 監看中的區間近期都有開出。'}
-                </div>
-              )}
-            </div>
+          {(comboTogether.loading || comboAbsence.loading) && (
+            <div className="text-xs text-neutral-400">載入區間組合統計中…</div>
           )}
-        </div>
-
-        {/* 區間組合共現:勾幾個區間組成一組,追蹤距上次「全部同一期一起開」幾期 */}
-        <div className="p-4 sm:p-6 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] space-y-4">
-          <div className="flex items-center justify-between flex-wrap gap-3">
-            <div className="flex items-center gap-2 text-neutral-900 dark:text-white font-display font-bold text-sm uppercase tracking-wide">
-              <Target className="w-4 h-4 text-amber-500" />
-              <span>區間組合同時出現(多久沒一起開)</span>
-              {comboAlertCount > 0 && (
-                <span className="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-300 text-[10px] font-mono font-bold">
-                  {comboAlertCount} 組警示
-                </span>
-              )}
-            </div>
-          </div>
-
-          <div className="text-[11px] text-neutral-500 dark:text-neutral-400">
-            勾選上方那份區間清單裡的幾個區間組成一組(例:01~09 + 10~19 + 20~29 + 30~39),
-            追蹤距上次「每個區間在同一期都至少開出一顆」過了幾期;連續 {threshold} 期
-            (同上方門檻)沒有一起開就跳警示。目前 {gameName} 監看 {combos.length} 組。
-          </div>
-
-          {comboTogether.loading && <div className="text-xs text-neutral-400">載入區間組合統計中…</div>}
-          {comboTogether.error && <div className="text-xs text-rose-500">{comboTogether.error}</div>}
+          {(comboTogether.error || comboAbsence.error) && (
+            <div className="text-xs text-rose-500">{comboTogether.error || comboAbsence.error}</div>
+          )}
 
           <div className="space-y-2">
             {comboRows.map(r => (
@@ -717,9 +713,13 @@ export const AnalysisView: React.FC = () => {
                 key={`${r.combo.label}-${r.idx}`}
                 label={r.combo.label}
                 detail={
-                  `${r.combo.groups.length} 個區間:` + r.combo.groups.map(numsSummary).join(' + ')
+                  `${r.combo.groups.length} 個區間:` +
+                  r.combo.groups.map(numsSummary).join(' + ') +
+                  ` · 聯集 ${r.union.length} 顆`
                 }
-                stat={r.stat}
+                together={r.together}
+                absence={r.absence}
+                fullCoverage={r.union.length >= numMax}
                 onRemove={() => removeCombo(r.idx)}
               />
             ))}
@@ -791,7 +791,8 @@ export const AnalysisView: React.FC = () => {
 
             <p className="text-[10px] font-mono text-neutral-400">
               {canAddCombo
-                ? `${pickedLabel} — ${pickedGroups.length} 個區間都要在同一期各開出至少一顆才算「一起開」`
+                ? `${pickedLabel} — ${pickedGroups.length} 個區間、聯集 ${pickedUnion.length} 顆` +
+                  (pickedUnion.length >= numMax ? '(涵蓋全部號碼,只會有「沒一起開」)' : '')
                 : pickedGroups.length === 1
                   ? '只勾了一個區間 —— 至少要兩個才有「同時出現」可言。'
                   : '還沒勾任何區間 —— 勾 2 個以上(例如四段全勾)看它多久沒一起開。'}
@@ -799,7 +800,8 @@ export const AnalysisView: React.FC = () => {
 
             <p className="text-[10px] text-neutral-400">
               組合存在這台瀏覽器({gameName}單獨一份),重整後保留;存的是當下各區間的號碼,
-              之後改區間清單不會回頭動到已建立的組合。右側大字為距上次全部同時出現的期數。
+              之後改區間清單不會回頭動到已建立的組合。每列右側兩個數字:「沒一起開」為距上次
+              各區間同一期全部開出的期數、「都沒開」為整組聯集連續沒開的期數,小字是歷史最長。
             </p>
           </div>
         </div>

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Sparkles, RefreshCw, Info, History, Dice5 } from 'lucide-react';
 import { api, PredictReviewDTO, PredictStrategyDTO } from '../../api/client';
 import { useAsync } from '../../api/useAsync';
@@ -121,6 +121,23 @@ export const PredictionView: React.FC = () => {
     () => (tab === 'review' ? api.predictReview(gameKey, reviewN) : Promise.resolve(null)),
     [gameKey, reviewN, tab],
   );
+
+  // 開獎數據更新 → 自動產生新預測:predict 的 seed 綁「下一期期號」,新一期進來
+  // 期號一變,重抓就會拿到新號碼。這裡定時(每 3 分鐘)+ 回到視窗時重抓;
+  // 只有「用預設 seed(沒手動抽)」時才自動刷新,免得蓋掉使用者剛按的那組。
+  useEffect(() => {
+    if (seed !== undefined) return;
+    const tick = () => {
+      pred.reload();
+      if (tab === 'review') review.reload();
+    };
+    const timer = window.setInterval(tick, 3 * 60 * 1000);
+    window.addEventListener('focus', tick);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('focus', tick);
+    };
+  }, [seed, tab, pred.reload, review.reload]);
 
   const numMax = pred.data?.num_max ?? game?.num_max ?? 39;
   const pick = pred.data?.pick ?? game?.pick ?? 5;
