@@ -38,7 +38,7 @@ const today = () => new Date().toISOString().slice(0, 10);
 
 export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported}) => {
   const {loggedIn} = useAuth();
-  const {gameKey, game} = useGame();
+  const {gameKey, game, games, setGameKey} = useGame();
   const [text, setText] = useState('');
   const [betDate, setBetDate] = useState(today);
   const [preview, setPreview] = useState<QuickImportDTO | null>(null);
@@ -63,6 +63,12 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported})
       if (!dryRun) {
         setDone(res.saved);
         onImported?.();
+        // 上傳成功後關閉彈窗(留一下讓成功訊息閃一下)
+        window.setTimeout(() => {
+          setText('');
+          reset();
+          onClose();
+        }, 900);
       }
     } catch (e) {
       setError((e as Error).message);
@@ -107,6 +113,30 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported})
           )}
 
           <div className="flex flex-wrap items-end gap-3">
+            <div>
+              <label className="block text-[10px] uppercase tracking-[0.2em] font-semibold text-neutral-400 mb-1.5">
+                上傳到哪款
+              </label>
+              <div className="inline-flex p-1 rounded-xl bg-black/[0.03] dark:bg-white/[0.04] border border-black/[0.06] dark:border-white/[0.06] gap-1">
+                {games.map(g => (
+                  <button
+                    key={g.key}
+                    type="button"
+                    onClick={() => {
+                      setGameKey(g.key); // 全域切換:上傳目標 + 區間紀錄等全站一起換
+                      reset();
+                    }}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                      gameKey === g.key
+                        ? 'bg-black text-white dark:bg-white dark:text-black shadow-xs'
+                        : 'text-neutral-600 dark:text-neutral-400 hover:text-black dark:hover:text-white'
+                    }`}
+                  >
+                    {g.short_name}
+                  </button>
+                ))}
+              </div>
+            </div>
             <div>
               <label className="block text-[10px] uppercase tracking-[0.2em] font-semibold text-neutral-400 mb-1.5">
                 下注日期
