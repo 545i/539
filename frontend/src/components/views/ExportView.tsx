@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { Download, FileSpreadsheet, FileJson, BarChart3 } from 'lucide-react';
-import { api, GameKey } from '../../api/client';
-import { useAsync } from '../../api/useAsync';
+import { api } from '../../api/client';
 import { useAuth } from '../../api/useAuth';
+import { useGame } from '../../api/useGame';
 
 // 匯出走後端 /export/*:流水帳(xlsx / json)要登入,開獎分析報表不用。
 // 下載本身由 client.ts 的 download() 處理(fetch → blob → <a download>),
@@ -10,8 +10,8 @@ import { useAuth } from '../../api/useAuth';
 
 export const ExportView: React.FC = () => {
   const { loggedIn } = useAuth();
-  const { data: games } = useAsync(() => api.games(), []);
-  const [game, setGame] = useState<GameKey>('lotto539');
+  // 匯出哪個遊戲的報表跟著頁首的全域切換器走
+  const { gameKey, game } = useGame();
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -117,18 +117,13 @@ export const ExportView: React.FC = () => {
             </div>
           </div>
 
-          <div className="flex flex-col sm:flex-row gap-3">
-            <select
-              value={game}
-              onChange={e => setGame(e.target.value as GameKey)}
-              className="sm:w-64 px-3 py-2 text-xs sm:text-sm rounded-xl border border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.03] text-neutral-900 dark:text-white focus:outline-hidden"
-            >
-              {(games ?? []).map(g => (
-                <option key={g.key} value={g.key}>{g.name}</option>
-              ))}
-            </select>
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+            <div className="sm:w-64 px-3 py-2 text-xs sm:text-sm rounded-xl border border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.03] text-neutral-900 dark:text-white">
+              匯出對象:<strong>{game?.name ?? '載入中…'}</strong>
+              <div className="text-[10px] text-neutral-500 mt-0.5">要換遊戲請用頁首的切換器</div>
+            </div>
             <button
-              onClick={() => run('report', () => api.exportReport(game))}
+              onClick={() => run('report', () => api.exportReport(gameKey))}
               disabled={busy !== null}
               className={`${btnSolid} sm:flex-1`}
             >

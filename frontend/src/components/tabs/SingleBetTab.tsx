@@ -14,8 +14,9 @@ import {
 } from 'lucide-react';
 import { LotteryBallPad } from '../LotteryBallPad';
 import { BetRecord, LotteryGame } from '../../types';
-import { api, GameKey } from '../../api/client';
+import { api } from '../../api/client';
 import { useAsync } from '../../api/useAsync';
+import { useGame } from '../../api/useGame';
 import { useLedger } from '../../api/useLedger';
 
 // 未登入時的示範流水(登入後改用後端自己的紀錄)
@@ -41,13 +42,8 @@ const DEMO_RECORDS: BetRecord[] = [
 ];
 
 export const SingleBetTab: React.FC = () => {
-  const { data: games, loading: gamesLoading, error: gamesError } = useAsync(() => api.games(), []);
-  const [gameKey, setGameKey] = useState<GameKey>('lotto539');
-  const game = games?.find(g => g.key === gameKey) ?? null;
-  // 清單還沒回來前沿用今彩539 的規格,避免首屏數字跳動
-  const gameName = (game?.name ?? '今彩539') as LotteryGame;
-  const numMax = game?.num_max ?? 39;
-  const pick = game?.pick ?? 5;
+  // 遊戲由 Header 的全域切換器決定,這裡不再自己記一份
+  const { game, gameKey, loading: gameLoading } = useGame();
   const [selectedBall, setSelectedBall] = useState<number[]>([10]);
   const [cars, setCars] = useState<number>(3);
   const [betDate, setBetDate] = useState<string>('2026-08-19');
@@ -59,11 +55,28 @@ export const SingleBetTab: React.FC = () => {
   // 成本 / 命中彩金 / 命中率都由後端 core.erhe 算(押 1 顆 = 單顆下注),
   // 盤口不覆寫,直接用該遊戲 GameConfig 的每車成本與中獎可得。
   const { data: plan } = useAsync(() => api.erhePlan(gameKey, 1, cars), [gameKey, cars]);
+
+  const cumPnl = records.length > 0 ? records[records.length - 1].cumPnl : 0;
+  const totalSpent = records.reduce((acc, r) => acc + r.cost, 0);
+  const totalReturn = records.reduce((acc, r) => acc + r.payout, 0);
+  const winCount = records.filter(r => r.payout > 0).length;
+
+  // 規格全部讀 game;還沒載到就先不畫,免得閃一次別款遊戲的數字
+  if (!game) {
+    return (
+      <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] text-xs text-neutral-500 dark:text-neutral-400">
+        {gameLoading ? '載入遊戲設定中…' : '讀不到遊戲設定,請重新整理頁面。'}
+      </div>
+    );
+  }
+
+  const gameName = game.name as LotteryGame;
+  const numMax = game.num_max;
   // plan 還沒回來前先用遊戲規格的估值,避免首屏數字跳動
-  const winRate = ((plan?.any_hit_prob ?? pick / numMax) * 100).toFixed(2);
-  const notesPerCar = plan?.notes_per_car ?? numMax - 1;
-  const currentCost = Math.round(plan?.total_cost ?? cars * (game?.default_cost_per_car ?? 2755));
-  const potentialPrize = Math.round(plan?.payout_per_hit ?? cars * (game?.default_win_payout ?? 21200));
+  const winRate = ((plan?.any_hit_prob ?? game.pick / game.num_max) * 100).toFixed(2);
+  const notesPerCar = plan?.notes_per_car ?? game.num_max - 1;
+  const currentCost = Math.round(plan?.total_cost ?? cars * game.default_cost_per_car);
+  const potentialPrize = Math.round(plan?.payout_per_hit ?? cars * game.default_win_payout);
   const potentialNet = potentialPrize - currentCost;
 
   const handleToggleBall = (num: number) => {
@@ -96,11 +109,6 @@ export const SingleBetTab: React.FC = () => {
     });
   };
 
-  const cumPnl = records.length > 0 ? records[records.length - 1].cumPnl : 0;
-  const totalSpent = records.reduce((acc, r) => acc + r.cost, 0);
-  const totalReturn = records.reduce((acc, r) => acc + r.payout, 0);
-  const winCount = records.filter(r => r.payout > 0).length;
-
   return (
     <div className="space-y-4 sm:space-y-5 animate-in fade-in duration-200 w-full overflow-hidden">
       {/* Top Banner Bar */}
@@ -109,6 +117,9 @@ export const SingleBetTab: React.FC = () => {
           <div className="flex items-center gap-2">
             <span className="text-[10px] uppercase tracking-[0.25em] text-neutral-400 dark:text-neutral-500 font-semibold">
               Precision Single Ball
+            </span>
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-black/5 dark:bg-white/10 text-neutral-600 dark:text-neutral-300">
+              {game.short_name}
             </span>
             <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-black/5 dark:bg-white/10 text-neutral-600 dark:text-neutral-300">
               勝率 {winRate}%
@@ -149,31 +160,6 @@ export const SingleBetTab: React.FC = () => {
               <span className="text-[11px] font-mono text-neutral-400">
                 期號: 115000201
               </span>
-            </div>
-
-            {/* Game Selector */}
-            <div>
-              <label className="block text-[10px] uppercase tracking-[0.2em] font-semibold text-neutral-400 mb-1.5">
-                彩券種類
-              </label>
-              <div className="grid grid-cols-3 gap-1 p-1 rounded-xl bg-black/[0.03] dark:bg-white/[0.04] border border-black/[0.06] dark:border-white/[0.06]">
-                {(games ?? []).map(g => (
-                  <button
-                    key={g.key}
-                    type="button"
-                    onClick={() => setGameKey(g.key)}
-                    className={`py-1.5 px-1 sm:px-2 rounded-lg text-xs font-semibold truncate transition-all ${
-                      gameKey === g.key
-                        ? 'bg-black text-white dark:bg-white dark:text-black shadow-xs'
-                        : 'text-neutral-600 dark:text-neutral-400 hover:text-black dark:hover:text-white'
-                    }`}
-                  >
-                    {g.short_name}
-                  </button>
-                ))}
-              </div>
-              {gamesLoading && <div className="text-xs text-neutral-400 mt-1">載入遊戲清單…</div>}
-              {gamesError && <div className="text-xs text-rose-500 mt-1">{gamesError}</div>}
             </div>
 
             {/* Ball Selector Matrix */}

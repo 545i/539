@@ -11,8 +11,9 @@ import {
 } from 'lucide-react';
 import { LotteryBallPad } from '../LotteryBallPad';
 import { BetRecord, LotteryGame } from '../../types';
-import { api, GameKey } from '../../api/client';
+import { api, ErhePlanDTO } from '../../api/client';
 import { useAsync } from '../../api/useAsync';
+import { useGame } from '../../api/useGame';
 import { useLedger } from '../../api/useLedger';
 
 // 未登入時的示範流水(登入後改用後端自己的紀錄)
@@ -38,12 +39,8 @@ const DEMO_RECORDS: BetRecord[] = [
 ];
 
 export const MultiBetTab: React.FC = () => {
-  const { data: games, loading: gamesLoading, error: gamesError } = useAsync(() => api.games(), []);
-  const [gameKey, setGameKey] = useState<GameKey>('lotto539');
-  const game = games?.find(g => g.key === gameKey) ?? null;
-  // 清單還沒回來前沿用今彩539 的規格,避免首屏數字跳動
-  const gameName = (game?.name ?? '今彩539') as LotteryGame;
-  const numMax = game?.num_max ?? 39;
+  // 遊戲由 Header 的全域切換器決定,這裡不再自己記一份
+  const { game, gameKey, loading: gameLoading } = useGame();
   const [selectedBalls, setSelectedBalls] = useState<number[]>([3, 5, 8, 12, 17, 21, 24, 28, 33, 37]);
   const [cars, setCars] = useState<number>(5);
   const [betDate, setBetDate] = useState<string>('2026-08-19');
@@ -54,16 +51,37 @@ export const MultiBetTab: React.FC = () => {
   const ballCount = selectedBalls.length || 10;
   // 多顆盤口沿用 v2 的換算比例:每顆每車成本 = 每車成本 ÷ 20、每顆每車彩金 = 每車中獎可得 ÷ 4
   // (今彩539 → 2755/20 = 137.75、21200/4 = 5300,與 v2 完全一致)
-  const costPerCarPerBall = (game?.default_cost_per_car ?? 2755) / 20;
-  const prizePerHitPerCar = (game?.default_win_payout ?? 21200) / 4;
-  // 成本與各段中獎回收由後端 core.erhe 算(押 ballCount 顆),盤口帶上面換算後的值
-  const { data: plan } = useAsync(
-    () => api.erhePlan(gameKey, ballCount, cars, {
-      cost_per_car: costPerCarPerBall,
-      win_payout: prizePerHitPerCar,
-    }),
+  const costPerCarPerBall = game ? game.default_cost_per_car / 20 : 0;
+  const prizePerHitPerCar = game ? game.default_win_payout / 4 : 0;
+  // 成本與各段中獎回收由後端 core.erhe 算(押 ballCount 顆),盤口帶上面換算後的值。
+  // 遊戲清單還沒回來就先不打(盤口會是 0),等 game 進來 deps 一變就自動補算。
+  const { data: plan } = useAsync<ErhePlanDTO | null>(
+    () =>
+      game
+        ? api.erhePlan(gameKey, ballCount, cars, {
+            cost_per_car: costPerCarPerBall,
+            win_payout: prizePerHitPerCar,
+          })
+        : Promise.resolve(null),
     [gameKey, ballCount, cars, costPerCarPerBall, prizePerHitPerCar],
   );
+
+  const cumPnl = records.length > 0 ? records[records.length - 1].cumPnl : 0;
+  const totalSpent = records.reduce((acc, r) => acc + r.cost, 0);
+  const totalReturn = records.reduce((acc, r) => acc + r.payout, 0);
+  const winCount = records.filter(r => r.payout > 0).length;
+
+  // 規格全部讀 game;還沒載到就先不畫,免得閃一次別款遊戲的數字
+  if (!game) {
+    return (
+      <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] text-xs text-neutral-500 dark:text-neutral-400">
+        {gameLoading ? '載入遊戲設定中…' : '讀不到遊戲設定,請重新整理頁面。'}
+      </div>
+    );
+  }
+
+  const gameName = game.name as LotteryGame;
+  const numMax = game.num_max;
   // plan 還沒回來前先用換算比例自估,避免首屏數字跳動
   const payoutOf = (hits: number) =>
     Math.round(plan?.hits.find(h => h.hits === hits)?.payout ?? cars * prizePerHitPerCar * hits);
@@ -103,11 +121,6 @@ export const MultiBetTab: React.FC = () => {
     });
   };
 
-  const cumPnl = records.length > 0 ? records[records.length - 1].cumPnl : 0;
-  const totalSpent = records.reduce((acc, r) => acc + r.cost, 0);
-  const totalReturn = records.reduce((acc, r) => acc + r.payout, 0);
-  const winCount = records.filter(r => r.payout > 0).length;
-
   return (
     <div className="space-y-4 sm:space-y-5 animate-in fade-in duration-200 w-full overflow-hidden">
       {/* Top Banner Bar */}
@@ -116,6 +129,9 @@ export const MultiBetTab: React.FC = () => {
           <div className="flex items-center gap-2">
             <span className="text-[10px] uppercase tracking-[0.25em] text-neutral-400 dark:text-neutral-500 font-semibold">
               Multi-Ball Portfolio Strategy
+            </span>
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-black/5 dark:bg-white/10 text-neutral-600 dark:text-neutral-300">
+              {game.short_name}
             </span>
             <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-black/5 dark:bg-white/10 text-neutral-600 dark:text-neutral-300">
               {ballCount} 顆分佈
@@ -156,31 +172,6 @@ export const MultiBetTab: React.FC = () => {
               <span className="text-[11px] font-mono text-neutral-400">
                 期號: 115000201
               </span>
-            </div>
-
-            {/* Game Selector */}
-            <div>
-              <label className="block text-[10px] uppercase tracking-[0.2em] font-semibold text-neutral-400 mb-1.5">
-                彩券種類
-              </label>
-              <div className="grid grid-cols-3 gap-1 p-1 rounded-xl bg-black/[0.03] dark:bg-white/[0.04] border border-black/[0.06] dark:border-white/[0.06]">
-                {(games ?? []).map(g => (
-                  <button
-                    key={g.key}
-                    type="button"
-                    onClick={() => setGameKey(g.key)}
-                    className={`py-1.5 px-1 sm:px-2 rounded-lg text-xs font-semibold truncate transition-all ${
-                      gameKey === g.key
-                        ? 'bg-black text-white dark:bg-white dark:text-black shadow-xs'
-                        : 'text-neutral-600 dark:text-neutral-400 hover:text-black dark:hover:text-white'
-                    }`}
-                  >
-                    {g.short_name}
-                  </button>
-                ))}
-              </div>
-              {gamesLoading && <div className="text-xs text-neutral-400 mt-1">載入遊戲清單…</div>}
-              {gamesError && <div className="text-xs text-rose-500 mt-1">{gamesError}</div>}
             </div>
 
             {/* Ball Selector Matrix */}

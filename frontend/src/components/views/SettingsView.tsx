@@ -4,6 +4,7 @@ import { ThemeMode } from '../../types';
 import { api, AutoupdateGameDTO } from '../../api/client';
 import { useAsync } from '../../api/useAsync';
 import { useAuth } from '../../api/useAuth';
+import { useGame } from '../../api/useGame';
 
 interface Props {
   theme: ThemeMode;
@@ -11,25 +12,26 @@ interface Props {
 }
 
 export const SettingsView: React.FC<Props> = ({ theme, onToggleTheme }) => {
-  // 盤口欄位的預設值改由後端 GameDTO 的 default_* 帶入(今彩539);
+  // 盤口欄位的預設值由後端 GameDTO 的 default_* 帶入,遊戲來自頁首的全域切換器;
   // 下面的字面值只是後端還沒回來前的初值,與 core/games.py 相同。
-  const { data: games } = useAsync(() => api.games(), []);
+  const { gameKey, game } = useGame();
+  const gameName = game?.short_name ?? '本遊戲';
   const [pillarCost, setPillarCost] = useState<number>(63);
   const [pillarPrize, setPillarPrize] = useState<number>(57000);
   const [singleCarCost, setSingleCarCost] = useState<number>(2755);
   const [singleCarPrize, setSingleCarPrize] = useState<number>(21200);
-  const [seeded, setSeeded] = useState(false);
+  // 記「這組欄位是照哪個遊戲填的」:同一個遊戲只帶一次(不蓋掉使用者輸入),
+  // 換了遊戲就重帶那個遊戲的預設盤口。
+  const [seededFor, setSeededFor] = useState<string | null>(null);
 
   useEffect(() => {
-    if (seeded || !games) return;
-    const g = games.find(x => x.key === 'lotto539') ?? games[0];
-    if (!g) return;
-    setPillarCost(g.default_bet_cost);
-    setPillarPrize(g.default_bet_prize);
-    setSingleCarCost(g.default_cost_per_car);
-    setSingleCarPrize(g.default_win_payout);
-    setSeeded(true); // 只帶一次,之後不覆蓋使用者輸入
-  }, [games, seeded]);
+    if (!game || seededFor === game.key) return;
+    setPillarCost(game.default_bet_cost);
+    setPillarPrize(game.default_bet_prize);
+    setSingleCarCost(game.default_cost_per_car);
+    setSingleCarPrize(game.default_win_payout);
+    setSeededFor(game.key);
+  }, [game, seededFor]);
 
   // TODO(api): 設定儲存端點 —— 後端沒有寫入盤口參數的端點,維持 v2 的模擬儲存。
   const handleSave = () => {
@@ -53,7 +55,7 @@ export const SettingsView: React.FC<Props> = ({ theme, onToggleTheme }) => {
     setFetchMsg(null);
     setFetchErr(null);
     try {
-      const res = await api.fetchNow();
+      const res = await api.fetchNow(gameKey);
       setFetched(res.games);
       setFetchMsg(
         res.results
@@ -79,7 +81,7 @@ export const SettingsView: React.FC<Props> = ({ theme, onToggleTheme }) => {
               系統與盤口設定
             </h2>
             <p className="text-xs text-neutral-500 dark:text-neutral-400">
-              自訂下注成本、派彩金額、外觀佈景與三柱1800碰參數
+              目前設定 {gameName} 的下注成本、派彩金額、三柱1800碰參數與外觀佈景
             </p>
           </div>
         </div>
@@ -116,6 +118,12 @@ export const SettingsView: React.FC<Props> = ({ theme, onToggleTheme }) => {
           <span>盤口設定 — 三柱 1800 碰</span>
         </h3>
 
+        {game && !game.supports_pillar && (
+          <div className="text-[11px] text-amber-600 dark:text-amber-400">
+            {gameName}沒有三柱玩法,下面這組參數對它不會生效(換回今彩539 / 天天樂才有用)。
+          </div>
+        )}
+
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="block text-[10px] uppercase tracking-[0.2em] font-semibold text-neutral-400 dark:text-neutral-500 mb-1.5">
@@ -144,7 +152,7 @@ export const SettingsView: React.FC<Props> = ({ theme, onToggleTheme }) => {
 
         <h3 className="text-sm font-display font-bold text-neutral-900 dark:text-white uppercase tracking-wide flex items-center gap-2 pt-3 border-t border-black/[0.06] dark:border-white/[0.06]">
           <Sliders className="w-4 h-4" />
-          <span>盤口設定 — 單顆下注 (今彩539)</span>
+          <span>盤口設定 — 單顆下注 ({gameName})</span>
         </h3>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -211,7 +219,11 @@ export const SettingsView: React.FC<Props> = ({ theme, onToggleTheme }) => {
           {autoGames.map(g => (
             <div
               key={g.key}
-              className="flex items-center justify-between gap-3 p-3 rounded-xl bg-black/[0.02] dark:bg-white/[0.03] border border-black/[0.06] dark:border-white/[0.06]"
+              className={`flex items-center justify-between gap-3 p-3 rounded-xl bg-black/[0.02] dark:bg-white/[0.03] border ${
+                g.key === gameKey
+                  ? 'border-black/30 dark:border-white/30'
+                  : 'border-black/[0.06] dark:border-white/[0.06]'
+              }`}
             >
               <div>
                 <div className="font-semibold text-xs text-neutral-900 dark:text-white">{g.name}</div>
@@ -253,7 +265,7 @@ export const SettingsView: React.FC<Props> = ({ theme, onToggleTheme }) => {
           className="px-6 py-2.5 rounded-full text-xs uppercase tracking-wider font-semibold bg-black text-white dark:bg-white dark:text-black hover:opacity-90 transition-opacity flex items-center gap-2 shadow-xs disabled:opacity-40 disabled:cursor-not-allowed"
         >
           <RefreshCw className={`w-3.5 h-3.5 ${fetching ? 'animate-spin' : ''}`} />
-          {fetching ? '抓取中…' : '立即抓取最新開獎'}
+          {fetching ? '抓取中…' : `立即抓取 ${gameName} 最新開獎`}
         </button>
       </div>
     </div>

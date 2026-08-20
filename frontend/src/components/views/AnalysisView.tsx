@@ -1,32 +1,63 @@
 import React, { useMemo, useState } from 'react';
 import { BarChart3, Flame, Snowflake, LayoutGrid } from 'lucide-react';
-import { api } from '../../api/client';
+import { api, PillarInfoDTO } from '../../api/client';
 import { useAsync } from '../../api/useAsync';
+import { useGame } from '../../api/useGame';
 
-const GAME = 'lotto539' as const;
-const WINDOW = 830; // 冷熱號取樣期數(資料不足時以實際期數為準)
-const PICK = 5;
-const NUM_MAX = 39; // 今彩539 號碼 01~39
-const ALL_NUMS = Array.from({ length: NUM_MAX }, (_, i) => i + 1);
+const WINDOW = 830; // 冷熱號取樣上限(資料不足時以實際期數為準)
 const HIST_OPTIONS = [20, 30, 50, 100] as const;
 
-// 依十位分四段上色(與「區間組合提醒」同一套分組):01~09 / 10~19 / 20~29 / 30~39
-function bandDot(n: number): string {
-  if (n <= 9) return 'bg-neutral-900 text-white dark:bg-white dark:text-black';
-  if (n <= 19) return 'bg-blue-600 text-white';
-  if (n <= 29) return 'bg-amber-600 text-white';
-  return 'bg-emerald-600 text-white';
-}
+// 依十位分段上色:01~09 / 10~19 / 20~29 / 30~39 / 40~49(六合彩才有最後一段)
+const BAND_DOT = [
+  'bg-neutral-900 text-white dark:bg-white dark:text-black',
+  'bg-blue-600 text-white',
+  'bg-amber-600 text-white',
+  'bg-emerald-600 text-white',
+  'bg-fuchsia-600 text-white',
+];
+const BAND_LEGEND = [
+  'bg-neutral-900 dark:bg-white',
+  'bg-blue-600',
+  'bg-amber-600',
+  'bg-emerald-600',
+  'bg-fuchsia-600',
+];
+
+const bandIndex = (n: number) => (n <= 9 ? 0 : Math.floor(n / 10));
+const bandDot = (n: number) => BAND_DOT[bandIndex(n)] ?? BAND_DOT[BAND_DOT.length - 1];
+const pad2 = (n: number) => n.toString().padStart(2, '0');
 
 export const AnalysisView: React.FC = () => {
+  const { gameKey, game } = useGame();
   const [activeTab, setActiveTab] = useState<'draw_history' | 'hot_cold' | 'pillar_dist' | 'odd_even'>('draw_history');
   const [histN, setHistN] = useState<number>(30);
 
-  const hotCold = useAsync(() => api.hotCold(GAME, WINDOW, 6), []);
-  const history = useAsync(() => api.history(GAME), []);
-  const pillarInfo = useAsync(() => api.pillarInfo(GAME), []);
-  const parity = useAsync(() => api.parity(GAME), []);
-  const drawHist = useAsync(() => api.history(GAME, histN), [histN]);
+  // 號碼上限跟著遊戲走(今彩539/天天樂 39、六合彩 49);後端還沒回來前先用 39 撐版面
+  const numMax = game?.num_max ?? 39;
+  const pick = game?.pick ?? 5;
+  const supportsPillar = game?.supports_pillar ?? true;
+  const gameName = game?.short_name ?? '本遊戲';
+  const allNums = useMemo(() => Array.from({ length: numMax }, (_, i) => i + 1), [numMax]);
+  // 圖例段數:39 顆到 30~39、49 顆多一段 40~49
+  const bands = useMemo(() => {
+    const out: { c: string; t: string }[] = [];
+    for (let i = 0; i <= bandIndex(numMax); i++) {
+      const lo = i === 0 ? 1 : i * 10;
+      const hi = Math.min(i * 10 + 9, numMax);
+      out.push({ c: BAND_LEGEND[i] ?? BAND_LEGEND[BAND_LEGEND.length - 1], t: `${pad2(lo)}~${pad2(hi)}` });
+    }
+    return out;
+  }, [numMax]);
+
+  const hotCold = useAsync(() => api.hotCold(gameKey, WINDOW, 6), [gameKey]);
+  const history = useAsync(() => api.history(gameKey), [gameKey]);
+  // 六合彩沒有三柱玩法 —— 直接不打端點,免得拿 400 當錯誤顯示
+  const pillarInfo = useAsync<PillarInfoDTO | null>(
+    () => (supportsPillar ? api.pillarInfo(gameKey) : Promise.resolve(null)),
+    [gameKey, supportsPillar],
+  );
+  const parity = useAsync(() => api.parity(gameKey), [gameKey]);
+  const drawHist = useAsync(() => api.history(gameKey, histN), [gameKey, histN]);
 
   // 開獎歷史走勢:最新一期排最上面
   const histRows = useMemo(
@@ -61,7 +92,7 @@ export const AnalysisView: React.FC = () => {
   const hotColdLoading = hotCold.loading || history.loading;
   const hotColdError = hotCold.error || history.error;
 
-  // 三柱實際開出率:全歷史每期 5 顆號碼落在各柱的比例
+  // 三柱實際開出率:全歷史每期開出的號碼落在各柱的比例
   const pillarActual = useMemo(() => {
     const pillars = pillarInfo.data?.pillars;
     const draws = history.data?.draws;
@@ -83,16 +114,27 @@ export const AnalysisView: React.FC = () => {
   }, [pillarInfo.data, history.data]);
 
   const sizes = pillarInfo.data?.sizes;
-  const numMax = sizes ? sizes[0] + sizes[1] + sizes[2] : 0;
+  const pillarTotal = sizes ? sizes[0] + sizes[1] + sizes[2] : 0;
   const theoryRate = (i: number) =>
-    sizes && numMax > 0 ? `${((sizes[i] / numMax) * 100).toFixed(2)}%` : '—';
+    sizes && pillarTotal > 0 ? `${((sizes[i] / pillarTotal) * 100).toFixed(2)}%` : '—';
   const actualRate = (i: number) =>
     pillarActual ? `${pillarActual[i].toFixed(1)}%` : '—';
+
+  // 柱別標題直接從後端給的號碼組推:連號就寫區間,不連號(第三柱)就寫顆數
+  const pillarLabel = (i: number) => {
+    const p = pillarInfo.data?.pillars?.[i];
+    if (!p || p.length === 0) return `第 ${i + 1} 柱`;
+    const lo = Math.min(...p);
+    const hi = Math.max(...p);
+    return p.length === hi - lo + 1
+      ? `第 ${i + 1} 柱 (${lo}-${hi})`
+      : `第 ${i + 1} 柱 (其餘 ${p.length} 顆)`;
+  };
 
   const pillarLoading = pillarInfo.loading || history.loading;
   const pillarError = pillarInfo.error || history.error;
 
-  // 單號 / 大號比例:Σ(k × 期數) ÷ (每期 5 顆 × 總期數)
+  // 單號 / 大號比例:Σ(k × 期數) ÷ (每期 pick 顆 × 總期數)
   const parityPct = useMemo(() => {
     const d = parity.data;
     if (!d) return null;
@@ -101,10 +143,13 @@ export const AnalysisView: React.FC = () => {
     const weighted = (dist: Record<string, number>) =>
       Object.entries(dist).reduce((a, [k, v]) => a + Number(k) * v, 0);
     return {
-      odd: (weighted(d.odd_dist) / (PICK * draws)) * 100,
-      big: (weighted(d.big_dist) / (PICK * draws)) * 100,
+      odd: (weighted(d.odd_dist) / (pick * draws)) * 100,
+      big: (weighted(d.big_dist) / (pick * draws)) * 100,
     };
-  }, [parity.data]);
+  }, [parity.data, pick]);
+
+  // 大小的切點由後端給(539 是 19,六合彩是 24),不要自己假設
+  const split = parity.data?.size_split;
 
   const ratioText = (pct: number | undefined) =>
     pct === undefined ? '—' : `${pct.toFixed(1)}% : ${(100 - pct).toFixed(1)}%`;
@@ -122,7 +167,8 @@ export const AnalysisView: React.FC = () => {
               歷史開獎數據與統計分析
             </h2>
             <p className="text-xs text-neutral-500 dark:text-neutral-400">
-              分析 今彩539 / 天天樂 / 六合彩 冷熱號分佈與三柱統計
+              目前分析 {gameName}(01~{pad2(numMax)},每期 {pick} 顆)
+              {history.data ? ` — 共 ${history.data.count.toLocaleString()} 期` : ''}
             </p>
           </div>
         </div>
@@ -156,7 +202,7 @@ export const AnalysisView: React.FC = () => {
           <div className="flex items-center justify-between flex-wrap gap-3">
             <div className="flex items-center gap-2 text-neutral-900 dark:text-white font-display font-bold text-sm uppercase tracking-wide">
               <LayoutGrid className="w-4 h-4 text-neutral-500" />
-              <span>開獎歷史分佈走勢(01~39 × 開獎日期)</span>
+              <span>開獎歷史分佈走勢(01~{pad2(numMax)} × 開獎日期)</span>
             </div>
             <div className="inline-flex p-1 rounded-xl bg-black/[0.03] dark:bg-white/[0.04] border border-black/[0.06] dark:border-white/[0.06] gap-1">
               {HIST_OPTIONS.map(n => (
@@ -178,12 +224,7 @@ export const AnalysisView: React.FC = () => {
 
           {/* 分色圖例(依十位) */}
           <div className="flex flex-wrap gap-3 text-[10px] text-neutral-500 dark:text-neutral-400">
-            {[
-              { c: 'bg-neutral-900 dark:bg-white', t: '01~09' },
-              { c: 'bg-blue-600', t: '10~19' },
-              { c: 'bg-amber-600', t: '20~29' },
-              { c: 'bg-emerald-600', t: '30~39' },
-            ].map(l => (
+            {bands.map(l => (
               <span key={l.t} className="inline-flex items-center gap-1">
                 <span className={`inline-block w-2.5 h-2.5 rounded-full ${l.c}`} />
                 {l.t}
@@ -202,7 +243,7 @@ export const AnalysisView: React.FC = () => {
                     <th className="sticky left-0 z-10 bg-white dark:bg-[#121212] px-2 py-1.5 text-left text-[10px] uppercase tracking-wider text-neutral-400 font-semibold">
                       開獎日期
                     </th>
-                    {ALL_NUMS.map(n => (
+                    {allNums.map(n => (
                       <th
                         key={n}
                         className="px-0.5 py-1.5 text-[9px] font-mono text-neutral-400 dark:text-neutral-500 min-w-[1.35rem]"
@@ -220,7 +261,7 @@ export const AnalysisView: React.FC = () => {
                         <td className="sticky left-0 z-10 bg-white dark:bg-[#121212] px-2 py-1 text-left whitespace-nowrap border-t border-black/[0.05] dark:border-white/[0.05]">
                           <span className="font-mono text-[11px] text-neutral-700 dark:text-neutral-300">{d.date}</span>
                         </td>
-                        {ALL_NUMS.map(n => (
+                        {allNums.map(n => (
                           <td key={n} className="px-0.5 py-1 border-t border-black/[0.05] dark:border-white/[0.05]">
                             {hit.has(n) ? (
                               <span className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-[9px] font-mono font-bold ${bandDot(n)}`}>
@@ -240,7 +281,7 @@ export const AnalysisView: React.FC = () => {
                     <td className="sticky left-0 z-10 bg-black/[0.02] dark:bg-white/[0.03] px-2 py-1.5 text-left text-[10px] uppercase tracking-wider text-neutral-400 font-semibold border-t border-black/[0.08] dark:border-white/[0.08]">
                       出現次數
                     </td>
-                    {ALL_NUMS.map(n => {
+                    {allNums.map(n => {
                       const c = histFreq.get(n) ?? 0;
                       return (
                         <td
@@ -320,25 +361,26 @@ export const AnalysisView: React.FC = () => {
       {activeTab === 'pillar_dist' && (
         <div className="p-6 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] space-y-4">
           <h3 className="text-sm font-display font-bold text-neutral-900 dark:text-white uppercase tracking-wide">三柱開出頻率與過關比率</h3>
-          {pillarLoading && <div className="text-xs text-neutral-400">載入中…</div>}
-          {pillarError && <div className="text-xs text-rose-500">{pillarError}</div>}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="p-4 rounded-xl bg-black/[0.02] dark:bg-white/[0.03] border border-black/[0.06] dark:border-white/[0.06]">
-              <div className="text-[10px] uppercase tracking-wider text-neutral-400">第一柱 (10-18)</div>
-              <div className="text-2xl font-bold font-mono text-neutral-900 dark:text-white mt-1">{actualRate(0)}</div>
-              <div className="text-[10px] text-neutral-400 mt-1">理論開出率 {theoryRate(0)}</div>
+          {!supportsPillar ? (
+            <div className="p-4 rounded-xl bg-black/[0.02] dark:bg-white/[0.03] border border-black/[0.06] dark:border-white/[0.06] text-xs text-neutral-500 dark:text-neutral-400">
+              {gameName}不適用三柱 —— 三柱 1800 碰是為 39 選 5 的盤設計的,
+              換回今彩539 或天天樂才會有這頁的統計。
             </div>
-            <div className="p-4 rounded-xl bg-black/[0.02] dark:bg-white/[0.03] border border-black/[0.06] dark:border-white/[0.06]">
-              <div className="text-[10px] uppercase tracking-wider text-neutral-400">第二柱 (20-29)</div>
-              <div className="text-2xl font-bold font-mono text-neutral-900 dark:text-white mt-1">{actualRate(1)}</div>
-              <div className="text-[10px] text-neutral-400 mt-1">理論開出率 {theoryRate(1)}</div>
-            </div>
-            <div className="p-4 rounded-xl bg-black/[0.02] dark:bg-white/[0.03] border border-black/[0.06] dark:border-white/[0.06]">
-              <div className="text-[10px] uppercase tracking-wider text-neutral-400">第三柱 (其餘20顆)</div>
-              <div className="text-2xl font-bold font-mono text-neutral-900 dark:text-white mt-1">{actualRate(2)}</div>
-              <div className="text-[10px] text-neutral-400 mt-1">理論開出率 {theoryRate(2)}</div>
-            </div>
-          </div>
+          ) : (
+            <>
+              {pillarLoading && <div className="text-xs text-neutral-400">載入中…</div>}
+              {pillarError && <div className="text-xs text-rose-500">{pillarError}</div>}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                {[0, 1, 2].map(i => (
+                  <div key={i} className="p-4 rounded-xl bg-black/[0.02] dark:bg-white/[0.03] border border-black/[0.06] dark:border-white/[0.06]">
+                    <div className="text-[10px] uppercase tracking-wider text-neutral-400">{pillarLabel(i)}</div>
+                    <div className="text-2xl font-bold font-mono text-neutral-900 dark:text-white mt-1">{actualRate(i)}</div>
+                    <div className="text-[10px] text-neutral-400 mt-1">理論開出率 {theoryRate(i)}</div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
         </div>
       )}
 
@@ -354,7 +396,11 @@ export const AnalysisView: React.FC = () => {
               <div className="text-xl font-bold font-mono text-neutral-900 dark:text-white mt-1">{ratioText(parityPct?.odd)}</div>
             </div>
             <div className="p-4 rounded-xl bg-black/[0.02] dark:bg-white/[0.03] border border-black/[0.06] dark:border-white/[0.06]">
-              <div className="text-[10px] uppercase tracking-wider text-neutral-400">大號 (20-39) vs 小號 (01-19)</div>
+              <div className="text-[10px] uppercase tracking-wider text-neutral-400">
+                {split
+                  ? `大號 (${pad2(split + 1)}-${pad2(numMax)}) vs 小號 (01-${pad2(split)})`
+                  : '大號 vs 小號'}
+              </div>
               <div className="text-xl font-bold font-mono text-neutral-900 dark:text-white mt-1">{ratioText(parityPct?.big)}</div>
             </div>
           </div>

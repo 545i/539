@@ -1,9 +1,9 @@
-import React, { useMemo, useState } from 'react';
-import { 
-  ChevronRight, 
-  ChevronDown, 
-  AlertTriangle, 
-  FileText, 
+import React, { useState } from 'react';
+import {
+  ChevronRight,
+  ChevronDown,
+  AlertTriangle,
+  FileText,
   Info,
   CheckCircle2,
   XCircle,
@@ -14,52 +14,101 @@ import {
 } from 'lucide-react';
 import { INITIAL_PILLAR_RECORDS, PILLAR_THEORY_ROWS } from '../../data/lotteryData';
 import { LotteryGame } from '../../types';
-import { api, GameKey, PartialBetsDTO } from '../../api/client';
+import { api, PartialBetsDTO, PillarInfoDTO, TensPairDTO } from '../../api/client';
 import { useAsync } from '../../api/useAsync';
+import { useGame } from '../../api/useGame';
 import { useLedger } from '../../api/useLedger';
 import { LotteryBallPad } from '../LotteryBallPad';
 
+const pad = (n: number) => n.toString().padStart(2, '0');
+
+// 柱位標題:連號就寫成「10 ~ 18」,像第三柱那種 01~09 + 19 + 30~39 就別假裝是一段
+const pillarRange = (nums: number[]): string => {
+  if (nums.length === 0) return '—';
+  const lo = nums[0];
+  const hi = nums[nums.length - 1];
+  return hi - lo + 1 === nums.length ? `${pad(lo)} ~ ${pad(hi)}` : '不連續區段';
+};
+
 export const ThreePillarTab: React.FC = () => {
+  // 遊戲由 Header 的全域切換器決定;三柱只有 39 選 5 的款玩得起來(supports_pillar)
+  const { game: gameCfg, gameKey, loading: gameLoading } = useGame();
   // 登入時流水存後端;未登入沿用 v2 的前端 state(含示範資料)
   const ledger = useLedger('pillar1800', INITIAL_PILLAR_RECORDS);
   const records = ledger.records;
-  const [gameKey, setGameKey] = useState<GameKey>('lotto539');
   const [units, setUnits] = useState<number>(1);
   const [issue, setIssue] = useState<string>('115000201');
   const [betDate, setBetDate] = useState<string>('2026-08-19');
   const [isTheoryOpen, setIsTheoryOpen] = useState(false);
   const [selectedBalls, setSelectedBalls] = useState<number[]>([]);
 
-  // 遊戲清單:只留支援三柱包牌的
-  const gamesReq = useAsync(() => api.games(), []);
-  const pillarGames = useMemo(
-    () => (gamesReq.data || []).filter(g => g.supports_pillar),
-    [gamesReq.data],
-  );
-  const currentGame =
-    pillarGames.find(g => g.key === gameKey) || pillarGames[0] || null;
-  const activeKey: GameKey = currentGame ? currentGame.key : gameKey;
-  const game = (currentGame ? currentGame.name : '今彩539') as LotteryGame;
+  const supported = !!gameCfg?.supports_pillar;
 
-  // 三柱基本盤(注數 / 過關率)
-  const infoReq = useAsync(() => api.pillarInfo(activeKey), [activeKey]);
-  const totalBets = infoReq.data ? infoReq.data.total_bets : 1800;
+  // 三柱基本盤(注數 / 過關率)—— 不適用的遊戲就不打後端
+  const infoReq = useAsync<PillarInfoDTO | null>(
+    () => (supported ? api.pillarInfo(gameKey) : Promise.resolve(null)),
+    [gameKey, supported],
+  );
+  const totalBets = infoReq.data ? infoReq.data.total_bets : 0;
   const passProb = infoReq.data ? infoReq.data.pass_prob : null;
+  // 柱位切法也讀後端,不在前端寫死 9/10/20
+  const pillars: number[][] = infoReq.data ? infoReq.data.pillars : [[], [], []];
+  const sizes: number[] = infoReq.data ? infoReq.data.sizes : [0, 0, 0];
 
   // 部分包牌(選號變動就重算)
   const partialReq = useAsync<PartialBetsDTO | null>(
     () =>
-      selectedBalls.length === 0
+      !supported || selectedBalls.length === 0
         ? Promise.resolve(null)
-        : api.pillarPartial(activeKey, selectedBalls),
-    [activeKey, selectedBalls.join(',')],
+        : api.pillarPartial(gameKey, selectedBalls),
+    [gameKey, supported, selectedBalls.join(',')],
   );
 
   // 區間組合斷檔提醒
-  const pairsReq = useAsync(() => api.tensPairs(activeKey, 3), [activeKey]);
+  const pairsReq = useAsync<TensPairDTO[] | null>(
+    () => (supported ? api.tensPairs(gameKey, 3) : Promise.resolve(null)),
+    [gameKey, supported],
+  );
 
-  const betCost = currentGame ? currentGame.default_bet_cost : 63;
-  const betPrize = currentGame ? currentGame.default_bet_prize : 57000;
+  const totalSpent = records.reduce((acc, r) => acc + r.cost, 0);
+  const totalReturn = records.reduce((acc, r) => acc + r.payout, 0);
+  const cumPnl = records.length > 0 ? records[records.length - 1].cumPnl : 0;
+  const winCount = records.filter(r => r.payout > 0).length;
+
+  if (!gameCfg) {
+    return (
+      <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] text-xs text-neutral-500 dark:text-neutral-400">
+        {gameLoading ? '載入遊戲設定中…' : '讀不到遊戲設定,請重新整理頁面。'}
+      </div>
+    );
+  }
+
+  // 三柱 1800 碰是把 39 顆切成 9 / 10 / 20 三柱,49 選 6 的六合彩沒有這種盤 ——
+  // 與其拿 39 選 5 的數字硬算給別款看,不如明講不適用。
+  if (!supported) {
+    return (
+      <div className="p-5 sm:p-6 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] space-y-2.5 animate-in fade-in duration-200">
+        <div className="flex items-center gap-2">
+          <Layers className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+          <span className="text-sm font-display font-bold text-neutral-900 dark:text-white">
+            {gameCfg.short_name}不適用三柱 1800 碰
+          </span>
+        </div>
+        <p className="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">
+          三柱 1800 碰是把 39 顆號碼切成 9 × 10 × 20 三柱包牌的玩法,只有
+          今彩539 與天天樂(都是 39 選 5)適用;{gameCfg.short_name}是
+          {gameCfg.num_max} 選 {gameCfg.pick},柱位切法與注數都對不起來。
+        </p>
+        <p className="text-xs text-neutral-500 dark:text-neutral-400">
+          請用上方的彩券切換器改成今彩539 或天天樂。
+        </p>
+      </div>
+    );
+  }
+
+  const game = gameCfg.name as LotteryGame;
+  const betCost = gameCfg.default_bet_cost;
+  const betPrize = gameCfg.default_bet_prize;
   const unitCost = totalBets * betCost; // 1800 x 63
   const prize4 = 4 * betPrize;
   const prize3 = 3 * betPrize;
@@ -89,11 +138,6 @@ export const ThreePillarTab: React.FC = () => {
     });
   };
 
-  const totalSpent = records.reduce((acc, r) => acc + r.cost, 0);
-  const totalReturn = records.reduce((acc, r) => acc + r.payout, 0);
-  const cumPnl = records.length > 0 ? records[records.length - 1].cumPnl : 0;
-  const winCount = records.filter(r => r.payout > 0).length;
-
   return (
     <div className="space-y-4 sm:space-y-5 animate-in fade-in duration-200 w-full overflow-hidden">
       {/* Top Banner Bar */}
@@ -104,6 +148,9 @@ export const ThreePillarTab: React.FC = () => {
               Three Pillars Matrix (1800 Bets)
             </span>
             <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-black/5 dark:bg-white/10 text-neutral-600 dark:text-neutral-300">
+              {gameCfg.short_name}
+            </span>
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-black/5 dark:bg-white/10 text-neutral-600 dark:text-neutral-300">
               過關率 {passProb !== null ? `${(passProb * 100).toFixed(2)}%` : '—'}
             </span>
           </div>
@@ -111,7 +158,7 @@ export const ThreePillarTab: React.FC = () => {
             三柱 1800 碰包牌控制台
           </div>
           <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
-            包下 9×10×20 = 1,800 注全組合，三柱各開出 1 顆即保證過關獲利。
+            包下 {sizes.join('×')} = {totalBets.toLocaleString()} 注全組合，三柱各開出 1 顆即保證過關獲利。
           </div>
         </div>
 
@@ -144,62 +191,31 @@ export const ThreePillarTab: React.FC = () => {
               </span>
             </div>
 
-            {/* Game Selector */}
-            <div>
-              <label className="block text-[10px] uppercase tracking-[0.2em] font-semibold text-neutral-400 mb-1.5">
-                彩券種類
-              </label>
-              <div className="grid grid-cols-2 gap-1 p-1 rounded-xl bg-black/[0.03] dark:bg-white/[0.04] border border-black/[0.06] dark:border-white/[0.06]">
-                {pillarGames.map(g => (
-                  <button
-                    key={g.key}
-                    type="button"
-                    onClick={() => {
-                      setGameKey(g.key);
-                      setSelectedBalls([]);
-                    }}
-                    className={`py-1.5 px-2 rounded-lg text-xs font-semibold truncate transition-all ${
-                      activeKey === g.key
-                        ? 'bg-black text-white dark:bg-white dark:text-black shadow-xs'
-                        : 'text-neutral-600 dark:text-neutral-400 hover:text-black dark:hover:text-white'
-                    }`}
-                  >
-                    {g.name.split('(')[0]}
-                  </button>
-                ))}
-              </div>
-              {gamesReq.loading && (
-                <div className="text-xs text-neutral-400 mt-1.5">載入彩券清單中…</div>
-              )}
-              {gamesReq.error && (
-                <div className="text-xs text-rose-500 mt-1.5">{gamesReq.error}</div>
-              )}
-            </div>
-
             {/* Pillar Structure Visualizer Cards */}
             <div className="space-y-2">
               <label className="block text-[10px] uppercase tracking-[0.2em] font-semibold text-neutral-400">
-                固定包牌柱位矩陣 (39 顆全包)
+                固定包牌柱位矩陣 ({gameCfg.num_max} 顆全包)
               </label>
-              
+
               <div className="grid grid-cols-3 gap-2">
-                <div className="p-2.5 rounded-xl border border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.03]">
-                  <div className="text-[10px] uppercase tracking-wider text-neutral-400 font-semibold">第一柱 (9顆)</div>
-                  <div className="text-xs font-mono font-bold text-neutral-900 dark:text-white mt-0.5">10 ~ 18</div>
-                  <div className="text-[9px] text-neutral-400">10 11 12 13 14...</div>
-                </div>
-
-                <div className="p-2.5 rounded-xl border border-amber-500/20 bg-amber-500/5">
-                  <div className="text-[10px] uppercase tracking-wider text-amber-600 dark:text-amber-400 font-semibold">第二柱 (10顆)</div>
-                  <div className="text-xs font-mono font-bold text-amber-700 dark:text-amber-300 mt-0.5">20 ~ 29</div>
-                  <div className="text-[9px] text-amber-600/70">20 21 22 23 24...</div>
-                </div>
-
-                <div className="p-2.5 rounded-xl border border-emerald-500/20 bg-emerald-500/5">
-                  <div className="text-[10px] uppercase tracking-wider text-emerald-600 dark:text-emerald-400 font-semibold">第三柱 (20顆)</div>
-                  <div className="text-xs font-mono font-bold text-emerald-700 dark:text-emerald-300 mt-0.5">01-09+30s</div>
-                  <div className="text-[9px] text-emerald-600/70">01~09, 19, 30~39</div>
-                </div>
+                {[
+                  {name: '第一柱', box: 'border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.03]', head: 'text-neutral-400', body: 'text-neutral-900 dark:text-white', sub: 'text-neutral-400'},
+                  {name: '第二柱', box: 'border-amber-500/20 bg-amber-500/5', head: 'text-amber-600 dark:text-amber-400', body: 'text-amber-700 dark:text-amber-300', sub: 'text-amber-600/70'},
+                  {name: '第三柱', box: 'border-emerald-500/20 bg-emerald-500/5', head: 'text-emerald-600 dark:text-emerald-400', body: 'text-emerald-700 dark:text-emerald-300', sub: 'text-emerald-600/70'},
+                ].map((p, i) => (
+                  <div key={p.name} className={`p-2.5 rounded-xl border ${p.box}`}>
+                    <div className={`text-[10px] uppercase tracking-wider font-semibold ${p.head}`}>
+                      {p.name} ({sizes[i]}顆)
+                    </div>
+                    <div className={`text-xs font-mono font-bold mt-0.5 ${p.body}`}>
+                      {pillarRange(pillars[i])}
+                    </div>
+                    <div className={`text-[9px] ${p.sub}`}>
+                      {pillars[i].slice(0, 5).map(pad).join(' ')}
+                      {pillars[i].length > 5 ? '…' : ''}
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
 
@@ -354,8 +370,8 @@ export const ThreePillarTab: React.FC = () => {
                 )
               }
               onClear={() => setSelectedBalls([])}
-              totalBalls={currentGame ? currentGame.num_max : 39}
-              maxBalls={currentGame ? currentGame.num_max : 39}
+              totalBalls={gameCfg.num_max}
+              maxBalls={gameCfg.num_max}
               label="自選包牌號碼"
             />
 
@@ -615,7 +631,7 @@ export const ThreePillarTab: React.FC = () => {
                       開獎號: <span className="font-mono text-neutral-600 dark:text-neutral-400">{rec.drawBalls.map(b => b.toString().padStart(2, '0')).join(' ')}</span>
                     </div>
                     <div className="text-[10px] font-mono text-neutral-400">
-                      1,800 注全包
+                      {rec.betsCount.toLocaleString()} 注
                     </div>
                   </div>
                 </div>

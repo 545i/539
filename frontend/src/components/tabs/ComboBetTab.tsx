@@ -10,8 +10,9 @@ import {
 import { INITIAL_COMBO_RECORDS } from '../../data/lotteryData';
 import { LotteryBallPad } from '../LotteryBallPad';
 import { LotteryGame } from '../../types';
-import { api, GameKey } from '../../api/client';
+import { api } from '../../api/client';
 import { useAsync } from '../../api/useAsync';
+import { useGame } from '../../api/useGame';
 import { useLedger } from '../../api/useLedger';
 
 // UI 的中文玩法名 → core.combo 的 play key(注數規則由後端依這個決定)
@@ -24,44 +25,63 @@ const PLAY_KEYS: Record<PlayMethod, 'star' | 'combo' | 'pillar' | 'dan'> = {
 };
 
 export const ComboBetTab: React.FC = () => {
-  const { data: games, loading: gamesLoading, error: gamesError } = useAsync(() => api.games(), []);
+  // 遊戲由 Header 的全域切換器決定,這裡不再自己記一份
+  const { game, gameKey, loading: gameLoading } = useGame();
   // 登入時流水存後端;未登入沿用 v2 的前端 state(含示範資料)
   const ledger = useLedger('combo', INITIAL_COMBO_RECORDS);
   const records = ledger.records;
-  const [gameKey, setGameKey] = useState<GameKey>('lotto539');
-  const gameCfg = games?.find(g => g.key === gameKey) ?? null;
-  // 清單還沒回來前沿用今彩539 的規格,避免首屏數字跳動
-  const gameName = (gameCfg?.name ?? '今彩539') as LotteryGame;
-  const numMax = gameCfg?.num_max ?? 39;
   const [playMethod, setPlayMethod] = useState<PlayMethod>('星碰');
   const [starCount, setStarCount] = useState<'二星' | '三星' | '四星'>('三星');
   const [selectedBalls, setSelectedBalls] = useState<number[]>([3, 6, 12, 15, 22, 25, 32, 35]);
   const [units, setUnits] = useState<number>(12);
   const [betDate, setBetDate] = useState<string>('2026-08-19');
 
+  const n = selectedBalls.length;
+  const k = starCount === '二星' ? 2 : (starCount === '三星' ? 3 : 4);
+
+  // 星碰只適用 39 選 5 的款(今彩539 / 天天樂)。六合彩選到星碰就當成連碰算 ——
+  // 這裡不去動 playMethod state,切回今彩539 時使用者原本選的星碰會自己回來。
+  const starAllowed = game ? game.supports_pillar : true;
+  const activePlay: PlayMethod =
+    !starAllowed && playMethod === '星碰' ? '連碰(全碰)' : playMethod;
+
+  // 碰數 / 每碰成本 / 每碰彩金全部走後端 core.combo —— 四種玩法的碰數規則不同
+  // (星碰 C(選幾顆,星數)、立柱多一顆膽),前端自己算 C(n,k) 會把它們算成同一個。
+  const { data: calc } = useAsync(
+    () => api.comboCalc({game: gameKey, play: PLAY_KEYS[activePlay], stars: k, picked: n}),
+    [gameKey, activePlay, k, n],
+  );
+
+  const totalSpent = records.reduce((acc, r) => acc + r.cost, 0);
+  const totalReturn = records.reduce((acc, r) => acc + r.payout, 0);
+  const cumPnl = records.length > 0 ? records[records.length - 1].cumPnl : 0;
+  const winCount = records.filter(r => r.payout > 0).length;
+
+  // 規格全部讀 game;還沒載到就先不畫,免得閃一次別款遊戲的數字
+  if (!game) {
+    return (
+      <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] text-xs text-neutral-500 dark:text-neutral-400">
+        {gameLoading ? '載入遊戲設定中…' : '讀不到遊戲設定,請重新整理頁面。'}
+      </div>
+    );
+  }
+
+  const gameName = game.name as LotteryGame;
+  const numMax = game.num_max;
+  const totalComb = calc?.bets ?? 0;
+  const prizePerHitComb = calc?.prize_per_hit ?? 0;
+  // 一支 = 買滿這張的全部碰數;UI 的「支數」以 6 支為基準等比放大
+  const currentCost = Math.round((calc?.total_cost ?? 0) * (units / 6));
+
   const handleToggleBall = (num: number) => {
     if (selectedBalls.includes(num)) {
-      setSelectedBalls(selectedBalls.filter(n => n !== num));
+      setSelectedBalls(selectedBalls.filter(n2 => n2 !== num));
     } else {
       if (selectedBalls.length < 10) {
         setSelectedBalls([...selectedBalls, num]);
       }
     }
   };
-
-  const n = selectedBalls.length;
-  const k = starCount === '二星' ? 2 : (starCount === '三星' ? 3 : 4);
-
-  // 碰數 / 每碰成本 / 每碰彩金全部走後端 core.combo —— 四種玩法的碰數規則不同
-  // (星碰 C(選幾顆,星數)、立柱多一顆膽),前端自己算 C(n,k) 會把它們算成同一個。
-  const { data: calc } = useAsync(
-    () => api.comboCalc({game: gameKey, play: PLAY_KEYS[playMethod], stars: k, picked: n}),
-    [gameKey, playMethod, k, n],
-  );
-  const totalComb = calc?.bets ?? 0;
-  const prizePerHitComb = calc?.prize_per_hit ?? 0;
-  // 一支 = 買滿這張的全部碰數;UI 的「支數」以 6 支為基準等比放大
-  const currentCost = Math.round((calc?.total_cost ?? 0) * (units / 6));
 
   const handleRecord = (status: string = '待開獎') => {
     const isWin = status === '中三星 (1碰)';
@@ -73,7 +93,7 @@ export const ComboBetTab: React.FC = () => {
       issue: '115000201',
       game: gameName,
       mode: 'combo',
-      playType: `${playMethod} ${starCount} (${units} 支)`,
+      playType: `${activePlay} ${starCount} (${units} 支)`,
       units,
       cars: units,
       betsCount: totalComb,
@@ -86,11 +106,6 @@ export const ComboBetTab: React.FC = () => {
     });
   };
 
-  const totalSpent = records.reduce((acc, r) => acc + r.cost, 0);
-  const totalReturn = records.reduce((acc, r) => acc + r.payout, 0);
-  const cumPnl = records.length > 0 ? records[records.length - 1].cumPnl : 0;
-  const winCount = records.filter(r => r.payout > 0).length;
-
   return (
     <div className="space-y-4 sm:space-y-5 animate-in fade-in duration-200 w-full overflow-hidden">
       {/* Top Banner Bar */}
@@ -99,6 +114,9 @@ export const ComboBetTab: React.FC = () => {
           <div className="flex items-center gap-2">
             <span className="text-[10px] uppercase tracking-[0.25em] text-neutral-400 dark:text-neutral-500 font-semibold">
               Combination Matrix Engine
+            </span>
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-black/5 dark:bg-white/10 text-neutral-600 dark:text-neutral-300">
+              {game.short_name}
             </span>
             <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-black/5 dark:bg-white/10 text-neutral-600 dark:text-neutral-300">
               C({n}, {k}) = {totalComb} 碰
@@ -141,31 +159,6 @@ export const ComboBetTab: React.FC = () => {
               </span>
             </div>
 
-            {/* Game Selector */}
-            <div>
-              <label className="block text-[10px] uppercase tracking-[0.2em] font-semibold text-neutral-400 mb-1.5">
-                彩券種類
-              </label>
-              <div className="grid grid-cols-3 gap-1 p-1 rounded-xl bg-black/[0.03] dark:bg-white/[0.04] border border-black/[0.06] dark:border-white/[0.06]">
-                {(games ?? []).map(g => (
-                  <button
-                    key={g.key}
-                    type="button"
-                    onClick={() => setGameKey(g.key)}
-                    className={`py-1.5 px-1 sm:px-2 rounded-lg text-xs font-semibold truncate transition-all ${
-                      gameKey === g.key
-                        ? 'bg-black text-white dark:bg-white dark:text-black shadow-xs'
-                        : 'text-neutral-600 dark:text-neutral-400 hover:text-black dark:hover:text-white'
-                    }`}
-                  >
-                    {g.short_name}
-                  </button>
-                ))}
-              </div>
-              {gamesLoading && <div className="text-xs text-neutral-400 mt-1">載入遊戲清單…</div>}
-              {gamesError && <div className="text-xs text-rose-500 mt-1">{gamesError}</div>}
-            </div>
-
             {/* Method & Stars Grid */}
             <div className="grid grid-cols-2 gap-2">
               <div>
@@ -173,11 +166,11 @@ export const ComboBetTab: React.FC = () => {
                   玩法方式
                 </label>
                 <select
-                  value={playMethod}
-                  onChange={e => setPlayMethod(e.target.value as any)}
+                  value={activePlay}
+                  onChange={e => setPlayMethod(e.target.value as PlayMethod)}
                   className="w-full px-3 py-1.5 text-xs rounded-xl border border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.03] text-neutral-800 dark:text-neutral-200"
                 >
-                  <option value="星碰">星碰</option>
+                  {starAllowed && <option value="星碰">星碰</option>}
                   <option value="連碰(全碰)">連碰 (全碰)</option>
                   <option value="立柱">立柱</option>
                   <option value="拖膽">拖膽</option>
@@ -206,6 +199,13 @@ export const ComboBetTab: React.FC = () => {
                 </div>
               </div>
             </div>
+
+            {!starAllowed && (
+              <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-800 dark:text-amber-300">
+                {game.short_name}不適用星碰(星碰是 39 選 5 的玩法),已改用連碰計算。
+                要用星碰請在上方切換成今彩539 / 天天樂。
+              </div>
+            )}
 
             {/* Ball Selector Matrix */}
             <div>

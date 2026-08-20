@@ -6,6 +6,9 @@ import { useAuth } from '../../api/useAuth';
 
 // 排行榜的數字全部來自後端 /leaderboard —— 也就是大家實際記過的帳,
 // 不是回測、不是模擬。沒人記帳就是空榜(不補示範資料,免得看起來像真的)。
+//
+// 這頁刻意不吃全域遊戲:後端的流水彙總沒有遊戲維度(ledger 只分下法),
+// 榜上是所有遊戲合計。等後端 /leaderboard 支援 game 參數再接上全域切換器。
 
 const pnlText = (v: number) => `${v > 0 ? '+' : ''}${Math.round(v).toLocaleString()}`;
 const pct = (v: number | null) => (v === null ? '—' : `${(v * 100).toFixed(1)}%`);
@@ -87,7 +90,7 @@ export const LeaderboardView: React.FC = () => {
               記帳損益排行榜
             </h2>
             <p className="text-xs text-neutral-500 dark:text-neutral-400">
-              依各帳號實際記錄的下注流水彙總累積損益、勝率與報酬率
+              依各帳號實際記錄的下注流水彙總累積損益、勝率與報酬率(所有遊戲合計)
             </p>
           </div>
         </div>

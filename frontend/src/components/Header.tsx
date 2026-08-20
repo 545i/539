@@ -1,6 +1,32 @@
 import React from 'react';
 import { Menu, Sun, Moon, HelpCircle } from 'lucide-react';
 import { ThemeMode } from '../types';
+import { useGame } from '../api/useGame';
+
+// 全域遊戲切換器:一處切、全站跟著換
+const GameSwitcher: React.FC = () => {
+  const { games, gameKey, setGameKey } = useGame();
+  if (games.length === 0) return null;
+  return (
+    <div className="inline-flex p-0.5 rounded-xl bg-black/[0.04] dark:bg-white/[0.06] border border-black/[0.06] dark:border-white/[0.08] gap-0.5">
+      {games.map(g => (
+        <button
+          key={g.key}
+          type="button"
+          onClick={() => setGameKey(g.key)}
+          title={g.name}
+          className={`px-2.5 sm:px-3 py-1 rounded-lg text-[11px] sm:text-xs font-semibold transition-all whitespace-nowrap ${
+            gameKey === g.key
+              ? 'bg-black text-white dark:bg-white dark:text-black shadow-xs'
+              : 'text-neutral-600 dark:text-neutral-400 hover:text-black dark:hover:text-white'
+          }`}
+        >
+          {g.short_name}
+        </button>
+      ))}
+    </div>
+  );
+};
 
 interface Props {
   theme: ThemeMode;
@@ -40,6 +66,7 @@ export const Header: React.FC<Props> = ({
       </div>
 
       <div className="flex items-center gap-2 sm:gap-3">
+        <GameSwitcher />
         <button
           type="button"
           id="header-formula-btn"

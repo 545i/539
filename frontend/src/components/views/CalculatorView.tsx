@@ -1,54 +1,52 @@
-import React, { useState } from 'react';
-import { Calculator, Dices, RotateCcw, Info, Hash } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { Calculator, RotateCcw, Info, Hash } from 'lucide-react';
 import { LotteryBallPad } from '../LotteryBallPad';
-import { api, type GameKey } from '../../api/client';
+import { api } from '../../api/client';
 import { useAsync } from '../../api/useAsync';
-
-// 後端 /api/games 還沒回來(或抓失敗)時用的墊底清單,值與 core/games.py 一致,
-// 這樣切換鈕永遠是三顆、版面不會閃動。
-type GameOption = { key: GameKey; short_name: string; num_max: number };
-const FALLBACK_GAMES: GameOption[] = [
-  { key: 'lotto539', short_name: '今彩539', num_max: 39 },
-  { key: 'fantasy5', short_name: '天天樂', num_max: 39 },
-  { key: 'marksix', short_name: '六合彩', num_max: 49 },
-];
+import { useGame } from '../../api/useGame';
 
 export const CalculatorView: React.FC = () => {
-  const { data: gamesData } = useAsync(() => api.games(), []);
-  const games: GameOption[] = gamesData ?? FALLBACK_GAMES;
+  // 遊戲由頁首的全域切換器決定,這頁不再自己挑
+  const { gameKey, game } = useGame();
+  const numMax = game?.num_max ?? 39;
+  const pick = game?.pick ?? 5;
 
-  const [gameKey, setGameKey] = useState<GameKey>('lotto539');
-  const currentGame = games.find(g => g.key === gameKey) ?? games[0];
   const [star, setStar] = useState<number>(2);
-  const [selectedBalls, setSelectedBalls] = useState<number[]>([1, 8, 12, 17, 23, 31]);
+  const [picked, setPicked] = useState<number[]>([1, 8, 12, 17, 23, 31]);
   const [costPerBet, setCostPerBet] = useState<number>(80);
 
+  // 從 49 顆的六合彩切回 39 顆時,超出範圍的號碼要自己消失(不然後端會退件)
+  const selectedBalls = useMemo(() => picked.filter(b => b <= numMax), [picked, numMax]);
+  // 星數同理:六合彩可以選到 6 星,切回 539 就得收到 5
+  const stars = useMemo(() => Array.from({ length: pick - 1 }, (_, i) => i + 2), [pick]);
+  const starValue = Math.min(star, pick);
+
   const handleToggleBall = (num: number) => {
-    if (selectedBalls.includes(num)) {
-      setSelectedBalls(selectedBalls.filter(b => b !== num));
-    } else {
-      setSelectedBalls([...selectedBalls, num]);
-    }
+    setPicked(
+      selectedBalls.includes(num)
+        ? selectedBalls.filter(b => b !== num)
+        : [...selectedBalls, num],
+    );
   };
 
   const n = selectedBalls.length;
 
   // 碰數 / 成本走後端 core.combo(連碰 = 選幾顆任意湊,沒有膽),
   // 注單展開也由後端出 —— 前端不再自己算 C(n,k),兩邊才不會各有一套規則。
-  const { data: calc } = useAsync(
+  const { data: calc, error: calcError } = useAsync(
     () =>
       api.comboCalc({
         game: gameKey,
         play: 'combo',
-        stars: star,
+        stars: starValue,
         picked: n,
         per_bet: costPerBet,
       }),
-    [gameKey, star, n, costPerBet],
+    [gameKey, starValue, n, costPerBet],
   );
   const { data: expand } = useAsync(
-    () => api.comboBets(gameKey, star, selectedBalls, [], 10),
-    [gameKey, star, selectedBalls],
+    () => api.comboBets(gameKey, starValue, selectedBalls, [], 10),
+    [gameKey, starValue, selectedBalls],
   );
 
   const comboCount = calc?.bets ?? 0;
@@ -68,20 +66,26 @@ export const CalculatorView: React.FC = () => {
               連碰矩陣與組合計算機
             </h2>
             <p className="text-xs text-neutral-500 dark:text-neutral-400">
-              即時精確試算 C(n, k) 組合碰數、總成本階梯與注單展開預覽
+              {game?.short_name ?? '本遊戲'} · 即時精確試算 C(n, k) 組合碰數、總成本階梯與注單展開預覽
             </p>
           </div>
         </div>
 
         <button
           type="button"
-          onClick={() => setSelectedBalls([3, 7, 12, 18, 25, 33])}
+          onClick={() => setPicked([3, 7, 12, 18, 25, 33])}
           className="px-3 py-1.5 rounded-full text-xs font-semibold border border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5 transition-colors hidden sm:flex items-center gap-1.5"
         >
           <RotateCcw className="w-3 h-3" />
           重設示範號碼
         </button>
       </div>
+
+      {calcError && (
+        <div className="p-4 rounded-2xl bg-white dark:bg-[#121212] border border-rose-500/30 text-xs text-rose-600 dark:text-rose-400">
+          試算失敗:{calcError}
+        </div>
+      )}
 
       {/* Dual Column Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
@@ -90,50 +94,26 @@ export const CalculatorView: React.FC = () => {
         <div className="lg:col-span-6 space-y-4">
           <div className="p-5 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] space-y-4">
             
-            {/* Game & Star Selection */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-[10px] uppercase tracking-[0.2em] font-semibold text-neutral-400 mb-1.5">
-                  彩券類型
-                </label>
-                <div className="grid grid-cols-3 gap-1 p-0.5 rounded-xl bg-black/[0.03] dark:bg-white/[0.04] border border-black/[0.06] dark:border-white/[0.06]">
-                  {games.map(g => (
-                    <button
-                      key={g.key}
-                      type="button"
-                      onClick={() => setGameKey(g.key)}
-                      className={`py-1.5 text-xs font-semibold rounded-lg truncate transition-all ${
-                        gameKey === g.key
-                          ? 'bg-black text-white dark:bg-white dark:text-black shadow-xs'
-                          : 'text-neutral-600 dark:text-neutral-400'
-                      }`}
-                    >
-                      {g.short_name}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-[10px] uppercase tracking-[0.2em] font-semibold text-neutral-400 mb-1.5">
-                  下注星數 (k)
-                </label>
-                <div className="grid grid-cols-4 gap-1 p-0.5 rounded-xl bg-black/[0.03] dark:bg-white/[0.04] border border-black/[0.06] dark:border-white/[0.06]">
-                  {[2, 3, 4, 5].map(s => (
-                    <button
-                      key={s}
-                      type="button"
-                      onClick={() => setStar(s)}
-                      className={`py-1.5 text-xs font-semibold rounded-lg transition-all ${
-                        star === s
-                          ? 'bg-black text-white dark:bg-white dark:text-black shadow-xs'
-                          : 'text-neutral-600 dark:text-neutral-400'
-                      }`}
-                    >
-                      {s}星
-                    </button>
-                  ))}
-                </div>
+            {/* Star Selection(彩券類型改由頁首全域切換) */}
+            <div>
+              <label className="block text-[10px] uppercase tracking-[0.2em] font-semibold text-neutral-400 mb-1.5">
+                下注星數 (k)
+              </label>
+              <div className="flex gap-1 p-0.5 rounded-xl bg-black/[0.03] dark:bg-white/[0.04] border border-black/[0.06] dark:border-white/[0.06]">
+                {stars.map(s => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => setStar(s)}
+                    className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                      starValue === s
+                        ? 'bg-black text-white dark:bg-white dark:text-black shadow-xs'
+                        : 'text-neutral-600 dark:text-neutral-400'
+                    }`}
+                  >
+                    {s}星
+                  </button>
+                ))}
               </div>
             </div>
 
@@ -142,10 +122,10 @@ export const CalculatorView: React.FC = () => {
               <LotteryBallPad
                 selectedBalls={selectedBalls}
                 onToggleBall={handleToggleBall}
-                onClear={() => setSelectedBalls([])}
-                onQuickSelect={(balls) => setSelectedBalls(balls)}
-                maxBalls={39}
-                totalBalls={currentGame?.num_max ?? 39}
+                onClear={() => setPicked([])}
+                onQuickSelect={(balls) => setPicked(balls)}
+                maxBalls={numMax}
+                totalBalls={numMax}
                 label={`選取連碰號碼 (${selectedBalls.length} 顆)`}
               />
             </div>
@@ -189,7 +169,7 @@ export const CalculatorView: React.FC = () => {
             </div>
 
             <div className="p-4 rounded-xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08]">
-              <div className="text-[10px] uppercase tracking-wider text-neutral-400">總碰數 C({n},{star})</div>
+              <div className="text-[10px] uppercase tracking-wider text-neutral-400">總碰數 C({n},{starValue})</div>
               <div className="text-xl font-bold font-mono text-neutral-900 dark:text-white mt-0.5">{comboCount.toLocaleString()} 碰</div>
             </div>
 
@@ -218,7 +198,7 @@ export const CalculatorView: React.FC = () => {
 
             {sampleCombos.length === 0 ? (
               <div className="p-4 rounded-xl bg-black/[0.02] dark:bg-white/[0.02] border border-black/[0.06] dark:border-white/[0.06] text-xs text-neutral-500">
-                請在左方至少選取 {star} 顆號碼以產生組合。
+                請在左方至少選取 {starValue} 顆號碼以產生組合。
               </div>
             ) : (
               <div className="grid grid-cols-2 gap-2 max-h-56 overflow-y-auto pr-1">

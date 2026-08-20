@@ -9,25 +9,26 @@ import {
 } from 'lucide-react';
 // 未登入時沒有後端流水可彙整,沿用 v2 的示範數字
 import { TOTAL_STRATEGY_PERFORMANCE } from '../../data/lotteryData';
-import { api, GameKey, LedgerMode } from '../../api/client';
-import { useAsync } from '../../api/useAsync';
+import { GameKey, LedgerMode } from '../../api/client';
+import { useGame } from '../../api/useGame';
 import { useAllLedger } from '../../api/useLedger';
 
 // 追平方案的「哪一款 × 哪種下法 × 幾車」沿用 v2 原本的 client-side 設定,
 // 只有每車成本 / 每車彩金改讀後端 GameDTO。
+// 這一頁是跨遊戲的總帳,追平矩陣刻意把三款都列出來比 —— 不跟著全域切換走,
+// 只把目前選的那款標出來(下方 isCurrent)。
 // TODO(api): 需要追平車數試算端點(目前 api.pillarRecovery 只涵蓋三柱 1800碰)
 const RECOVERY_PLANS: {
   key: GameKey;
-  label: string;
   mode: 'single' | 'multi';
   balls?: number;
   cars: number;
 }[] = [
-  { key: 'lotto539', label: '今彩539', mode: 'single', cars: 12 },
-  { key: 'lotto539', label: '今彩539', mode: 'multi', balls: 20, cars: 48 },
-  { key: 'fantasy5', label: '天天樂', mode: 'single', cars: 12 },
-  { key: 'marksix', label: '六合彩', mode: 'single', cars: 10 },
-  { key: 'marksix', label: '六合彩', mode: 'multi', balls: 20, cars: 58 },
+  { key: 'lotto539', mode: 'single', cars: 12 },
+  { key: 'lotto539', mode: 'multi', balls: 20, cars: 48 },
+  { key: 'fantasy5', mode: 'single', cars: 12 },
+  { key: 'marksix', mode: 'single', cars: 10 },
+  { key: 'marksix', mode: 'multi', balls: 20, cars: 58 },
 ];
 
 // 四種下法在績效表上的顯示順序與名稱
@@ -42,7 +43,8 @@ const num = (v: unknown): number => (typeof v === 'number' && isFinite(v) ? v : 
 const signed = (v: number) => (v >= 0 ? `+${v.toLocaleString()}` : v.toLocaleString());
 
 export const TotalPnLTab: React.FC = () => {
-  const { data: games, loading: gamesLoading, error: gamesError } = useAsync(() => api.games(), []);
+  // 盤口資料共用全域遊戲 context 抓好的清單,不再自己打一次 /api/games
+  const { games, gameKey, loading: gamesLoading } = useGame();
   // 登入時四種下法的紀錄都在後端,直接彙整;未登入退回示範數字
   const { entries, loading: ledgerLoading, error: ledgerError, loggedIn } = useAllLedger();
 
@@ -97,27 +99,36 @@ export const TotalPnLTab: React.FC = () => {
     };
   }, [loggedIn, entries]);
 
-  const recoveryRows = RECOVERY_PLANS.map(p => {
-    const g = games?.find(x => x.key === p.key);
+  // 盤口全部讀 GameDTO;清單還沒回來就整列不算,不拿別款的數字硬湊
+  const recoveryRows = RECOVERY_PLANS.flatMap(p => {
+    const g = games.find(x => x.key === p.key);
+    if (!g) return [];
     const balls = p.balls ?? 1;
     // 多顆下法沿用 v2 的換算比例:每顆每車彩金 = 每車中獎可得 ÷ 4
-    const perCarCost = (g?.default_cost_per_car ?? 2755) * balls;
-    const perCarPrize =
-      p.mode === 'multi' ? ((g?.default_win_payout ?? 21200) / 4) * balls : (g?.default_win_payout ?? 21200);
+    const perCarCost = g.default_cost_per_car * balls;
+    const perCarPrize = p.mode === 'multi' ? (g.default_win_payout / 4) * balls : g.default_win_payout;
     const cost = Math.round(p.cars * perCarCost);
     const prize = Math.round(p.cars * perCarPrize);
-    return {
+    return [{
       key: p.key,
       mode: p.mode,
-      game: `${g?.short_name ?? p.label} (${p.mode === 'single' ? '單顆' : `多顆 ${balls}顆`})`,
+      isCurrent: p.key === gameKey,
+      game: `${g.short_name} (${p.mode === 'single' ? '單顆' : `多顆 ${balls}顆`})`,
       cars: p.cars,
+      net: prize - cost,
+      costNum: cost,
       cost: cost.toLocaleString(),
       prize: prize.toLocaleString(),
       afterPnl: `+${(prize - cost).toLocaleString()}`,
-    };
+    }];
   });
 
-  const bestPlan = recoveryRows.find(r => r.key === 'marksix' && r.mode === 'single') ?? recoveryRows[0];
+  // 「最佳追平」= 填得平這個洞的方案裡最便宜的那個;都填不平就選淨賺最多的。
+  // (以前寫死六合彩單顆,虧損金額一變就對不上。)
+  const need = Math.max(0, -totals.pnl);
+  const bestPlan =
+    [...recoveryRows].filter(r => r.net >= need).sort((a, b) => a.costNum - b.costNum)[0] ??
+    [...recoveryRows].sort((a, b) => b.net - a.net)[0];
 
   return (
     <div className="space-y-4 sm:space-y-5 animate-in fade-in duration-200 w-full overflow-hidden">
@@ -360,23 +371,34 @@ export const TotalPnLTab: React.FC = () => {
               </span>
             </div>
 
-            <div className="p-3 rounded-xl bg-black/[0.02] dark:bg-white/[0.03] border border-black/[0.06] dark:border-white/[0.06] text-xs space-y-1">
-              <div className="flex items-center gap-1.5 font-bold text-neutral-900 dark:text-white">
-                <ShieldAlert className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-                <span>最佳追平途徑推薦</span>
+            {bestPlan && (
+              <div className="p-3 rounded-xl bg-black/[0.02] dark:bg-white/[0.03] border border-black/[0.06] dark:border-white/[0.06] text-xs space-y-1">
+                <div className="flex items-center gap-1.5 font-bold text-neutral-900 dark:text-white">
+                  <ShieldAlert className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                  <span>最佳追平途徑推薦</span>
+                </div>
+                <p className="text-neutral-500 dark:text-neutral-400 text-[11px] leading-relaxed">
+                  欲一次填平 <strong>{need.toLocaleString()}</strong> 虧損，建議採用「{bestPlan.game}」下注 {bestPlan.cars} 車 (成本 {bestPlan.cost}，命中可獲 {bestPlan.prize})，以最低成本回本。
+                </p>
               </div>
-              <p className="text-neutral-500 dark:text-neutral-400 text-[11px] leading-relaxed">
-                欲一次填平 <strong>{Math.max(0, -totals.pnl).toLocaleString()}</strong> 虧損，建議採用「六合彩・單顆」下注 {bestPlan.cars} 車 (成本僅 {bestPlan.cost}，命中可獲 {bestPlan.prize})，以最低風險回本。
-              </p>
-            </div>
+            )}
 
             {gamesLoading && <div className="text-xs text-neutral-400">載入盤口資料…</div>}
-            {gamesError && <div className="text-xs text-rose-500">{gamesError}</div>}
+            {!gamesLoading && recoveryRows.length === 0 && (
+              <div className="text-xs text-rose-500">讀不到盤口資料,請重新整理頁面。</div>
+            )}
 
             {/* Mobile View: Recovery Cards */}
             <div className="space-y-2 sm:hidden">
               {recoveryRows.map((row, i) => (
-                <div key={i} className="p-3 rounded-xl border border-black/[0.08] dark:border-white/[0.08] bg-black/[0.01] dark:bg-white/[0.02] space-y-1.5">
+                <div
+                  key={i}
+                  className={`p-3 rounded-xl border space-y-1.5 ${
+                    row.isCurrent
+                      ? 'border-black/20 dark:border-white/20 bg-black/[0.04] dark:bg-white/[0.06]'
+                      : 'border-black/[0.08] dark:border-white/[0.08] bg-black/[0.01] dark:bg-white/[0.02]'
+                  }`}
+                >
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-neutral-900 dark:text-white">{row.game}</span>
                     <span className="text-xs font-mono font-bold text-neutral-900 dark:text-white">{row.cars} 車</span>
@@ -404,7 +426,7 @@ export const TotalPnLTab: React.FC = () => {
                 </thead>
                 <tbody>
                   {recoveryRows.map((row, i) => (
-                    <tr key={i}>
+                    <tr key={i} className={row.isCurrent ? 'bg-black/[0.03] dark:bg-white/[0.05]' : undefined}>
                       <td className="font-semibold text-xs text-neutral-900 dark:text-white">{row.game}</td>
                       <td className="font-mono text-xs font-bold">{row.cars} 車</td>
                       <td className="font-mono text-xs">{row.cost}</td>
