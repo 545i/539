@@ -1,15 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  ChevronRight, 
-  ChevronDown, 
+import {
+  ChevronRight,
+  ChevronDown,
   ShieldAlert,
-  Info
+  Info,
+  ClipboardPaste
 } from 'lucide-react';
 import { NavItem, DuoBetTab, ThemeMode } from './types';
 import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
 import { FormulaModal } from './components/FormulaModal';
 import { LoginModal } from './components/LoginModal';
+import { QuickImportModal } from './components/QuickImportModal';
 import { useAuth } from './api/useAuth';
 import { SingleBetTab } from './components/tabs/SingleBetTab';
 import { MultiBetTab } from './components/tabs/MultiBetTab';
@@ -43,6 +45,10 @@ export default function App() {
   const [isFormulaModalOpen, setIsFormulaModalOpen] = useState(false);
   const [formulaModalType, setFormulaModalType] = useState<'formula' | 'disclaimer'>('formula');
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const [isQuickImportOpen, setIsQuickImportOpen] = useState(false);
+  // 快速上傳寫進去的紀錄要讓各分頁重抓 —— useLedger 只在 loggedIn / mode 變才撈,
+  // 所以拿這個計數器當分頁容器的 key,一變就重掛,流水自然重新載入。
+  const [ledgerVersion, setLedgerVersion] = useState(0);
 
   // Sync theme class to documentElement
   useEffect(() => {
@@ -130,10 +136,20 @@ export default function App() {
             <div className="space-y-6">
               {/* Page Title & How to use Expander */}
               <div className="space-y-3">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-3">
                   <h2 className="text-xl sm:text-2xl font-display font-bold text-[#141414] dark:text-white tracking-wide uppercase">
                     二合買牌矩陣
                   </h2>
+                  {/* 貼一段下注文字 → 一次記多筆(解析規則見 backend/routers/importer.py) */}
+                  <button
+                    type="button"
+                    id="open-quick-import-btn"
+                    onClick={() => setIsQuickImportOpen(true)}
+                    className="shrink-0 py-2 px-3.5 rounded-full text-xs font-semibold uppercase tracking-wider bg-white dark:bg-[#161616] border border-black/[0.08] dark:border-white/[0.08] text-neutral-700 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5 transition-colors flex items-center gap-1.5"
+                  >
+                    <ClipboardPaste className="w-3.5 h-3.5" />
+                    <span>快速上傳</span>
+                  </button>
                 </div>
 
                 {/* "這頁怎麼用" Expander */}
@@ -199,7 +215,7 @@ export default function App() {
               </div>
 
               {/* Tab Contents */}
-              <div>
+              <div key={ledgerVersion}>
                 {duoTab === 'single' && <SingleBetTab />}
                 {duoTab === 'multi' && <MultiBetTab />}
                 {duoTab === 'pillar1800' && <ThreePillarTab />}
@@ -253,6 +269,13 @@ export default function App() {
         isOpen={isFormulaModalOpen}
         onClose={() => setIsFormulaModalOpen(false)}
         type={formulaModalType}
+      />
+
+      {/* 快速上傳下注紀錄 */}
+      <QuickImportModal
+        isOpen={isQuickImportOpen}
+        onClose={() => setIsQuickImportOpen(false)}
+        onImported={() => setLedgerVersion(v => v + 1)}
       />
     </div>
   );

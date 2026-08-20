@@ -425,6 +425,32 @@ export interface LedgerEntryDTO {
   created: string;
 }
 
+// 快速上傳下注紀錄(需登入):貼一段文字 → 後端解析成多筆流水。
+// dry_run = true 只解析回傳預覽,不寫入;確認後再打一次 dry_run = false。
+// 認不出來的行進 errors,不影響其他筆 —— 所以 items 與 errors 可能同時有東西。
+export interface QuickImportItemDTO {
+  id: number | null; // dry_run 時為 null(還沒進資料庫)
+  line: string; // 產生這一筆的原文
+  mode: LedgerMode;
+  record: Record<string, unknown>; // 就是 BetRecord(缺 id / index / cumPnl)
+}
+
+export interface QuickImportErrorDTO {
+  line_no: number;
+  line: string;
+  message: string;
+}
+
+export interface QuickImportDTO {
+  game: GameKey;
+  game_name: string;
+  dry_run: boolean;
+  parsed: number;
+  saved: number;
+  items: QuickImportItemDTO[];
+  errors: QuickImportErrorDTO[];
+}
+
 // 排行榜(需登入):後端把 ledger 流水彙總成使用者排名與各下法表現。
 // roi 可能是 null —— 「總成本 0」和「打平」是兩回事,前端要顯示成「—」。
 export interface LeaderRowDTO {
@@ -584,6 +610,21 @@ export const api = {
     del<{ok: boolean; deleted: number}>(`ledger/${id}`),
   ledgerClear: (mode?: LedgerMode) =>
     del<{ok: boolean; deleted: number}>(`ledger${mode ? `?mode=${mode}` : ''}`),
+
+  // 快速上傳:貼一段下注文字,dryRun 先預覽、再確認寫入(需登入)
+  quickImport: (
+    game: GameKey,
+    text: string,
+    dryRun = false,
+    opts: {date?: string; issue?: string} = {},
+  ) =>
+    post<QuickImportDTO>('ledger/quick-import', {
+      game,
+      text,
+      dry_run: dryRun,
+      date: opts.date ?? null,
+      issue: opts.issue ?? '',
+    }),
 
   // leaderboard 排行榜(需登入;資料來自全站記帳流水)
   leaderboard: (limit = 50) => get<LeaderboardDTO>(`leaderboard?limit=${limit}`),
