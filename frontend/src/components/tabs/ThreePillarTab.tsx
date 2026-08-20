@@ -481,7 +481,16 @@ export const ThreePillarTab: React.FC = () => {
             )}
 
             <div className="space-y-2">
-              {(pairsReq.data || []).filter(p => p.streak >= 1).map(p => (
+              {(() => {
+                const shown = (pairsReq.data || []).filter(p => p.streak >= 1);
+                if (!pairsReq.loading && !pairsReq.error && shown.length === 0) {
+                  return (
+                    <div className="text-xs text-neutral-400">
+                      目前沒有連續未開的區段組合 —— 各十位區段近期都有開出。
+                    </div>
+                  );
+                }
+                return shown.map(p => (
                 <div
                   key={`${p.bands[0]}-${p.bands[1]}`}
                   className={`p-2.5 rounded-xl border flex items-center justify-between gap-2 ${
@@ -512,7 +521,8 @@ export const ThreePillarTab: React.FC = () => {
                     {p.alert ? `連續 ${p.streak} 期兩區段都未開` : `${p.streak} 期未開`}
                   </div>
                 </div>
-              ))}
+                ));
+              })()}
             </div>
           </div>
 
