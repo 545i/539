@@ -5,11 +5,12 @@ import {useAuth} from '../api/useAuth';
 interface Props {
   isOpen: boolean;
   onClose: () => void;
+  gate?: boolean; // 登入閘模式:不給關(隱藏關閉鈕),登入才放行
 }
 
 // 登入 / 註冊(註冊需邀請碼,沿用後端 core.auth 的規則)。
 // 登入成功就關掉,各分頁的流水帳會自己去後端撈。
-export const LoginModal: React.FC<Props> = ({isOpen, onClose}) => {
+export const LoginModal: React.FC<Props> = ({isOpen, onClose, gate = false}) => {
   const {login, register} = useAuth();
   const [tab, setTab] = useState<'login' | 'register'>('login');
   const [username, setUsername] = useState('');
@@ -59,16 +60,18 @@ export const LoginModal: React.FC<Props> = ({isOpen, onClose}) => {
         <div className="flex items-center justify-between px-6 py-4 border-b border-black/[0.08] dark:border-white/[0.08]">
           <div className="flex items-center gap-2 font-display font-bold text-base text-neutral-900 dark:text-white uppercase tracking-wide">
             <KeyRound className="w-4 h-4 text-neutral-500" />
-            <span>帳號登入</span>
+            <span>{gate ? '請先登入' : '帳號登入'}</span>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            id="close-login-modal-btn"
-            className="p-1.5 rounded-full text-neutral-400 hover:text-neutral-700 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          {!gate && (
+            <button
+              type="button"
+              onClick={onClose}
+              id="close-login-modal-btn"
+              className="p-1.5 rounded-full text-neutral-400 hover:text-neutral-700 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">

@@ -1,5 +1,9 @@
 @import "tailwindcss";
 
+/* Tailwind v4 預設 dark: 看作業系統偏好;這個 App 用切換 .dark class 控制,
+   所以改成 class-based —— dark: 只在 .dark(或其子孫)底下才生效,切換鈕才有作用。 */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @layer base {
   :root {
     --bg-canvas: #F9F9F7;

@@ -9,6 +9,8 @@ import { NavItem, DuoBetTab, ThemeMode } from './types';
 import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
 import { FormulaModal } from './components/FormulaModal';
+import { LoginModal } from './components/LoginModal';
+import { useAuth } from './api/useAuth';
 import { SingleBetTab } from './components/tabs/SingleBetTab';
 import { MultiBetTab } from './components/tabs/MultiBetTab';
 import { ThreePillarTab } from './components/tabs/ThreePillarTab';
@@ -27,6 +29,9 @@ export default function App() {
     const saved = localStorage.getItem('lottery_theme');
     return (saved as ThemeMode) || 'dark';
   });
+
+  // 登入閘:未登入就擋住整個 App
+  const { loggedIn } = useAuth();
 
   // Navigation state
   const [activeNav, setActiveNav] = useState<NavItem>('duo_bet');
@@ -84,6 +89,15 @@ export default function App() {
       default: return '彩券統計分析';
     }
   };
+
+  // 未登入 → 只給登入畫面(擋住頁面)
+  if (!loggedIn) {
+    return (
+      <div className="min-h-screen bg-[#F9F9F7] dark:bg-[#0A0A0A]">
+        <LoginModal isOpen gate onClose={() => {}} />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#F9F9F7] dark:bg-[#0A0A0A] text-[#141414] dark:text-[#EAEAEA] flex flex-col font-sans transition-colors duration-200 antialiased selection:bg-black selection:text-white dark:selection:bg-white dark:selection:text-black">
