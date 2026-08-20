@@ -18,9 +18,61 @@ import {
   Sparkles
 } from 'lucide-react';
 import { NavItem, ThemeMode } from '../types';
-import { GAME_LIST } from '../data/lotteryData';
+import { api } from '../api/client';
+import { useAsync } from '../api/useAsync';
 import { useAuth } from '../api/useAuth';
 import { LoginModal } from './LoginModal';
+
+// 側欄「Live Draw Database」:三款遊戲的即時最新開獎(接真 API,取代 mock)
+const LiveDrawList: React.FC = () => {
+  const { data } = useAsync(async () => {
+    const gs = await api.games();
+    return Promise.all(
+      gs.map(async g => {
+        const h = await api.history(g.key, 1);
+        return { key: g.key, name: g.name, count: h.count, latest: h.latest };
+      }),
+    );
+  }, []);
+
+  if (!data) {
+    return <div className="px-2 text-[10px] text-neutral-400">載入開獎資料…</div>;
+  }
+
+  return (
+    <div className="space-y-2.5 text-xs">
+      {data.map(row => (
+        <div
+          key={row.key}
+          className="p-3 rounded-xl bg-black/[0.02] dark:bg-white/[0.03] border border-black/[0.06] dark:border-white/[0.06]"
+        >
+          <div className="font-semibold text-neutral-900 dark:text-neutral-100 flex items-center justify-between">
+            <span className="tracking-tight">{row.name}</span>
+            <span className="text-[10px] font-mono text-neutral-500 dark:text-neutral-400">
+              {row.count} 期
+            </span>
+          </div>
+          <div className="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1 flex items-center justify-between">
+            <span className="text-[10px] font-mono">{row.latest?.date ?? '—'}</span>
+            {row.latest?.issue && (
+              <span className="font-mono text-[10px]">#{row.latest.issue}</span>
+            )}
+          </div>
+          <div className="mt-2 flex items-center gap-1 font-mono text-[11px] flex-wrap">
+            {(row.latest?.nums ?? []).map((b, i) => (
+              <span
+                key={i}
+                className="px-1.5 py-0.5 rounded bg-black/5 dark:bg-white/10 text-neutral-900 dark:text-neutral-100 font-bold"
+              >
+                {b.toString().padStart(2, '0')}
+              </span>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
 
 interface Props {
   activeNav: NavItem;
@@ -199,35 +251,7 @@ export const Sidebar: React.FC<Props> = ({
             <div className="px-2 mb-2.5 text-[10px] uppercase tracking-[0.25em] text-neutral-400 dark:text-neutral-500 font-semibold">
               Live Draw Database
             </div>
-            <div className="space-y-2.5 text-xs">
-              {GAME_LIST.map(game => (
-                <div 
-                  key={game.id}
-                  className="p-3 rounded-xl bg-black/[0.02] dark:bg-white/[0.03] border border-black/[0.06] dark:border-white/[0.06]"
-                >
-                  <div className="font-semibold text-neutral-900 dark:text-neutral-100 flex items-center justify-between">
-                    <span className="tracking-tight">{game.name}</span>
-                    <span className="text-[10px] font-mono text-neutral-500 dark:text-neutral-400">
-                      {game.totalPeriods} 期
-                    </span>
-                  </div>
-                  <div className="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1 flex items-center justify-between">
-                    <span className="text-[10px] font-mono">{game.latestDate}</span>
-                    <span className="font-mono text-[10px]">#{game.latestPeriod}</span>
-                  </div>
-                  <div className="mt-2 flex items-center gap-1 font-mono text-[11px]">
-                    {game.latestBalls.map((b, i) => (
-                      <span 
-                        key={i}
-                        className="px-1.5 py-0.5 rounded bg-black/5 dark:bg-white/10 text-neutral-900 dark:text-neutral-100 font-bold"
-                      >
-                        {b.toString().padStart(2, '0')}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
+            <LiveDrawList />
           </div>
 
           {/* Disclaimer Expander */}
