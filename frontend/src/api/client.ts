@@ -336,12 +336,141 @@ export interface LedgerEntryDTO {
   created: string;
 }
 
+// 排行榜(需登入):後端把 ledger 流水彙總成使用者排名與各下法表現。
+// roi 可能是 null —— 「總成本 0」和「打平」是兩回事,前端要顯示成「—」。
+export interface LeaderRowDTO {
+  name: string;
+  rounds: number;
+  wins: number;
+  losses: number;
+  win_rate: number;
+  total_pnl: number;
+  total_cost: number;
+  total_payout: number;
+  roi: number | null;
+  last_at: string;
+}
+
+export interface LeaderUserDTO extends LeaderRowDTO {
+  rank: number;
+  username: string;
+  is_me: boolean;
+}
+
+export interface LeaderModeDTO extends LeaderRowDTO {
+  mode: LedgerMode;
+}
+
+export interface LeaderboardDTO {
+  me: string;
+  users: LeaderUserDTO[];
+  modes: LeaderModeDTO[];
+}
+
+// 開獎資料更新狀態(設定頁)
+export interface AutoupdateGameDTO {
+  key: GameKey;
+  name: string;
+  short_name: string;
+  data_file: string;
+  scheduled: boolean; // 有登記開獎時刻表才會自動更新
+  note: string;
+  latest: string | null; // CSV 目前最新一期(台灣日期)
+  target: string | null; // 現在應該已經有的最新一期
+  stale: boolean; // latest < target = 該去抓了
+  next_draw: string | null;
+  status: {
+    running: boolean;
+    msg: string;
+    error: string;
+    attempts: number;
+    added: number;
+    done_at: string | null;
+  };
+}
+
+export interface AutoupdateDTO {
+  scheduler_running: boolean;
+  tick_seconds: number;
+  max_attempts: number;
+  checked_at: string;
+  games: AutoupdateGameDTO[];
+}
+
+export interface FetchNowRowDTO {
+  key: GameKey;
+  name: string;
+  ok: boolean;
+  fetched: number;
+  added: number;
+  latest: string | null;
+  error: string;
+}
+
+export interface FetchNowDTO {
+  results: FetchNowRowDTO[];
+  games: AutoupdateGameDTO[];
+}
+
 function qs(params: Record<string, string | number | undefined>): string {
   const sp = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) {
     if (v !== undefined) sp.set(k, String(v));
   }
   return sp.toString();
+}
+
+// ── 檔案下載 ──────────────────────────────────────────────
+// 匯出端點回的是 xlsx / json 檔案,不是 JSON 物件,所以不能走 request()。
+// 流水帳匯出要帶 Authorization,直接開新分頁 / <a href> 帶不了標頭 ——
+// 只能 fetch 成 blob 再用臨時 <a download> 觸發下載。
+export const exportUrl = (path: string): string => apiUrl(path);
+
+/** 從 Content-Disposition 取檔名(優先 RFC 5987 的 filename*)。 */
+function filenameFrom(header: string | null, fallback: string): string {
+  if (!header) return fallback;
+  const star = /filename\*=UTF-8''([^;]+)/i.exec(header);
+  if (star) {
+    try {
+      return decodeURIComponent(star[1]);
+    } catch {
+      /* 壞掉就退回 fallback */
+    }
+  }
+  const plain = /filename="?([^";]+)"?/i.exec(header);
+  return plain ? plain[1] : fallback;
+}
+
+async function download(path: string, fallbackName: string): Promise<string> {
+  const token = getToken();
+  const res = await fetch(apiUrl(path), {
+    headers: token ? {Authorization: `Bearer ${token}`} : {},
+  });
+  if (res.status === 401 && token) {
+    clearToken();
+    throw new ApiError(401, '登入已過期,請重新登入');
+  }
+  if (!res.ok) {
+    let msg = `HTTP ${res.status}`;
+    try {
+      const body = await res.json();
+      msg = body.detail || body.message || msg;
+    } catch {
+      /* 非 JSON 錯誤就用狀態碼 */
+    }
+    throw new ApiError(res.status, msg);
+  }
+
+  const name = filenameFrom(res.headers.get('Content-Disposition'), fallbackName);
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  return name;
 }
 
 // ── API 函式 ──────────────────────────────────────────────
@@ -366,6 +495,23 @@ export const api = {
     del<{ok: boolean; deleted: number}>(`ledger/${id}`),
   ledgerClear: (mode?: LedgerMode) =>
     del<{ok: boolean; deleted: number}>(`ledger${mode ? `?mode=${mode}` : ''}`),
+
+  // leaderboard 排行榜(需登入;資料來自全站記帳流水)
+  leaderboard: (limit = 50) => get<LeaderboardDTO>(`leaderboard?limit=${limit}`),
+
+  // export 匯出(回檔案,呼叫後瀏覽器直接下載;回傳實際檔名)
+  exportReport: (game: GameKey, limit = 0) =>
+    download(
+      `export/report.xlsx?${qs({game, limit: limit || undefined})}`,
+      `${game}_report.xlsx`,
+    ),
+  exportLedgerXlsx: () => download('export/ledger.xlsx', 'ledger.xlsx'),
+  exportLedgerJson: () => download('export/ledger.json', 'ledger.json'),
+
+  // settings 開獎資料更新狀態 / 手動抓取(抓取需登入)
+  autoupdateStatus: () => get<AutoupdateDTO>('settings/autoupdate'),
+  fetchNow: (game?: GameKey) =>
+    post<FetchNowDTO>('settings/fetch-now', {game: game ?? null}),
 
   // games
   games: () => get<GameDTO[]>('games'),

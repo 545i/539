@@ -102,6 +102,59 @@ def delete_entry(username: str, entry_id: int) -> bool:
     return (cur.rowcount or 0) > 0
 
 
+def _num(record: dict, key: str) -> float:
+    """從紀錄裡取一個數字欄位;缺欄位 / 型別不對都當 0。
+
+    這是後端唯一會「解讀」payload 的地方 —— 排行榜非得知道損益不可。
+    只碰 pnl / cost / payout 三個數字欄,其餘欄位仍然原封不動。
+    """
+    v = record.get(key)
+    return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else 0.0
+
+
+def _blank_agg() -> dict:
+    return {"rounds": 0, "wins": 0, "losses": 0, "total_pnl": 0.0,
+            "total_cost": 0.0, "total_payout": 0.0, "last_at": ""}
+
+
+def _fold(agg: dict, record: dict, created: str) -> None:
+    pnl = _num(record, "pnl")
+    agg["rounds"] += 1
+    agg["wins"] += 1 if pnl > 0 else 0
+    agg["losses"] += 1 if pnl < 0 else 0
+    agg["total_pnl"] += pnl
+    agg["total_cost"] += _num(record, "cost")
+    agg["total_payout"] += _num(record, "payout")
+    if created and created > agg["last_at"]:
+        agg["last_at"] = created
+
+
+def summary() -> dict:
+    """全站流水的彙總:依使用者、依下法各一份(排行榜用)。
+
+    回傳 {"users": {帳號: 彙總}, "modes": {下法: 彙總}},彙總含
+    rounds / wins / losses / total_pnl / total_cost / total_payout / last_at。
+    勝率與報酬率由呼叫端換算(這裡不決定分母要用成本還是注數)。
+    """
+    with _conn() as c:
+        rows = c.execute(
+            "SELECT username, mode, payload, created FROM ledger_entries ORDER BY id"
+        ).fetchall()
+
+    users: dict[str, dict] = {}
+    modes: dict[str, dict] = {}
+    for username, mode, payload, created in rows:
+        try:
+            record = json.loads(payload)
+        except (ValueError, TypeError):
+            record = {}
+        if not isinstance(record, dict):
+            record = {}
+        _fold(users.setdefault(username, _blank_agg()), record, created or "")
+        _fold(modes.setdefault(mode, _blank_agg()), record, created or "")
+    return {"users": users, "modes": modes}
+
+
 def clear(username: str, mode: str | None = None) -> int:
     """清空某使用者的紀錄,回傳刪掉幾筆;mode 傳 None 代表清光四種下法。"""
     where, params = "", [username]

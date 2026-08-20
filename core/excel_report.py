@@ -44,15 +44,23 @@ def _build_disclaimer_sheet(wb, game=None) -> None:
 
 # ── 2. 開獎資料 ──────────────────────────────────────────
 def _build_draw_sheet(wb, df) -> None:
-    """寫入每期開獎號碼;日期轉成 YYYY-MM-DD 字串。"""
+    """寫入每期開獎號碼;日期轉成 YYYY-MM-DD 字串。
+
+    號碼欄由 loader.detect_num_cols 推斷,不寫死 5 顆 —— 六合彩是 49 選 6,
+    寫死 n1~n5 會把第 6 顆吞掉。
+    """
     ws = wb.create_sheet("開獎資料")
-    _write_header(ws, ["日期", "號1", "號2", "號3", "號4", "號5"])
     import pandas as pd  # 局部匯入,避免模組層相依過廣
+
+    from core.loader import detect_num_cols
+
+    num_cols = detect_num_cols(df) or ["n1", "n2", "n3", "n4", "n5"]
+    _write_header(ws, ["日期"] + [f"號{i}" for i in range(1, len(num_cols) + 1)])
 
     for r, (_, row) in enumerate(df.iterrows(), start=2):
         ws.cell(row=r, column=1, value=pd.to_datetime(row["date"]).strftime("%Y-%m-%d"))
-        for c in range(1, 6):
-            ws.cell(row=r, column=1 + c, value=int(row[f"n{c}"]))
+        for c, col in enumerate(num_cols, start=1):
+            ws.cell(row=r, column=1 + c, value=int(row[col]))
 
 
 # ── 3. 號碼頻率(含 BarChart)─────────────────────────────
