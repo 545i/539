@@ -70,6 +70,41 @@ def interval_pairs(body: IntervalPairsIn):
     return stats.interval_pair_alerts(df, groups, threshold=body.threshold)
 
 
+class ComboAbsenceIn(BaseModel):
+    game: str
+    threshold: int = Field(3, ge=1)
+    combos: list[IntervalGroup]  # 每組 = {label, nums},沿用同一個結構
+
+
+@router.post("/combo-absence")
+def combo_absence(body: ComboAbsenceIn):
+    """特殊組合提醒:一組號碼整組連續幾期都沒開(例:01 10 20 30 全部沒開)。"""
+    get_game(body.game)
+    df = load_df(body.game)
+    combos = [{"label": c.label, "nums": c.nums} for c in body.combos]
+    return stats.combo_absence_alerts(df, combos, threshold=body.threshold)
+
+
+class CooccurCombo(BaseModel):
+    label: str
+    groups: list[list[int]] = Field(default_factory=list)  # 數個區間,各自的號碼
+
+
+class ComboTogetherIn(BaseModel):
+    game: str
+    threshold: int = Field(3, ge=1)
+    combos: list[CooccurCombo]
+
+
+@router.post("/combo-together")
+def combo_together(body: ComboTogetherIn):
+    """區間組合同時出現:數個區間連續幾期沒有『全部同時開出』(距上次全部一起出現)。"""
+    get_game(body.game)
+    df = load_df(body.game)
+    combos = [{"label": c.label, "groups": c.groups} for c in body.combos]
+    return stats.combo_cooccurrence_alerts(df, combos, threshold=body.threshold)
+
+
 @router.get("/tens-bands")
 def tens_bands(game: str = Query(...)):
     """星數統計:各十位區段出現總次數、每期落幾個區段、牌型分布。"""

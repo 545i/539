@@ -283,6 +283,94 @@ def interval_pair_alerts(df: pd.DataFrame, groups: list[dict],
     return out
 
 
+def combo_absence_alerts(df: pd.DataFrame, combos: list[dict],
+                         threshold: int = 3) -> list[dict]:
+    """自訂『特殊組合』:一組號碼,連續幾期『整組都沒開出任何一顆』。
+
+    combos = [{"label": "01 10 20 30", "nums": [1, 10, 20, 30]}, ...]。
+    對每組,從最新一期往回數 streak = 連續幾期沒有任何一顆開出(整組缺席);
+    只要某期組內任一號開出,streak 即歸零。另附歷史最長缺席 max_gap。
+    streak >= threshold 時 alert=True。
+
+    回傳依 streak 由大到小排序:
+      {"label": str, "size": int, "streak": int, "max_gap": int, "alert": bool}
+    """
+    draws = draws_as_lists(df)
+    out = []
+    for combo in combos:
+        nums = {int(n) for n in combo.get("nums", [])}
+        # 每期:組內是否有任一顆開出
+        hits = [bool(nums & set(draw)) for draw in draws] if nums else []
+
+        streak = 0
+        for h in reversed(hits):
+            if h:
+                break
+            streak += 1
+
+        run = max_gap = 0
+        for h in hits:
+            run = 0 if h else run + 1
+            max_gap = max(max_gap, run)
+
+        out.append({
+            "label": str(combo.get("label", "")),
+            "size": len(nums),
+            "streak": streak,
+            "max_gap": max_gap,
+            "alert": streak >= threshold,
+        })
+    out.sort(key=lambda d: -d["streak"])
+    return out
+
+
+def combo_cooccurrence_alerts(df: pd.DataFrame, combos: list[dict],
+                             threshold: int = 3) -> list[dict]:
+    """自訂『區間組合同時出現』:數個區間,連續幾期『沒有全部同時開出』。
+
+    combos = [{"label": "四段全開",
+               "groups": [[1..9], [10..19], [20..29], [30..39]]}]。
+    一期『滿足』= combo 裡的**每一個區間**當期都至少開出一顆(全部同時出現)。
+    streak = 從最新往回數,連續幾期沒滿足(= 距上次全部同時出現幾期);
+    另附歷史最長 max_gap。streak >= threshold 時 alert=True。
+
+    對今彩539 的四個十位區間而言,滿足 = 當期號碼橫跨全部四段(俗稱 4 星盤面)。
+
+    回傳依 streak 由大到小排序:
+      {"label": str, "groups": int, "streak": int, "max_gap": int, "alert": bool}
+    """
+    draws = draws_as_lists(df)
+    out = []
+    for combo in combos:
+        groups = [{int(n) for n in g} for g in combo.get("groups", []) if g]
+        if not groups:
+            hits = []
+        else:
+            # 一期滿足:每個區間都與當期開獎有交集
+            hits = [all(g & set(draw) for g in groups) for draw in draws]
+
+        streak = 0
+        for h in reversed(hits):
+            if h:
+                break
+            streak += 1
+
+        run = max_gap = 0
+        for h in hits:
+            run = 0 if h else run + 1
+            max_gap = max(max_gap, run)
+
+        out.append({
+            "label": str(combo.get("label", "")),
+            "groups": len(groups),
+            "streak": streak,
+            "max_gap": max_gap,
+            "alert": streak >= threshold,
+        })
+    out.sort(key=lambda d: -d["streak"])
+    return out
+
+
 # ── F. 卡方適合度檢定 ────────────────────────────────────
 @dataclass
 class ChiSquareResult:

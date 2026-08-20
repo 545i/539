@@ -1,9 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle, BarChart3, Bell, Flame, Snowflake, LayoutGrid, SlidersHorizontal,
-  Plus, Trash2, RotateCcw,
+  Plus, Trash2, RotateCcw, Target,
 } from 'lucide-react';
-import { api, IntervalGroupIn, IntervalPairDTO, PillarInfoDTO } from '../../api/client';
+import {
+  api, ComboTogetherDTO, ComboTogetherIn, IntervalGroupIn, IntervalPairDTO, PillarInfoDTO,
+} from '../../api/client';
 import { useAsync } from '../../api/useAsync';
 import { useGame } from '../../api/useGame';
 
@@ -14,6 +16,9 @@ const THRESHOLD_OPTIONS = [2, 3, 4, 5, 6] as const;
 // 區間組合提醒的使用者設定(存 localStorage,重整後保留)
 const INTERVALS_KEY = 'lotto539_intervals';             // { [gameKey]: [{label, nums}, ...] }
 const WATCH_THRESHOLD_KEY = 'lotto539_watch_threshold'; // 連續幾期未開才算警示
+// 存的是 {label, groups}(groups 保留各區間分開),跟舊的 lotto539_special_combos
+// 結構不同,所以另開一個 key —— 免得讀到舊格式沒有 groups 直接炸掉
+const COMBOS_KEY = 'lotto539_combo_together';           // { [gameKey]: [{label, groups}, ...] }
 
 // localStorage 在無痕/被停用時會直接丟例外,包起來免得整頁掛掉
 const readStore = <T,>(key: string, fallback: T): T => {
@@ -72,6 +77,70 @@ const PairRow: React.FC<{ p: IntervalPairDTO; detail: string; tone: 'alert' | 'q
   </div>
 );
 
+// 一組區間組合:streak = 距上次「所有區間同一期一起開出」幾期。達門檻走 amber,
+// 未達門檻(含 0 期,代表上一期剛好全開)也一律列出 —— 是使用者自己挑的組合。
+const ComboRow: React.FC<{
+  label: string;
+  detail: string;
+  stat?: ComboTogetherDTO;
+  onRemove: () => void;
+}> = ({ label, detail, stat, onRemove }) => {
+  const alert = stat?.alert ?? false;
+  return (
+    <div
+      className={`p-2.5 rounded-xl border flex items-center justify-between gap-2 ${
+        alert
+          ? 'bg-amber-500/10 border-amber-500/20'
+          : 'bg-black/[0.02] dark:bg-white/[0.03] border-black/[0.06] dark:border-white/[0.06]'
+      }`}
+    >
+      <div className="min-w-0">
+        <div className="flex items-center gap-1.5">
+          {alert && (
+            <AlertTriangle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+          )}
+          <span
+            className={`text-xs font-mono font-bold ${
+              alert ? 'text-amber-900 dark:text-amber-300' : 'text-neutral-900 dark:text-white'
+            }`}
+          >
+            {label}
+          </span>
+        </div>
+        <div className="text-[10px] font-mono text-neutral-400 mt-0.5 truncate">
+          {detail}
+          {stat ? ` · 歷史最長 ${stat.max_gap} 期` : ''}
+        </div>
+        {alert && stat && (
+          <div className="text-[10px] font-semibold text-amber-700 dark:text-amber-400 mt-0.5">
+            {label} 已連續 {stat.streak} 期沒有全部同時出現
+          </div>
+        )}
+      </div>
+      <div className="flex items-center gap-2 shrink-0">
+        <div className="text-right">
+          <div className="text-[10px] text-neutral-400">距上次同時出現</div>
+          <div
+            className={`text-xl font-mono font-bold leading-none mt-0.5 ${
+              alert ? 'text-amber-900 dark:text-amber-300' : 'text-neutral-900 dark:text-white'
+            }`}
+          >
+            {stat ? `${stat.streak} 期` : '—'}
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onRemove}
+          title="刪除這組組合"
+          className="p-1 rounded-lg text-neutral-400 hover:text-rose-500 hover:bg-rose-500/10 transition-all"
+        >
+          <Trash2 className="w-3.5 h-3.5" />
+        </button>
+      </div>
+    </div>
+  );
+};
+
 // 依十位分段上色:01~09 / 10~19 / 20~29 / 30~39 / 40~49(六合彩才有最後一段)
 const BAND_DOT = [
   'bg-neutral-900 text-white dark:bg-white dark:text-black',
@@ -103,6 +172,19 @@ const defaultIntervals = (numMax: number): IntervalGroupIn[] => {
     out.push({ label: `${pad2(lo)}~${pad2(hi)}`, nums });
   }
   return out;
+};
+
+// 預設範例:「全部十位區間同時出現」(539/天天樂 4 段、六合彩 5 段)。
+// 各段各自一個 group —— 要的是「每一段當期都至少開一顆」,不是把號碼併起來。
+const defaultCombos = (numMax: number): ComboTogetherIn[] => {
+  const ivs = defaultIntervals(numMax);
+  if (ivs.length < 2) return [];
+  return [
+    {
+      label: `${ivs.length} 段同時出現`,
+      groups: ivs.map(g => g.nums),
+    },
+  ];
 };
 
 // 號碼輸入 parser:支援「1-15」「2,4,6,20-25」「1~9 12」等寫法,
@@ -148,9 +230,17 @@ export const AnalysisView: React.FC = () => {
   );
   const [newLabel, setNewLabel] = useState('');
   const [newNums, setNewNums] = useState('');
+  // 區間組合(多久沒一起開)也是各遊戲一份;沒存過就帶一個範例組合
+  const [comboMap, setComboMap] = useState<Record<string, ComboTogetherIn[]>>(() =>
+    readStore<Record<string, ComboTogetherIn[]>>(COMBOS_KEY, {}),
+  );
+  const [newComboLabel, setNewComboLabel] = useState('');
+  // 勾選上方那份區間清單來組出一個組合(勾的是區間 index)
+  const [pickedIvs, setPickedIvs] = useState<number[]>([]);
 
   useEffect(() => writeStore(WATCH_THRESHOLD_KEY, threshold), [threshold]);
   useEffect(() => writeStore(INTERVALS_KEY, intervalMap), [intervalMap]);
+  useEffect(() => writeStore(COMBOS_KEY, comboMap), [comboMap]);
 
   // 號碼上限跟著遊戲走(今彩539/天天樂 39、六合彩 49);後端還沒回來前先用 39 撐版面
   const numMax = game?.num_max ?? 39;
@@ -231,6 +321,70 @@ export const AnalysisView: React.FC = () => {
     [p.groups[0], p.groups[1]]
       .map(i => (intervals[i] ? numsSummary(intervals[i].nums) : '?'))
       .join(' × ');
+
+  // ── 特殊組合(整組全沒開)──────────────────────────────
+  // 使用者刪光時是空陣列(不是 undefined),所以不會又被塞回預設範例
+  const combos = useMemo(
+    () => comboMap[gameKey] ?? defaultCombos(numMax),
+    [comboMap, gameKey, numMax],
+  );
+  const combosKey = useMemo(() => JSON.stringify(combos), [combos]);
+  // 共現斷檔:alert 由後端依 threshold 算,門檻/組合改了都要重抓
+  const comboTogether = useAsync<ComboTogetherDTO[]>(
+    () =>
+      combos.length > 0
+        ? api.comboTogether(gameKey, combos, threshold)
+        : Promise.resolve([]),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [gameKey, threshold, combosKey],
+  );
+
+  // 後端把結果依 streak 重排過,對不回原本的順序 —— 用 label 配回本地清單拿 index
+  // (同名組合按出現順序逐一取用,不會互相錯位)
+  const comboRows = useMemo(() => {
+    const byLabel = new Map<string, ComboTogetherDTO[]>();
+    for (const r of comboTogether.data ?? []) {
+      const bucket = byLabel.get(r.label);
+      if (bucket) bucket.push(r);
+      else byLabel.set(r.label, [r]);
+    }
+    const rows = combos.map((c, idx) => ({ combo: c, idx, stat: byLabel.get(c.label)?.shift() }));
+    // 沒有統計(還沒回來/對不到)的排最後
+    return rows.sort((a, b) => (b.stat?.streak ?? -1) - (a.stat?.streak ?? -1));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [comboTogether.data, combosKey]);
+
+  const comboAlertCount = comboRows.filter(r => r.stat?.alert).length;
+
+  const updateCombos = (fn: (cur: ComboTogetherIn[]) => ComboTogetherIn[]) =>
+    setComboMap(prev => ({ ...prev, [gameKey]: fn(prev[gameKey] ?? defaultCombos(numMax)) }));
+  const removeCombo = (idx: number) => updateCombos(cur => cur.filter((_, i) => i !== idx));
+
+  // 換遊戲時區間清單整份換掉,舊的勾選 index 已無意義
+  useEffect(() => setPickedIvs([]), [gameKey]);
+  const toggleIv = (i: number) =>
+    setPickedIvs(cur => (cur.includes(i) ? cur.filter(x => x !== i) : [...cur, i]));
+
+  // 勾選的區間 → 一個組合:每個區間各自一個 group(不聯集,共現要看各段分開),
+  // 名稱預設用區間名接起來
+  const pickedSorted = useMemo(() => [...pickedIvs].sort((a, b) => a - b), [pickedIvs]);
+  const pickedGroups = useMemo(
+    () => pickedSorted.map(i => intervals[i]?.nums).filter(ns => ns && ns.length > 0) as number[][],
+    [pickedSorted, intervals],
+  );
+  const pickedLabel = useMemo(
+    () => pickedSorted.map(i => intervals[i]?.label).filter(Boolean).join(' + '),
+    [pickedSorted, intervals],
+  );
+  // 至少兩個區間才有「同時出現」可言
+  const canAddCombo = pickedGroups.length >= 2;
+  const addComboFromIntervals = () => {
+    if (!canAddCombo) return;
+    const label = newComboLabel.trim() || pickedLabel;
+    updateCombos(cur => [...cur, { label, groups: pickedGroups }]);
+    setNewComboLabel('');
+    setPickedIvs([]);
+  };
 
   // 開獎歷史走勢:最新一期排最上面
   const histRows = useMemo(
@@ -532,6 +686,122 @@ export const AnalysisView: React.FC = () => {
               )}
             </div>
           )}
+        </div>
+
+        {/* 區間組合共現:勾幾個區間組成一組,追蹤距上次「全部同一期一起開」幾期 */}
+        <div className="p-4 sm:p-6 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] space-y-4">
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <div className="flex items-center gap-2 text-neutral-900 dark:text-white font-display font-bold text-sm uppercase tracking-wide">
+              <Target className="w-4 h-4 text-amber-500" />
+              <span>區間組合同時出現(多久沒一起開)</span>
+              {comboAlertCount > 0 && (
+                <span className="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-300 text-[10px] font-mono font-bold">
+                  {comboAlertCount} 組警示
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div className="text-[11px] text-neutral-500 dark:text-neutral-400">
+            勾選上方那份區間清單裡的幾個區間組成一組(例:01~09 + 10~19 + 20~29 + 30~39),
+            追蹤距上次「每個區間在同一期都至少開出一顆」過了幾期;連續 {threshold} 期
+            (同上方門檻)沒有一起開就跳警示。目前 {gameName} 監看 {combos.length} 組。
+          </div>
+
+          {comboTogether.loading && <div className="text-xs text-neutral-400">載入區間組合統計中…</div>}
+          {comboTogether.error && <div className="text-xs text-rose-500">{comboTogether.error}</div>}
+
+          <div className="space-y-2">
+            {comboRows.map(r => (
+              <ComboRow
+                key={`${r.combo.label}-${r.idx}`}
+                label={r.combo.label}
+                detail={
+                  `${r.combo.groups.length} 個區間:` + r.combo.groups.map(numsSummary).join(' + ')
+                }
+                stat={r.stat}
+                onRemove={() => removeCombo(r.idx)}
+              />
+            ))}
+            {combos.length === 0 && (
+              <div className="text-xs text-neutral-400">
+                還沒有監看中的組合 —— 在下面勾兩個以上的區間(例如 10~19 與 30~39)新增。
+              </div>
+            )}
+          </div>
+
+          {/* 新增組合:勾區間,每個區間各自是一個 group */}
+          <div className="pt-3 border-t border-black/[0.06] dark:border-white/[0.06] space-y-3">
+            <div className="text-[10px] uppercase tracking-wider text-neutral-400 font-semibold">
+              勾選要納入的區間({intervals.length} 個可選)
+            </div>
+
+            {intervals.length === 0 ? (
+              <div className="text-[11px] text-neutral-400">
+                目前沒有任何區間 —— 先到上方「設定監看區間」新增,或按「還原預設」拿回十位分段。
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {intervals.map((g, i) => {
+                  const on = pickedIvs.includes(i);
+                  return (
+                    <button
+                      key={`${g.label}-${i}`}
+                      type="button"
+                      onClick={() => toggleIv(i)}
+                      aria-pressed={on}
+                      className={`px-3 py-1.5 rounded-xl border text-left transition-all ${
+                        on
+                          ? 'bg-black text-white dark:bg-white dark:text-black border-transparent'
+                          : 'bg-white dark:bg-[#121212] border-black/[0.12] dark:border-white/[0.12] text-neutral-700 dark:text-neutral-300 hover:border-black/30 dark:hover:border-white/30'
+                      }`}
+                    >
+                      <span className="block text-xs font-mono font-bold">{g.label}</span>
+                      <span
+                        className={`block text-[10px] font-mono ${
+                          on ? 'opacity-70' : 'text-neutral-400'
+                        }`}
+                      >
+                        {numsSummary(g.nums)}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            <div className="flex flex-col sm:flex-row gap-2">
+              <input
+                type="text"
+                value={newComboLabel}
+                onChange={e => setNewComboLabel(e.target.value)}
+                placeholder={pickedLabel || '組合名稱(可留空,預設用區間名)'}
+                className="flex-1 px-2.5 py-1.5 rounded-lg bg-white dark:bg-[#121212] border border-black/[0.12] dark:border-white/[0.12] text-xs text-neutral-900 dark:text-white placeholder:text-neutral-400 focus:outline-none focus:border-black/30 dark:focus:border-white/30"
+              />
+              <button
+                type="button"
+                onClick={addComboFromIntervals}
+                disabled={!canAddCombo}
+                className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-black text-white dark:bg-white dark:text-black text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                加入這組
+              </button>
+            </div>
+
+            <p className="text-[10px] font-mono text-neutral-400">
+              {canAddCombo
+                ? `${pickedLabel} — ${pickedGroups.length} 個區間都要在同一期各開出至少一顆才算「一起開」`
+                : pickedGroups.length === 1
+                  ? '只勾了一個區間 —— 至少要兩個才有「同時出現」可言。'
+                  : '還沒勾任何區間 —— 勾 2 個以上(例如四段全勾)看它多久沒一起開。'}
+            </p>
+
+            <p className="text-[10px] text-neutral-400">
+              組合存在這台瀏覽器({gameName}單獨一份),重整後保留;存的是當下各區間的號碼,
+              之後改區間清單不會回頭動到已建立的組合。右側大字為距上次全部同時出現的期數。
+            </p>
+          </div>
         </div>
 
         <div className="p-4 sm:p-6 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] space-y-4">

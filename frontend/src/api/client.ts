@@ -170,6 +170,28 @@ export interface IntervalPairDTO {
   alert: boolean;
 }
 
+// 特殊組合(一組號碼整組連續幾期都沒開)
+export interface ComboAbsenceDTO {
+  label: string;
+  size: number;
+  streak: number;
+  max_gap: number;
+  alert: boolean;
+}
+
+// 區間組合同時出現(數個區間連續幾期沒有全部一起開出)
+export interface ComboTogetherIn {
+  label: string;
+  groups: number[][]; // 每個區間的號碼
+}
+export interface ComboTogetherDTO {
+  label: string;
+  groups: number;
+  streak: number;
+  max_gap: number;
+  alert: boolean;
+}
+
 // 三柱 1800碰
 export interface PillarInfoDTO {
   pillars: [number[], number[], number[]];
@@ -600,6 +622,18 @@ export const api = {
     threshold = 3,
   ) =>
     post<IntervalPairDTO[]>('stats/interval-pairs', {game, threshold, groups}),
+  comboAbsence: (
+    game: GameKey,
+    combos: IntervalGroupIn[],
+    threshold = 3,
+  ) =>
+    post<ComboAbsenceDTO[]>('stats/combo-absence', {game, threshold, combos}),
+  comboTogether: (
+    game: GameKey,
+    combos: ComboTogetherIn[],
+    threshold = 3,
+  ) =>
+    post<ComboTogetherDTO[]>('stats/combo-together', {game, threshold, combos}),
   tensBands: (game: GameKey) => get<TensBandsDTO>(`stats/tens-bands?game=${game}`),
   parity: (game: GameKey) => get<ParityDTO>(`stats/parity?game=${game}`),
 
