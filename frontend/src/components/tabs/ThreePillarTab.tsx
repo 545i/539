@@ -481,7 +481,7 @@ export const ThreePillarTab: React.FC = () => {
             )}
 
             <div className="space-y-2">
-              {(pairsReq.data || []).map(p => (
+              {(pairsReq.data || []).filter(p => p.streak >= 1).map(p => (
                 <div
                   key={`${p.bands[0]}-${p.bands[1]}`}
                   className={`p-2.5 rounded-xl border flex items-center justify-between gap-2 ${
