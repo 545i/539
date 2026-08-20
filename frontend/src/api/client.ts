@@ -324,6 +324,61 @@ export interface ComboBetsDTO {
   list: number[][];
 }
 
+// 五策略參考選號 / 預測分析
+// 五種策略的期望中獎率完全相同(見 core/picker.py),排名只是把運氣視覺化。
+export interface PredictStrategyDTO {
+  key: string; // random | hot | cold | frequency | balanced
+  label: string;
+  desc: string;
+  sets: number[][]; // 每組推薦號碼(依該款 pick 顆)
+  top_numbers: {num: number; weight: number}[]; // 該策略偏好的號碼
+  uniform: boolean; // true = 權重均勻(random / balanced),偏好清單沒有意義
+  error: string | null;
+}
+
+export interface PredictDTO {
+  game: GameKey;
+  game_name: string;
+  num_max: number;
+  pick: number;
+  sets: number;
+  seed: number;
+  periods: number;
+  target: {issue: string; date: string | null; label: string};
+  strategies: PredictStrategyDTO[];
+  notice: string;
+}
+
+export interface PredictReviewRowDTO {
+  issue: string | null;
+  date: string | null;
+  label: string;
+  drawn: number[];
+  picks: Record<string, {numbers: number[]; matched: number[]; hits: number}>;
+}
+
+export interface PredictRankDTO {
+  strategy: string;
+  label: string;
+  periods: number;
+  total_hits: number;
+  best: number;
+  avg: number;
+  hit_rate: number;
+}
+
+export interface PredictReviewDTO {
+  game: GameKey;
+  pick: number;
+  num_max: number;
+  expected_avg: number; // 純隨機的期望命中 = pick² / num_max
+  periods: number;
+  strategies: {key: string; label: string; desc: string}[];
+  rows: PredictReviewRowDTO[];
+  ranking: PredictRankDTO[];
+  notice: string;
+}
+
 // 記帳流水帳(需登入)
 // mode 對應各下注分頁;record 就是前端的 BetRecord,後端原封不動存成 JSON,
 // 所以這裡刻意用寬鬆型別 —— 後端不解讀內容,欄位增減不必兩邊同步改。
@@ -529,6 +584,14 @@ export const api = {
     get<TensPairDTO[]>(`stats/tens-pairs?game=${game}&threshold=${threshold}`),
   tensBands: (game: GameKey) => get<TensBandsDTO>(`stats/tens-bands?game=${game}`),
   parity: (game: GameKey) => get<ParityDTO>(`stats/parity?game=${game}`),
+
+  // predict 五策略參考選號(純計算,不需登入)
+  // seed 不給時後端依「下一期期號」推導 —— 同一期重整拿到同一組號碼;
+  // 要重抽就帶一個新的 seed(例如 Date.now())。
+  predict: (game: GameKey, sets = 1, seed?: number) =>
+    get<PredictDTO>(`predict?${qs({game, sets, seed})}`),
+  predictReview: (game: GameKey, periods = 20) =>
+    get<PredictReviewDTO>(`predict/review?${qs({game, periods})}`),
 
   // pillar 1800碰
   pillarInfo: (game: GameKey) => get<PillarInfoDTO>(`pillar/info?game=${game}`),

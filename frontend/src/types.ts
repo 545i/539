@@ -4,6 +4,7 @@ export type NavItem =
   | 'duo_bet'      // 二合買牌
   | 'calculator'   // 連碰計算機
   | 'analysis'     // 統計分析
+  | 'prediction'   // 五策略預測
   | 'export'       // 匯出
   | 'leaderboard'  // 排行榜
   | 'settings';    // 設定

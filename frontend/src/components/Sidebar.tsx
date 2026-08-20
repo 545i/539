@@ -14,7 +14,8 @@ import {
   ShieldAlert,
   Dices,
   Layers,
-  LogIn
+  LogIn,
+  Sparkles
 } from 'lucide-react';
 import { NavItem, ThemeMode } from '../types';
 import { GAME_LIST } from '../data/lotteryData';
@@ -50,6 +51,7 @@ export const Sidebar: React.FC<Props> = ({
     { id: 'duo_bet', label: '二合買牌', icon: <Dices className="w-4 h-4" />, tag: 'Core' },
     { id: 'calculator', label: '連碰計算機', icon: <Calculator className="w-4 h-4" /> },
     { id: 'analysis', label: '統計分析', icon: <BarChart3 className="w-4 h-4" /> },
+    { id: 'prediction', label: '五策略預測', icon: <Sparkles className="w-4 h-4" /> },
     { id: 'export', label: '匯出', icon: <Download className="w-4 h-4" /> },
     { id: 'leaderboard', label: '排行榜', icon: <Trophy className="w-4 h-4" /> },
     { id: 'settings', label: '設定', icon: <Settings className="w-4 h-4" /> },

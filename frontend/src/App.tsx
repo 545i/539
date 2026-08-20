@@ -16,6 +16,7 @@ import { ComboBetTab } from './components/tabs/ComboBetTab';
 import { TotalPnLTab } from './components/tabs/TotalPnLTab';
 import { CalculatorView } from './components/views/CalculatorView';
 import { AnalysisView } from './components/views/AnalysisView';
+import { PredictionView } from './components/views/PredictionView';
 import { ExportView } from './components/views/ExportView';
 import { LeaderboardView } from './components/views/LeaderboardView';
 import { SettingsView } from './components/views/SettingsView';
@@ -76,6 +77,7 @@ export default function App() {
       case 'duo_bet': return '二合買牌';
       case 'calculator': return '連碰計算機';
       case 'analysis': return '統計分析';
+      case 'prediction': return '五策略預測';
       case 'export': return '匯出中心';
       case 'leaderboard': return '績效榜單';
       case 'settings': return '系統設定';
@@ -195,6 +197,7 @@ export default function App() {
 
           {activeNav === 'calculator' && <CalculatorView />}
           {activeNav === 'analysis' && <AnalysisView />}
+          {activeNav === 'prediction' && <PredictionView />}
           {activeNav === 'export' && <ExportView />}
           {activeNav === 'leaderboard' && <LeaderboardView />}
           {activeNav === 'settings' && <SettingsView theme={theme} onToggleTheme={toggleTheme} />}

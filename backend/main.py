@@ -21,7 +21,7 @@ from fastapi.staticfiles import StaticFiles
 
 from backend.data import DATA_DIR, PROJECT_ROOT, all_games, game_data_path
 from backend.routers import (auth, combo, erhe, export, games, history, ledger,
-                             leaderboard, pillar, settings, stats)
+                             leaderboard, pillar, predict, settings, stats)
 from core import autoupdate
 
 PREFIX = os.environ.get("APP_PREFIX", "").rstrip("/")
@@ -51,7 +51,8 @@ app.add_middleware(
 api_prefix = f"{PREFIX}/api"
 for r in (auth.router, games.router, history.router, stats.router,
           pillar.router, combo.router, erhe.router, ledger.router,
-          leaderboard.router, export.router, settings.router):
+          leaderboard.router, export.router, settings.router,
+          predict.router):
     app.include_router(r, prefix=api_prefix)
 
 

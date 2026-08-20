@@ -1,11 +1,73 @@
-import React, { useMemo, useState } from 'react';
-import { BarChart3, Flame, Snowflake, LayoutGrid } from 'lucide-react';
-import { api, PillarInfoDTO } from '../../api/client';
+import React, { useEffect, useMemo, useState } from 'react';
+import { AlertTriangle, BarChart3, Bell, Flame, Snowflake, LayoutGrid, SlidersHorizontal } from 'lucide-react';
+import { api, PillarInfoDTO, TensPairDTO } from '../../api/client';
 import { useAsync } from '../../api/useAsync';
 import { useGame } from '../../api/useGame';
 
 const WINDOW = 830; // 冷熱號取樣上限(資料不足時以實際期數為準)
 const HIST_OPTIONS = [20, 30, 50, 100] as const;
+const THRESHOLD_OPTIONS = [3, 4, 5, 6] as const;
+
+// 區間組合提醒的使用者設定(存 localStorage,重整後保留)
+const WATCH_PAIRS_KEY = 'lotto539_watch_pairs';       // { [gameKey]: ["0-1", ...] }
+const WATCH_THRESHOLD_KEY = 'lotto539_watch_threshold'; // 連續幾期未開才算警示
+
+// localStorage 在無痕/被停用時會直接丟例外,包起來免得整頁掛掉
+const readStore = <T,>(key: string, fallback: T): T => {
+  try {
+    const raw = window.localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : fallback;
+  } catch {
+    return fallback;
+  }
+};
+const writeStore = (key: string, value: unknown) => {
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    /* 存不進去就算了,不影響功能 */
+  }
+};
+
+const pairKey = (bands: [number, number]) => `${bands[0]}-${bands[1]}`;
+
+// 一列區間組合:alert=警示(amber)、quiet=有監看但還沒到門檻、muted=沒監看
+const PairRow: React.FC<{ p: TensPairDTO; tone: 'alert' | 'quiet' | 'muted' }> = ({ p, tone }) => (
+  <div
+    className={`p-2.5 rounded-xl border flex items-center justify-between gap-2 ${
+      tone === 'alert'
+        ? 'bg-amber-500/10 border-amber-500/20'
+        : tone === 'quiet'
+          ? 'bg-black/[0.02] dark:bg-white/[0.03] border-black/[0.06] dark:border-white/[0.06]'
+          : 'border-dashed border-black/[0.06] dark:border-white/[0.06] opacity-50'
+    }`}
+  >
+    <div className="min-w-0">
+      <div className="flex items-center gap-1.5">
+        {tone === 'alert' && (
+          <AlertTriangle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+        )}
+        <span
+          className={`text-xs font-mono font-bold ${
+            tone === 'alert' ? 'text-amber-900 dark:text-amber-300' : 'text-neutral-900 dark:text-white'
+          }`}
+        >
+          {p.labels[0]} × {p.labels[1]}
+        </span>
+      </div>
+      <div className="text-[10px] font-mono text-neutral-400 mt-0.5">
+        {p.range[0]} × {p.range[1]}
+      </div>
+    </div>
+    <div
+      className={`text-[11px] font-mono shrink-0 text-right ${
+        tone === 'alert' ? 'text-amber-900 dark:text-amber-300 font-bold' : 'text-neutral-400'
+      }`}
+    >
+      {tone === 'alert' ? `連續 ${p.streak} 期兩區段都未開` : `${p.streak} 期未開`}
+    </div>
+  </div>
+);
 
 // 依十位分段上色:01~09 / 10~19 / 20~29 / 30~39 / 40~49(六合彩才有最後一段)
 const BAND_DOT = [
@@ -31,6 +93,18 @@ export const AnalysisView: React.FC = () => {
   const { gameKey, game } = useGame();
   const [activeTab, setActiveTab] = useState<'draw_history' | 'hot_cold' | 'pillar_dist' | 'odd_even'>('draw_history');
   const [histN, setHistN] = useState<number>(30);
+  const [showWatchSetup, setShowWatchSetup] = useState(false);
+  const [threshold, setThreshold] = useState<number>(() => {
+    const v = readStore<number>(WATCH_THRESHOLD_KEY, 3);
+    return (THRESHOLD_OPTIONS as readonly number[]).includes(v) ? v : 3;
+  });
+  // 每款彩券各自記一份監看清單(六合彩 10 組、539/天天樂 6 組,不能共用)
+  const [watchMap, setWatchMap] = useState<Record<string, string[]>>(() =>
+    readStore<Record<string, string[]>>(WATCH_PAIRS_KEY, {}),
+  );
+
+  useEffect(() => writeStore(WATCH_THRESHOLD_KEY, threshold), [threshold]);
+  useEffect(() => writeStore(WATCH_PAIRS_KEY, watchMap), [watchMap]);
 
   // 號碼上限跟著遊戲走(今彩539/天天樂 39、六合彩 49);後端還沒回來前先用 39 撐版面
   const numMax = game?.num_max ?? 39;
@@ -58,6 +132,28 @@ export const AnalysisView: React.FC = () => {
   );
   const parity = useAsync(() => api.parity(gameKey), [gameKey]);
   const drawHist = useAsync(() => api.history(gameKey, histN), [gameKey, histN]);
+  // 區間組合斷檔:alert 由後端依 threshold 算,所以門檻改了要重抓
+  const tensPairs = useAsync(() => api.tensPairs(gameKey, threshold), [gameKey, threshold]);
+
+  // 監看清單分組:端點已把「久的」排前面,這裡只做分堆不重排
+  const pairs = useMemo(() => tensPairs.data ?? [], [tensPairs.data]);
+  const allPairKeys = useMemo(() => pairs.map(p => pairKey(p.bands)), [pairs]);
+  // 沒存過設定 = 全部監看(預設就有提醒,不用先進設定勾一輪)
+  const watchedKeys = watchMap[gameKey];
+  const isWatched = (k: string) => (watchedKeys ? watchedKeys.includes(k) : true);
+
+  const alertPairs = pairs.filter(p => isWatched(pairKey(p.bands)) && p.alert);
+  const quietPairs = pairs.filter(p => isWatched(pairKey(p.bands)) && !p.alert);
+  const mutedPairs = pairs.filter(p => !isWatched(pairKey(p.bands)));
+
+  const toggleWatch = (k: string) =>
+    setWatchMap(prev => {
+      const cur = prev[gameKey] ?? allPairKeys;
+      const next = cur.includes(k) ? cur.filter(x => x !== k) : [...cur, k];
+      return { ...prev, [gameKey]: next };
+    });
+  const setAllWatched = (on: boolean) =>
+    setWatchMap(prev => ({ ...prev, [gameKey]: on ? allPairKeys : [] }));
 
   // 開獎歷史走勢:最新一期排最上面
   const histRows = useMemo(
@@ -198,6 +294,138 @@ export const AnalysisView: React.FC = () => {
 
       {/* Draw History Distribution Matrix */}
       {activeTab === 'draw_history' && (
+        <>
+        {/* 區間組合斷檔提醒(可自選要監看哪些配對) */}
+        <div className="p-4 sm:p-6 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] space-y-4">
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <div className="flex items-center gap-2 text-neutral-900 dark:text-white font-display font-bold text-sm uppercase tracking-wide">
+              <Bell className="w-4 h-4 text-amber-500" />
+              <span>區間組合斷檔提醒</span>
+              {alertPairs.length > 0 && (
+                <span className="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-300 text-[10px] font-mono font-bold">
+                  {alertPairs.length} 組警示
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="inline-flex p-1 rounded-xl bg-black/[0.03] dark:bg-white/[0.04] border border-black/[0.06] dark:border-white/[0.06] gap-1">
+                {THRESHOLD_OPTIONS.map(n => (
+                  <button
+                    key={n}
+                    type="button"
+                    onClick={() => setThreshold(n)}
+                    className={`px-3 py-1 rounded-lg text-xs font-mono font-semibold transition-all ${
+                      threshold === n
+                        ? 'bg-black text-white dark:bg-white dark:text-black shadow-xs'
+                        : 'text-neutral-600 dark:text-neutral-400 hover:text-black dark:hover:text-white'
+                    }`}
+                  >
+                    {n} 期
+                  </button>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowWatchSetup(v => !v)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-black/[0.08] dark:border-white/[0.08] text-xs font-semibold text-neutral-600 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5 transition-all"
+              >
+                <SlidersHorizontal className="w-3.5 h-3.5" />
+                {showWatchSetup ? '收起設定' : '設定監看區間'}
+              </button>
+            </div>
+          </div>
+
+          <div className="text-[11px] text-neutral-500 dark:text-neutral-400">
+            被監看的兩個十位區段連續 {threshold} 期都沒開出號碼就跳警示;
+            目前 {gameName} 共 {pairs.length} 組配對,已監看{' '}
+            {pairs.length - mutedPairs.length} 組。
+          </div>
+
+          {/* 監看設定:每組配對一個開關,選擇存在瀏覽器本機 */}
+          {showWatchSetup && (
+            <div className="p-3 rounded-xl bg-black/[0.02] dark:bg-white/[0.03] border border-black/[0.06] dark:border-white/[0.06] space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[10px] uppercase tracking-wider text-neutral-400 font-semibold">
+                  要提醒哪些區間組合
+                </span>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setAllWatched(true)}
+                    className="text-[11px] font-semibold text-neutral-600 dark:text-neutral-300 hover:text-black dark:hover:text-white"
+                  >
+                    全選
+                  </button>
+                  <span className="text-neutral-300 dark:text-neutral-600">|</span>
+                  <button
+                    type="button"
+                    onClick={() => setAllWatched(false)}
+                    className="text-[11px] font-semibold text-neutral-600 dark:text-neutral-300 hover:text-black dark:hover:text-white"
+                  >
+                    全不選
+                  </button>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+                {pairs.map(p => {
+                  const k = pairKey(p.bands);
+                  const on = isWatched(k);
+                  return (
+                    <label
+                      key={k}
+                      className={`flex items-center gap-2 px-2.5 py-2 rounded-lg border cursor-pointer transition-all ${
+                        on
+                          ? 'bg-white dark:bg-[#121212] border-black/[0.12] dark:border-white/[0.12]'
+                          : 'border-black/[0.06] dark:border-white/[0.06] opacity-60 hover:opacity-100'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={on}
+                        onChange={() => toggleWatch(k)}
+                        className="w-3.5 h-3.5 accent-amber-500 shrink-0"
+                      />
+                      <span className="min-w-0">
+                        <span className="block text-xs font-mono font-bold text-neutral-900 dark:text-white">
+                          {p.labels[0]} × {p.labels[1]}
+                        </span>
+                        <span className="block text-[10px] font-mono text-neutral-400">
+                          {p.range[0]} × {p.range[1]}
+                        </span>
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+              <p className="text-[10px] text-neutral-400">
+                設定會存在這台瀏覽器({gameName}單獨一份),重整後保留。
+              </p>
+            </div>
+          )}
+
+          {tensPairs.loading && <div className="text-xs text-neutral-400">載入區間統計中…</div>}
+          {tensPairs.error && <div className="text-xs text-rose-500">{tensPairs.error}</div>}
+
+          {!tensPairs.loading && !tensPairs.error && (
+            <div className="space-y-2">
+              {alertPairs.map(p => (
+                <PairRow key={pairKey(p.bands)} p={p} tone="alert" />
+              ))}
+              {quietPairs.map(p => (
+                <PairRow key={pairKey(p.bands)} p={p} tone="quiet" />
+              ))}
+              {mutedPairs.map(p => (
+                <PairRow key={pairKey(p.bands)} p={p} tone="muted" />
+              ))}
+              {pairs.length > 0 && alertPairs.length === 0 && mutedPairs.length === pairs.length && (
+                <div className="text-xs text-neutral-400">
+                  目前沒有監看任何區間組合 —— 按「設定監看區間」勾選要提醒的配對。
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
         <div className="p-4 sm:p-6 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] space-y-4">
           <div className="flex items-center justify-between flex-wrap gap-3">
             <div className="flex items-center gap-2 text-neutral-900 dark:text-white font-display font-bold text-sm uppercase tracking-wide">
@@ -304,6 +532,7 @@ export const AnalysisView: React.FC = () => {
             每一列為一期開獎,圓點標出當期開出的號碼(依十位分色);最下方為該號在近 {histN} 期的出現次數分佈。
           </p>
         </div>
+        </>
       )}
 
       {/* Hot & Cold View */}
