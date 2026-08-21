@@ -627,6 +627,7 @@ export const ThreePillarTab: React.FC = () => {
                         date={rec.date}
                         draws={draws}
                         onSelect={(iss) => ledger.resettle(rec.id, iss)}
+                        onRefresh={() => ledger.resettle(rec.id, rec.issue)}
                       />
                     </div>
 
@@ -698,6 +699,7 @@ export const ThreePillarTab: React.FC = () => {
                           date={rec.date}
                           draws={draws}
                           onSelect={(iss) => ledger.resettle(rec.id, iss)}
+                          onRefresh={() => ledger.resettle(rec.id, rec.issue)}
                         />
                       </td>
                       <td className="text-xs font-semibold">{rec.game.split('(')[0]}</td>
