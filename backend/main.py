@@ -20,9 +20,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from backend.data import DATA_DIR, PROJECT_ROOT, all_games, game_data_path
+from backend import star_cost_store
 from backend.routers import (auth, combo, erhe, export, games, history,
                              importer, ledger, leaderboard, pillar, predict,
-                             settings, stats)
+                             settings, star_cost, stats)
 from core import autoupdate
 
 PREFIX = os.environ.get("APP_PREFIX", "").rstrip("/")
@@ -33,6 +34,8 @@ DIST_DIR = PROJECT_ROOT / "frontend" / "dist"
 async def lifespan(app: FastAPI):
     # 背景抓開獎資料(daemon thread,全行程只起一條)
     DATA_DIR.mkdir(exist_ok=True)
+    # 把後台存的連碰盤口套進 core.combo(全域生效)
+    star_cost_store.apply_to_core()
     autoupdate.start_scheduler(
         {g.key: game_data_path(g) for g in all_games()}, on_done=None)
     yield
@@ -53,7 +56,7 @@ api_prefix = f"{PREFIX}/api"
 for r in (auth.router, games.router, history.router, stats.router,
           pillar.router, combo.router, erhe.router, ledger.router,
           leaderboard.router, export.router, settings.router,
-          predict.router, importer.router):
+          predict.router, importer.router, star_cost.router):
     app.include_router(r, prefix=api_prefix)
 
 

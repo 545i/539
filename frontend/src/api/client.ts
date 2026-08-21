@@ -81,6 +81,8 @@ async function request<T>(path: string, opts: RequestInit = {}): Promise<T> {
 const get = <T>(path: string) => request<T>(path);
 const post = <T>(path: string, body: unknown) =>
   request<T>(path, {method: 'POST', body: JSON.stringify(body)});
+const put = <T>(path: string, body: unknown) =>
+  request<T>(path, {method: 'PUT', body: JSON.stringify(body)});
 const del = <T>(path: string) => request<T>(path, {method: 'DELETE'});
 
 // ── 型別(對應後端回傳)────────────────────────────────────
@@ -527,6 +529,25 @@ export interface FetchNowDTO {
   games: AutoupdateGameDTO[];
 }
 
+// 連碰星數盤口(全域設定,不是個人偏好 —— 改了全站的試算與記帳成本都跟著動)
+export interface StarCostRowDTO {
+  cost: number; // 每碰成本
+  prize: number; // 中一碰可得
+  custom: boolean; // true = 後台改過,false = 還是程式的出廠預設
+  updated: string;
+  updated_by: string;
+}
+
+export interface StarCostDTO {
+  stars: number[]; // [2, 3, 4]
+  star_names: Record<string, string>; // {"2":"二星", ...}
+  costs: Record<string, StarCostRowDTO>; // 鍵是星數(JSON 的鍵一律字串)
+  defaults: Record<string, {cost: number; prize: number}>;
+}
+
+/** PUT 的內容:只送要改的星數也可以。 */
+export type StarCostInput = Record<string, {cost: number; prize: number}>;
+
 function qs(params: Record<string, string | number | undefined>): string {
   const sp = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) {
@@ -642,6 +663,11 @@ export const api = {
   autoupdateStatus: () => get<AutoupdateDTO>('settings/autoupdate'),
   fetchNow: (game?: GameKey) =>
     post<FetchNowDTO>('settings/fetch-now', {game: game ?? null}),
+
+  // 連碰星數盤口(讀不用登入,改要登入;改的是全站共用的成本)
+  getStarCosts: () => get<StarCostDTO>('star-cost'),
+  setStarCosts: (costs: StarCostInput) => put<StarCostDTO>('star-cost', {costs}),
+  resetStarCosts: () => del<StarCostDTO>('star-cost'),
 
   // games
   games: () => get<GameDTO[]>('games'),

@@ -14,10 +14,17 @@ from math import isfinite
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from backend import star_cost_store
 from backend.data import get_game
 from core import combo
 
 router = APIRouter(prefix="/combo", tags=["combo"])
+
+# 盤口是後台可改的(見 backend/star_cost_store.py)。正規的套用點在 main.py 的
+# lifespan,這裡再套一次是為了「沒走 lifespan 的情境」——測試用的 TestClient、
+# 或只 import 這個 router 的工具腳本 —— 也拿得到後台改過的價,不會偷偷用回
+# 出廠預設。apply_to_core 是冪等的,套幾次都一樣。
+star_cost_store.apply_to_core()
 
 # bet_list 會把整張注單攤成 list 再排序 —— 顆數一大就是幾十萬筆(39 顆五星
 # 全展開是 575,757 注),而前端只要前幾注當預覽,為了它吃掉幾十 MB 不划算。
@@ -49,8 +56,9 @@ def plays():
         "stars": list(combo.STARS),
         "star_names": {str(k): v for k, v in combo.STAR_NAMES.items()},
         "star_pick": combo.STAR_PICK,
-        "market_cost": {str(k): v for k, v in combo.MARKET_COST.items()},
-        "market_prize": {str(k): v for k, v in combo.MARKET_PRIZE.items()},
+        # 生效中的盤口(後台改過就是改過的值,不是程式裡的出廠預設)
+        "market_cost": {str(k): v["cost"] for k, v in combo.market_table().items()},
+        "market_prize": {str(k): v["prize"] for k, v in combo.market_table().items()},
     }
 
 
@@ -83,11 +91,11 @@ def calc(body: CalcIn):
         raise HTTPException(status_code=400,
                             detail=f"膽 {dans} 顆比選的 {picked} 顆還多")
 
-    # 沒指定就用 core 的市場盤口;星數超出 2~4 時退回遊戲本身的三合預設
+    # 沒指定就用生效中的市場盤口(後台可改);星數超出 2~4 時退回遊戲本身的三合預設
     per_bet = float(body.per_bet if body.per_bet is not None
-                    else combo.MARKET_COST.get(stars, g.default_bet_cost))
+                    else combo.market_cost(stars, g.default_bet_cost))
     prize = float(body.prize if body.prize is not None
-                  else combo.MARKET_PRIZE.get(stars, g.default_bet_prize))
+                  else combo.market_prize(stars, g.default_bet_prize))
     odds = prize / per_bet if per_bet else 0.0
 
     if p.key == "star":

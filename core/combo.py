@@ -49,6 +49,65 @@ MARKET_COST: dict[int, float] = {2: 80.0, 3: 63.0, 4: 50.0}
 TABLE_SIZES = tuple(range(4, 16))
 
 
+# ── 盤口可由後台改寫 ─────────────────────────────────────
+# 上面兩個 dict 是**出廠預設**,不是最終價 —— 組頭的價碼會變,改一次程式再部署
+# 一次太重,所以後台可以改(backend/star_cost_store.py 存進 sqlite,開站時
+# 呼叫 set_market_overrides 套進來)。這是**全域**設定,不分使用者:同一個站
+# 上大家看到的成本必須是同一份,不然排行榜的損益就沒得比。
+#
+# 所以**所有讀取點一律走 market_cost / market_prize,不要直接讀 dict** ——
+# 直接讀的地方就吃不到後台改的值,會變成「試算用新價、記帳用舊價」。
+_COST_OVERRIDE: dict[int, float] = {}
+_PRIZE_OVERRIDE: dict[int, float] = {}
+
+
+def set_market_overrides(cost: dict | None = None,
+                         prize: dict | None = None) -> None:
+    """套用後台設定的盤口;傳 None 代表那一半不動。
+
+    是**整批取代**而不是逐筆合併 —— 後台送過來的本來就是完整的一份設定,
+    合併會讓上一版才有的星數留在記憶體裡不走。
+    """
+    if cost is not None:
+        _COST_OVERRIDE.clear()
+        _COST_OVERRIDE.update({int(k): float(v) for k, v in cost.items()})
+    if prize is not None:
+        _PRIZE_OVERRIDE.clear()
+        _PRIZE_OVERRIDE.update({int(k): float(v) for k, v in prize.items()})
+
+
+def clear_market_overrides() -> None:
+    """回到出廠預設(測試與「還原預設」用)。"""
+    _COST_OVERRIDE.clear()
+    _PRIZE_OVERRIDE.clear()
+
+
+def market_cost(stars: int, default: float | None = None) -> float | None:
+    """每碰成本:後台設定 > 出廠預設 > 呼叫端給的 default。"""
+    k = int(stars)
+    return _COST_OVERRIDE[k] if k in _COST_OVERRIDE else MARKET_COST.get(k, default)
+
+
+def market_prize(stars: int, default: float | None = None) -> float | None:
+    """中一碰可得:後台設定 > 出廠預設 > 呼叫端給的 default。"""
+    k = int(stars)
+    return _PRIZE_OVERRIDE[k] if k in _PRIZE_OVERRIDE else MARKET_PRIZE.get(k, default)
+
+
+def market_table(stars=STARS) -> dict[int, dict[str, float]]:
+    """目前**生效中**的盤口:{星數: {"cost": 每碰成本, "prize": 中一碰可得}}。"""
+    return {int(k): {"cost": float(market_cost(k) or 0.0),
+                     "prize": float(market_prize(k) or 0.0)}
+            for k in stars}
+
+
+def market_defaults(stars=STARS) -> dict[int, dict[str, float]]:
+    """出廠預設的盤口(後台頁面拿來顯示「原本是多少」)。"""
+    return {int(k): {"cost": float(MARKET_COST.get(int(k), 0.0)),
+                     "prize": float(MARKET_PRIZE.get(int(k), 0.0))}
+            for k in stars}
+
+
 @dataclass(frozen=True)
 class Play:
     """一種下法。dans 是固定的膽數;None 代表由使用者自己決定。"""

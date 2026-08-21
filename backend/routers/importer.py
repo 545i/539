@@ -16,7 +16,7 @@
 **車數 = 「車」前面那個數字**(直接用,不再換算)。中文顆數(「八顆」)不解析
 —— 顆數以選號那行實際有幾個號碼為準,兩者不一致時以號碼為準。
 
-成本一律走 core:星碰 combo.star_bets × combo.MARKET_COST、1800碰
+成本一律走 core:星碰 combo.star_bets × combo.market_cost(後台可改的盤口)、1800碰
 pillar.total_bets × GameConfig.default_bet_cost、二合 押幾顆 × 車數 × 每車成本
 (與 backend/routers/erhe.py 的 plan 同一條式子)。這裡不寫死任何金額。
 
@@ -130,7 +130,8 @@ def _star_item(g: GameConfig, stars: int, picks: list[int], units: float,
     bets = combo_mod.star_bets(stars, len(picks))
     if bets <= 0:
         raise ValueError(f"選 {len(picks)} 顆湊不出{combo_mod.star_name(stars)}碰")
-    per_bet = combo_mod.MARKET_COST[stars]
+    # 走 market_cost 而不是直接讀 MARKET_COST —— 後台改過的價要吃得到
+    per_bet = float(combo_mod.market_cost(stars, g.default_bet_cost))
     return _Item(
         mode="combo",
         play_type=f"星碰 {combo_mod.star_name(stars)}({bets} 碰/支)",
