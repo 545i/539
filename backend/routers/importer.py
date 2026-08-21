@@ -47,7 +47,6 @@ UNITS_PER_AMOUNT = 100.0
 # 多顆下注的盤口換算,與前端 MultiBetTab 一致:
 # 每顆每車成本 = 每車成本 ÷ 20(今彩539 → 2755 / 20 = 137.75)。
 # 單顆下注不除(押 1 顆、每車就是 default_cost_per_car)。
-MULTI_COST_DIVISOR = 20.0
 
 # 全形數字 / 全形 X / 各種乘號都先攤平成半形,免得每條 regex 各寫一次
 _NORMALIZE = {ord("０") + i: str(i) for i in range(10)}
@@ -120,13 +119,9 @@ class _State:
 def _erhe_cost(g: GameConfig, n_balls: int, cars: float) -> float:
     """二合:成本 = 押幾顆 × 車數 × 每車成本(同 backend/routers/erhe.py 的 plan)。
 
-    多顆盤的每車成本要先除 MULTI_COST_DIVISOR —— 前端多顆分頁就是這樣帶給
-    /erhe/plan 的,不跟著除的話同一張單子從這裡進來會比手動記的貴 20 倍。
-    """
-    per_car = g.default_cost_per_car
-    if n_balls > 1:
-        per_car /= MULTI_COST_DIVISOR
-    return n_balls * cars * per_car
+"""
+    # 每顆每車成本 = 二合單顆成本(72.5 × 38 = 2755),單顆多顆一致
+    return n_balls * cars * g.default_cost_per_car
 
 
 def _star_item(g: GameConfig, stars: int, picks: list[int], units: float,

@@ -50,8 +50,8 @@ export const MultiBetTab: React.FC = () => {
 
   const ballCount = selectedBalls.length || 10;
   // 多顆盤口沿用 v2 的換算比例:每顆每車成本 = 每車成本 ÷ 20、每顆每車彩金 = 每車中獎可得 ÷ 4
-  // (今彩539 → 2755/20 = 137.75、21200/4 = 5300,與 v2 完全一致)
-  const costPerCarPerBall = game ? game.default_cost_per_car / 20 : 0;
+  // 每顆每車成本 = 二合單顆成本 72.5 × 38 = 2755(與單顆下注一致,不再除 20)
+  const costPerCarPerBall = game ? game.default_cost_per_car : 0;
   const prizePerHitPerCar = game ? game.default_win_payout / 4 : 0;
   // 成本與各段中獎回收由後端 core.erhe 算(押 ballCount 顆),盤口帶上面換算後的值。
   // 遊戲清單還沒回來就先不打(盤口會是 0),等 game 進來 deps 一變就自動補算。
