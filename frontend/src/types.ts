@@ -10,9 +10,9 @@ export type NavItem =
   | 'audit'        // 操作歷史(可作廢=反轉)
   | 'settings';    // 設定
 
-export type DuoBetTab = 
-  | 'single'       // 單顆下注
-  | 'multi'        // 多顆下注
+export type DuoBetTab =
+  | 'single'       // 1組(固定顆數可設定;single 是沿用的 ledger mode key)
+  | 'multi'        // 2組(同上,multi 是沿用的 mode key)
   | 'pillar1800'   // 三柱1800碰
   | 'combo'        // 連碰
   | 'totals';      // 總損益

@@ -105,9 +105,9 @@ export function useLedger(mode: LedgerMode, demoRecords: BetRecord[] = []) {
     }
   }, [loggedIn, remote]);
 
-  /** 改某一筆的期數並重新對獎(抓該期開獎號、重算中獎與損益)。 */
+  /** 改某一筆的期數並重新對獎;hitCount 有值 = 手填中獎顆數(忘記期數但記得中幾顆)。 */
   const resettle = useCallback(
-    async (id: string, issue: string) => {
+    async (id: string, issue: string, hitCount?: number | null) => {
       setError(null);
       if (!loggedIn) {
         // 未登入:用 preview 端點算好,回填本地暫存(不寫 DB)
@@ -115,7 +115,7 @@ export function useLedger(mode: LedgerMode, demoRecords: BetRecord[] = []) {
         if (!cur) return;
         try {
           const settled = await api.ledgerSettlePreview(
-            cur as unknown as Record<string, unknown>, issue,
+            cur as unknown as Record<string, unknown>, issue, hitCount,
           );
           setLocal(prev =>
             prev.map(r =>
@@ -130,7 +130,7 @@ export function useLedger(mode: LedgerMode, demoRecords: BetRecord[] = []) {
         return;
       }
       try {
-        const entry = await api.ledgerResettle(Number(id), issue);
+        const entry = await api.ledgerResettle(Number(id), issue, hitCount);
         setRemote(prev =>
           (prev ?? []).map(r => (r.id === id ? toRecord(entry) : r)),
         );

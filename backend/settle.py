@@ -6,8 +6,9 @@
 各算各的。
 
 各下法的對獎與派彩:
-- single  押 1 顆,命中(該顆有開)回收 = 車數 × 每車中獎可得,否則 0。
-- multi   押多顆,命中幾顆 × 車數 × (每車中獎可得 ÷ 4);盤口沿用多顆下注頁。
+- single / multi  二合買牌的兩個「組」(1組 / 2組),派彩公式統一:命中幾顆 ×
+                  車數 ×(每車中獎可得 ÷ 4);盤口沿用多顆下注頁。
+                  (single 是舊「單顆」的 mode key,如今就是 1組;不再特例。)
 - pillar1800  三柱全包,命中注數只可能是 4 / 3 / 0(見 core.pillar),
               回收 = 支數 × 命中注數 × 每注可得。
 - combo   星碰用 core.combo.star_hits_of(中的碰數),其餘連碰家族用 hits_of。
@@ -15,8 +16,11 @@
           注:連碰家族的「膽」沒存進紀錄,這裡一律當 dans=0(全碰)——
           對星碰與連碰(全碰)精確,對立柱 / 拖膽是近似。
 
-draw 傳 None(該期還沒開 / 查不到)時,退回「待開獎」:清空開獎號、payout /
-pnl 歸零,不亂算。cost 一律沿用原紀錄(投入的錢不因對獎而變)。
+**手填中獎顆數**(hit_count 不為 None):使用者忘記期數但記得中幾顆時,不看 draw,
+直接用該下法「每中一單位」的派彩乘上手填數量。drawBalls 維持原值(不清空)。
+
+draw 傳 None 且沒手填(該期還沒開 / 查不到)時,退回「待開獎」:清空開獎號、
+payout / pnl 歸零,不亂算。cost 一律沿用原紀錄(投入的錢不因對獎而變)。
 """
 from __future__ import annotations
 
@@ -55,11 +59,45 @@ def _stars_of(play_type: str) -> int:
     return int(m.group(1)) if m else 3
 
 
-def settle(record: dict, draw: list[int] | None, g: GameConfig) -> dict:
+def _manual(record: dict, hit_count: int, g: GameConfig) -> dict:
+    """手填中獎數量:不看開獎號,直接用該下法「每中一單位」的派彩換算。
+
+    drawBalls 不動(使用者不記得期數,本來就沒有開獎號可填)。
+    """
+    out = dict(record)
+    cost = _f(record, "cost", 0.0)
+    mode = record.get("mode")
+    cars = _cars(record)
+    k = max(0, int(hit_count))
+
+    if mode == "combo":
+        stars = _stars_of(str(record.get("playType", "") or ""))
+        prize = float(combo.market_prize(stars, g.default_bet_prize) or 0.0)
+        payout = k * prize * cars
+        result = f"中 {k} 碰(手填)" if k > 0 else "槓龜(手填)"
+    elif mode == "pillar1800":
+        payout = k * cars * g.default_bet_prize
+        result = f"中 {k} 注(手填)" if k > 0 else "槓龜(手填)"
+    else:  # single / multi 二合組:每中一顆 = 車數 ×(每車中獎 ÷ 4)
+        payout = k * cars * (g.default_win_payout / 4)
+        result = f"中 {k} 顆(手填)" if k > 0 else "槓龜(手填)"
+
+    out["payout"] = round(float(payout))
+    out["pnl"] = round(float(payout) - cost)
+    out["result"] = result
+    return out
+
+
+def settle(record: dict, draw: list[int] | None, g: GameConfig,
+           hit_count: int | None = None) -> dict:
     """回傳「對過獎」的紀錄(淺拷貝),更新 drawBalls / result / payout / pnl。
 
     只動對獎會變的欄位,其餘(selectedBalls / cost / 期數 …)原樣保留。
+    hit_count 有值時走手填(不看 draw,見 _manual)。
     """
+    if hit_count is not None:
+        return _manual(record, hit_count, g)
+
     out = dict(record)
     cost = _f(record, "cost", 0.0)
 
@@ -77,12 +115,8 @@ def settle(record: dict, draw: list[int] | None, g: GameConfig) -> dict:
     mode = record.get("mode")
     cars = _cars(record)
 
-    if mode == "single":
-        hit = 1 if set(selected) & set(draw) else 0
-        payout = hit * cars * g.default_win_payout
-        result = "中了 1 顆 (中獎)" if hit else "槓龜 (沒中)"
-
-    elif mode == "multi":
+    if mode in ("single", "multi"):
+        # 二合兩組派彩公式統一:命中幾顆 × 車數 ×(每車中獎 ÷ 4)
         matched = len(set(selected) & set(draw))
         payout = matched * cars * (g.default_win_payout / 4)
         result = f"中 {matched} 顆" if matched > 0 else "槓龜"

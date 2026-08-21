@@ -32,7 +32,7 @@ from datetime import date as _date
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
-from backend import audit_store, ledger_store
+from backend import audit_store, group_store, ledger_store
 from backend.data import get_game
 from backend.deps import current_user
 from core import combo as combo_mod
@@ -62,12 +62,32 @@ _SPLIT_RE = re.compile(r"[\n\r,,;;、]+")
 _CAR_RE = re.compile(r"^([0-9]{1,2}(?:_[0-9]{1,2})*)\s*x\s*([0-9]+)\s*車$")
 # 一行純號碼(有底線)= 選號,或 1800碰 的柱別行(10_18、20_29)
 _PICK_RE = re.compile(r"^[0-9]{1,2}(?:_[0-9]{1,2})+$")
-# 八顆三星1200 / 三星1200 / 8顆3星1200
-_STAR_RE = re.compile(r"^(?:.*?顆)?\s*([二三四234])\s*星\s*([0-9]+)$")
+# 八顆三星1200 / 三星1200 / 8顆3星1200 —— 第一個 group 是宣告顆數(可省略)
+_STAR_RE = re.compile(
+    r"^(?:([一二三四五六七八九十0-9]+)\s*顆)?\s*([二三四234])\s*星\s*([0-9]+)$")
 # 其他400 —— 1800碰 那一組的收尾行,金額在這裡
 _OTHER_RE = re.compile(r"^其[他它餘余]\s*([0-9]+)$")
 
 _STAR_NUM = {"二": 2, "三": 3, "四": 4, "2": 2, "3": 3, "4": 4}
+
+# 中文數字(顆數用,最多到十幾顆就夠;超過的就當阿拉伯數字)
+_CN_DIGIT = {"一": 1, "二": 2, "三": 3, "四": 4, "五": 5,
+             "六": 6, "七": 7, "八": 8, "九": 9, "十": 10}
+
+
+def _cn_int(s: str) -> int:
+    """把「八」「十」「十二」或「8」解析成整數;認不出來回 0。"""
+    s = (s or "").strip()
+    if s.isdigit():
+        return int(s)
+    if s == "十":
+        return 10
+    if "十" in s:  # 十X / X十 / X十Y
+        left, _, right = s.partition("十")
+        tens = _CN_DIGIT.get(left, 1) if left else 1
+        ones = _CN_DIGIT.get(right, 0) if right else 0
+        return tens * 10 + ones
+    return _CN_DIGIT.get(s, 0)
 
 
 def _norm(line: str) -> str:
@@ -96,10 +116,12 @@ class _Item:
     mode: str
     play_type: str
     balls: list[int]
-    units: float          # 支數(星碰 / 1800碰)或 車數(單顆 / 多顆)
+    units: float          # 支數(星碰 / 1800碰)或 車數(1組 / 2組)
     bets_count: int       # 注 / 碰數
     cost: float
     line: str             # 產生這一筆的原文(1800碰 是三行併起來)
+    stars: int = 0        # 星碰的星數(其他下法 0);提交時重算成本要用
+    incomplete: bool = False  # 星碰向上補足仍湊不到宣告顆數 → 提醒使用者手動補
 
 
 @dataclass
@@ -110,9 +132,32 @@ class _State:
     picks: list[int] = field(default_factory=list)      # 最近一行選號
     pick_line: str = ""
     pending: list[str] = field(default_factory=list)    # 還沒被用掉的純號碼行
+    # 上方出現過的所有號碼行(1組/2組下注號 + 純選號),依先後 —— 星碰向上補足用
+    number_lines: list[list[int]] = field(default_factory=list)
+    erhe_n: int = 0       # 已出現幾個二合下注行(決定歸到第幾組)
 
     def fail(self, line_no: int, line: str, message: str) -> None:
         self.errors.append({"line_no": line_no, "line": line, "message": message})
+
+
+def _fill_upward(picks: list[int], number_lines: list[list[int]],
+                 declared: int) -> tuple[list[int], bool]:
+    """星碰宣告 declared 顆但選號不足時,從上方所有號碼行往上去重補足。
+
+    以最近的選號為底,再從 number_lines 由新到舊收集沒出現過的號碼,直到湊滿
+    declared 顆。回 (補足後的號碼[:declared], 是否仍不足)。
+    """
+    gathered: list[int] = list(dict.fromkeys(picks))  # 去重保序
+    for line_nums in reversed(number_lines):
+        if len(gathered) >= declared:
+            break
+        for n in line_nums:
+            if n not in gathered:
+                gathered.append(n)
+                if len(gathered) >= declared:
+                    break
+    incomplete = len(gathered) < declared
+    return gathered[:declared], incomplete
 
 
 # ── 各種下法的成本(全部走 core,不寫死金額)──────────────────
@@ -125,10 +170,14 @@ def _erhe_cost(g: GameConfig, n_balls: int, cars: float) -> float:
 
 
 def _star_item(g: GameConfig, stars: int, picks: list[int], units: float,
-               line: str) -> _Item:
-    """星碰:碰數 = star_bets(星, 選幾顆),成本 = 支數 × 碰數 × 每碰成本。"""
+               line: str, incomplete: bool = False) -> _Item:
+    """星碰:碰數 = star_bets(星, 選幾顆),成本 = 支數 × 碰數 × 每碰成本。
+
+    picks 是(已向上補足的)最終號碼;incomplete 代表補足後仍不到宣告顆數,
+    交給前端提醒使用者手動補後再上傳。
+    """
     bets = combo_mod.star_bets(stars, len(picks))
-    if bets <= 0:
+    if bets <= 0 and not incomplete:
         raise ValueError(f"選 {len(picks)} 顆湊不出{combo_mod.star_name(stars)}碰")
     # 走 market_cost 而不是直接讀 MARKET_COST —— 後台改過的價要吃得到
     per_bet = float(combo_mod.market_cost(stars, g.default_bet_cost))
@@ -141,6 +190,8 @@ def _star_item(g: GameConfig, stars: int, picks: list[int], units: float,
         bets_count=bets,
         cost=units * bets * per_bet,
         line=line,
+        stars=stars,
+        incomplete=incomplete,
     )
 
 
@@ -180,14 +231,23 @@ def parse(text: str, g: GameConfig) -> tuple[list[_Item], list[dict]]:
                 st.fail(line_no, line,
                         f"{g.name} 只有 1~{g.num_max} 號,不認得 {bad}")
                 continue
-            single = len(balls) == 1
+            # 二合下注行依「出現順序」歸組:第 1 個下注行 → 1組、第 2 個 → 2組。
+            st.number_lines.append(balls)
+            st.erhe_n += 1
+            gid = st.erhe_n
+            grp = group_store.get_group(gid)
+            if grp is None:
+                st.fail(line_no, line, f"超過組數,只有 {len(group_store.GID_TO_MODE)} 組")
+                continue
+            if not grp["enabled"]:
+                st.fail(line_no, line, f"{grp['name']}已停用,無法記入")
+                continue
             st.items.append(_Item(
-                mode="single" if single else "multi",
-                play_type=f"{'單顆' if single else f'多顆({len(balls)} 顆)'} {cars} 車",
+                mode=grp["mode"],
+                play_type=f"{grp['name']} {cars} 車({len(balls)} 顆)",
                 balls=balls,
                 units=cars,
-                # 注 / 碰數欄比照現有分頁:單顆記 1、多顆記顆數
-                bets_count=1 if single else len(balls),
+                bets_count=len(balls),
                 cost=_erhe_cost(g, len(balls), cars),
                 line=line,
             ))
@@ -210,11 +270,18 @@ def parse(text: str, g: GameConfig) -> tuple[list[_Item], list[dict]]:
             if not st.picks:
                 st.fail(line_no, line, "這行星碰前面找不到選號(要先有一行 02_09_… 的號碼)")
                 continue
-            stars = _STAR_NUM[m.group(1)]
+            stars = _STAR_NUM[m.group(2)]
+            # 宣告顆數(八顆 → 8);沒寫就用最近選號那行的顆數
+            declared = _cn_int(m.group(1)) if m.group(1) else len(st.picks)
+            if declared <= 0:
+                declared = len(st.picks)
+            # 選號不足宣告顆數時,從上方所有號碼行往上去重補足
+            balls, incomplete = _fill_upward(list(st.picks), st.number_lines, declared)
             whole = f"{st.pick_line} / {line}"
             try:
                 st.items.append(
-                    _star_item(g, stars, list(st.picks), _units(int(m.group(2))), whole))
+                    _star_item(g, stars, balls, _units(int(m.group(3))), whole,
+                               incomplete=incomplete))
             except ValueError as e:
                 st.fail(line_no, whole, str(e))
             continue
@@ -227,6 +294,7 @@ def parse(text: str, g: GameConfig) -> tuple[list[_Item], list[dict]]:
                 continue
             st.picks, st.pick_line = picks, line
             st.pending.append(line)
+            st.number_lines.append(picks)
             continue
 
         st.fail(line_no, line, "看不懂這一行")
@@ -235,7 +303,11 @@ def parse(text: str, g: GameConfig) -> tuple[list[_Item], list[dict]]:
 
 
 def to_record(item: _Item, g: GameConfig, bet_date: str, issue: str) -> dict:
-    """_Item → 前端的 BetRecord(id / index / cumPnl 由前端依順序補)。"""
+    """_Item → 前端的 BetRecord(id / index / cumPnl 由前端依順序補)。
+
+    多帶 stars / incomplete 兩個欄位:提交時後端要靠 stars 重算連碰成本,
+    incomplete 讓前端把「補足仍不夠」的列標出來提醒手動補。
+    """
     return {
         "date": bet_date,
         "issue": issue,
@@ -246,12 +318,48 @@ def to_record(item: _Item, g: GameConfig, bet_date: str, issue: str) -> dict:
         "cars": item.units,
         "betsCount": item.bets_count,
         "selectedBalls": item.balls,
+        "stars": item.stars,
+        "incomplete": item.incomplete,
         "drawBalls": [],
         "result": "待開獎",       # 這一版不結算,開獎後另外對獎
         "cost": round(item.cost),
         "payout": 0,
         "pnl": 0,
     }
+
+
+def _recost(g: GameConfig, mode: str, balls: list[int], units: float,
+            stars: int) -> _Item:
+    """依(可能被前端編輯過的)mode / 號碼 / 支或車 / 星數重算一筆的成本。
+
+    money 一律後端算 —— 前端只送使用者改完的號碼與支/車,金額不讓前端決定。
+    """
+    balls = [int(b) for b in balls]
+    bad = [n for n in balls if not 1 <= n <= g.num_max]
+    if bad:
+        raise ValueError(f"{g.name} 只有 1~{g.num_max} 號,不認得 {bad}")
+    if units <= 0:
+        raise ValueError("支數 / 車數要大於 0")
+
+    if mode == "combo":
+        return _star_item(g, int(stars), balls, units, "", incomplete=False)
+    if mode == "pillar1800":
+        return _pillar_item(g, units, "")
+    if mode in group_store.MODE_TO_GID:
+        if not balls:
+            raise ValueError("這一組至少要選 1 顆號碼")
+        grp = group_store.get_group(group_store.MODE_TO_GID[mode])
+        name = grp["name"] if grp else mode
+        return _Item(
+            mode=mode,
+            play_type=f"{name} {int(units)} 車({len(balls)} 顆)",
+            balls=balls,
+            units=units,
+            bets_count=len(balls),
+            cost=_erhe_cost(g, len(balls), units),
+            line="",
+        )
+    raise ValueError(f"未知的下注模式:{mode}")
 
 
 class QuickImportIn(BaseModel):
@@ -301,6 +409,60 @@ def quick_import(body: QuickImportIn, user: str = Depends(current_user)):
         "dry_run": body.dry_run,
         "parsed": len(out),
         "saved": 0 if body.dry_run else len(out),
+        "items": out,
+        "errors": errors,
+    }
+
+
+class CommitItemIn(BaseModel):
+    mode: str
+    selectedBalls: list[int] = Field(default_factory=list)
+    units: float = 0
+    stars: int = 0
+
+
+class QuickImportCommitIn(BaseModel):
+    game: str
+    items: list[CommitItemIn] = Field(default_factory=list)
+    date: str | None = None
+    issue: str = ""
+
+
+@router.post("/quick-import/commit")
+def quick_import_commit(body: QuickImportCommitIn, user: str = Depends(current_user)):
+    """把(使用者在預覽裡編輯過的)items 寫進記帳流水,成本後端重算。
+
+    與 /quick-import 不同:這裡收的是結構化、可能被手動改過的解析結果,不是原始
+    文字。每筆依 mode / 號碼 / 支或車 / 星數重算成本(見 _recost),money 不讓
+    前端決定。哪筆算不出來收進 errors,其他筆照記。
+    """
+    g = get_game(body.game)
+    bet_date = body.date or _date.today().isoformat()
+
+    out, saved, errors = [], [], []
+    for i, it in enumerate(body.items, start=1):
+        try:
+            item = _recost(g, it.mode, it.selectedBalls, it.units, it.stars)
+        except ValueError as e:
+            errors.append({"line_no": i, "line": "", "message": str(e)})
+            continue
+        record = to_record(item, g, bet_date, body.issue)
+        entry = ledger_store.add_entry(user, item.mode, record)
+        saved.append(entry)
+        out.append({"id": entry["id"], "mode": item.mode, "record": record})
+
+    if saved:
+        audit_store.log(
+            user, "quick_import",
+            summary=f"{g.name} {bet_date} 上傳 {len(saved)} 筆下注"
+                    + (f"(第 {body.issue} 期)" if body.issue else ""),
+            reverse_data={"entries": saved},
+        )
+
+    return {
+        "game": g.key,
+        "game_name": g.name,
+        "saved": len(saved),
         "items": out,
         "errors": errors,
     }

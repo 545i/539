@@ -1,86 +1,70 @@
 import React, { useState } from 'react';
-import { 
-  FileText, 
-  CheckCircle2, 
+import {
+  FileText,
+  CheckCircle2,
   XCircle,
-  TrendingUp,
   RotateCcw,
-  Sparkles,
-  Minus,
-  Plus
 } from 'lucide-react';
 import { LotteryBallPad } from '../LotteryBallPad';
 import { IssuePicker } from '../IssuePicker';
 import { BetRecord, LotteryGame } from '../../types';
-import { api, ErhePlanDTO } from '../../api/client';
+import { api, ErhePlanDTO, GroupDTO } from '../../api/client';
 import { useAsync } from '../../api/useAsync';
 import { useGame } from '../../api/useGame';
 import { useLedger } from '../../api/useLedger';
 
-// 未登入時的示範流水(登入後改用後端自己的紀錄)
-const DEMO_RECORDS: BetRecord[] = [
-  {
-    id: 'mb-demo-1',
-    index: 1,
-    date: '2026-08-18',
-    issue: '115000200',
-    game: '今彩539',
-    mode: 'multi',
-    units: 5,
-    cars: 5,
-    betsCount: 10,
-    selectedBalls: [3, 5, 8, 12, 17, 21, 24, 28, 33, 37],
-    drawBalls: [5, 11, 12, 17, 18],
-    result: '中了 3 顆',
-    cost: 6887,
-    payout: 79500,
-    pnl: 72613,
-    cumPnl: 72613
-  }
-];
+// 二合買牌的「組」下注控制台。取代原本寫死的 SingleBetTab / MultiBetTab ——
+// 兩者其實只差「鎖幾顆」與標籤,現在統一成一個吃 group 參數的元件:
+//   - 球盤鎖成 group.ball_count(固定顆數,選滿即止)。
+//   - 成本 / 派彩公式統一走「多顆」盤口(每顆每車成本 = default_cost_per_car、
+//     每顆每車彩金 = default_win_payout ÷ 4),與 backend.settle 一致。
+//   - 流水存在 group.mode(1組=single、2組=multi;不搬舊資料)。
 
-export const MultiBetTab: React.FC = () => {
-  // 遊戲由 Header 的全域切換器決定,這裡不再自己記一份
+interface Props {
+  group: GroupDTO;
+}
+
+export const GroupBetTab: React.FC<Props> = ({ group }) => {
   const { game, gameKey, loading: gameLoading } = useGame();
-  const [selectedBalls, setSelectedBalls] = useState<number[]>([3, 5, 8, 12, 17, 21, 24, 28, 33, 37]);
+  const fixedCount = group.ball_count;
+  const [selectedBalls, setSelectedBalls] = useState<number[]>([]);
   const [cars, setCars] = useState<number>(5);
-  // 期號 / 日期:預設帶最新一期,使用者可用下拉選單改記到別期(補記 / 修期)
+
+  // 期號 / 日期:預設帶最新一期,可用下拉改記到別期(補記 / 修期)
   const histReq = useAsync(() => api.history(gameKey, 30), [gameKey]);
   const latest = histReq.data?.latest ?? null;
   const draws = histReq.data?.draws ?? [];
-  const [nextIssue, setNextIssue] = useState<string>('');
+  const [curIssue, setCurIssue] = useState<string>('');
   const [issueTouched, setIssueTouched] = useState(false);
   const [betDate, setBetDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
   React.useEffect(() => {
     if (issueTouched) return;
-    if (latest?.issue) setNextIssue(latest.issue);
+    if (latest?.issue) setCurIssue(latest.issue);
     if (latest?.date) setBetDate(latest.date);
   }, [latest?.issue, latest?.date, issueTouched]);
   const pickIssue = (iss: string, d: string) => {
-    setNextIssue(iss);
+    setCurIssue(iss);
     setBetDate(d);
     setIssueTouched(true);
   };
-  // 登入時流水存後端;未登入沿用 v2 的前端 state(含示範資料)
-  const ledger = useLedger('multi', DEMO_RECORDS);
+
+  // 登入時流水存後端;未登入沿用前端 state(不再帶示範資料,組是新的)
+  const ledger = useLedger(group.mode, []);
   const records = ledger.records;
 
-  const ballCount = selectedBalls.length || 10;
-  // 多顆盤口沿用 v2 的換算比例:每顆每車成本 = 每車成本 ÷ 20、每顆每車彩金 = 每車中獎可得 ÷ 4
-  // 每顆每車成本 = 二合單顆成本 72.5 × 38 = 2755(與單顆下注一致,不再除 20)
+  // 盤口沿用多顆換算:每顆每車成本 = default_cost_per_car、每顆每車彩金 = default_win_payout ÷ 4
   const costPerCarPerBall = game ? game.default_cost_per_car : 0;
   const prizePerHitPerCar = game ? game.default_win_payout / 4 : 0;
-  // 成本與各段中獎回收由後端 core.erhe 算(押 ballCount 顆),盤口帶上面換算後的值。
-  // 遊戲清單還沒回來就先不打(盤口會是 0),等 game 進來 deps 一變就自動補算。
+  // 成本以「固定顆數」計(這就是「固定顆數」的意義:成本由組設定決定,不隨部分選取變動)
   const { data: plan } = useAsync<ErhePlanDTO | null>(
     () =>
       game
-        ? api.erhePlan(gameKey, ballCount, cars, {
+        ? api.erhePlan(gameKey, fixedCount, cars, {
             cost_per_car: costPerCarPerBall,
             win_payout: prizePerHitPerCar,
           })
         : Promise.resolve(null),
-    [gameKey, ballCount, cars, costPerCarPerBall, prizePerHitPerCar],
+    [gameKey, fixedCount, cars, costPerCarPerBall, prizePerHitPerCar],
   );
 
   const cumPnl = records.length > 0 ? records[records.length - 1].cumPnl : 0;
@@ -88,7 +72,6 @@ export const MultiBetTab: React.FC = () => {
   const totalReturn = records.reduce((acc, r) => acc + r.payout, 0);
   const winCount = records.filter(r => r.payout > 0).length;
 
-  // 規格全部讀 game;還沒載到就先不畫,免得閃一次別款遊戲的數字
   if (!game) {
     return (
       <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] text-xs text-neutral-500 dark:text-neutral-400">
@@ -99,42 +82,39 @@ export const MultiBetTab: React.FC = () => {
 
   const gameName = game.name as LotteryGame;
   const numMax = game.num_max;
-  // plan 還沒回來前先用換算比例自估,避免首屏數字跳動
   const payoutOf = (hits: number) =>
     Math.round(plan?.hits.find(h => h.hits === hits)?.payout ?? cars * prizePerHitPerCar * hits);
-  const currentCost = Math.round(plan?.total_cost ?? cars * ballCount * costPerCarPerBall);
+  const currentCost = Math.round(plan?.total_cost ?? cars * fixedCount * costPerCarPerBall);
   const prize1Hit = payoutOf(1);
   const prize2Hits = payoutOf(2);
-  const prize3Hits = payoutOf(3);
+  const prizeAllHits = payoutOf(fixedCount);
+  const isFull = selectedBalls.length === fixedCount;
 
   const handleToggleBall = (num: number) => {
     if (selectedBalls.includes(num)) {
       setSelectedBalls(selectedBalls.filter(n => n !== num));
-    } else {
-      if (selectedBalls.length < 20) {
-        setSelectedBalls([...selectedBalls, num]);
-      }
+    } else if (selectedBalls.length < fixedCount) {
+      setSelectedBalls([...selectedBalls, num]);
     }
   };
 
   const handleRecord = (status: string = '待開獎', hits: number = 0) => {
-    const payout = hits > 0 ? hits * prize1Hit : 0;
+    const payout = hits > 0 ? payoutOf(hits) : 0;
     const pnl = status === '待開獎' ? 0 : payout - currentCost;
-
     ledger.add({
       date: betDate,
-      issue: nextIssue || '',
+      issue: curIssue || '',
       game: gameName,
-      mode: 'multi',
+      mode: group.mode,
       units: cars,
       cars,
-      betsCount: selectedBalls.length,
+      betsCount: fixedCount,
       selectedBalls: [...selectedBalls],
       drawBalls: [],
       result: status,
       cost: currentCost,
       payout,
-      pnl
+      pnl,
     });
   };
 
@@ -145,26 +125,26 @@ export const MultiBetTab: React.FC = () => {
         <div>
           <div className="flex items-center gap-2">
             <span className="text-[10px] uppercase tracking-[0.25em] text-neutral-400 dark:text-neutral-500 font-semibold">
-              Multi-Ball Portfolio Strategy
+              Group Betting
             </span>
             <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-black/5 dark:bg-white/10 text-neutral-600 dark:text-neutral-300">
               {game.short_name}
             </span>
             <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-black/5 dark:bg-white/10 text-neutral-600 dark:text-neutral-300">
-              {ballCount} 顆分佈
+              固定 {fixedCount} 顆
             </span>
           </div>
           <div className="text-base sm:text-xl font-display font-bold text-neutral-900 dark:text-white mt-0.5">
-            多顆下注控制台
+            {group.name}下注控制台
           </div>
           <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
-            挑選 8~15 顆潛力號碼矩陣，命中 1 顆即按比例回收彩金。
+            鎖定 {fixedCount} 顆號碼組合,每組獨立計算損益。
           </div>
         </div>
 
         <div className="flex items-center justify-between md:justify-end gap-4 border-t md:border-t-0 pt-2.5 md:pt-0 border-black/[0.06] dark:border-white/[0.06]">
           <div className="text-left md:text-right">
-            <span className="text-[10px] uppercase tracking-wider text-neutral-400 block">多顆累積損益</span>
+            <span className="text-[10px] uppercase tracking-wider text-neutral-400 block">{group.name}累積損益</span>
             <div className={`text-xl sm:text-2xl font-mono font-bold ${cumPnl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
               {cumPnl >= 0 ? `+${cumPnl.toLocaleString()}` : cumPnl.toLocaleString()}
             </div>
@@ -177,69 +157,60 @@ export const MultiBetTab: React.FC = () => {
 
       {/* Main Dual-Column Workbench Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5">
-        
-        {/* Left Column (5/12) - Configuration & Execution Panel */}
+        {/* Left Column - Configuration */}
         <div className="lg:col-span-5 space-y-4">
-          
           <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] space-y-4">
             <div className="flex items-center justify-between">
               <span className="text-xs font-display font-bold uppercase tracking-wider text-neutral-900 dark:text-white">
-                01 / 多顆組合參數
+                01 / {group.name}參數配置
               </span>
               <div className="flex items-center gap-1.5">
                 <span className="text-[11px] font-mono text-neutral-400">期號</span>
-                <IssuePicker issue={nextIssue} date={betDate} draws={draws} onSelect={pickIssue} />
+                <IssuePicker issue={curIssue} date={betDate} draws={draws} onSelect={pickIssue} />
               </div>
             </div>
 
-            {/* Ball Selector Matrix */}
             <div>
               <LotteryBallPad
                 selectedBalls={selectedBalls}
                 onToggleBall={handleToggleBall}
                 onClear={() => setSelectedBalls([])}
-                onQuickSelect={(balls) => setSelectedBalls(balls)}
-                maxBalls={15}
+                onQuickSelect={(balls) => setSelectedBalls(balls.slice(0, fixedCount))}
+                maxBalls={fixedCount}
                 totalBalls={numMax}
-                label={`選取組合號碼 (建議 8~15 顆)`}
+                label={`鎖定下注號碼 (固定 ${fixedCount} 顆・已選 ${selectedBalls.length})`}
               />
             </div>
 
-            {/* Car Stepper for Mobile */}
+            {/* Car Stepper */}
             <div className="space-y-2 pt-1">
               <div className="flex items-center justify-between">
                 <label className="text-[10px] uppercase tracking-[0.2em] font-semibold text-neutral-400">
                   下注車數 (Cars)
                 </label>
                 <span className="text-xs font-mono font-bold text-neutral-900 dark:text-white">
-                  {cars} 車 ({selectedBalls.length} 顆矩陣)
+                  {cars} 車 ({fixedCount} 顆)
                 </span>
               </div>
-
-              {/* Stepper with Large Buttons */}
               <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={() => setCars(Math.max(1, cars - 1))}
                   className="w-10 h-10 rounded-xl border border-black/10 dark:border-white/10 flex items-center justify-center text-neutral-700 dark:text-neutral-200 hover:bg-black/5 dark:hover:bg-white/5 active:scale-95 transition-all"
                 >
-                  <Minus className="w-4 h-4" />
+                  −
                 </button>
-                
                 <div className="flex-1 h-10 rounded-xl border border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.03] flex items-center justify-center font-mono font-bold text-sm text-neutral-900 dark:text-white">
                   {cars} 車
                 </div>
-
                 <button
                   type="button"
                   onClick={() => setCars(cars + 1)}
                   className="w-10 h-10 rounded-xl border border-black/10 dark:border-white/10 flex items-center justify-center text-neutral-700 dark:text-neutral-200 hover:bg-black/5 dark:hover:bg-white/5 active:scale-95 transition-all"
                 >
-                  <Plus className="w-4 h-4" />
+                  +
                 </button>
               </div>
-
-              {/* Quick Car Selection Pills */}
               <div className="flex flex-wrap gap-1.5 pt-1">
                 {[1, 2, 3, 5, 8, 10, 15].map(c => (
                   <button
@@ -258,10 +229,10 @@ export const MultiBetTab: React.FC = () => {
               </div>
             </div>
 
-            {/* Live Financial Preview Card */}
+            {/* Live HUD */}
             <div className="p-3.5 sm:p-4 rounded-xl bg-black/[0.02] dark:bg-white/[0.03] border border-black/[0.06] dark:border-white/[0.06] space-y-2">
               <div className="text-[10px] uppercase tracking-wider text-neutral-400 font-semibold">
-                多顆損益階梯試算 (Live HUD)
+                損益階梯試算 (Live HUD)
               </div>
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <div>
@@ -283,39 +254,40 @@ export const MultiBetTab: React.FC = () => {
                   </span>
                 </div>
                 <div>
-                  <span className="text-neutral-500 block text-[10px]">中 3 顆大賺:</span>
+                  <span className="text-neutral-500 block text-[10px]">中 {fixedCount} 顆大賺:</span>
                   <span className="font-mono font-bold text-sm text-emerald-600 dark:text-emerald-400">
-                    NT$ {prize3Hits.toLocaleString()}
+                    NT$ {prizeAllHits.toLocaleString()}
                   </span>
                 </div>
               </div>
             </div>
 
-            {/* Action Buttons Panel */}
+            {/* Actions */}
             <div className="pt-2 flex flex-col sm:flex-row gap-2">
               <button
                 type="button"
+                disabled={!isFull}
                 onClick={() => handleRecord('待開獎', 0)}
-                className="w-full py-3 px-4 rounded-xl sm:rounded-full text-xs uppercase tracking-wider font-semibold bg-black text-white dark:bg-white dark:text-black hover:opacity-90 transition-opacity flex items-center justify-center gap-2 shadow-xs active:scale-98"
+                className="w-full py-3 px-4 rounded-xl sm:rounded-full text-xs uppercase tracking-wider font-semibold bg-black text-white dark:bg-white dark:text-black hover:opacity-90 disabled:opacity-30 transition-opacity flex items-center justify-center gap-2 shadow-xs active:scale-98"
               >
                 <FileText className="w-4 h-4" />
-                送出記帳 (待開獎)
+                {isFull ? '送出記帳 (待開獎)' : `請選滿 ${fixedCount} 顆`}
               </button>
-
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
-                  onClick={() => handleRecord('中了 2 顆', 2)}
-                  className="py-2.5 px-3 rounded-xl sm:rounded-full text-xs uppercase tracking-wider font-semibold border border-emerald-600/30 text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 transition-colors flex items-center justify-center gap-1 active:scale-95"
+                  disabled={!isFull}
+                  onClick={() => handleRecord(`中 ${fixedCount} 顆`, fixedCount)}
+                  className="py-2.5 px-3 rounded-xl sm:rounded-full text-xs uppercase tracking-wider font-semibold border border-emerald-600/30 text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 disabled:opacity-30 transition-colors flex items-center justify-center gap-1 active:scale-95"
                 >
                   <CheckCircle2 className="w-3.5 h-3.5" />
-                  模擬中2顆
+                  模擬全中
                 </button>
-
                 <button
                   type="button"
+                  disabled={!isFull}
                   onClick={() => handleRecord('槓龜 (0顆)', 0)}
-                  className="py-2.5 px-3 rounded-xl sm:rounded-full text-xs uppercase tracking-wider font-semibold border border-rose-600/30 text-rose-700 dark:text-rose-400 bg-rose-500/10 hover:bg-rose-500/20 transition-colors flex items-center justify-center gap-1 active:scale-95"
+                  className="py-2.5 px-3 rounded-xl sm:rounded-full text-xs uppercase tracking-wider font-semibold border border-rose-600/30 text-rose-700 dark:text-rose-400 bg-rose-500/10 hover:bg-rose-500/20 disabled:opacity-30 transition-colors flex items-center justify-center gap-1 active:scale-95"
                 >
                   <XCircle className="w-3.5 h-3.5" />
                   模擬沒中
@@ -323,13 +295,10 @@ export const MultiBetTab: React.FC = () => {
               </div>
             </div>
           </div>
-
         </div>
 
-        {/* Right Column (7/12) - Metrics & Live Ledger */}
+        {/* Right Column - Metrics & Ledger */}
         <div className="lg:col-span-7 space-y-4">
-          
-          {/* Top 4 Metric Tiles */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3">
             <div className="p-3.5 sm:p-4 rounded-xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08]">
               <div className="text-[10px] uppercase tracking-wider text-neutral-400">總投入成本</div>
@@ -337,21 +306,18 @@ export const MultiBetTab: React.FC = () => {
                 {totalSpent.toLocaleString()}
               </div>
             </div>
-
             <div className="p-3.5 sm:p-4 rounded-xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08]">
               <div className="text-[10px] uppercase tracking-wider text-neutral-400">總回收彩金</div>
               <div className="text-base sm:text-lg font-bold font-mono text-emerald-600 dark:text-emerald-400 mt-0.5">
                 {totalReturn.toLocaleString()}
               </div>
             </div>
-
             <div className="p-3.5 sm:p-4 rounded-xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08]">
               <div className="text-[10px] uppercase tracking-wider text-neutral-400">累積淨損益</div>
               <div className={`text-base sm:text-lg font-bold font-mono mt-0.5 ${cumPnl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
                 {cumPnl >= 0 ? `+${cumPnl.toLocaleString()}` : cumPnl.toLocaleString()}
               </div>
             </div>
-
             <div className="p-3.5 sm:p-4 rounded-xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08]">
               <div className="text-[10px] uppercase tracking-wider text-neutral-400">中獎率 / 局數</div>
               <div className="text-base sm:text-lg font-bold font-mono text-neutral-900 dark:text-white mt-0.5">
@@ -361,11 +327,10 @@ export const MultiBetTab: React.FC = () => {
             </div>
           </div>
 
-          {/* Records Ledger Section */}
           <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] space-y-3">
             <div className="flex items-center justify-between">
               <h3 className="text-xs sm:text-sm font-display font-bold text-neutral-900 dark:text-white uppercase tracking-wide">
-                02 / 多顆流水帳與開獎核對
+                02 / {group.name}流水帳與開獎核對
               </h3>
               <button
                 type="button"
@@ -386,76 +351,13 @@ export const MultiBetTab: React.FC = () => {
               </div>
             )}
 
-            {/* Mobile View: Vertical Clean Cards (No Horizontal Scrolling) */}
-            <div className="space-y-2.5 sm:hidden">
-              {records.map((rec) => (
-                <div 
-                  key={rec.id}
-                  className="p-3.5 rounded-xl border border-black/[0.08] dark:border-white/[0.08] bg-black/[0.01] dark:bg-white/[0.02] space-y-2"
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5">
-                      <span className="w-5 h-5 rounded-full bg-black/5 dark:bg-white/10 text-[10px] font-mono font-bold flex items-center justify-center">
-                        {rec.index}
-                      </span>
-                      <IssuePicker
-                        issue={rec.issue}
-                        date={rec.date}
-                        draws={draws}
-                        onSelect={(iss) => ledger.resettle(rec.id, iss)}
-                        onRefresh={() => ledger.resettle(rec.id, rec.issue)}
-                      />
-                    </div>
-
-                    <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
-                      rec.pnl > 0 
-                        ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 font-bold' 
-                        : rec.result === '待開獎' 
-                        ? 'bg-black/5 dark:bg-white/10 text-neutral-600 dark:text-neutral-400' 
-                        : 'bg-rose-500/10 text-rose-600 dark:text-rose-400'
-                    }`}>
-                      {rec.result}
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-2 pt-1 border-t border-black/[0.04] dark:border-white/[0.04] text-[11px]">
-                    <div>
-                      <span className="text-neutral-400 block text-[10px]">下注車數</span>
-                      <span className="font-mono font-bold text-neutral-800 dark:text-neutral-200">{rec.cars || rec.units} 車</span>
-                    </div>
-                    <div>
-                      <span className="text-neutral-400 block text-[10px]">投入成本</span>
-                      <span className="font-mono text-neutral-800 dark:text-neutral-200">{rec.cost.toLocaleString()}</span>
-                    </div>
-                    <div>
-                      <span className="text-neutral-400 block text-[10px]">本局損益</span>
-                      <span className={`font-mono font-bold ${rec.pnl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
-                        {rec.pnl >= 0 ? `+${rec.pnl.toLocaleString()}` : rec.pnl.toLocaleString()}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="space-y-1 text-[11px] pt-1 border-t border-black/[0.04] dark:border-white/[0.04]">
-                    <div className="flex items-center gap-1 flex-wrap">
-                      <span className="text-neutral-400 text-[10px]">下注:</span>
-                      {rec.selectedBalls.map(b => (
-                        <span key={b} className={`px-1 py-0.2 rounded font-mono text-[10px] ${rec.drawBalls.includes(b) ? 'bg-emerald-600 text-white font-bold' : 'bg-black/5 dark:bg-white/10'}`}>
-                          {b.toString().padStart(2, '0')}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-
             {/* Desktop Table View */}
-            <div className="lt-wrap border border-black/[0.08] dark:border-white/[0.08] rounded-xl hidden sm:block">
+            <div className="lt-wrap border border-black/[0.08] dark:border-white/[0.08] rounded-xl overflow-x-auto">
               <table className="lt">
                 <thead>
                   <tr>
                     <th>#</th>
-                    <th>期號</th>
+                    <th>期號 / 核對</th>
                     <th>遊戲</th>
                     <th>車數</th>
                     <th>狀態</th>
@@ -478,16 +380,17 @@ export const MultiBetTab: React.FC = () => {
                           draws={draws}
                           onSelect={(iss) => ledger.resettle(rec.id, iss)}
                           onRefresh={() => ledger.resettle(rec.id, rec.issue)}
+                          onManualHit={(k) => ledger.resettle(rec.id, rec.issue, k)}
                         />
                       </td>
                       <td className="text-xs font-semibold">{rec.game.split('(')[0]}</td>
                       <td className="font-mono text-xs font-bold">{rec.cars || rec.units} 車</td>
                       <td>
                         <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${
-                          rec.pnl > 0 
-                            ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 font-bold' 
-                            : rec.result === '待開獎' 
-                            ? 'bg-black/5 dark:bg-white/10 text-neutral-600 dark:text-neutral-400' 
+                          rec.pnl > 0
+                            ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 font-bold'
+                            : rec.result === '待開獎'
+                            ? 'bg-black/5 dark:bg-white/10 text-neutral-600 dark:text-neutral-400'
                             : 'bg-rose-500/10 text-rose-600 dark:text-rose-400'
                         }`}>
                           {rec.result}
@@ -519,7 +422,6 @@ export const MultiBetTab: React.FC = () => {
               </table>
             </div>
           </div>
-
         </div>
       </div>
     </div>

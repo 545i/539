@@ -20,11 +20,25 @@ interface Props {
 }
 
 const MODE_LABEL: Record<LedgerMode, string> = {
-  single: '單顆',
-  multi: '多顆',
+  single: '1組',
+  multi: '2組',
   pillar1800: '1800碰',
   combo: '連碰',
 };
+
+// 預覽裡一列可編輯的解析結果(號碼與支/車可改;連碰另記 stars 供後端重算成本)
+interface DraftItem {
+  mode: LedgerMode;
+  playType: string;
+  balls: string; // 使用者可編輯的號碼字串(空白 / 底線 / 逗號分隔)
+  units: number;
+  stars: number;
+  incomplete: boolean;
+}
+
+function parseBalls(s: string): number[] {
+  return (s.match(/\d{1,2}/g) ?? []).map(Number).filter(n => n > 0);
+}
 
 const SAMPLE = `02x50車
 09_15_19_20x20車
@@ -42,6 +56,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported})
   const [text, setText] = useState('');
   const [issue, setIssue] = useState('');
   const [preview, setPreview] = useState<QuickImportDTO | null>(null);
+  const [draftItems, setDraftItems] = useState<DraftItem[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<number | null>(null);
@@ -67,26 +82,32 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported})
 
   const reset = () => {
     setPreview(null);
+    setDraftItems([]);
     setError(null);
     setDone(null);
   };
 
-  const run = async (dryRun: boolean) => {
+  const num = (v: unknown) => (typeof v === 'number' ? v : 0);
+
+  // 解析預覽:把文字丟後端 dry_run,回來的每筆變成一列可編輯的 draft
+  const runPreview = async () => {
     setBusy(true);
     setError(null);
     try {
-      const res = await api.quickImport(gameKey, text, dryRun, {issue});
+      const res = await api.quickImport(gameKey, text, true, {issue});
       setPreview(res);
-      if (!dryRun) {
-        setDone(res.saved);
-        onImported?.();
-        // 上傳成功後關閉彈窗(留一下讓成功訊息閃一下)
-        window.setTimeout(() => {
-          setText('');
-          reset();
-          onClose();
-        }, 900);
-      }
+      setDraftItems(
+        res.items.map(it => ({
+          mode: it.mode,
+          playType: String(it.record.playType ?? ''),
+          balls: ((it.record.selectedBalls as number[]) ?? [])
+            .map(n => String(n).padStart(2, '0'))
+            .join(' '),
+          units: num(it.record.units),
+          stars: num(it.record.stars),
+          incomplete: Boolean(it.record.incomplete),
+        })),
+      );
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -94,10 +115,40 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported})
     }
   };
 
-  const num = (v: unknown) => (typeof v === 'number' ? v : 0);
-  const items = preview?.items ?? [];
+  // 確認上傳:送(可能被編輯過的)draft 給 commit 端點,成本後端重算
+  const confirm = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await api.quickImportCommit(
+        gameKey,
+        draftItems.map(d => ({
+          mode: d.mode,
+          selectedBalls: parseBalls(d.balls),
+          units: d.units,
+          stars: d.stars,
+        })),
+        {issue},
+      );
+      setDone(res.saved);
+      onImported?.();
+      window.setTimeout(() => {
+        setText('');
+        reset();
+        onClose();
+      }, 900);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const setDraft = (i: number, patch: Partial<DraftItem>) =>
+    setDraftItems(prev => prev.map((d, j) => (j === i ? {...d, ...patch} : d)));
+
   const errors = preview?.errors ?? [];
-  const totalCost = items.reduce((acc, it) => acc + num(it.record.cost), 0);
+  const anyIncomplete = draftItems.some(d => d.incomplete);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-in fade-in duration-200">
@@ -220,8 +271,8 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported})
               className="w-full px-3 py-2.5 rounded-xl border border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.03] text-sm font-mono leading-relaxed text-neutral-900 dark:text-white outline-hidden focus:border-black/40 dark:focus:border-white/40 transition-colors resize-y"
             />
             <div className="mt-2 text-[10px] text-neutral-400 leading-relaxed space-y-0.5">
-              <div><code>02x50車</code> = 單顆、50 車　|　<code>09_15_19_20x20車</code> = 多顆、20 車</div>
-              <div>一行選號 + <code>八顆三星1200</code> = 星碰三星 12 支(支數 = 金額 ÷ 100)</div>
+              <div>下注行<strong>依出現順序</strong>歸組:第 1 行 → 1組、第 2 行 → 2組。<code>21_24x20車</code> = 20 車</div>
+              <div>一行選號 + <code>八顆三星1200</code> = 星碰三星(不足八顆會自動往上補足,可在預覽手改)</div>
               <div><code>10_18</code> / <code>20_29</code> / <code>其他400</code> 三行 = 1800碰 4 支</div>
             </div>
           </div>
@@ -243,46 +294,57 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported})
             <div className="space-y-2">
               <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] font-semibold text-neutral-400">
                 <ListChecks className="w-3.5 h-3.5" />
-                <span>
-                  解析出 {preview.parsed} 筆　總成本 {totalCost.toLocaleString()}
-                </span>
+                <span>解析出 {draftItems.length} 筆(號碼與支/車可直接改,成本上傳時後端重算)</span>
               </div>
 
-              {items.length > 0 && (
+              {draftItems.length > 0 && (
                 <div className="rounded-xl border border-black/[0.08] dark:border-white/[0.08] overflow-x-auto">
                   <table className="w-full text-[11px]">
                     <thead className="bg-black/[0.03] dark:bg-white/[0.04] text-neutral-500">
                       <tr>
                         <th className="px-3 py-2 text-left font-semibold">玩法</th>
-                        <th className="px-3 py-2 text-left font-semibold">號碼</th>
+                        <th className="px-3 py-2 text-left font-semibold">號碼(可編輯)</th>
                         <th className="px-3 py-2 text-right font-semibold">支 / 車</th>
-                        <th className="px-3 py-2 text-right font-semibold">注 / 碰</th>
-                        <th className="px-3 py-2 text-right font-semibold">成本</th>
                       </tr>
                     </thead>
                     <tbody className="font-mono">
-                      {items.map((it, i) => (
+                      {draftItems.map((d, i) => (
                         <tr
                           key={i}
-                          className="border-t border-black/[0.06] dark:border-white/[0.06]"
+                          className={`border-t border-black/[0.06] dark:border-white/[0.06] ${
+                            d.incomplete ? 'bg-amber-500/10' : ''
+                          }`}
                         >
-                          <td className="px-3 py-2 font-sans">
+                          <td className="px-3 py-2 font-sans align-top">
                             <span className="px-1.5 py-0.5 rounded-full bg-black/5 dark:bg-white/10 text-[10px] mr-1.5">
-                              {MODE_LABEL[it.mode]}
+                              {MODE_LABEL[d.mode]}
                             </span>
-                            {String(it.record.playType ?? '')}
+                            {d.playType}
+                            {d.incomplete && (
+                              <div className="text-[10px] text-amber-700 dark:text-amber-400 mt-0.5">
+                                ⚠ 顆數不足,請手動補齊號碼
+                              </div>
+                            )}
                           </td>
-                          <td className="px-3 py-2 text-neutral-500">
-                            {((it.record.selectedBalls as number[]) ?? [])
-                              .map(n => String(n).padStart(2, '0'))
-                              .join(' ') || '—'}
+                          <td className="px-3 py-2">
+                            <input
+                              value={d.balls}
+                              onChange={e => setDraft(i, {balls: e.target.value})}
+                              spellCheck={false}
+                              className="w-full px-2 py-1 rounded-lg border border-black/10 dark:border-white/10 bg-white dark:bg-[#161616] text-[11px] font-mono text-neutral-900 dark:text-white outline-hidden focus:border-black/40 dark:focus:border-white/40"
+                            />
+                            <span className="text-[10px] text-neutral-400">
+                              {parseBalls(d.balls).length} 顆
+                            </span>
                           </td>
-                          <td className="px-3 py-2 text-right">{num(it.record.units)}</td>
-                          <td className="px-3 py-2 text-right">
-                            {num(it.record.betsCount).toLocaleString()}
-                          </td>
-                          <td className="px-3 py-2 text-right">
-                            {num(it.record.cost).toLocaleString()}
+                          <td className="px-3 py-2 text-right align-top">
+                            <input
+                              type="number"
+                              min={1}
+                              value={d.units}
+                              onChange={e => setDraft(i, {units: Number(e.target.value)})}
+                              className="w-16 px-2 py-1 rounded-lg border border-black/10 dark:border-white/10 bg-white dark:bg-[#161616] text-[11px] font-mono text-right text-neutral-900 dark:text-white outline-hidden focus:border-black/40 dark:focus:border-white/40"
+                            />
                           </td>
                         </tr>
                       ))}
@@ -314,7 +376,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported})
             type="button"
             id="quick-import-preview-btn"
             disabled={busy || !text.trim() || !loggedIn}
-            onClick={() => run(true)}
+            onClick={runPreview}
             className="py-2.5 px-4 rounded-xl text-xs uppercase tracking-wider font-semibold bg-white dark:bg-[#161616] border border-black/[0.08] dark:border-white/[0.08] text-neutral-700 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5 disabled:opacity-30 transition-colors flex items-center gap-2"
           >
             <ListChecks className="w-4 h-4" />
@@ -324,12 +386,13 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported})
             type="button"
             id="quick-import-submit-btn"
             // 一定要先預覽過、而且真的有解析出東西才給上傳
-            disabled={busy || !loggedIn || items.length === 0 || done !== null}
-            onClick={() => run(false)}
+            disabled={busy || !loggedIn || draftItems.length === 0 || done !== null}
+            onClick={confirm}
+            title={anyIncomplete ? '仍有顆數不足的列,建議先補齊再上傳' : ''}
             className="py-2.5 px-4 rounded-xl text-xs uppercase tracking-wider font-semibold bg-black text-white dark:bg-white dark:text-black hover:opacity-90 disabled:opacity-30 transition-opacity flex items-center gap-2 shadow-xs active:scale-98"
           >
             <Upload className="w-4 h-4" />
-            確認上傳{items.length > 0 ? ` ${items.length} 筆` : ''}
+            確認上傳{draftItems.length > 0 ? ` ${draftItems.length} 筆` : ''}
           </button>
         </div>
       </div>

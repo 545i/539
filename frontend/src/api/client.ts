@@ -453,6 +453,26 @@ export interface QuickImportDTO {
   errors: QuickImportErrorDTO[];
 }
 
+// 快速上傳確認提交(需登入):把預覽裡(可能被編輯過的)結構化 items 送回後端,
+// 後端重算成本後寫入。與 quickImport(dryRun=false)不同 —— 這裡收的是解析結果
+// 不是原始文字,所以使用者在預覽裡改的號碼 / 支車才算數。
+export interface QuickImportCommitItem {
+  mode: LedgerMode;
+  selectedBalls: number[];
+  units: number;
+  stars?: number; // 連碰重算成本要用
+}
+
+// 二合下注「組」設定(全站共用):固定顆數 + 是否啟用。
+// gid ↔ mode 由後端決定(1組=single、2組=multi);前端只認 mode 去存取流水。
+export interface GroupDTO {
+  gid: number;
+  mode: LedgerMode;
+  name: string; // 「1組」「2組」
+  ball_count: number; // 固定顆數
+  enabled: boolean;
+}
+
 // 操作歷史(需登入):下注 / 撤銷 / 上傳 / 清空各留一筆痕跡,每筆都可以「作廢」。
 // 作廢 = 反轉那個動作(作廢撤銷就是把紀錄救回來),而且作廢自己也是一筆歷史。
 // action_label 與 reversible 由後端算好 —— 前端不要自己維護一份對照與規則。
@@ -686,11 +706,20 @@ export const api = {
     post<LedgerEntryDTO>('ledger', {mode, record}),
   ledgerDelete: (id: number) =>
     del<{ok: boolean; deleted: number}>(`ledger/${id}`),
-  // 改期數重新對獎:登入時存後端(回傳更新後那筆);未登入用 preview 不寫 DB
-  ledgerResettle: (id: number, issue: string) =>
-    put<LedgerEntryDTO>(`ledger/${id}`, {issue}),
-  ledgerSettlePreview: (record: Record<string, unknown>, issue: string) =>
-    post<Record<string, unknown>>('ledger/settle-preview', {record, issue}),
+  // 改期數重新對獎:登入時存後端(回傳更新後那筆);未登入用 preview 不寫 DB。
+  // hitCount 有值 = 手填中獎顆數(忘記期數但記得中幾顆),不查開獎號直接依組公式算。
+  ledgerResettle: (id: number, issue: string, hitCount?: number | null) =>
+    put<LedgerEntryDTO>(`ledger/${id}`, {issue, hit_count: hitCount ?? null}),
+  ledgerSettlePreview: (
+    record: Record<string, unknown>,
+    issue: string,
+    hitCount?: number | null,
+  ) =>
+    post<Record<string, unknown>>('ledger/settle-preview', {
+      record,
+      issue,
+      hit_count: hitCount ?? null,
+    }),
   ledgerClear: (mode?: LedgerMode) =>
     del<{ok: boolean; deleted: number}>(`ledger${mode ? `?mode=${mode}` : ''}`),
 
@@ -708,6 +737,23 @@ export const api = {
       date: opts.date ?? null,
       issue: opts.issue ?? '',
     }),
+  // 確認上傳(編輯過的解析結果 → 後端重算成本後寫入)
+  quickImportCommit: (
+    game: GameKey,
+    items: QuickImportCommitItem[],
+    opts: {date?: string; issue?: string} = {},
+  ) =>
+    post<QuickImportDTO>('ledger/quick-import/commit', {
+      game,
+      items,
+      date: opts.date ?? null,
+      issue: opts.issue ?? '',
+    }),
+
+  // 二合下注組設定(讀不用登入,改要登入;全站共用)
+  getGroups: () => get<GroupDTO[]>('groups'),
+  setGroups: (groups: Array<Partial<GroupDTO> & {gid: number}>) =>
+    put<GroupDTO[]>('groups', {groups}),
 
   // audit 操作歷史(需登入):列自己的操作、作廢(反轉)某一筆
   auditList: (limit = 200) => get<AuditLogDTO[]>(`audit?limit=${limit}`),

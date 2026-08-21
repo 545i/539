@@ -41,8 +41,8 @@ ACTIONS = tuple(ACTION_LABELS)
 
 # 下注模式 → 中文(摘要用;與前端各分頁的名稱一致)
 MODE_LABELS = {
-    "single": "單顆下注",
-    "multi": "多顆下注",
+    "single": "1組",       # 二合買牌第一組(舊「單顆」的 mode key)
+    "multi": "2組",        # 二合買牌第二組(舊「多顆」的 mode key)
     "pillar1800": "三柱1800碰",
     "combo": "連碰",
 }

@@ -26,13 +26,21 @@ def _check_mode(mode: str) -> str:
     return mode
 
 
-def _resettle(record: dict, issue: str) -> dict:
+def _resettle(record: dict, issue: str, hit_count: int | None = None) -> dict:
     """把一筆紀錄對到指定期數的開獎號:更新期數 / 日期 / 開獎號 / 損益。
 
     money 規則全在 backend.settle;查不到該期(未開)就退回待開獎。登入與未登入
     兩條路共用這裡,結算邏輯只有一份。
+
+    hit_count 有值 = 手填中獎數量(忘記期數但記得中幾顆):跳過查開獎號,直接依
+    該下法公式結算;issue 有給仍寫回(方便之後補記),沒給就沿用原本的。
     """
     g = games.by_name(str(record.get("game", "")))
+    if hit_count is not None:
+        out = settle.settle(record, None, g, hit_count=hit_count)
+        if issue:
+            out["issue"] = str(issue)
+        return out
     found = data.draw_by_issue(g.key, issue)
     out = settle.settle(record, found[0] if found else None, g)
     out["issue"] = str(issue)
@@ -47,12 +55,14 @@ class EntryIn(BaseModel):
 
 
 class SettleIn(BaseModel):
-    issue: str
+    issue: str = ""
+    hit_count: int | None = None    # 手填中獎數量(忘記期數但記得中幾顆)
 
 
 class PreviewIn(BaseModel):
     record: dict = Field(default_factory=dict)
-    issue: str
+    issue: str = ""
+    hit_count: int | None = None
 
 
 @router.get("")
@@ -84,7 +94,7 @@ def settle_preview(body: PreviewIn):
     未登入沒有後端流水,紀錄只活在瀏覽器;這裡只回「對過獎的那筆」讓前端更新
     自己的暫存,不需要登入也不動任何人的資料。
     """
-    return _resettle(body.record, body.issue)
+    return _resettle(body.record, body.issue, body.hit_count)
 
 
 @router.put("/{entry_id}")
@@ -98,14 +108,16 @@ def resettle_entry(entry_id: int, body: SettleIn, user: str = Depends(current_us
     if cur is None:
         raise HTTPException(status_code=404, detail="找不到這筆紀錄")
 
-    updated_record = _resettle(cur["record"], body.issue)
+    updated_record = _resettle(cur["record"], body.issue, body.hit_count)
     res = ledger_store.update_entry(user, entry_id, updated_record)
     if res is None:
         raise HTTPException(status_code=404, detail="找不到這筆紀錄")
     new_entry, old_entry = res
+    label = f"手填中 {body.hit_count} 顆" if body.hit_count is not None \
+        else f"改期數對獎 → {body.issue}"
     audit_store.log(
         user, "bet_settle", target_id=entry_id,
-        summary=f"改期數對獎 → {body.issue}:"
+        summary=f"{label}:"
                 f"{audit_store.summarize_record(new_entry['mode'], new_entry['record'])}",
         reverse_data={"entry": old_entry},
     )

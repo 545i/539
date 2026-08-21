@@ -20,6 +20,9 @@ interface IssuePickerProps {
   // 需要它是因為 <select> 選同一個值不會觸發 onChange —— 記帳當下就是最新期,
   // 開獎後想對「原本那一期」的獎,不按鈕根本沒機會觸發。
   onRefresh?: () => void;
+  // 給了就在旁邊多一個「中N顆」小輸入 + 套用鈕:忘記期數但記得中幾顆時,直接
+  // 依組公式手填結算(不查開獎號)。見 backend.settle 的 hit_count。
+  onManualHit?: (hitCount: number) => void;
   className?: string;
 }
 
@@ -29,11 +32,20 @@ export const IssuePicker: React.FC<IssuePickerProps> = ({
   draws,
   onSelect,
   onRefresh,
+  onManualHit,
   className = '',
 }) => {
   // 新→舊,最新一期排最上面
   const options = React.useMemo(() => [...draws].reverse(), [draws]);
   const inList = options.some(o => o.issue === issue);
+  const [hit, setHit] = React.useState('');
+
+  const applyHit = () => {
+    const k = Number(hit);
+    if (!onManualHit || hit === '' || Number.isNaN(k) || k < 0) return;
+    onManualHit(Math.floor(k));
+    setHit('');
+  };
 
   return (
     <div className={`inline-flex items-center gap-1 ${className}`}>
@@ -66,6 +78,27 @@ export const IssuePicker: React.FC<IssuePickerProps> = ({
         >
           <RotateCw className="w-3 h-3" />
         </button>
+      )}
+      {onManualHit && (
+        <div className="inline-flex items-center gap-0.5" title="忘記期數?直接填中幾顆結算">
+          <input
+            type="number"
+            min={0}
+            value={hit}
+            placeholder="中N"
+            onChange={e => setHit(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') applyHit(); }}
+            className="w-12 px-1 py-1 rounded-lg border border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.03] text-[11px] font-mono text-neutral-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-black/20 dark:focus:ring-white/20"
+          />
+          <button
+            type="button"
+            onClick={applyHit}
+            title="依填入的中獎顆數結算(不查開獎號)"
+            className="shrink-0 px-1.5 py-1 rounded-lg border border-black/10 dark:border-white/10 text-[10px] font-semibold text-neutral-500 hover:text-neutral-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 active:scale-95 transition-colors"
+          >
+            顆
+          </button>
+        </div>
       )}
     </div>
   );

@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { Settings, Sliders, Moon, Sun, Save, RefreshCw, Database, Coins, RotateCcw } from 'lucide-react';
+import { Settings, Sliders, Moon, Sun, Save, RefreshCw, Database, Coins, RotateCcw, Layers } from 'lucide-react';
 import { ThemeMode } from '../../types';
-import { api, AutoupdateGameDTO, StarCostInput } from '../../api/client';
+import { api, AutoupdateGameDTO, GroupDTO, StarCostInput } from '../../api/client';
 import { useAsync } from '../../api/useAsync';
 import { useAuth } from '../../api/useAuth';
 import { useGame } from '../../api/useGame';
+import { useGroups } from '../../api/useGroups';
 
 interface Props {
   theme: ThemeMode;
@@ -36,6 +37,34 @@ export const SettingsView: React.FC<Props> = ({ theme, onToggleTheme }) => {
   // TODO(api): 設定儲存端點 —— 後端沒有寫入盤口參數的端點,維持 v2 的模擬儲存。
   const handleSave = () => {
     alert('已成功儲存盤口與偏好設定！');
+  };
+
+  // ── 下注組設定(/groups,全站共用)───────────────────────
+  // 固定顆數 + 是否啟用;存下去之後分頁列 / 快速上傳 / 各組分頁一起更新。
+  const { groups, reload: reloadGroups } = useGroups();
+  const [groupDraft, setGroupDraft] = useState<GroupDTO[]>([]);
+  const [groupSaving, setGroupSaving] = useState(false);
+  const [groupMsg, setGroupMsg] = useState<string | null>(null);
+  const [groupErr, setGroupErr] = useState<string | null>(null);
+  useEffect(() => {
+    if (groups.length) setGroupDraft(groups);
+  }, [groups]);
+  const setGroupField = (gid: number, patch: Partial<GroupDTO>) =>
+    setGroupDraft(prev => prev.map(g => (g.gid === gid ? {...g, ...patch} : g)));
+  const handleSaveGroups = async () => {
+    setGroupSaving(true);
+    setGroupMsg(null);
+    setGroupErr(null);
+    try {
+      await api.setGroups(
+        groupDraft.map(g => ({gid: g.gid, ball_count: g.ball_count, enabled: g.enabled})));
+      reloadGroups();
+      setGroupMsg('已儲存下注組設定,分頁與快速上傳已更新。');
+    } catch (e) {
+      setGroupErr((e as Error).message);
+    } finally {
+      setGroupSaving(false);
+    }
   };
 
   // ── 連碰星數盤口(/star-cost)─────────────────────────────
@@ -228,7 +257,7 @@ export const SettingsView: React.FC<Props> = ({ theme, onToggleTheme }) => {
 
         <h3 className="text-sm font-display font-bold text-neutral-900 dark:text-white uppercase tracking-wide flex items-center gap-2 pt-3 border-t border-black/[0.06] dark:border-white/[0.06]">
           <Sliders className="w-4 h-4" />
-          <span>盤口設定 — 單顆下注 ({gameName})</span>
+          <span>盤口設定 — 二合每車成本 (1組/2組共用・{gameName})</span>
         </h3>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -265,6 +294,67 @@ export const SettingsView: React.FC<Props> = ({ theme, onToggleTheme }) => {
           >
             <Save className="w-3.5 h-3.5" />
             儲存所有設定
+          </button>
+        </div>
+      </div>
+
+      {/* 下注組設定(全站共用,存在後端) */}
+      <div className="p-6 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] space-y-4">
+        <h3 className="text-sm font-display font-bold text-neutral-900 dark:text-white uppercase tracking-wide flex items-center gap-2">
+          <Layers className="w-4 h-4" />
+          <span>下注組設定(1組 / 2組)</span>
+        </h3>
+        <div className="text-[11px] text-neutral-500 dark:text-neutral-400">
+          每組可設定<strong className="text-neutral-700 dark:text-neutral-200">固定顆數</strong>與是否
+          <strong className="text-neutral-700 dark:text-neutral-200">啟用</strong>。停用的組不會出現在下注分頁,
+          快速上傳歸到該組的下注行也會被擋掉。這是<strong className="text-neutral-700 dark:text-neutral-200">全站共用</strong>設定。
+        </div>
+
+        <div className="space-y-3">
+          {groupDraft.map(g => (
+            <div key={g.gid} className="flex flex-wrap items-end gap-4 p-3 rounded-xl border border-black/[0.06] dark:border-white/[0.06] bg-black/[0.02] dark:bg-white/[0.03]">
+              <div className="font-display font-bold text-sm text-neutral-900 dark:text-white min-w-[3rem]">
+                {g.name}
+              </div>
+              <div>
+                <label className="block text-[10px] uppercase tracking-[0.2em] font-semibold text-neutral-400 mb-1.5">
+                  固定顆數
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  value={g.ball_count}
+                  onChange={e => setGroupField(g.gid, {ball_count: Math.max(1, Number(e.target.value) || 1)})}
+                  className="w-24 px-3 py-2 text-sm rounded-xl border border-black/10 dark:border-white/10 bg-white dark:bg-[#161616] text-neutral-900 dark:text-white font-mono focus:outline-hidden"
+                />
+              </div>
+              <label className="flex items-center gap-2 pb-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={g.enabled}
+                  onChange={e => setGroupField(g.gid, {enabled: e.target.checked})}
+                  className="w-4 h-4 accent-black dark:accent-white"
+                />
+                <span className="text-xs font-semibold text-neutral-700 dark:text-neutral-300">
+                  {g.enabled ? '啟用中' : '已停用'}
+                </span>
+              </label>
+            </div>
+          ))}
+        </div>
+
+        {groupMsg && <div className="text-[11px] text-emerald-600 dark:text-emerald-400">{groupMsg}</div>}
+        {groupErr && <div className="text-[11px] text-rose-500">{groupErr}</div>}
+
+        <div className="pt-1">
+          <button
+            type="button"
+            onClick={handleSaveGroups}
+            disabled={groupSaving || !loggedIn}
+            className="px-6 py-2.5 rounded-full text-xs uppercase tracking-wider font-semibold bg-black text-white dark:bg-white dark:text-black hover:opacity-90 disabled:opacity-30 transition-opacity flex items-center gap-2 shadow-xs"
+          >
+            <Save className="w-3.5 h-3.5" />
+            {groupSaving ? '儲存中…' : loggedIn ? '儲存下注組設定' : '登入後才能改'}
           </button>
         </div>
       </div>

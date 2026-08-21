@@ -13,8 +13,8 @@ import { FormulaModal } from './components/FormulaModal';
 import { LoginModal } from './components/LoginModal';
 import { QuickImportModal } from './components/QuickImportModal';
 import { useAuth } from './api/useAuth';
-import { SingleBetTab } from './components/tabs/SingleBetTab';
-import { MultiBetTab } from './components/tabs/MultiBetTab';
+import { useGroups } from './api/useGroups';
+import { GroupBetTab } from './components/tabs/GroupBetTab';
 import { ThreePillarTab } from './components/tabs/ThreePillarTab';
 import { ComboBetTab } from './components/tabs/ComboBetTab';
 import { TotalPnLTab } from './components/tabs/TotalPnLTab';
@@ -35,6 +35,8 @@ export default function App() {
 
   // 登入閘:未登入就擋住整個 App
   const { loggedIn } = useAuth();
+  // 二合下注「組」設定(全站共用):決定有幾個組分頁、各組固定幾顆
+  const { enabled: enabledGroups } = useGroups();
 
   // Navigation state
   const [activeNav, setActiveNav] = useState<NavItem>('duo_bet');
@@ -76,9 +78,9 @@ export default function App() {
     setIsFormulaModalOpen(true);
   };
 
+  // 組分頁依設定動態產生(只列啟用中的組),id 就是該組的 ledger mode(single/multi)
   const duoTabList: { id: DuoBetTab; label: string; count?: number }[] = [
-    { id: 'single', label: '單顆下注', count: 0 },
-    { id: 'multi', label: '多顆下注', count: 0 },
+    ...enabledGroups.map(g => ({ id: g.mode as DuoBetTab, label: g.name, count: 0 })),
     { id: 'pillar1800', label: '三柱1800碰', count: 2 },
     { id: 'combo', label: '連碰', count: 2 },
     { id: 'totals', label: '總損益' },
@@ -172,9 +174,9 @@ export default function App() {
                   {isHowToUseOpen && (
                     <div className="p-5 border-t border-black/[0.08] dark:border-white/[0.08] text-xs sm:text-sm text-neutral-600 dark:text-neutral-300 space-y-2 leading-relaxed bg-black/[0.01] dark:bg-white/[0.01]">
                       <ul className="list-disc pl-5 space-y-1.5">
-                        <li>五個分頁：<strong>單顆下注</strong>、<strong>多顆下注</strong>、<strong>三柱1800碰</strong>、<strong>連碰</strong>、<strong>總損益</strong>。各頁右上角即時顯示獨立累積損益。</li>
+                        <li>分頁：<strong>1組</strong>、<strong>2組</strong>(可在設定頁改固定顆數 / 停用)、<strong>三柱1800碰</strong>、<strong>連碰</strong>、<strong>總損益</strong>。各頁右上角即時顯示獨立累積損益。</li>
                         <li>下注、回填、紀錄、清除、建議車數<strong>均依各分頁獨立維護</strong>，互相隔離。</li>
-                        <li><strong>每種下法獨立計算追平車數</strong>：單顆只追單顆虧損，四者綜合彙整請切換至「總損益」分頁。</li>
+                        <li><strong>每組獨立計算追平車數</strong>：各組只追自己的虧損,綜合彙整請切換至「總損益」分頁。</li>
                         <li><strong>三柱1800碰</strong>：全覆蓋組合共 1800 注三合，各柱開出 1 顆即保證過關，過關率達 55.36%。</li>
                         <li><strong>連碰</strong>：星碰 / 全碰 / 立柱 / 拖膽，注數依照組合理論計算。</li>
                       </ul>
@@ -218,8 +220,9 @@ export default function App() {
 
               {/* Tab Contents */}
               <div key={ledgerVersion}>
-                {duoTab === 'single' && <SingleBetTab />}
-                {duoTab === 'multi' && <MultiBetTab />}
+                {enabledGroups
+                  .filter(g => g.mode === duoTab)
+                  .map(g => <GroupBetTab key={g.gid} group={g} />)}
                 {duoTab === 'pillar1800' && <ThreePillarTab />}
                 {duoTab === 'combo' && <ComboBetTab />}
                 {duoTab === 'totals' && <TotalPnLTab />}
