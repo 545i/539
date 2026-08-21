@@ -82,7 +82,8 @@ export const ComboBetTab: React.FC = () => {
     if (selectedBalls.includes(num)) {
       setSelectedBalls(selectedBalls.filter(n2 => n2 !== num));
     } else {
-      if (selectedBalls.length < 10) {
+      // 不限顆數:選到號碼上限為止(碰數由後端依實際顆數 C(n,k) 動態算)
+      if (selectedBalls.length < numMax) {
         setSelectedBalls([...selectedBalls, num]);
       }
     }
@@ -218,10 +219,10 @@ export const ComboBetTab: React.FC = () => {
                 selectedBalls={selectedBalls}
                 onToggleBall={handleToggleBall}
                 onClear={() => setSelectedBalls([])}
-                onQuickSelect={(balls) => setSelectedBalls(balls.slice(0, 8))}
-                maxBalls={10}
+                onQuickSelect={(balls) => setSelectedBalls(balls)}
+                maxBalls={numMax}
                 totalBalls={numMax}
-                label="選取號碼 (目前已選組數)"
+                label={`選取號碼 (已選 ${n} 顆・${k} 星 = ${totalComb} 碰)`}
               />
             </div>
 
