@@ -43,15 +43,14 @@ export const MultiBetTab: React.FC = () => {
   const { game, gameKey, loading: gameLoading } = useGame();
   const [selectedBalls, setSelectedBalls] = useState<number[]>([3, 5, 8, 12, 17, 21, 24, 28, 33, 37]);
   const [cars, setCars] = useState<number>(5);
-  const [betDate, setBetDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
-  // 下一期期號 = 最新一期 +1(取代寫死的 115000201)
+  // 期號 / 日期 = 最新一期(當天已開的那期)
   const histReq = useAsync(() => api.history(gameKey, 1), [gameKey]);
-  const nextIssue = (() => {
-    const last = histReq.data?.latest?.issue;
-    if (!last) return '';
-    const m = last.match(/^(\d+)$/);
-    return m ? String(Number(m[1]) + 1) : last;
-  })();
+  const latest = histReq.data?.latest ?? null;
+  const nextIssue = latest?.issue ?? '';
+  const [betDate, setBetDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
+  React.useEffect(() => {
+    if (latest?.date) setBetDate(latest.date);
+  }, [latest?.date]);
   // 登入時流水存後端;未登入沿用 v2 的前端 state(含示範資料)
   const ledger = useLedger('multi', DEMO_RECORDS);
   const records = ledger.records;
