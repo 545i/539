@@ -43,7 +43,15 @@ export const MultiBetTab: React.FC = () => {
   const { game, gameKey, loading: gameLoading } = useGame();
   const [selectedBalls, setSelectedBalls] = useState<number[]>([3, 5, 8, 12, 17, 21, 24, 28, 33, 37]);
   const [cars, setCars] = useState<number>(5);
-  const [betDate, setBetDate] = useState<string>('2026-08-19');
+  const [betDate, setBetDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
+  // 下一期期號 = 最新一期 +1(取代寫死的 115000201)
+  const histReq = useAsync(() => api.history(gameKey, 1), [gameKey]);
+  const nextIssue = (() => {
+    const last = histReq.data?.latest?.issue;
+    if (!last) return '';
+    const m = last.match(/^(\d+)$/);
+    return m ? String(Number(m[1]) + 1) : last;
+  })();
   // 登入時流水存後端;未登入沿用 v2 的前端 state(含示範資料)
   const ledger = useLedger('multi', DEMO_RECORDS);
   const records = ledger.records;
@@ -106,14 +114,14 @@ export const MultiBetTab: React.FC = () => {
 
     ledger.add({
       date: betDate,
-      issue: '115000201',
+      issue: nextIssue || '',
       game: gameName,
       mode: 'multi',
       units: cars,
       cars,
       betsCount: selectedBalls.length,
       selectedBalls: [...selectedBalls],
-      drawBalls: [5, 11, 12, 17, 18],
+      drawBalls: [],
       result: status,
       cost: currentCost,
       payout,
@@ -170,7 +178,7 @@ export const MultiBetTab: React.FC = () => {
                 01 / 多顆組合參數
               </span>
               <span className="text-[11px] font-mono text-neutral-400">
-                期號: 115000201
+                期號: {nextIssue || '—'}
               </span>
             </div>
 
