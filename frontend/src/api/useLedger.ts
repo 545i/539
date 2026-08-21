@@ -105,6 +105,42 @@ export function useLedger(mode: LedgerMode, demoRecords: BetRecord[] = []) {
     }
   }, [loggedIn, remote]);
 
+  /** 改某一筆的期數並重新對獎(抓該期開獎號、重算中獎與損益)。 */
+  const resettle = useCallback(
+    async (id: string, issue: string) => {
+      setError(null);
+      if (!loggedIn) {
+        // 未登入:用 preview 端點算好,回填本地暫存(不寫 DB)
+        const cur = local.find(r => r.id === id);
+        if (!cur) return;
+        try {
+          const settled = await api.ledgerSettlePreview(
+            cur as unknown as Record<string, unknown>, issue,
+          );
+          setLocal(prev =>
+            prev.map(r =>
+              r.id === id
+                ? {...(settled as unknown as BetRecord), id, index: 0, cumPnl: 0}
+                : r,
+            ),
+          );
+        } catch (e) {
+          setError((e as Error).message);
+        }
+        return;
+      }
+      try {
+        const entry = await api.ledgerResettle(Number(id), issue);
+        setRemote(prev =>
+          (prev ?? []).map(r => (r.id === id ? toRecord(entry) : r)),
+        );
+      } catch (e) {
+        setError((e as Error).message);
+      }
+    },
+    [loggedIn, local],
+  );
+
   /** 清空這個下法的全部紀錄。 */
   const clear = useCallback(async () => {
     if (!loggedIn) {
@@ -125,7 +161,7 @@ export function useLedger(mode: LedgerMode, demoRecords: BetRecord[] = []) {
     [loggedIn, remote, local],
   );
 
-  return {records, add, undo, clear, loading, error, loggedIn};
+  return {records, add, undo, clear, resettle, loading, error, loggedIn};
 }
 
 /** 總損益頁用:一次撈四種下法的紀錄(未登入回空陣列)。 */

@@ -419,12 +419,12 @@ export const ComboBetTab: React.FC = () => {
                       <span className="w-5 h-5 rounded-full bg-black/5 dark:bg-white/10 text-[10px] font-mono font-bold flex items-center justify-center">
                         {rec.index}
                       </span>
-                      <span className="text-xs font-mono font-bold text-neutral-900 dark:text-white">
-                        {rec.issue}
-                      </span>
-                      <span className="text-[10px] text-neutral-400">
-                        {rec.date}
-                      </span>
+                      <IssuePicker
+                        issue={rec.issue}
+                        date={rec.date}
+                        draws={draws}
+                        onSelect={(iss) => ledger.resettle(rec.id, iss)}
+                      />
                     </div>
 
                     <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
@@ -490,8 +490,12 @@ export const ComboBetTab: React.FC = () => {
                     <tr key={rec.id}>
                       <td>{rec.index}</td>
                       <td>
-                        <div className="text-xs font-mono font-bold">{rec.issue}</div>
-                        <div className="text-[10px] text-neutral-400">{rec.date}</div>
+                        <IssuePicker
+                          issue={rec.issue}
+                          date={rec.date}
+                          draws={draws}
+                          onSelect={(iss) => ledger.resettle(rec.id, iss)}
+                        />
                       </td>
                       <td className="text-xs font-semibold">{rec.playType}</td>
                       <td className="font-mono text-xs">{rec.betsCount || 70} 碰</td>

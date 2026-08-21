@@ -13,8 +13,9 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from backend import audit_store, ledger_store
+from backend import audit_store, data, ledger_store, settle
 from backend.deps import current_user
+from core import games
 
 router = APIRouter(prefix="/ledger", tags=["ledger"])
 
@@ -25,9 +26,33 @@ def _check_mode(mode: str) -> str:
     return mode
 
 
+def _resettle(record: dict, issue: str) -> dict:
+    """把一筆紀錄對到指定期數的開獎號:更新期數 / 日期 / 開獎號 / 損益。
+
+    money 規則全在 backend.settle;查不到該期(未開)就退回待開獎。登入與未登入
+    兩條路共用這裡,結算邏輯只有一份。
+    """
+    g = games.by_name(str(record.get("game", "")))
+    found = data.draw_by_issue(g.key, issue)
+    out = settle.settle(record, found[0] if found else None, g)
+    out["issue"] = str(issue)
+    if found:
+        out["date"] = found[1]
+    return out
+
+
 class EntryIn(BaseModel):
     mode: str
     record: dict = Field(default_factory=dict)
+
+
+class SettleIn(BaseModel):
+    issue: str
+
+
+class PreviewIn(BaseModel):
+    record: dict = Field(default_factory=dict)
+    issue: str
 
 
 @router.get("")
@@ -50,6 +75,41 @@ def add_entry(body: EntryIn, user: str = Depends(current_user)):
         reverse_data={"entry_id": entry["id"]},
     )
     return entry
+
+
+@router.post("/settle-preview")
+def settle_preview(body: PreviewIn):
+    """把一筆紀錄對到某期開獎號後長怎樣 —— 不寫 DB(未登入的核對列表用)。
+
+    未登入沒有後端流水,紀錄只活在瀏覽器;這裡只回「對過獎的那筆」讓前端更新
+    自己的暫存,不需要登入也不動任何人的資料。
+    """
+    return _resettle(body.record, body.issue)
+
+
+@router.put("/{entry_id}")
+def resettle_entry(entry_id: int, body: SettleIn, user: str = Depends(current_user)):
+    """改一筆的期數並重新對獎:抓該期真實開獎號,重算中獎狀態與損益後存回。
+
+    先讀後寫,舊的整筆進 audit 的 reverse_data —— 改錯期數也能作廢還原。
+    """
+    entries = ledger_store.list_entries(user)
+    cur = next((e for e in entries if e["id"] == entry_id), None)
+    if cur is None:
+        raise HTTPException(status_code=404, detail="找不到這筆紀錄")
+
+    updated_record = _resettle(cur["record"], body.issue)
+    res = ledger_store.update_entry(user, entry_id, updated_record)
+    if res is None:
+        raise HTTPException(status_code=404, detail="找不到這筆紀錄")
+    new_entry, old_entry = res
+    audit_store.log(
+        user, "bet_settle", target_id=entry_id,
+        summary=f"改期數對獎 → {body.issue}:"
+                f"{audit_store.summarize_record(new_entry['mode'], new_entry['record'])}",
+        reverse_data={"entry": old_entry},
+    )
+    return new_entry
 
 
 @router.delete("/{entry_id}")

@@ -111,6 +111,32 @@ def delete_entry(username: str, entry_id: int) -> dict | None:
     return _row(row)
 
 
+def update_entry(username: str, entry_id: int, record: dict) -> tuple[dict, dict] | None:
+    """整筆覆寫某紀錄的 payload(開獎核對改期數 / 重對獎用)。
+
+    **先讀後寫**,回傳 (更新後, 更新前) 兩筆 —— 更新前的整筆要進 audit 的
+    reverse_data,改壞了才救得回來(見 backend/routers/audit.py)。不是自己的
+    紀錄或不存在回 None。id 與 mode / created 不動,只換 payload。
+    """
+    with _conn() as c:
+        old = c.execute(
+            "SELECT id, mode, payload, created FROM ledger_entries "
+            "WHERE id = ? AND username = ?",
+            (int(entry_id), username),
+        ).fetchone()
+        if old is None:
+            return None
+        c.execute(
+            "UPDATE ledger_entries SET payload = ? WHERE id = ?",
+            (json.dumps(record, ensure_ascii=False), int(old[0])),
+        )
+        new = c.execute(
+            "SELECT id, mode, payload, created FROM ledger_entries WHERE id = ?",
+            (int(old[0]),),
+        ).fetchone()
+    return _row(new), _row(old)
+
+
 def restore_entry(username: str, mode: str, record: dict,
                   entry_id: int | None = None, created: str | None = None) -> dict:
     """把先前刪掉的紀錄放回去(作廢「撤銷」用),盡量沿用原本的 id 與時間。

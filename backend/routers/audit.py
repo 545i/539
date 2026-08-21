@@ -8,6 +8,7 @@
 
     bet_add       {"entry_id": 3}                  → 刪掉 3
     bet_delete    {"entry": {id, mode, record, …}} → 用原 id 重新 insert 回去
+    bet_settle    {"entry": {id, mode, record, …}} → 把 payload 覆寫回改期數之前
     bet_clear     {"entries": [...]}               → 整批 insert 回去
     quick_import  {"entries": [...]}               → 整批刪掉
 
@@ -56,6 +57,15 @@ def _revert(user: str, row: dict) -> int:
 
     if action == "bet_delete":
         return _restore(user, data.get("entry") or {})
+
+    if action == "bet_settle":
+        # 反轉 = 把 payload 換回改期數之前的整筆(id 沒變,直接覆寫回去)
+        entry = data.get("entry") or {}
+        eid = entry.get("id")
+        if eid is None:
+            return 0
+        return 1 if ledger_store.update_entry(
+            user, int(eid), entry.get("record") or {}) else 0
 
     if action == "bet_clear":
         return sum(_restore(user, e) for e in (data.get("entries") or []))

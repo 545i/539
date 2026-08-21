@@ -41,6 +41,28 @@ def load_df(key: str) -> pd.DataFrame:
         raise HTTPException(status_code=500, detail=f"開獎資料格式錯誤:{e}")
 
 
+def draw_by_issue(key: str, issue: str) -> tuple[list[int], str] | None:
+    """某款遊戲某一期的開獎號與日期;查不到(未開 / 無此期)回 None。
+
+    開獎核對用:前端在核對列表改了期數,後端據此抓真實開獎號重新對獎。
+    issue 以字串比對(期號在 loader 裡就是 str),回傳 (號碼清單, 日期字串)。
+    """
+    from core.loader import detect_num_cols
+
+    issue = str(issue).strip()
+    if not issue:
+        return None
+    df = load_df(key)
+    if "issue" not in df.columns:
+        return None
+    hit = df[df["issue"].astype(str).str.strip() == issue]
+    if hit.empty:
+        return None
+    row = hit.iloc[-1]
+    nums = [int(row[c]) for c in detect_num_cols(df)]
+    return nums, row["date"].strftime("%Y-%m-%d")
+
+
 @lru_cache(maxsize=1)
 def all_games() -> list[GameConfig]:
     return list(games_mod.GAMES.values())

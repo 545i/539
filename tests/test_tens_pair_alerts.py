@@ -22,12 +22,12 @@ def _pair(res: list[dict], a: str, b: str) -> dict:
 
 
 def test_six_pairs_and_labels():
-    # 4 段 → C(4,2)=6 組配對,標籤為 01/11/21/31
+    # 4 段 → C(4,2)=6 組配對,標籤為 0頭/1頭/2頭/3頭
     df = _df([("2024-01-01", 1, 12, 23, 34, 5)])
     res = stats.tens_pair_alerts(df)
     assert len(res) == 6
     labels = {tuple(sorted(r["labels"])) for r in res}
-    assert ("01", "11") in labels and ("21", "31") in labels
+    assert ("0頭", "1頭") in labels and ("2頭", "3頭") in labels
 
 
 def test_streak_counts_consecutive_double_absence():
@@ -38,22 +38,22 @@ def test_streak_counts_consecutive_double_absence():
         ("2024-01-03", 1, 2, 3, 4, 5),
     ])
     res = stats.tens_pair_alerts(df, threshold=3)
-    assert _pair(res, "11", "21")["streak"] == 3
-    assert _pair(res, "11", "21")["alert"] is True
+    assert _pair(res, "1頭", "2頭")["streak"] == 3
+    assert _pair(res, "1頭", "2頭")["alert"] is True
     # 含 band0 的配對每期都有 band0 → streak 0
-    assert _pair(res, "01", "11")["streak"] == 0
-    assert _pair(res, "01", "11")["alert"] is False
+    assert _pair(res, "0頭", "1頭")["streak"] == 0
+    assert _pair(res, "0頭", "1頭")["alert"] is False
 
 
 def test_threshold_boundary_two_not_alerted_three_alerted():
     two = _df([("2024-01-01", 1, 2, 3, 4, 5), ("2024-01-02", 1, 2, 3, 4, 5)])
-    assert _pair(stats.tens_pair_alerts(two), "21", "31")["streak"] == 2
-    assert _pair(stats.tens_pair_alerts(two), "21", "31")["alert"] is False
+    assert _pair(stats.tens_pair_alerts(two), "2頭", "3頭")["streak"] == 2
+    assert _pair(stats.tens_pair_alerts(two), "2頭", "3頭")["alert"] is False
 
     three = _df([("2024-01-01", 1, 2, 3, 4, 5)] * 3)
     three["date"] = pd.to_datetime(
         ["2024-01-01", "2024-01-02", "2024-01-03"])
-    assert _pair(stats.tens_pair_alerts(three), "21", "31")["alert"] is True
+    assert _pair(stats.tens_pair_alerts(three), "2頭", "3頭")["alert"] is True
 
 
 def test_streak_resets_on_appearance():
@@ -64,9 +64,9 @@ def test_streak_resets_on_appearance():
         ("2024-01-03", 1, 2, 3, 4, 23),
     ])
     res = stats.tens_pair_alerts(df)
-    assert _pair(res, "21", "31")["streak"] == 0
+    assert _pair(res, "2頭", "3頭")["streak"] == 0
     # band1、band3 仍連續 3 期缺席
-    assert _pair(res, "11", "31")["streak"] == 3
+    assert _pair(res, "1頭", "3頭")["streak"] == 3
 
 
 # ── 自訂區間 interval_pair_alerts ─────────────────────────

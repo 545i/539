@@ -202,7 +202,7 @@ def tens_pair_alerts(df: pd.DataFrame, threshold: int = 3,
     """任意兩個十位區段的配對,連續幾期都沒開出任何號碼。
 
     區段沿用 tens_bands / _tens_index:01~09、10~19、20~29、30~39
-    (顯示標籤用民間慣用的開頭 01 / 11 / 21 / 31)。
+    (顯示標籤用民間慣用的「字頭」:0頭 / 1頭 / 2頭 / 3頭)。
 
     對每組配對 (A, B),從最新一期往回數,streak = 連續幾期裡「A、B 兩區段
     都沒開出任何號碼」;只要某期 A 或 B 有號,streak 即中斷歸零。
@@ -220,7 +220,7 @@ def tens_pair_alerts(df: pd.DataFrame, threshold: int = 3,
     present = [{_tens_index(n, n_bands) for n in draw} for draw in draws]
 
     def _label(i: int) -> str:
-        return f"{i * 10 + 1:02d}"  # band0→"01"、band1→"11"、band2→"21"…
+        return f"{i}頭"  # band0→"0頭"、band1→"1頭"、band2→"2頭"、band3→"3頭"
 
     out = []
     for i in range(n_bands):

@@ -686,6 +686,11 @@ export const api = {
     post<LedgerEntryDTO>('ledger', {mode, record}),
   ledgerDelete: (id: number) =>
     del<{ok: boolean; deleted: number}>(`ledger/${id}`),
+  // 改期數重新對獎:登入時存後端(回傳更新後那筆);未登入用 preview 不寫 DB
+  ledgerResettle: (id: number, issue: string) =>
+    put<LedgerEntryDTO>(`ledger/${id}`, {issue}),
+  ledgerSettlePreview: (record: Record<string, unknown>, issue: string) =>
+    post<Record<string, unknown>>('ledger/settle-preview', {record, issue}),
   ledgerClear: (mode?: LedgerMode) =>
     del<{ok: boolean; deleted: number}>(`ledger${mode ? `?mode=${mode}` : ''}`),
 

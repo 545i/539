@@ -32,6 +32,7 @@ ACTION_LABELS = {
     "bet_add": "新增下注",
     "bet_delete": "撤銷下注",
     "bet_clear": "清空紀錄",
+    "bet_settle": "改期數對獎",
     "quick_import": "快速上傳",
     "void": "作廢操作",
 }
