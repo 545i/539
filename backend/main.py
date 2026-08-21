@@ -21,7 +21,7 @@ from fastapi.staticfiles import StaticFiles
 
 from backend.data import DATA_DIR, PROJECT_ROOT, all_games, game_data_path
 from backend import star_cost_store
-from backend.routers import (auth, combo, erhe, export, games, history,
+from backend.routers import (audit, auth, combo, erhe, export, games, history,
                              importer, ledger, leaderboard, pillar, predict,
                              settings, star_cost, stats)
 from core import autoupdate
@@ -56,7 +56,7 @@ api_prefix = f"{PREFIX}/api"
 for r in (auth.router, games.router, history.router, stats.router,
           pillar.router, combo.router, erhe.router, ledger.router,
           leaderboard.router, export.router, settings.router,
-          predict.router, importer.router, star_cost.router):
+          predict.router, importer.router, star_cost.router, audit.router):
     app.include_router(r, prefix=api_prefix)
 
 

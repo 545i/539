@@ -23,6 +23,7 @@ import { AnalysisView } from './components/views/AnalysisView';
 import { PredictionView } from './components/views/PredictionView';
 import { ExportView } from './components/views/ExportView';
 import { LeaderboardView } from './components/views/LeaderboardView';
+import { AuditView } from './components/views/AuditView';
 import { SettingsView } from './components/views/SettingsView';
 
 export default function App() {
@@ -91,6 +92,7 @@ export default function App() {
       case 'prediction': return '五策略預測';
       case 'export': return '匯出中心';
       case 'leaderboard': return '績效榜單';
+      case 'audit': return '操作歷史';
       case 'settings': return '系統設定';
       default: return '彩券統計分析';
     }
@@ -230,6 +232,10 @@ export default function App() {
           {activeNav === 'prediction' && <PredictionView />}
           {activeNav === 'export' && <ExportView />}
           {activeNav === 'leaderboard' && <LeaderboardView />}
+          {/* 作廢會改到記帳流水,沿用快速上傳那套 ledgerVersion 讓各分頁重抓 */}
+          {activeNav === 'audit' && (
+            <AuditView onReverted={() => setLedgerVersion(v => v + 1)} />
+          )}
           {activeNav === 'settings' && <SettingsView theme={theme} onToggleTheme={toggleTheme} />}
 
           {/* Bottom Disclaimer Expander */}

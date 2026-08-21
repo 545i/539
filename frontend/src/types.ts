@@ -7,6 +7,7 @@ export type NavItem =
   | 'prediction'   // 五策略預測
   | 'export'       // 匯出
   | 'leaderboard'  // 排行榜
+  | 'audit'        // 操作歷史(可作廢=反轉)
   | 'settings';    // 設定
 
 export type DuoBetTab = 

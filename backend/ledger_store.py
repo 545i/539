@@ -92,14 +92,59 @@ def add_entry(username: str, mode: str, record: dict) -> dict:
     return _row(row)
 
 
-def delete_entry(username: str, entry_id: int) -> bool:
-    """刪一筆(撤銷用);不是自己的紀錄或不存在都回 False。"""
+def delete_entry(username: str, entry_id: int) -> dict | None:
+    """刪一筆(撤銷用),**回傳被刪掉的那一筆**;不是自己的紀錄或不存在回 None。
+
+    刻意先讀再刪:操作歷史要把整筆內容存進 audit 的 reverse_data,事後才有東西
+    可以還原(見 backend/audit_store.py)。只回 True/False 的話,撤銷就是不可逆的。
+    回傳的 dict 一定含 id / mode,不會是空的 —— 呼叫端可以直接 `if not ...` 判斷。
+    """
     with _conn() as c:
-        cur = c.execute(
-            "DELETE FROM ledger_entries WHERE id = ? AND username = ?",
+        row = c.execute(
+            "SELECT id, mode, payload, created FROM ledger_entries "
+            "WHERE id = ? AND username = ?",
             (int(entry_id), username),
-        )
-    return (cur.rowcount or 0) > 0
+        ).fetchone()
+        if row is None:
+            return None
+        c.execute("DELETE FROM ledger_entries WHERE id = ?", (int(row[0]),))
+    return _row(row)
+
+
+def restore_entry(username: str, mode: str, record: dict,
+                  entry_id: int | None = None, created: str | None = None) -> dict:
+    """把先前刪掉的紀錄放回去(作廢「撤銷」用),盡量沿用原本的 id 與時間。
+
+    沿用 id 有意義:流水依 id 排序,原位置放回去,編號與累積損益才會回到刪之前
+    的樣子。id 已經被別人佔走(或沒給)就退而求其次讓資料庫發新的 —— 順序會
+    跑到最後,但至少紀錄回來了。
+    """
+    payload = json.dumps(record if isinstance(record, dict) else {},
+                         ensure_ascii=False)
+    with _conn() as c:
+        new_id: int | None = None
+        if entry_id is not None:
+            try:
+                c.execute(
+                    "INSERT INTO ledger_entries (id, username, mode, payload, created)"
+                    " VALUES (?, ?, ?, ?, COALESCE(?, datetime('now', 'localtime')))",
+                    (int(entry_id), username, mode, payload, created),
+                )
+                new_id = int(entry_id)
+            except sqlite3.IntegrityError:
+                new_id = None
+        if new_id is None:
+            cur = c.execute(
+                "INSERT INTO ledger_entries (username, mode, payload, created)"
+                " VALUES (?, ?, ?, COALESCE(?, datetime('now', 'localtime')))",
+                (username, mode, payload, created),
+            )
+            new_id = int(cur.lastrowid)
+        row = c.execute(
+            "SELECT id, mode, payload, created FROM ledger_entries WHERE id = ?",
+            (new_id,),
+        ).fetchone()
+    return _row(row)
 
 
 def _num(record: dict, key: str) -> float:

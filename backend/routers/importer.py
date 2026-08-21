@@ -32,7 +32,7 @@ from datetime import date as _date
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
-from backend import ledger_store
+from backend import audit_store, ledger_store
 from backend.data import get_game
 from backend.deps import current_user
 from core import combo as combo_mod
@@ -274,13 +274,26 @@ def quick_import(body: QuickImportIn, user: str = Depends(current_user)):
     items, errors = parse(body.text, g)
 
     out = []
+    saved: list[dict] = []
     for it in items:
         record = to_record(it, g, bet_date, body.issue)
         entry_id = None
         if not body.dry_run:
-            entry_id = ledger_store.add_entry(user, it.mode, record)["id"]
+            entry = ledger_store.add_entry(user, it.mode, record)
+            entry_id = entry["id"]
+            saved.append(entry)
         out.append({"id": entry_id, "line": it.line, "mode": it.mode,
                     "record": record})
+
+    # 一次上傳 = 操作歷史裡的一筆(不是 N 筆)—— 作廢時整批一起回收,
+    # 使用者的心智模型是「我剛剛上傳了那張單」,不是「我新增了 7 筆」。
+    if saved:
+        audit_store.log(
+            user, "quick_import",
+            summary=f"{g.name} {bet_date} 上傳 {len(saved)} 筆下注"
+                    + (f"(第 {body.issue} 期)" if body.issue else ""),
+            reverse_data={"entries": saved},
+        )
 
     return {
         "game": g.key,

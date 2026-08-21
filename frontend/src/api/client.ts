@@ -453,6 +453,35 @@ export interface QuickImportDTO {
   errors: QuickImportErrorDTO[];
 }
 
+// 操作歷史(需登入):下注 / 撤銷 / 上傳 / 清空各留一筆痕跡,每筆都可以「作廢」。
+// 作廢 = 反轉那個動作(作廢撤銷就是把紀錄救回來),而且作廢自己也是一筆歷史。
+// action_label 與 reversible 由後端算好 —— 前端不要自己維護一份對照與規則。
+export type AuditAction =
+  | 'bet_add' // 單筆下注
+  | 'bet_delete' // 撤銷一筆
+  | 'bet_clear' // 清空某下法
+  | 'quick_import' // 快速上傳一批
+  | 'void'; // 作廢(反轉)某個操作
+
+export interface AuditLogDTO {
+  id: number;
+  action: AuditAction;
+  action_label: string;
+  target_id: number | null;
+  summary: string;
+  voided: boolean; // 已被作廢
+  void_of: number | null; // 這筆是「作廢誰」的紀錄
+  reversible: boolean; // 還能不能按作廢(void 本身與已作廢的都不行)
+  created: string;
+}
+
+export interface AuditVoidDTO {
+  ok: boolean;
+  voided: number; // 被作廢的操作 id
+  reverted: number; // 實際反轉了幾筆 ledger 紀錄(目標早就不在時會是 0)
+  log: AuditLogDTO; // 新增的那筆作廢紀錄
+}
+
 // 排行榜(需登入):後端把 ledger 流水彙總成使用者排名與各下法表現。
 // roi 可能是 null —— 「總成本 0」和「打平」是兩回事,前端要顯示成「—」。
 export interface LeaderRowDTO {
@@ -646,6 +675,10 @@ export const api = {
       date: opts.date ?? null,
       issue: opts.issue ?? '',
     }),
+
+  // audit 操作歷史(需登入):列自己的操作、作廢(反轉)某一筆
+  auditList: (limit = 200) => get<AuditLogDTO[]>(`audit?limit=${limit}`),
+  auditVoid: (id: number) => post<AuditVoidDTO>(`audit/${id}/void`, {}),
 
   // leaderboard 排行榜(需登入;資料來自全站記帳流水)
   leaderboard: (limit = 50) => get<LeaderboardDTO>(`leaderboard?limit=${limit}`),
