@@ -37,10 +37,22 @@ def _cars(record: dict) -> float:
     return c if c > 0 else _f(record, "units", 0.0)
 
 
+# 前端 playType 的星數是中文(STAR_NAMES:二星/三星/四星),不是阿拉伯數字
+_STAR_WORD = {"二": 2, "三": 3, "四": 4, "五": 5, "六": 6}
+
+
 def _stars_of(play_type: str) -> int:
-    """從 playType(如「連碰(全碰) 3 (5 支)」)取星數;取不到當 3 星。"""
-    m = re.search(r"\d+", play_type or "")
-    return int(m.group()) if m else 3
+    """從 playType 取星數;支援中文星名。取不到當 3 星。
+
+    playType 形如「星碰 三星 (12 支)」「連碰(全碰) 三星 (5 支)」——
+    **不能直接抓第一個數字**,那會抓到「12 支」的支數。認「X星」的 X:
+    先中文(二/三/四/五/六),再退而求其次認阿拉伯數字接「星」。
+    """
+    m = re.search(r"([二三四五六])星", play_type or "")
+    if m:
+        return _STAR_WORD[m.group(1)]
+    m = re.search(r"(\d+)\s*星", play_type or "")
+    return int(m.group(1)) if m else 3
 
 
 def settle(record: dict, draw: list[int] | None, g: GameConfig) -> dict:

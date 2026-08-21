@@ -63,14 +63,29 @@ def test_pillar_four_and_broken():
 
 def test_combo_star_hits():
     # 星碰三星選 8 顆,重到 3 顆以上 → 中 (8-3)=5 碰
+    # playType 用真實格式「星碰 三星 (支)」—— 星數是中文,不能被支數 12 蓋掉
     draw = [1, 2, 3, 20, 39]
     r = settle.settle(
-        _rec(mode="combo", playType="星碰 3 (2 支)",
-             selectedBalls=[1, 2, 3, 4, 5, 6, 7, 8], cars=2), draw, G)
+        _rec(mode="combo", playType="星碰 三星 (12 支)",
+             selectedBalls=[1, 2, 3, 4, 5, 6, 7, 8], cars=12), draw, G)
     from core import combo
     prize = combo.market_prize(3, G.default_bet_prize)
     assert r["result"] == "中 5 碰"
-    assert r["payout"] == round(5 * prize * 2)
+    assert r["payout"] == round(5 * prize * 12)
+
+
+def test_combo_stars_parsed_from_chinese_not_sheets():
+    # 迴歸:別把「(12 支)」的 12 當成星數 —— 三星選 8 顆重 3 顆該中,不是槓龜
+    r = settle.settle(
+        _rec(mode="combo", playType="星碰 三星 (12 支)",
+             selectedBalls=[3, 6, 12, 15, 22, 25, 32, 35], cars=12),
+        [3, 6, 12, 1, 2], G)
+    assert r["result"] == "中 5 碰"
+    assert r["payout"] > 0 and r["pnl"] > 0
+
+    assert settle._stars_of("星碰 三星 (12 支)") == 3
+    assert settle._stars_of("連碰(全碰) 四星 (5 支)") == 4
+    assert settle._stars_of("星碰 二星 (1 支)") == 2
 
 
 def test_draw_missing_stays_pending():
