@@ -1,4 +1,4 @@
-import React, {useState} from 'react';
+import React, {useEffect, useMemo, useState} from 'react';
 import {X, ClipboardPaste, ListChecks, Upload, AlertTriangle, CheckCircle2} from 'lucide-react';
 import {api, QuickImportDTO, LedgerMode, TensPairDTO} from '../api/client';
 import {useAsync} from '../api/useAsync';
@@ -35,17 +35,26 @@ const SAMPLE = `02x50車
 20_29
 其他400`;
 
-const today = () => new Date().toISOString().slice(0, 10);
 
 export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported}) => {
   const {loggedIn} = useAuth();
   const {gameKey, game, games, setGameKey} = useGame();
   const [text, setText] = useState('');
-  const [betDate, setBetDate] = useState(today);
+  const [issue, setIssue] = useState('');
   const [preview, setPreview] = useState<QuickImportDTO | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<number | null>(null);
+
+  // 下注期數:預設帶入「最新一期 +1」(下一期);使用者可自行改
+  const hist = useAsync(() => (isOpen ? api.history(gameKey, 1) : Promise.resolve(null)), [gameKey, isOpen]);
+  const nextIssue = useMemo(() => {
+    const last = hist.data?.latest?.issue;
+    if (!last) return '';
+    const m = last.match(/^(\d+)$/);
+    return m ? String(Number(m[1]) + 1) : last;
+  }, [hist.data]);
+  useEffect(() => { setIssue(nextIssue); }, [nextIssue]);
 
   // 區間斷檔提醒(參考用):依目前選的遊戲,只顯示未開(streak>=1)的配對
   const pairs = useAsync<TensPairDTO[]>(
@@ -66,7 +75,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported})
     setBusy(true);
     setError(null);
     try {
-      const res = await api.quickImport(gameKey, text, dryRun, {date: betDate});
+      const res = await api.quickImport(gameKey, text, dryRun, {issue});
       setPreview(res);
       if (!dryRun) {
         setDone(res.saved);
@@ -147,14 +156,16 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported})
             </div>
             <div>
               <label className="block text-[10px] uppercase tracking-[0.2em] font-semibold text-neutral-400 mb-1.5">
-                下注日期
+                下注期數
               </label>
               <input
-                id="quick-import-date"
-                type="date"
-                value={betDate}
-                onChange={e => setBetDate(e.target.value)}
-                className="h-10 px-3 rounded-xl border border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.03] text-sm font-mono text-neutral-900 dark:text-white outline-hidden focus:border-black/40 dark:focus:border-white/40 transition-colors"
+                id="quick-import-issue"
+                type="text"
+                inputMode="numeric"
+                value={issue}
+                placeholder={nextIssue || '期別'}
+                onChange={e => setIssue(e.target.value)}
+                className="h-10 w-40 px-3 rounded-xl border border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.03] text-sm font-mono text-neutral-900 dark:text-white outline-hidden focus:border-black/40 dark:focus:border-white/40 transition-colors"
               />
             </div>
             <div className="text-[11px] text-neutral-500 dark:text-neutral-400 pb-2.5">
