@@ -10,6 +10,7 @@ import {
   Plus
 } from 'lucide-react';
 import { LotteryBallPad } from '../LotteryBallPad';
+import { IssuePicker } from '../IssuePicker';
 import { BetRecord, LotteryGame } from '../../types';
 import { api, ErhePlanDTO } from '../../api/client';
 import { useAsync } from '../../api/useAsync';
@@ -43,14 +44,23 @@ export const MultiBetTab: React.FC = () => {
   const { game, gameKey, loading: gameLoading } = useGame();
   const [selectedBalls, setSelectedBalls] = useState<number[]>([3, 5, 8, 12, 17, 21, 24, 28, 33, 37]);
   const [cars, setCars] = useState<number>(5);
-  // 期號 / 日期 = 最新一期(當天已開的那期)
-  const histReq = useAsync(() => api.history(gameKey, 1), [gameKey]);
+  // 期號 / 日期:預設帶最新一期,使用者可用下拉選單改記到別期(補記 / 修期)
+  const histReq = useAsync(() => api.history(gameKey, 30), [gameKey]);
   const latest = histReq.data?.latest ?? null;
-  const nextIssue = latest?.issue ?? '';
+  const draws = histReq.data?.draws ?? [];
+  const [nextIssue, setNextIssue] = useState<string>('');
+  const [issueTouched, setIssueTouched] = useState(false);
   const [betDate, setBetDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
   React.useEffect(() => {
+    if (issueTouched) return;
+    if (latest?.issue) setNextIssue(latest.issue);
     if (latest?.date) setBetDate(latest.date);
-  }, [latest?.date]);
+  }, [latest?.issue, latest?.date, issueTouched]);
+  const pickIssue = (iss: string, d: string) => {
+    setNextIssue(iss);
+    setBetDate(d);
+    setIssueTouched(true);
+  };
   // 登入時流水存後端;未登入沿用 v2 的前端 state(含示範資料)
   const ledger = useLedger('multi', DEMO_RECORDS);
   const records = ledger.records;
@@ -176,9 +186,10 @@ export const MultiBetTab: React.FC = () => {
               <span className="text-xs font-display font-bold uppercase tracking-wider text-neutral-900 dark:text-white">
                 01 / 多顆組合參數
               </span>
-              <span className="text-[11px] font-mono text-neutral-400">
-                期號: {nextIssue || '—'}
-              </span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] font-mono text-neutral-400">期號</span>
+                <IssuePicker issue={nextIssue} date={betDate} draws={draws} onSelect={pickIssue} />
+              </div>
             </div>
 
             {/* Ball Selector Matrix */}

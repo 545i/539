@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { INITIAL_COMBO_RECORDS } from '../../data/lotteryData';
 import { LotteryBallPad } from '../LotteryBallPad';
+import { IssuePicker } from '../IssuePicker';
 import { LotteryGame } from '../../types';
 import { api } from '../../api/client';
 import { useAsync } from '../../api/useAsync';
@@ -34,12 +35,23 @@ export const ComboBetTab: React.FC = () => {
   const [starCount, setStarCount] = useState<'二星' | '三星' | '四星'>('三星');
   const [selectedBalls, setSelectedBalls] = useState<number[]>([3, 6, 12, 15, 22, 25, 32, 35]);
   const [units, setUnits] = useState<number>(12);
-  // 期號 / 日期 = 最新一期(當天已開的那期)
-  const histReq = useAsync(() => api.history(gameKey, 1), [gameKey]);
+  // 期號 / 日期:預設帶最新一期,使用者可用下拉選單改記到別期(補記 / 修期)
+  const histReq = useAsync(() => api.history(gameKey, 30), [gameKey]);
   const latest = histReq.data?.latest ?? null;
-  const curIssue = latest?.issue ?? '';
+  const draws = histReq.data?.draws ?? [];
+  const [curIssue, setCurIssue] = useState<string>('');
+  const [issueTouched, setIssueTouched] = useState(false);
   const [betDate, setBetDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
-  React.useEffect(() => { if (latest?.date) setBetDate(latest.date); }, [latest?.date]);
+  React.useEffect(() => {
+    if (issueTouched) return;
+    if (latest?.issue) setCurIssue(latest.issue);
+    if (latest?.date) setBetDate(latest.date);
+  }, [latest?.issue, latest?.date, issueTouched]);
+  const pickIssue = (iss: string, d: string) => {
+    setCurIssue(iss);
+    setBetDate(d);
+    setIssueTouched(true);
+  };
 
   const n = selectedBalls.length;
   const k = starCount === '二星' ? 2 : (starCount === '三星' ? 3 : 4);
@@ -160,9 +172,10 @@ export const ComboBetTab: React.FC = () => {
               <span className="text-xs font-display font-bold uppercase tracking-wider text-neutral-900 dark:text-white">
                 01 / 連碰組合參數
               </span>
-              <span className="text-[11px] font-mono text-neutral-400">
-                期號: {curIssue || '—'}
-              </span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] font-mono text-neutral-400">期號</span>
+                <IssuePicker issue={curIssue} date={betDate} draws={draws} onSelect={pickIssue} />
+              </div>
             </div>
 
             {/* Method & Stars Grid */}

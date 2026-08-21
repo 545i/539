@@ -19,6 +19,7 @@ import { useAsync } from '../../api/useAsync';
 import { useGame } from '../../api/useGame';
 import { useLedger } from '../../api/useLedger';
 import { LotteryBallPad } from '../LotteryBallPad';
+import { IssuePicker } from '../IssuePicker';
 
 const pad = (n: number) => n.toString().padStart(2, '0');
 
@@ -37,15 +38,23 @@ export const ThreePillarTab: React.FC = () => {
   const ledger = useLedger('pillar1800', INITIAL_PILLAR_RECORDS);
   const records = ledger.records;
   const [units, setUnits] = useState<number>(1);
-  // 期號 / 日期 = 最新一期(當天已開的那期);使用者仍可自行改期號
-  const histReq = useAsync(() => api.history(gameKey, 1), [gameKey]);
+  // 期號 / 日期:預設帶最新一期,使用者可用下拉選單改記到別期(補記 / 修期)
+  const histReq = useAsync(() => api.history(gameKey, 30), [gameKey]);
   const latest = histReq.data?.latest ?? null;
+  const draws = histReq.data?.draws ?? [];
   const [issue, setIssue] = useState<string>('');
+  const [issueTouched, setIssueTouched] = useState(false);
   const [betDate, setBetDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
   React.useEffect(() => {
+    if (issueTouched) return;
     if (latest?.issue) setIssue(latest.issue);
     if (latest?.date) setBetDate(latest.date);
-  }, [latest?.issue, latest?.date]);
+  }, [latest?.issue, latest?.date, issueTouched]);
+  const pickIssue = (iss: string, d: string) => {
+    setIssue(iss);
+    setBetDate(d);
+    setIssueTouched(true);
+  };
   const [isTheoryOpen, setIsTheoryOpen] = useState(false);
   const [selectedBalls, setSelectedBalls] = useState<number[]>([]);
 
@@ -196,6 +205,12 @@ export const ThreePillarTab: React.FC = () => {
               <span className="text-[11px] font-mono text-neutral-400">
                 1 支 = {totalBets.toLocaleString()} 注
               </span>
+            </div>
+
+            {/* 期號選擇:預設最新一期,可改記到別期 */}
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-mono text-neutral-400">記帳期號</span>
+              <IssuePicker issue={issue} date={betDate} draws={draws} onSelect={pickIssue} />
             </div>
 
             {/* Pillar Structure Visualizer Cards */}
