@@ -84,8 +84,8 @@ def test_odds_are_a_multiplier_not_an_amount():
 
 
 def test_each_star_level_has_its_own_cost():
-    """二星 72.5、三星 63、四星 50 —— 三個價都不一樣,不能共用一個數字。"""
-    assert combo.MARKET_COST == {2: 72.5, 3: 63.0, 4: 50.0}
+    """二星 80、三星 63、四星 50 —— 三個價都不一樣,不能共用一個數字。"""
+    assert combo.MARKET_COST == {2: 80.0, 3: 63.0, 4: 50.0}
     assert len(set(combo.MARKET_COST.values())) == 3
 
 
