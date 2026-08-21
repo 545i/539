@@ -1,6 +1,7 @@
 import React, {useState} from 'react';
 import {X, ClipboardPaste, ListChecks, Upload, AlertTriangle, CheckCircle2} from 'lucide-react';
-import {api, QuickImportDTO, LedgerMode} from '../api/client';
+import {api, QuickImportDTO, LedgerMode, TensPairDTO} from '../api/client';
+import {useAsync} from '../api/useAsync';
 import {useAuth} from '../api/useAuth';
 import {useGame} from '../api/useGame';
 
@@ -45,6 +46,13 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported})
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<number | null>(null);
+
+  // 區間斷檔提醒(參考用):依目前選的遊戲,只顯示未開(streak>=1)的配對
+  const pairs = useAsync<TensPairDTO[]>(
+    () => (isOpen ? api.tensPairs(gameKey, 3) : Promise.resolve([])),
+    [gameKey, isOpen],
+  );
+  const brokenPairs = (pairs.data ?? []).filter(p => p.streak >= 1);
 
   if (!isOpen) return null;
 
@@ -152,6 +160,35 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported})
             <div className="text-[11px] text-neutral-500 dark:text-neutral-400 pb-2.5">
               記到 <strong>{game?.name ?? gameKey}</strong>(由上方遊戲切換器決定),
               結果一律先記「待開獎」,開獎後再結算。
+            </div>
+          </div>
+
+          {/* 區間斷檔提醒(參考用):依目前遊戲,只顯示未開的區段配對 */}
+          <div className="rounded-xl border border-black/[0.08] dark:border-white/[0.08] bg-black/[0.02] dark:bg-white/[0.03] p-3 space-y-2">
+            <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.2em] font-semibold text-neutral-400">
+              <AlertTriangle className="w-3.5 h-3.5" />
+              <span>區間斷檔提醒（{game?.short_name ?? gameKey}・參考）</span>
+            </div>
+            {pairs.loading && <div className="text-[11px] text-neutral-400">載入中…</div>}
+            {!pairs.loading && brokenPairs.length === 0 && (
+              <div className="text-[11px] text-neutral-400">
+                各十位區段近期都有開出，目前沒有連續未開的組合。
+              </div>
+            )}
+            <div className="flex flex-wrap gap-1.5">
+              {brokenPairs.map(p => (
+                <span
+                  key={`${p.bands[0]}-${p.bands[1]}`}
+                  className={`px-2 py-1 rounded-lg text-[11px] font-mono ${
+                    p.alert
+                      ? 'bg-amber-500/15 text-amber-800 dark:text-amber-300 border border-amber-500/30 font-bold'
+                      : 'bg-black/5 dark:bg-white/10 text-neutral-600 dark:text-neutral-300'
+                  }`}
+                  title={`${p.range[0]} × ${p.range[1]}`}
+                >
+                  {p.labels[0]}×{p.labels[1]} {p.streak}期未開
+                </span>
+              ))}
             </div>
           </div>
 
