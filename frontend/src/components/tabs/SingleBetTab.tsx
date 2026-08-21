@@ -46,7 +46,12 @@ export const SingleBetTab: React.FC = () => {
   const { game, gameKey, loading: gameLoading } = useGame();
   const [selectedBall, setSelectedBall] = useState<number[]>([10]);
   const [cars, setCars] = useState<number>(3);
-  const [betDate, setBetDate] = useState<string>('2026-08-19');
+  // 期號 / 日期 = 最新一期(當天已開的那期)
+  const histReq = useAsync(() => api.history(gameKey, 1), [gameKey]);
+  const latest = histReq.data?.latest ?? null;
+  const curIssue = latest?.issue ?? '';
+  const [betDate, setBetDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
+  React.useEffect(() => { if (latest?.date) setBetDate(latest.date); }, [latest?.date]);
   const [isCompareOpen, setIsCompareOpen] = useState(false);
   // 登入時流水存後端;未登入沿用 v2 的前端 state(含示範資料)
   const ledger = useLedger('single', DEMO_RECORDS);
@@ -94,14 +99,14 @@ export const SingleBetTab: React.FC = () => {
 
     ledger.add({
       date: betDate,
-      issue: '115000201',
+      issue: curIssue || '',
       game: gameName,
       mode: 'single',
       units: cars,
       cars,
       betsCount: 1,
       selectedBalls: selectedBall.length > 0 ? [...selectedBall] : [10],
-      drawBalls: [5, 11, 12, 17, 18],
+      drawBalls: [],
       result: status,
       cost: currentCost,
       payout,
@@ -158,7 +163,7 @@ export const SingleBetTab: React.FC = () => {
                 01 / 下注參數配置
               </span>
               <span className="text-[11px] font-mono text-neutral-400">
-                期號: 115000201
+                期號: {curIssue || '—'}
               </span>
             </div>
 

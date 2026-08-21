@@ -37,8 +37,15 @@ export const ThreePillarTab: React.FC = () => {
   const ledger = useLedger('pillar1800', INITIAL_PILLAR_RECORDS);
   const records = ledger.records;
   const [units, setUnits] = useState<number>(1);
-  const [issue, setIssue] = useState<string>('115000201');
-  const [betDate, setBetDate] = useState<string>('2026-08-19');
+  // 期號 / 日期 = 最新一期(當天已開的那期);使用者仍可自行改期號
+  const histReq = useAsync(() => api.history(gameKey, 1), [gameKey]);
+  const latest = histReq.data?.latest ?? null;
+  const [issue, setIssue] = useState<string>('');
+  const [betDate, setBetDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
+  React.useEffect(() => {
+    if (latest?.issue) setIssue(latest.issue);
+    if (latest?.date) setBetDate(latest.date);
+  }, [latest?.issue, latest?.date]);
   const [isTheoryOpen, setIsTheoryOpen] = useState(false);
   const [selectedBalls, setSelectedBalls] = useState<number[]>([]);
 
@@ -129,7 +136,7 @@ export const ThreePillarTab: React.FC = () => {
       cars: units,
       betsCount: units * totalBets,
       selectedBalls: [],
-      drawBalls: [5, 10, 16, 28, 39],
+      drawBalls: [],
       pillarDist: resultType === '中 4 碰' ? '2 + 2 + 1' : (resultType === '中 3 碰' ? '2 + 1 + 2' : '3 + 2 + 0'),
       result: resultType,
       cost: currentCost,

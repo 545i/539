@@ -34,7 +34,12 @@ export const ComboBetTab: React.FC = () => {
   const [starCount, setStarCount] = useState<'二星' | '三星' | '四星'>('三星');
   const [selectedBalls, setSelectedBalls] = useState<number[]>([3, 6, 12, 15, 22, 25, 32, 35]);
   const [units, setUnits] = useState<number>(12);
-  const [betDate, setBetDate] = useState<string>('2026-08-19');
+  // 期號 / 日期 = 最新一期(當天已開的那期)
+  const histReq = useAsync(() => api.history(gameKey, 1), [gameKey]);
+  const latest = histReq.data?.latest ?? null;
+  const curIssue = latest?.issue ?? '';
+  const [betDate, setBetDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
+  React.useEffect(() => { if (latest?.date) setBetDate(latest.date); }, [latest?.date]);
 
   const n = selectedBalls.length;
   const k = starCount === '二星' ? 2 : (starCount === '三星' ? 3 : 4);
@@ -90,7 +95,7 @@ export const ComboBetTab: React.FC = () => {
 
     ledger.add({
       date: betDate,
-      issue: '115000201',
+      issue: curIssue || '',
       game: gameName,
       mode: 'combo',
       playType: `${activePlay} ${starCount} (${units} 支)`,
@@ -98,7 +103,7 @@ export const ComboBetTab: React.FC = () => {
       cars: units,
       betsCount: totalComb,
       selectedBalls: [...selectedBalls],
-      drawBalls: [5, 11, 12, 17, 18],
+      drawBalls: [],
       result: status,
       cost: currentCost,
       payout,
@@ -155,7 +160,7 @@ export const ComboBetTab: React.FC = () => {
                 01 / 連碰組合參數
               </span>
               <span className="text-[11px] font-mono text-neutral-400">
-                期號: 115000201
+                期號: {curIssue || '—'}
               </span>
             </div>
 
