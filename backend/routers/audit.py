@@ -95,9 +95,6 @@ def void_log(log_id: int, user: str = Depends(current_user)):
         raise HTTPException(status_code=400, detail="這筆操作已經作廢過了")
     reverted = _revert(user, row)
 
-    entry = audit_store.log(
-        user, "void", target_id=row["id"], void_of=row["id"],
-        summary=f"作廢「{row['action_label']}」:{row['summary']}",
-    )
-    return {"ok": True, "voided": log_id, "reverted": reverted,
-            "log": _public(entry)}
+    # 作廢這個動作本身不另外記一筆 —— 原操作已標記為「已作廢」就夠了,
+    # 再多一筆 void log 只是洗版。
+    return {"ok": True, "voided": log_id, "reverted": reverted, "log": None}

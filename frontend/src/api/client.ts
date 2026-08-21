@@ -479,7 +479,7 @@ export interface AuditVoidDTO {
   ok: boolean;
   voided: number; // 被作廢的操作 id
   reverted: number; // 實際反轉了幾筆 ledger 紀錄(目標早就不在時會是 0)
-  log: AuditLogDTO; // 新增的那筆作廢紀錄
+  log: AuditLogDTO | null; // 作廢動作本身不再另記一筆,固定為 null
 }
 
 // 排行榜(需登入):後端把 ledger 流水彙總成使用者排名與各下法表現。

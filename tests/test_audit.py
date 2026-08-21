@@ -80,11 +80,10 @@ def test_bet_add_is_logged_and_void_removes_the_entry(client, alice):
     assert res["ok"] and res["reverted"] == 1
     assert _ledger(client, alice) == []
 
-    # 作廢本身也是一筆歷史,原本那筆標記 voided 但留著
+    # 作廢動作本身不另記一筆:原本那筆標記 voided 但留著,歷史只有它
     after = _logs(client, alice)
-    assert [r["action"] for r in after] == ["void", "bet_add"]
-    assert after[0]["void_of"] == logs[0]["id"]
-    assert after[1]["voided"] is True and after[1]["reversible"] is False
+    assert [r["action"] for r in after] == ["bet_add"]
+    assert after[0]["voided"] is True and after[0]["reversible"] is False
 
 
 def test_void_of_delete_restores_the_record(client, alice):
@@ -150,11 +149,8 @@ def test_cannot_void_twice_or_void_a_void(client, alice):
     log_id = _logs(client, alice)[0]["id"]
 
     assert client.post(f"{P}/audit/{log_id}/void", headers=alice).status_code == 200
+    # 同一筆不能作廢兩次(作廢動作本身不另記 log)
     assert client.post(f"{P}/audit/{log_id}/void", headers=alice).status_code == 400
-
-    void_log = next(r for r in _logs(client, alice) if r["action"] == "void")
-    assert client.post(f"{P}/audit/{void_log['id']}/void",
-                       headers=alice).status_code == 400
 
 
 def test_accounts_are_isolated(client, alice, bob):
