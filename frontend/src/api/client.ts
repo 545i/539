@@ -513,6 +513,34 @@ export interface LeaderboardDTO {
   modes: LeaderModeDTO[];
 }
 
+// 排行榜展開一列時看到的「該帳號下注明細」(新→舊)。登入後看得到任一帳號,
+// 跟排行榜本身同一批資料 —— 榜上已經公開累積損益,明細只是把它攤開。
+// 數字欄位可能是 null:舊紀錄沒有那個欄位,跟「這局 0 元」要分得開,顯示成「—」。
+export interface UserLedgerEntryDTO {
+  id: number;
+  mode: LedgerMode;
+  mode_name: string; // 下法的中文名(後端算好,前端不要再維護一份對照)
+  created: string;
+  date: string;
+  issue: string;
+  game: string;
+  playType: string;
+  result: string;
+  selectedBalls: number[];
+  units: number | null; // 支數 or 車數
+  cars: number | null;
+  betsCount: number | null;
+  cost: number | null;
+  payout: number | null;
+  pnl: number | null;
+}
+
+export interface UserLedgerDTO {
+  username: string;
+  count: number;
+  entries: UserLedgerEntryDTO[];
+}
+
 // 開獎資料更新狀態(設定頁)
 export interface AutoupdateGameDTO {
   key: GameKey;
@@ -682,6 +710,9 @@ export const api = {
 
   // leaderboard 排行榜(需登入;資料來自全站記帳流水)
   leaderboard: (limit = 50) => get<LeaderboardDTO>(`leaderboard?limit=${limit}`),
+  // 某帳號的下注明細(排行榜展開那一列才抓,不要一次抓全榜)
+  userLedger: (username: string) =>
+    get<UserLedgerDTO>(`leaderboard/${encodeURIComponent(username)}/ledger`),
 
   // export 匯出(回檔案,呼叫後瀏覽器直接下載;回傳實際檔名)
   exportReport: (game: GameKey, limit = 0) =>
