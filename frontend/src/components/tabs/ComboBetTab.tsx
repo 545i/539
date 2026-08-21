@@ -75,8 +75,8 @@ export const ComboBetTab: React.FC = () => {
   const numMax = game.num_max;
   const totalComb = calc?.bets ?? 0;
   const prizePerHitComb = calc?.prize_per_hit ?? 0;
-  // 一支 = 買滿這張的全部碰數;UI 的「支數」以 6 支為基準等比放大
-  const currentCost = Math.round((calc?.total_cost ?? 0) * (units / 6));
+  // 一支 = 買滿這張的全部碰數;總成本 = 單支成本(碰數×每碰) × 支數
+  const currentCost = Math.round((calc?.total_cost ?? 0) * units);
 
   const handleToggleBall = (num: number) => {
     if (selectedBalls.includes(num)) {
@@ -91,7 +91,7 @@ export const ComboBetTab: React.FC = () => {
 
   const handleRecord = (status: string = '待開獎') => {
     const isWin = status === '中三星 (1碰)';
-    const payout = isWin ? Math.round(prizePerHitComb * (units / 6)) : 0;
+    const payout = isWin ? Math.round(prizePerHitComb * units) : 0;
     const pnl = status === '待開獎' ? 0 : payout - currentCost;
 
     ledger.add({
@@ -299,7 +299,7 @@ export const ComboBetTab: React.FC = () => {
                 <div>
                   <span className="text-neutral-500 block text-[10px]">命中 1 碰彩金:</span>
                   <span className="font-mono font-bold text-sm text-emerald-600 dark:text-emerald-400">
-                    NT$ {Math.round(prizePerHitComb * (units / 6)).toLocaleString()}
+                    NT$ {Math.round(prizePerHitComb * units).toLocaleString()}
                   </span>
                 </div>
                 <div>
