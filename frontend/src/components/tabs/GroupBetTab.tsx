@@ -91,6 +91,22 @@ export const GroupBetTab: React.FC<Props> = ({ group }) => {
   const prizeAllHits = payoutOf(fixedCount);
   const isFull = selectedBalls.length === fixedCount;
 
+  // 建議車數(中1顆回本,照舊版):以「這一組自己的累積損益」算,不跟另一組混。
+  // 中1顆每車淨利 = 每車中獎(21200) − 顆數×每車成本(2755);<=0 就中1顆也追不回。
+  // 車數 = ⌈該組虧損 ÷ 每車淨利⌉,回本後回到起始車數。
+  const per1HitNet = Math.round(prizePerHitPerCar - fixedCount * costPerCarPerBall);
+  const inLoss = cumPnl < 0;
+  const canRecover1Hit = per1HitNet > 0;
+  const suggestCars = !inLoss
+    ? null
+    : !canRecover1Hit
+    ? Infinity
+    : Math.max(1, Math.ceil(-cumPnl / per1HitNet));
+  const suggestCost =
+    suggestCars != null && Number.isFinite(suggestCars)
+      ? fixedCount * (suggestCars as number) * costPerCarPerBall
+      : null;
+
   const handleToggleBall = (num: number) => {
     if (selectedBalls.includes(num)) {
       setSelectedBalls(selectedBalls.filter(n => n !== num));
@@ -261,6 +277,45 @@ export const GroupBetTab: React.FC<Props> = ({ group }) => {
                   </span>
                 </div>
               </div>
+            </div>
+
+            {/* 建議車數(中1顆回本,照舊版;只追這一組自己的虧損) */}
+            <div className="p-3.5 sm:p-4 rounded-xl border border-black/[0.08] dark:border-white/[0.08] bg-black/[0.02] dark:bg-white/[0.03] space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] uppercase tracking-wider text-neutral-400 font-semibold">
+                  建議車數(中 1 顆回本)
+                </span>
+                <span className={`text-[11px] font-mono font-bold ${cumPnl < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                  {group.name}累積 {cumPnl >= 0 ? `+${cumPnl.toLocaleString()}` : cumPnl.toLocaleString()}
+                </span>
+              </div>
+              {!inLoss ? (
+                <div className="text-xs text-emerald-700 dark:text-emerald-400">
+                  目前沒有虧損要追,車數用起始值就好。
+                </div>
+              ) : !canRecover1Hit ? (
+                <div className="text-xs text-amber-700 dark:text-amber-400">
+                  無解:中 1 顆每車淨利 {per1HitNet.toLocaleString()}(≤0),中 1 顆也追不回本。
+                </div>
+              ) : (
+                <div className="flex items-end justify-between gap-2">
+                  <div>
+                    <div className="text-lg font-mono font-bold text-neutral-900 dark:text-white">
+                      {(suggestCars as number).toLocaleString()} 車
+                    </div>
+                    <div className="text-[10px] text-neutral-500 font-mono">
+                      本局成本 {suggestCost?.toLocaleString()}・中1顆淨利/車 {per1HitNet.toLocaleString()}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setCars(suggestCars as number)}
+                    className="shrink-0 px-3 py-1.5 rounded-lg text-[11px] font-semibold border border-black/10 dark:border-white/10 text-neutral-700 dark:text-neutral-200 hover:bg-black/5 dark:hover:bg-white/5 active:scale-95 transition-colors"
+                  >
+                    套用車數
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Actions */}
