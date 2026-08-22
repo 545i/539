@@ -469,8 +469,25 @@ export interface GroupDTO {
   gid: number;
   mode: LedgerMode;
   name: string; // 「1組」「2組」
-  ball_count: number; // 固定顆數
+  ball_count: number; // 固定顆數(現在當「預設建議顆數」)
   enabled: boolean;
+}
+
+// 下注「版」(edition):一套組頭盤口。每版可自訂名稱,盤口依版×遊戲各自設定。
+export interface EditionDTO {
+  eid: number;
+  name: string;
+}
+
+// 版×遊戲的整套盤口(每欄位 value + custom=是否有自訂,否則吃預設)
+export interface EditionOddsField {
+  value: number;
+  custom: boolean;
+}
+export interface EditionOddsDTO {
+  eid: number;
+  game: GameKey;
+  fields: Record<string, EditionOddsField>; // cost_per_car / win_payout / bet_cost / bet_prize / combo_cost{2,3,4} / combo_prize{2,3,4}
 }
 
 // 操作歷史(需登入):下注 / 撤銷 / 上傳 / 清空各留一筆痕跡,每筆都可以「作廢」。
@@ -728,7 +745,7 @@ export const api = {
     game: GameKey,
     text: string,
     dryRun = false,
-    opts: {date?: string; issue?: string} = {},
+    opts: {date?: string; issue?: string; edition?: number} = {},
   ) =>
     post<QuickImportDTO>('ledger/quick-import', {
       game,
@@ -736,24 +753,39 @@ export const api = {
       dry_run: dryRun,
       date: opts.date ?? null,
       issue: opts.issue ?? '',
+      edition: opts.edition ?? 1,
     }),
   // 確認上傳(編輯過的解析結果 → 後端重算成本後寫入)
   quickImportCommit: (
     game: GameKey,
     items: QuickImportCommitItem[],
-    opts: {date?: string; issue?: string} = {},
+    opts: {date?: string; issue?: string; edition?: number} = {},
   ) =>
     post<QuickImportDTO>('ledger/quick-import/commit', {
       game,
       items,
       date: opts.date ?? null,
       issue: opts.issue ?? '',
+      edition: opts.edition ?? 1,
     }),
 
   // 二合下注組設定(讀不用登入,改要登入;全站共用)
   getGroups: () => get<GroupDTO[]>('groups'),
   setGroups: (groups: Array<Partial<GroupDTO> & {gid: number}>) =>
     put<GroupDTO[]>('groups', {groups}),
+
+  // 下注「版」(讀公開,改要登入;全站共用)
+  getEditions: () => get<EditionDTO[]>('editions'),
+  addEdition: (name: string) => post<EditionDTO>('editions', {name}),
+  renameEdition: (eid: number, name: string) =>
+    put<{ok: boolean}>(`editions/${eid}`, {name}),
+  deleteEdition: (eid: number) => del<{ok: boolean}>(`editions/${eid}`),
+  getEditionOdds: (eid: number, game: GameKey) =>
+    get<EditionOddsDTO>(`editions/${eid}/odds?game=${game}`),
+  setEditionOdds: (eid: number, game: GameKey, values: Record<string, number>) =>
+    put<Record<string, number>>(`editions/${eid}/odds`, {game, values}),
+  resetEditionOdds: (eid: number, game: GameKey) =>
+    del<Record<string, number>>(`editions/${eid}/odds?game=${game}`),
 
   // audit 操作歷史(需登入):列自己的操作、作廢(反轉)某一筆
   auditList: (limit = 200) => get<AuditLogDTO[]>(`audit?limit=${limit}`),

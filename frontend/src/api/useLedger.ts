@@ -33,8 +33,13 @@ function toRecord(entry: LedgerEntryDTO): BetRecord {
   };
 }
 
-export function useLedger(mode: LedgerMode, demoRecords: BetRecord[] = []) {
+export function useLedger(
+  mode: LedgerMode,
+  demoRecords: BetRecord[] = [],
+  opts: {edition?: number; combine?: boolean} = {},
+) {
   const {loggedIn} = useAuth();
+  const {edition, combine = false} = opts;
   // 未登入時用的本地流水(沿用 v2 行為,含原本的示範資料)
   const [local, setLocal] = useState<BetRecord[]>(demoRecords);
   // 登入時用的後端流水;null = 還沒載到
@@ -156,10 +161,15 @@ export function useLedger(mode: LedgerMode, demoRecords: BetRecord[] = []) {
     }
   }, [loggedIn, mode]);
 
-  const records = useMemo(
-    () => withRunning(loggedIn ? remote ?? [] : local),
-    [loggedIn, remote, local],
-  );
+  const records = useMemo(() => {
+    const all = loggedIn ? remote ?? [] : local;
+    // 依版篩選:combine=true 看全部版合併;否則只看選中的版(舊紀錄沒 edition 當第一版)
+    const filtered =
+      combine || edition == null
+        ? all
+        : all.filter(r => ((r as BetRecord).edition ?? 1) === edition);
+    return withRunning(filtered);
+  }, [loggedIn, remote, local, edition, combine]);
 
   return {records, add, undo, clear, resettle, loading, error, loggedIn};
 }

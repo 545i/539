@@ -14,6 +14,7 @@ import { LoginModal } from './components/LoginModal';
 import { QuickImportModal } from './components/QuickImportModal';
 import { useAuth } from './api/useAuth';
 import { useGroups } from './api/useGroups';
+import { useEditions } from './api/useEditions';
 import { GroupBetTab } from './components/tabs/GroupBetTab';
 import { ThreePillarTab } from './components/tabs/ThreePillarTab';
 import { ComboBetTab } from './components/tabs/ComboBetTab';
@@ -37,6 +38,8 @@ export default function App() {
   const { loggedIn } = useAuth();
   // 二合下注「組」設定(全站共用):決定有幾個組分頁、各組固定幾顆
   const { enabled: enabledGroups } = useGroups();
+  // 下注「版」:記錄下注 / 快速上傳都記到選中的版
+  const { editions, eid, setEid } = useEditions();
 
   // Navigation state
   const [activeNav, setActiveNav] = useState<NavItem>('duo_bet');
@@ -88,7 +91,7 @@ export default function App() {
 
   const getNavTitle = () => {
     switch (activeNav) {
-      case 'duo_bet': return '二合買牌';
+      case 'duo_bet': return '紀錄下注';
       case 'calculator': return '連碰計算機';
       case 'analysis': return '統計分析';
       case 'prediction': return '五策略預測';
@@ -142,7 +145,7 @@ export default function App() {
               <div className="space-y-3">
                 <div className="flex items-center justify-between gap-3">
                   <h2 className="text-xl sm:text-2xl font-display font-bold text-[#141414] dark:text-white tracking-wide uppercase">
-                    二合買牌矩陣
+                    紀錄下注矩陣
                   </h2>
                   {/* 貼一段下注文字 → 一次記多筆(解析規則見 backend/routers/importer.py) */}
                   <button
@@ -154,6 +157,28 @@ export default function App() {
                     <ClipboardPaste className="w-3.5 h-3.5" />
                     <span>快速上傳</span>
                   </button>
+                </div>
+
+                {/* 版切換:紀錄下注 / 快速上傳都記到選中的版(各版盤口、累積損益獨立) */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[11px] font-semibold text-neutral-500 dark:text-neutral-400">下注版本</span>
+                  <div className="inline-flex p-1 rounded-xl bg-black/[0.03] dark:bg-white/[0.04] border border-black/[0.06] dark:border-white/[0.06] gap-1 flex-wrap">
+                    {editions.map(e => (
+                      <button
+                        key={e.eid}
+                        type="button"
+                        onClick={() => setEid(e.eid)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                          eid === e.eid
+                            ? 'bg-black text-white dark:bg-white dark:text-black shadow-xs'
+                            : 'text-neutral-600 dark:text-neutral-400 hover:text-black dark:hover:text-white'
+                        }`}
+                      >
+                        {e.name}
+                      </button>
+                    ))}
+                  </div>
+                  <span className="text-[10px] text-neutral-400">(在「設定」可新增版、改名、設各版盤口)</span>
                 </div>
 
                 {/* "這頁怎麼用" Expander */}

@@ -5,8 +5,16 @@
 """
 from __future__ import annotations
 
-from backend import settle
+import pytest
+
+from backend import edition_store, settle
 from core.games import LOTTO539 as G
+
+
+@pytest.fixture(autouse=True)
+def _isolate_edition(tmp_path, monkeypatch):
+    # settle 依紀錄的版取盤口(edition_store);用 tmp 隔離,不吃到真實 edition.db
+    monkeypatch.setattr(edition_store, "_db_path", lambda: tmp_path / "edition.db")
 
 
 def _rec(**kw) -> dict:

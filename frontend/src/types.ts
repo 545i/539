@@ -39,6 +39,7 @@ export interface BetRecord {
   issue: string;
   game: LotteryGame;
   mode: DuoBetTab;
+  edition?: number; // 屬於哪個版(eid);舊紀錄沒有就當第一版
   playType?: string;
   units: number; // 支數 or 車數
   cars?: number;

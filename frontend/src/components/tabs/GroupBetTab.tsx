@@ -12,6 +12,7 @@ import { api, ErhePlanDTO, GroupDTO } from '../../api/client';
 import { useAsync } from '../../api/useAsync';
 import { useGame } from '../../api/useGame';
 import { useLedger } from '../../api/useLedger';
+import { useEditions } from '../../api/useEditions';
 
 // 二合買牌的「組」下注控制台。取代原本寫死的 SingleBetTab / MultiBetTab ——
 // 兩者其實只差「鎖幾顆」與標籤,現在統一成一個吃 group 參數的元件:
@@ -26,8 +27,12 @@ interface Props {
 
 export const GroupBetTab: React.FC<Props> = ({ group }) => {
   const { game, gameKey, loading: gameLoading } = useGame();
+  const { eid, edition, combineEditions, setCombineEditions } = useEditions();
   const [selectedBalls, setSelectedBalls] = useState<number[]>([]);
   const [cars, setCars] = useState<number>(5);
+  // 這個版 × 這款遊戲的盤口(每車成本 / 中一顆可得);讀不到先用 GameConfig 預設
+  const oddsReq = useAsync(() => api.getEditionOdds(eid, gameKey), [eid, gameKey]);
+  const odds = oddsReq.data?.fields;
 
   // 期號 / 日期:預設帶最新一期,可用下拉改記到別期(補記 / 修期)
   const histReq = useAsync(() => api.history(gameKey, 30), [gameKey]);
@@ -47,8 +52,8 @@ export const GroupBetTab: React.FC<Props> = ({ group }) => {
     setIssueTouched(true);
   };
 
-  // 登入時流水存後端;未登入沿用前端 state(不再帶示範資料,組是新的)
-  const ledger = useLedger(group.mode, []);
+  // 登入時流水存後端;未登入沿用前端 state。依「版」篩選(本版 / 全部版合併由滑塊決定)
+  const ledger = useLedger(group.mode, [], {edition: eid, combine: combineEditions});
   const records = ledger.records;
 
   // 不固定顆數:依「這一組最新一筆下注紀錄」建議顆數 / 車數。沒有紀錄就退回設定的預設顆數。
@@ -59,10 +64,9 @@ export const GroupBetTab: React.FC<Props> = ({ group }) => {
   // 成本 / 派彩試算用「實際選取顆數」,沒選就先用建議顆數,數字才不會是 0
   const activeCount = selectedBalls.length || suggestBalls;
 
-  // 二合盤口:每顆每車成本 = default_cost_per_car(2755)、每中一顆每車 = default_win_payout
-  // (21200,不除以 4 —— 成本 2755 對應中一顆得 21200)
-  const costPerCarPerBall = game ? game.default_cost_per_car : 0;
-  const prizePerHitPerCar = game ? game.default_win_payout : 0;
+  // 二合盤口取「這個版」的值(每車成本 / 中一顆可得,不除以 4);讀不到先用 GameConfig 預設
+  const costPerCarPerBall = odds?.cost_per_car?.value ?? (game ? game.default_cost_per_car : 0);
+  const prizePerHitPerCar = odds?.win_payout?.value ?? (game ? game.default_win_payout : 0);
   const { data: plan } = useAsync<ErhePlanDTO | null>(
     () =>
       game
@@ -131,6 +135,7 @@ export const GroupBetTab: React.FC<Props> = ({ group }) => {
       issue: curIssue || '',
       game: gameName,
       mode: group.mode,
+      edition: eid,
       units: cars,
       cars,
       betsCount: selectedBalls.length,
@@ -156,6 +161,9 @@ export const GroupBetTab: React.FC<Props> = ({ group }) => {
               <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-black/5 dark:bg-white/10 text-neutral-600 dark:text-neutral-300">
                 {game.short_name}
               </span>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
+                {edition?.name ?? '第一版'}
+              </span>
             </div>
             <div className="text-base sm:text-xl font-display font-bold text-neutral-900 dark:text-white mt-0.5">
               {group.name}下注控制台
@@ -168,7 +176,24 @@ export const GroupBetTab: React.FC<Props> = ({ group }) => {
 
           <div className="flex items-center justify-between md:justify-end gap-4 border-t md:border-t-0 pt-2.5 md:pt-0 border-black/[0.06] dark:border-white/[0.06]">
             <div className="text-left md:text-right">
-              <span className="text-[10px] uppercase tracking-wider text-neutral-400 block">{group.name}累積損益</span>
+              <div className="flex items-center gap-1.5 md:justify-end">
+                <span className="text-[10px] uppercase tracking-wider text-neutral-400">
+                  {group.name}累積損益
+                </span>
+                {/* 滑塊:累積損益 / 建議車數 看「本版」還是「全部版合併」 */}
+                <button
+                  type="button"
+                  onClick={() => setCombineEditions(!combineEditions)}
+                  title="切換:本版 / 全部版合併"
+                  className={`px-1.5 py-0.5 rounded-full text-[9px] font-semibold border transition-colors ${
+                    combineEditions
+                      ? 'bg-black text-white dark:bg-white dark:text-black border-black dark:border-white'
+                      : 'border-black/15 dark:border-white/20 text-neutral-500'
+                  }`}
+                >
+                  {combineEditions ? '全部版' : '本版'}
+                </button>
+              </div>
               <div className={`text-xl sm:text-2xl font-mono font-bold ${cumPnl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
                 {cumPnl >= 0 ? `+${cumPnl.toLocaleString()}` : cumPnl.toLocaleString()}
               </div>

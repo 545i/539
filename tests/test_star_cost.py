@@ -136,16 +136,21 @@ def test_plays_reports_effective_prices(client, alice):
 
 
 def test_importer_star_cost_follows_setting(client, alice, tmp_path, monkeypatch):
-    """快速上傳的星碰成本 = 支數 × 碰數 × 每碰成本,也要吃後台的價。"""
+    """快速上傳的星碰成本 = 支數 × 碰數 × 每碰成本。第一版沒自訂時吃全域 star-cost。"""
     from backend.routers import importer
     from backend.data import get_game
+    from backend import edition_store
 
+    # 版盤口用 tmp 隔離;第一版無自訂 → combo_cost3 預設沿用全域 star-cost
+    monkeypatch.setattr(edition_store, "_db_path", lambda: tmp_path / "edition.db")
     g = get_game("lotto539")
     picks = [2, 9, 15, 19, 20, 25, 28, 33]
-    before = importer._star_item(g, 3, picks, 12, "八顆三星1200").cost
+    before = importer._star_item(edition_store.get_odds(1, g.key), 3, picks, 12,
+                                 "八顆三星1200").cost
     assert before == 12 * 56 * 63.0
 
     client.put(f"{P}/star-cost", headers=alice,
                json={"costs": {"3": {"cost": 70, "prize": 60000}}})
-    after = importer._star_item(g, 3, picks, 12, "八顆三星1200").cost
+    after = importer._star_item(edition_store.get_odds(1, g.key), 3, picks, 12,
+                                "八顆三星1200").cost
     assert after == 12 * 56 * 70.0

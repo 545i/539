@@ -15,6 +15,7 @@ import { api } from '../../api/client';
 import { useAsync } from '../../api/useAsync';
 import { useGame } from '../../api/useGame';
 import { useLedger } from '../../api/useLedger';
+import { useEditions } from '../../api/useEditions';
 
 // UI 的中文玩法名 → core.combo 的 play key(注數規則由後端依這個決定)
 type PlayMethod = '星碰' | '連碰(全碰)' | '立柱' | '拖膽';
@@ -28,8 +29,12 @@ const PLAY_KEYS: Record<PlayMethod, 'star' | 'combo' | 'pillar' | 'dan'> = {
 export const ComboBetTab: React.FC = () => {
   // 遊戲由 Header 的全域切換器決定,這裡不再自己記一份
   const { game, gameKey, loading: gameLoading } = useGame();
-  // 登入時流水存後端;未登入沿用 v2 的前端 state(含示範資料)
-  const ledger = useLedger('combo', INITIAL_COMBO_RECORDS);
+  const { eid, combineEditions } = useEditions();
+  // 這個版 × 這款遊戲的盤口(連碰各星數每碰成本 / 派彩)
+  const oddsReq = useAsync(() => api.getEditionOdds(eid, gameKey), [eid, gameKey]);
+  const odds = oddsReq.data?.fields;
+  // 登入時流水存後端;未登入沿用 v2 的前端 state。依版篩選
+  const ledger = useLedger('combo', INITIAL_COMBO_RECORDS, {edition: eid, combine: combineEditions});
   const records = ledger.records;
   const [playMethod, setPlayMethod] = useState<PlayMethod>('星碰');
   const [starCount, setStarCount] = useState<'二星' | '三星' | '四星'>('三星');
@@ -64,9 +69,15 @@ export const ComboBetTab: React.FC = () => {
 
   // 碰數 / 每碰成本 / 每碰彩金全部走後端 core.combo —— 四種玩法的碰數規則不同
   // (星碰 C(選幾顆,星數)、立柱多一顆膽),前端自己算 C(n,k) 會把它們算成同一個。
+  // 每碰成本 / 派彩帶入「這個版」的盤口(讀不到就讓後端用預設市場價)
+  const perBet = odds?.[`combo_cost${k}`]?.value;
+  const prizeOdds = odds?.[`combo_prize${k}`]?.value;
   const { data: calc } = useAsync(
-    () => api.comboCalc({game: gameKey, play: PLAY_KEYS[activePlay], stars: k, picked: n}),
-    [gameKey, activePlay, k, n],
+    () => api.comboCalc({
+      game: gameKey, play: PLAY_KEYS[activePlay], stars: k, picked: n,
+      per_bet: perBet, prize: prizeOdds,
+    }),
+    [gameKey, activePlay, k, n, perBet, prizeOdds],
   );
 
   const totalSpent = records.reduce((acc, r) => acc + r.cost, 0);
@@ -111,6 +122,7 @@ export const ComboBetTab: React.FC = () => {
       issue: curIssue || '',
       game: gameName,
       mode: 'combo',
+      edition: eid,
       playType: `${activePlay} ${starCount} (${units} 支)`,
       units,
       cars: units,

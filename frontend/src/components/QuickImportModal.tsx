@@ -4,6 +4,7 @@ import {api, QuickImportDTO, LedgerMode, TensPairDTO} from '../api/client';
 import {useAsync} from '../api/useAsync';
 import {useAuth} from '../api/useAuth';
 import {useGame} from '../api/useGame';
+import {useEditions} from '../api/useEditions';
 
 // 快速上傳下注紀錄:貼一段下注文字 → 預覽 → 確認寫進自己的記帳流水。
 //
@@ -53,6 +54,7 @@ const SAMPLE = `02x50車
 export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported}) => {
   const {loggedIn} = useAuth();
   const {gameKey, game, games, setGameKey} = useGame();
+  const {editions, eid, setEid} = useEditions();
   const [text, setText] = useState('');
   const [issue, setIssue] = useState('');
   const [preview, setPreview] = useState<QuickImportDTO | null>(null);
@@ -94,7 +96,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported})
     setBusy(true);
     setError(null);
     try {
-      const res = await api.quickImport(gameKey, text, true, {issue});
+      const res = await api.quickImport(gameKey, text, true, {issue, edition: eid});
       setPreview(res);
       setDraftItems(
         res.items.map(it => ({
@@ -128,7 +130,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported})
           units: d.units,
           stars: d.stars,
         })),
-        {issue},
+        {issue, edition: eid},
       );
       setDone(res.saved);
       onImported?.();
@@ -201,6 +203,27 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported})
                     }`}
                   >
                     {g.short_name}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <label className="block text-[10px] uppercase tracking-[0.2em] font-semibold text-neutral-400 mb-1.5">
+                上傳到哪版
+              </label>
+              <div className="inline-flex p-1 rounded-xl bg-black/[0.03] dark:bg-white/[0.04] border border-black/[0.06] dark:border-white/[0.06] gap-1 flex-wrap">
+                {editions.map(e => (
+                  <button
+                    key={e.eid}
+                    type="button"
+                    onClick={() => { setEid(e.eid); reset(); }}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                      eid === e.eid
+                        ? 'bg-black text-white dark:bg-white dark:text-black shadow-xs'
+                        : 'text-neutral-600 dark:text-neutral-400 hover:text-black dark:hover:text-white'
+                    }`}
+                  >
+                    {e.name}
                   </button>
                 ))}
               </div>

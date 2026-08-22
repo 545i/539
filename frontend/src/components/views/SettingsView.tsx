@@ -6,6 +6,7 @@ import { useAsync } from '../../api/useAsync';
 import { useAuth } from '../../api/useAuth';
 import { useGame } from '../../api/useGame';
 import { useGroups } from '../../api/useGroups';
+import { EditionSettings } from './EditionSettings';
 
 interface Props {
   theme: ThemeMode;
@@ -358,6 +359,9 @@ export const SettingsView: React.FC<Props> = ({ theme, onToggleTheme }) => {
           </button>
         </div>
       </div>
+
+      {/* 下注版本與各版盤口 */}
+      <EditionSettings />
 
       {/* 連碰星數成本設定(全域,存在後端) */}
       <div className="p-6 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] space-y-4">

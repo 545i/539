@@ -101,7 +101,7 @@ export const Sidebar: React.FC<Props> = ({
   const { loggedIn, username, logout } = useAuth();
 
   const navItems: { id: NavItem; label: string; icon: React.ReactNode; tag?: string }[] = [
-    { id: 'duo_bet', label: '二合買牌', icon: <Dices className="w-4 h-4" />, tag: 'Core' },
+    { id: 'duo_bet', label: '紀錄下注', icon: <Dices className="w-4 h-4" />, tag: 'Core' },
     { id: 'calculator', label: '連碰計算機', icon: <Calculator className="w-4 h-4" /> },
     { id: 'analysis', label: '統計分析', icon: <BarChart3 className="w-4 h-4" /> },
     { id: 'prediction', label: '五策略預測', icon: <Sparkles className="w-4 h-4" /> },

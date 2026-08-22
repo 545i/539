@@ -26,8 +26,23 @@ from __future__ import annotations
 
 import re
 
+from backend import edition_store
 from core import combo, pillar
 from core.games import GameConfig
+
+
+def _edition(record: dict) -> int:
+    """紀錄屬於哪個版;沒標就當第一版(eid=1)。"""
+    v = record.get("edition")
+    try:
+        return int(v) if v else 1
+    except (ValueError, TypeError):
+        return 1
+
+
+def _odds(record: dict, g: GameConfig) -> dict:
+    """這筆紀錄該用的盤口(依它的版 × 遊戲);讀不到就回該版預設。"""
+    return edition_store.get_odds(_edition(record), g.key)
 
 
 def _f(record: dict, key: str, default: float = 0.0) -> float:
@@ -69,17 +84,18 @@ def _manual(record: dict, hit_count: int, g: GameConfig) -> dict:
     mode = record.get("mode")
     cars = _cars(record)
     k = max(0, int(hit_count))
+    odds = _odds(record, g)
 
     if mode == "combo":
         stars = _stars_of(str(record.get("playType", "") or ""))
-        prize = float(combo.market_prize(stars, g.default_bet_prize) or 0.0)
+        prize = float(odds.get(f"combo_prize{stars}", g.default_bet_prize) or 0.0)
         payout = k * prize * cars
         result = f"中 {k} 碰(手填)" if k > 0 else "槓龜(手填)"
     elif mode == "pillar1800":
-        payout = k * cars * g.default_bet_prize
+        payout = k * cars * odds["bet_prize"]
         result = f"中 {k} 注(手填)" if k > 0 else "槓龜(手填)"
     else:  # single / multi 二合組:每中一顆 = 車數 × 每車中獎(不除以 4)
-        payout = k * cars * g.default_win_payout
+        payout = k * cars * odds["win_payout"]
         result = f"中 {k} 顆(手填)" if k > 0 else "槓龜(手填)"
 
     out["payout"] = round(float(payout))
@@ -114,24 +130,25 @@ def settle(record: dict, draw: list[int] | None, g: GameConfig,
     selected = [int(x) for x in record.get("selectedBalls", []) or []]
     mode = record.get("mode")
     cars = _cars(record)
+    odds = _odds(record, g)   # 依這筆的版 × 遊戲取盤口
 
     if mode in ("single", "multi"):
         # 二合兩組(1組/2組)派彩統一:命中幾顆 × 車數 × 每車中獎(不除以 4)
         matched = len(set(selected) & set(draw))
-        payout = matched * cars * g.default_win_payout
+        payout = matched * cars * odds["win_payout"]
         result = f"中 {matched} 顆" if matched > 0 else "槓龜"
 
     elif mode == "pillar1800":
         counts = pillar.pillar_counts(draw, g.num_max)
         ph = pillar.hits_from_counts(counts)          # 4 / 3 / 0
-        payout = cars * ph * g.default_bet_prize
+        payout = cars * ph * odds["bet_prize"]
         result = pillar.result_text(ph) if ph else "槓龜(斷柱)"
         out["pillarDist"] = " + ".join(str(c) for c in counts)
 
     elif mode == "combo":
         play_type = str(record.get("playType", "") or "")
         stars = _stars_of(play_type)
-        prize = float(combo.market_prize(stars, g.default_bet_prize) or 0.0)
+        prize = float(odds.get(f"combo_prize{stars}", g.default_bet_prize) or 0.0)
         if play_type.startswith("星碰"):
             wh = combo.star_hits_of(stars, draw, selected)
             result = f"中 {wh} 碰" if wh > 0 else "槓龜"

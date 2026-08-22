@@ -32,7 +32,7 @@ from datetime import date as _date
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
-from backend import audit_store, group_store, ledger_store
+from backend import audit_store, edition_store, group_store, ledger_store
 from backend.data import get_game
 from backend.deps import current_user
 from core import combo as combo_mod
@@ -160,18 +160,15 @@ def _fill_upward(picks: list[int], number_lines: list[list[int]],
     return gathered[:declared], incomplete
 
 
-# ── 各種下法的成本(全部走 core,不寫死金額)──────────────────
-def _erhe_cost(g: GameConfig, n_balls: int, cars: float) -> float:
-    """二合:成本 = 押幾顆 × 車數 × 每車成本(同 backend/routers/erhe.py 的 plan)。
-
-"""
-    # 每顆每車成本 = 二合單顆成本(72.5 × 38 = 2755),單顆多顆一致
-    return n_balls * cars * g.default_cost_per_car
+# ── 各種下法的成本(全部走 core + 該版盤口,不寫死金額)────────────
+def _erhe_cost(odds: dict, n_balls: int, cars: float) -> float:
+    """二合:成本 = 押幾顆 × 車數 × 每車成本(每車成本取該版盤口)。"""
+    return n_balls * cars * float(odds["cost_per_car"])
 
 
-def _star_item(g: GameConfig, stars: int, picks: list[int], units: float,
+def _star_item(odds: dict, stars: int, picks: list[int], units: float,
                line: str, incomplete: bool = False) -> _Item:
-    """星碰:碰數 = star_bets(星, 選幾顆),成本 = 支數 × 碰數 × 每碰成本。
+    """星碰:碰數 = star_bets(星, 選幾顆),成本 = 支數 × 碰數 × 每碰成本(該版盤口)。
 
     picks 是(已向上補足的)最終號碼;incomplete 代表補足後仍不到宣告顆數,
     交給前端提醒使用者手動補後再上傳。
@@ -179,8 +176,7 @@ def _star_item(g: GameConfig, stars: int, picks: list[int], units: float,
     bets = combo_mod.star_bets(stars, len(picks))
     if bets <= 0 and not incomplete:
         raise ValueError(f"選 {len(picks)} 顆湊不出{combo_mod.star_name(stars)}碰")
-    # 走 market_cost 而不是直接讀 MARKET_COST —— 後台改過的價要吃得到
-    per_bet = float(combo_mod.market_cost(stars, g.default_bet_cost))
+    per_bet = float(odds[f"combo_cost{stars}"])
     return _Item(
         mode="combo",
         play_type=f"星碰 {combo_mod.star_name(stars)}({bets} 碰/支)",
@@ -195,8 +191,8 @@ def _star_item(g: GameConfig, stars: int, picks: list[int], units: float,
     )
 
 
-def _pillar_item(g: GameConfig, units: float, line: str) -> _Item:
-    """1800碰:注數 = total_bets × 支數,每注成本用該款的 default_bet_cost。"""
+def _pillar_item(odds: dict, g: GameConfig, units: float, line: str) -> _Item:
+    """1800碰:注數 = total_bets × 支數,每注成本取該版盤口的 bet_cost。"""
     if not pillar_mod.supports(g):
         raise ValueError(f"{g.name}不適用 1800碰(三柱結構綁定 39 選 5)")
     total = pillar_mod.total_bets(g.num_max)
@@ -206,14 +202,17 @@ def _pillar_item(g: GameConfig, units: float, line: str) -> _Item:
         balls=[],
         units=units,
         bets_count=int(round(units * total)),
-        cost=pillar_mod.round_cost(g.default_bet_cost, 1, g.num_max) * units,
+        cost=pillar_mod.round_cost(float(odds["bet_cost"]), 1, g.num_max) * units,
         line=line,
     )
 
 
 # ── 解析 ─────────────────────────────────────────────────
-def parse(text: str, g: GameConfig) -> tuple[list[_Item], list[dict]]:
-    """把整段文字翻成待寫入的紀錄;認不出來的行收進 errors,不中斷。"""
+def parse(text: str, g: GameConfig, odds: dict) -> tuple[list[_Item], list[dict]]:
+    """把整段文字翻成待寫入的紀錄;認不出來的行收進 errors,不中斷。
+
+    odds 是「這次上傳的版 × 遊戲」的盤口(見 backend.edition_store.get_odds)。
+    """
     st = _State()
     for line_no, raw in enumerate(_SPLIT_RE.split(text or ""), start=1):
         line = _norm(raw)
@@ -248,7 +247,7 @@ def parse(text: str, g: GameConfig) -> tuple[list[_Item], list[dict]]:
                 balls=balls,
                 units=cars,
                 bets_count=len(balls),
-                cost=_erhe_cost(g, len(balls), cars),
+                cost=_erhe_cost(odds, len(balls), cars),
                 line=line,
             ))
             continue
@@ -260,7 +259,7 @@ def parse(text: str, g: GameConfig) -> tuple[list[_Item], list[dict]]:
             whole = " / ".join(st.pending[-2:] + [line])   # 只取緊鄰的兩行柱別
             st.pending, st.picks, st.pick_line = [], [], ""
             try:
-                st.items.append(_pillar_item(g, _units(int(m.group(1))), whole))
+                st.items.append(_pillar_item(odds, g, _units(int(m.group(1))), whole))
             except ValueError as e:
                 st.fail(line_no, whole, str(e))
             continue
@@ -280,7 +279,7 @@ def parse(text: str, g: GameConfig) -> tuple[list[_Item], list[dict]]:
             whole = f"{st.pick_line} / {line}"
             try:
                 st.items.append(
-                    _star_item(g, stars, balls, _units(int(m.group(3))), whole,
+                    _star_item(odds, stars, balls, _units(int(m.group(3))), whole,
                                incomplete=incomplete))
             except ValueError as e:
                 st.fail(line_no, whole, str(e))
@@ -302,17 +301,19 @@ def parse(text: str, g: GameConfig) -> tuple[list[_Item], list[dict]]:
     return st.items, st.errors
 
 
-def to_record(item: _Item, g: GameConfig, bet_date: str, issue: str) -> dict:
+def to_record(item: _Item, g: GameConfig, bet_date: str, issue: str,
+              edition: int = 1) -> dict:
     """_Item → 前端的 BetRecord(id / index / cumPnl 由前端依順序補)。
 
-    多帶 stars / incomplete 兩個欄位:提交時後端要靠 stars 重算連碰成本,
-    incomplete 讓前端把「補足仍不夠」的列標出來提醒手動補。
+    多帶 stars / incomplete / edition:提交時後端靠 stars 重算連碰成本,incomplete
+    讓前端標出「補足仍不夠」的列,edition 標記這筆屬於哪個版(對獎 / 損益要分版)。
     """
     return {
         "date": bet_date,
         "issue": issue,
         "game": g.name,
         "mode": item.mode,
+        "edition": int(edition),
         "playType": item.play_type,
         "units": item.units,
         "cars": item.units,
@@ -328,9 +329,9 @@ def to_record(item: _Item, g: GameConfig, bet_date: str, issue: str) -> dict:
     }
 
 
-def _recost(g: GameConfig, mode: str, balls: list[int], units: float,
+def _recost(g: GameConfig, odds: dict, mode: str, balls: list[int], units: float,
             stars: int) -> _Item:
-    """依(可能被前端編輯過的)mode / 號碼 / 支或車 / 星數重算一筆的成本。
+    """依(可能被前端編輯過的)mode / 號碼 / 支或車 / 星數 + 該版盤口重算一筆成本。
 
     money 一律後端算 —— 前端只送使用者改完的號碼與支/車,金額不讓前端決定。
     """
@@ -342,9 +343,9 @@ def _recost(g: GameConfig, mode: str, balls: list[int], units: float,
         raise ValueError("支數 / 車數要大於 0")
 
     if mode == "combo":
-        return _star_item(g, int(stars), balls, units, "", incomplete=False)
+        return _star_item(odds, int(stars), balls, units, "", incomplete=False)
     if mode == "pillar1800":
-        return _pillar_item(g, units, "")
+        return _pillar_item(odds, g, units, "")
     if mode in group_store.MODE_TO_GID:
         if not balls:
             raise ValueError("這一組至少要選 1 顆號碼")
@@ -356,7 +357,7 @@ def _recost(g: GameConfig, mode: str, balls: list[int], units: float,
             balls=balls,
             units=units,
             bets_count=len(balls),
-            cost=_erhe_cost(g, len(balls), units),
+            cost=_erhe_cost(odds, len(balls), units),
             line="",
         )
     raise ValueError(f"未知的下注模式:{mode}")
@@ -368,6 +369,7 @@ class QuickImportIn(BaseModel):
     dry_run: bool = Field(default=False, description="只解析不寫入(前端預覽用)")
     date: str | None = Field(default=None, description="下注日期;不給就用今天")
     issue: str = Field(default="", description="期別;不知道就留空")
+    edition: int = Field(default=1, description="上傳到哪個版(eid);預設第一版")
 
 
 @router.post("/quick-import")
@@ -379,12 +381,13 @@ def quick_import(body: QuickImportIn, user: str = Depends(current_user)):
     """
     g = get_game(body.game)
     bet_date = body.date or _date.today().isoformat()
-    items, errors = parse(body.text, g)
+    odds = edition_store.get_odds(body.edition, g.key)   # 依上傳的版取盤口
+    items, errors = parse(body.text, g, odds)
 
     out = []
     saved: list[dict] = []
     for it in items:
-        record = to_record(it, g, bet_date, body.issue)
+        record = to_record(it, g, bet_date, body.issue, edition=body.edition)
         entry_id = None
         if not body.dry_run:
             entry = ledger_store.add_entry(user, it.mode, record)
@@ -426,6 +429,7 @@ class QuickImportCommitIn(BaseModel):
     items: list[CommitItemIn] = Field(default_factory=list)
     date: str | None = None
     issue: str = ""
+    edition: int = 1
 
 
 @router.post("/quick-import/commit")
@@ -438,15 +442,16 @@ def quick_import_commit(body: QuickImportCommitIn, user: str = Depends(current_u
     """
     g = get_game(body.game)
     bet_date = body.date or _date.today().isoformat()
+    odds = edition_store.get_odds(body.edition, g.key)
 
     out, saved, errors = [], [], []
     for i, it in enumerate(body.items, start=1):
         try:
-            item = _recost(g, it.mode, it.selectedBalls, it.units, it.stars)
+            item = _recost(g, odds, it.mode, it.selectedBalls, it.units, it.stars)
         except ValueError as e:
             errors.append({"line_no": i, "line": "", "message": str(e)})
             continue
-        record = to_record(item, g, bet_date, body.issue)
+        record = to_record(item, g, bet_date, body.issue, edition=body.edition)
         entry = ledger_store.add_entry(user, item.mode, record)
         saved.append(entry)
         out.append({"id": entry["id"], "mode": item.mode, "record": record})

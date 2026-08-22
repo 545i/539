@@ -74,7 +74,7 @@ def test_leaderboard_modes_aggregate(client, seeded):
     body = client.get(f"{P}/leaderboard", headers=hdr("alice")).json()
     modes = {m["mode"]: m for m in body["modes"]}
     assert modes["single"]["rounds"] == 2 and modes["single"]["total_pnl"] == 100
-    assert modes["single"]["name"] == "單顆下注"
+    assert modes["single"]["name"] == "1組"
     assert modes["pillar1800"]["total_pnl"] == -50
 
 
@@ -114,12 +114,12 @@ def test_export_ledger_xlsx(client, seeded):
     r = client.get(f"{P}/export/ledger.xlsx", headers=hdr("alice"))
     assert r.status_code == 200
     wb = openpyxl.load_workbook(io.BytesIO(r.content))
-    assert "全部" in wb.sheetnames and "單顆下注" in wb.sheetnames
+    assert "全部" in wb.sheetnames and "1組" in wb.sheetnames
     ws = wb["全部"]
     assert ws.max_row == 4                       # 表頭 + alice 的 3 筆(不含 bob)
     assert ws.cell(row=2, column=15).value == 200     # 本局損益
     assert ws.cell(row=3, column=16).value == 100     # 累積損益
-    assert wb["單顆下注"].max_row == 3
+    assert wb["1組"].max_row == 3
 
 
 def test_export_ledger_json(client, seeded):

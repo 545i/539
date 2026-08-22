@@ -18,6 +18,7 @@ import { api, PartialBetsDTO, PillarInfoDTO, TensPairDTO } from '../../api/clien
 import { useAsync } from '../../api/useAsync';
 import { useGame } from '../../api/useGame';
 import { useLedger } from '../../api/useLedger';
+import { useEditions } from '../../api/useEditions';
 import { LotteryBallPad } from '../LotteryBallPad';
 import { IssuePicker } from '../IssuePicker';
 
@@ -34,8 +35,12 @@ const pillarRange = (nums: number[]): string => {
 export const ThreePillarTab: React.FC = () => {
   // 遊戲由 Header 的全域切換器決定;三柱只有 39 選 5 的款玩得起來(supports_pillar)
   const { game: gameCfg, gameKey, loading: gameLoading } = useGame();
-  // 登入時流水存後端;未登入沿用 v2 的前端 state(含示範資料)
-  const ledger = useLedger('pillar1800', INITIAL_PILLAR_RECORDS);
+  const { eid, combineEditions } = useEditions();
+  // 這個版 × 這款遊戲的盤口(1800碰每注成本 / 中一注可得)
+  const oddsReq = useAsync(() => api.getEditionOdds(eid, gameKey), [eid, gameKey]);
+  const odds = oddsReq.data?.fields;
+  // 登入時流水存後端;未登入沿用 v2 的前端 state。依版篩選
+  const ledger = useLedger('pillar1800', INITIAL_PILLAR_RECORDS, {edition: eid, combine: combineEditions});
   const records = ledger.records;
   const [units, setUnits] = useState<number>(1);
   // 期號 / 日期:預設帶最新一期,使用者可用下拉選單改記到別期(補記 / 修期)
@@ -123,8 +128,9 @@ export const ThreePillarTab: React.FC = () => {
   }
 
   const game = gameCfg.name as LotteryGame;
-  const betCost = gameCfg.default_bet_cost;
-  const betPrize = gameCfg.default_bet_prize;
+  // 每注成本 / 中一注可得取「這個版」的盤口;讀不到先用 GameConfig 預設
+  const betCost = odds?.bet_cost?.value ?? gameCfg.default_bet_cost;
+  const betPrize = odds?.bet_prize?.value ?? gameCfg.default_bet_prize;
   const unitCost = totalBets * betCost; // 1800 x 63
   const prize4 = 4 * betPrize;
   const prize3 = 3 * betPrize;
@@ -141,6 +147,7 @@ export const ThreePillarTab: React.FC = () => {
       issue,
       game,
       mode: 'pillar1800',
+      edition: eid,
       units,
       cars: units,
       betsCount: units * totalBets,
