@@ -108,6 +108,12 @@ export const GroupBetTab: React.FC<Props> = ({ group }) => {
     : !canRecover1Hit
     ? Infinity
     : Math.max(1, Math.ceil(-cumPnl / per1HitNet));
+  // 舊版那幾個對照數字(建議車數旁一起放大顯示)
+  const okSuggest = suggestCars != null && Number.isFinite(suggestCars);
+  const suggestN = okSuggest ? (suggestCars as number) : 0;
+  const suggestCost = okSuggest ? suggestBalls * suggestN * costPerCarPerBall : 0; // 本局成本
+  const suggestGain = okSuggest ? suggestN * prizePerHitPerCar : 0;               // 中1顆可得
+  const afterCum = okSuggest ? cumPnl + suggestGain - suggestCost : 0;            // 中1顆後累積
 
   const handleToggleBall = (num: number) => {
     if (selectedBalls.includes(num)) {
@@ -140,56 +146,92 @@ export const GroupBetTab: React.FC<Props> = ({ group }) => {
   return (
     <div className="space-y-4 sm:space-y-5 animate-in fade-in duration-200 w-full overflow-hidden">
       {/* Top Banner Bar */}
-      <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] uppercase tracking-[0.25em] text-neutral-400 dark:text-neutral-500 font-semibold">
-              Group Betting
-            </span>
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-black/5 dark:bg-white/10 text-neutral-600 dark:text-neutral-300">
-              {game.short_name}
-            </span>
-          </div>
-          <div className="text-base sm:text-xl font-display font-bold text-neutral-900 dark:text-white mt-0.5">
-            {group.name}下注控制台
-          </div>
-          {/* 建議顆數 / 建議車數(依這一組最新一筆紀錄 + 該組累積損益;中1顆回本) */}
-          <div className="flex flex-wrap items-center gap-2 mt-1.5">
-            <span className="px-2 py-1 rounded-lg text-[11px] font-mono bg-black/[0.04] dark:bg-white/[0.06] text-neutral-700 dark:text-neutral-200">
-              建議顆數 <strong className="text-neutral-900 dark:text-white">{suggestBalls}</strong> 顆
-              {lastRecord && <span className="text-neutral-400"> ・上次 {lastCount} 顆 {lastCars} 車</span>}
-            </span>
-            {!inLoss ? (
-              <span className="px-2 py-1 rounded-lg text-[11px] font-mono bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">
-                建議車數 —（{group.name}無虧損,用起始車數)
+      <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] space-y-3 sm:space-y-4">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] uppercase tracking-[0.25em] text-neutral-400 dark:text-neutral-500 font-semibold">
+                Group Betting
               </span>
-            ) : !canRecover1Hit ? (
-              <span className="px-2 py-1 rounded-lg text-[11px] font-mono bg-amber-500/10 text-amber-700 dark:text-amber-400">
-                建議車數 無解(中1顆每車淨利 {per1HitNet.toLocaleString()})
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-black/5 dark:bg-white/10 text-neutral-600 dark:text-neutral-300">
+                {game.short_name}
               </span>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setCars(suggestCars as number)}
-                title="套用建議車數(中1顆回本)"
-                className="px-2 py-1 rounded-lg text-[11px] font-mono bg-black/[0.04] dark:bg-white/[0.06] text-neutral-700 dark:text-neutral-200 hover:bg-black/10 dark:hover:bg-white/10 active:scale-95 transition-colors"
-              >
-                建議車數 <strong className="text-neutral-900 dark:text-white">{(suggestCars as number).toLocaleString()}</strong> 車（中1顆回本・點我套用）
-              </button>
-            )}
+            </div>
+            <div className="text-base sm:text-xl font-display font-bold text-neutral-900 dark:text-white mt-0.5">
+              {group.name}下注控制台
+            </div>
+            <div className="text-[11px] font-mono text-neutral-500 dark:text-neutral-400 mt-0.5">
+              建議顆數 <strong className="text-neutral-800 dark:text-neutral-100">{suggestBalls}</strong> 顆
+              {lastRecord && <span> ・上次 {lastCount} 顆 {lastCars} 車</span>}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between md:justify-end gap-4 border-t md:border-t-0 pt-2.5 md:pt-0 border-black/[0.06] dark:border-white/[0.06]">
+            <div className="text-left md:text-right">
+              <span className="text-[10px] uppercase tracking-wider text-neutral-400 block">{group.name}累積損益</span>
+              <div className={`text-xl sm:text-2xl font-mono font-bold ${cumPnl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                {cumPnl >= 0 ? `+${cumPnl.toLocaleString()}` : cumPnl.toLocaleString()}
+              </div>
+            </div>
+            <div className="text-right text-[11px] font-mono text-neutral-400">
+              {records.length} 局・中 {winCount} 局
+            </div>
           </div>
         </div>
 
-        <div className="flex items-center justify-between md:justify-end gap-4 border-t md:border-t-0 pt-2.5 md:pt-0 border-black/[0.06] dark:border-white/[0.06]">
-          <div className="text-left md:text-right">
-            <span className="text-[10px] uppercase tracking-wider text-neutral-400 block">{group.name}累積損益</span>
-            <div className={`text-xl sm:text-2xl font-mono font-bold ${cumPnl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
-              {cumPnl >= 0 ? `+${cumPnl.toLocaleString()}` : cumPnl.toLocaleString()}
+        {/* 建議車數 —— 放大顯示(參考舊版「回本要下幾車」:回本車數 + 本局成本 + 中1顆可得 + 中後累積) */}
+        <div className="p-4 sm:p-5 rounded-xl bg-gradient-to-br from-black/[0.04] to-black/[0.01] dark:from-white/[0.07] dark:to-white/[0.02] border border-black/[0.08] dark:border-white/[0.10]">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <div className="text-[10px] uppercase tracking-[0.25em] text-neutral-400 font-semibold">
+                建議車數 · 中 1 顆回本(依建議 {suggestBalls} 顆)
+              </div>
+              {!inLoss ? (
+                <div className="text-2xl sm:text-3xl font-display font-black text-emerald-600 dark:text-emerald-400 mt-0.5">
+                  已回本 · 用起始車數
+                </div>
+              ) : !canRecover1Hit ? (
+                <div className="text-2xl sm:text-3xl font-display font-black text-amber-600 dark:text-amber-400 mt-0.5">
+                  無解 <span className="text-sm font-mono font-normal text-neutral-500">中1顆每車淨利 {per1HitNet.toLocaleString()} ≤ 0</span>
+                </div>
+              ) : (
+                <div className="flex items-baseline gap-2 mt-0.5">
+                  <span className="text-5xl sm:text-6xl font-display font-black text-neutral-900 dark:text-white leading-none tabular-nums">
+                    {suggestN.toLocaleString()}
+                  </span>
+                  <span className="text-xl sm:text-2xl font-display font-bold text-neutral-500">車</span>
+                </div>
+              )}
             </div>
+            {inLoss && canRecover1Hit && (
+              <button
+                type="button"
+                onClick={() => setCars(suggestN)}
+                className="px-5 py-3 rounded-xl text-sm font-bold bg-black text-white dark:bg-white dark:text-black hover:opacity-90 active:scale-95 transition-all shadow-xs"
+              >
+                套用車數
+              </button>
+            )}
           </div>
-          <div className="text-right text-[11px] font-mono text-neutral-400">
-            {records.length} 局・中 {winCount} 局
-          </div>
+
+          {inLoss && canRecover1Hit && (
+            <div className="grid grid-cols-3 gap-2 sm:gap-3 mt-3 pt-3 border-t border-black/[0.06] dark:border-white/[0.08]">
+              <div>
+                <div className="text-[10px] text-neutral-400 uppercase tracking-wider">本局成本</div>
+                <div className="text-sm sm:text-base font-mono font-bold text-neutral-900 dark:text-white">{suggestCost.toLocaleString()}</div>
+              </div>
+              <div>
+                <div className="text-[10px] text-neutral-400 uppercase tracking-wider">中 1 顆可得</div>
+                <div className="text-sm sm:text-base font-mono font-bold text-emerald-600 dark:text-emerald-400">{suggestGain.toLocaleString()}</div>
+              </div>
+              <div>
+                <div className="text-[10px] text-neutral-400 uppercase tracking-wider">中後累積</div>
+                <div className={`text-sm sm:text-base font-mono font-bold ${afterCum >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                  {afterCum >= 0 ? `+${afterCum.toLocaleString()}` : afterCum.toLocaleString()}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
