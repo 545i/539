@@ -32,7 +32,7 @@ from datetime import date as _date
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
-from backend import audit_store, edition_store, group_store, ledger_store
+from backend import audit_store, edition_store, group_store, ledger_store, settle
 from backend.data import get_game
 from backend.deps import current_user
 from core import combo as combo_mod
@@ -422,6 +422,7 @@ class CommitItemIn(BaseModel):
     selectedBalls: list[int] = Field(default_factory=list)
     units: float = 0
     stars: int = 0
+    hit_count: int | None = None   # 忘記期數但記得中幾顆:直接依該版盤口手填結算
 
 
 class QuickImportCommitIn(BaseModel):
@@ -452,6 +453,9 @@ def quick_import_commit(body: QuickImportCommitIn, user: str = Depends(current_u
             errors.append({"line_no": i, "line": "", "message": str(e)})
             continue
         record = to_record(item, g, bet_date, body.issue, edition=body.edition)
+        # 有填中獎顆數就直接手填結算(不必期數);settle 依 record 的版取盤口算派彩
+        if it.hit_count is not None:
+            record = settle.settle(record, None, g, hit_count=it.hit_count)
         entry = ledger_store.add_entry(user, item.mode, record)
         saved.append(entry)
         out.append({"id": entry["id"], "mode": item.mode, "record": record})

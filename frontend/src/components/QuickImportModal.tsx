@@ -35,6 +35,7 @@ interface DraftItem {
   units: number;
   stars: number;
   incomplete: boolean;
+  hit: string; // 中獎顆數(忘記期數時直接填);空 = 待開獎
 }
 
 function parseBalls(s: string): number[] {
@@ -108,6 +109,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported})
           units: num(it.record.units),
           stars: num(it.record.stars),
           incomplete: Boolean(it.record.incomplete),
+          hit: '',
         })),
       );
     } catch (e) {
@@ -129,6 +131,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported})
           selectedBalls: parseBalls(d.balls),
           units: d.units,
           stars: d.stars,
+          hit_count: d.hit.trim() === '' ? null : Math.max(0, Math.floor(Number(d.hit) || 0)),
         })),
         {issue, edition: eid},
       );
@@ -328,6 +331,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported})
                         <th className="px-3 py-2 text-left font-semibold">玩法</th>
                         <th className="px-3 py-2 text-left font-semibold">號碼(可編輯)</th>
                         <th className="px-3 py-2 text-right font-semibold">支 / 車</th>
+                        <th className="px-3 py-2 text-right font-semibold">中獎顆數<br/><span className="font-normal text-[9px]">忘記期數可填</span></th>
                       </tr>
                     </thead>
                     <tbody className="font-mono">
@@ -366,6 +370,17 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported})
                               min={1}
                               value={d.units}
                               onChange={e => setDraft(i, {units: Number(e.target.value)})}
+                              className="w-16 px-2 py-1 rounded-lg border border-black/10 dark:border-white/10 bg-white dark:bg-[#161616] text-[11px] font-mono text-right text-neutral-900 dark:text-white outline-hidden focus:border-black/40 dark:focus:border-white/40"
+                            />
+                          </td>
+                          <td className="px-3 py-2 text-right align-top">
+                            <input
+                              type="number"
+                              min={0}
+                              value={d.hit}
+                              placeholder="待開獎"
+                              onChange={e => setDraft(i, {hit: e.target.value})}
+                              title="填了就直接依這個中獎數結算(不必期數);留空 = 待開獎"
                               className="w-16 px-2 py-1 rounded-lg border border-black/10 dark:border-white/10 bg-white dark:bg-[#161616] text-[11px] font-mono text-right text-neutral-900 dark:text-white outline-hidden focus:border-black/40 dark:focus:border-white/40"
                             />
                           </td>

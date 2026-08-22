@@ -461,6 +461,7 @@ export interface QuickImportCommitItem {
   selectedBalls: number[];
   units: number;
   stars?: number; // 連碰重算成本要用
+  hit_count?: number | null; // 忘記期數但記得中幾顆:直接手填結算
 }
 
 // 二合下注「組」設定(全站共用):固定顆數 + 是否啟用。
