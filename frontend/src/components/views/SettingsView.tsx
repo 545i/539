@@ -305,7 +305,7 @@ export const SettingsView: React.FC<Props> = ({ theme, onToggleTheme }) => {
           <span>下注組設定(1組 / 2組)</span>
         </h3>
         <div className="text-[11px] text-neutral-500 dark:text-neutral-400">
-          每組可設定<strong className="text-neutral-700 dark:text-neutral-200">固定顆數</strong>與是否
+          每組可設定<strong className="text-neutral-700 dark:text-neutral-200">預設建議顆數</strong>(下注時可自由增減,無下注紀錄時當建議值)與是否
           <strong className="text-neutral-700 dark:text-neutral-200">啟用</strong>。停用的組不會出現在下注分頁,
           快速上傳歸到該組的下注行也會被擋掉。這是<strong className="text-neutral-700 dark:text-neutral-200">全站共用</strong>設定。
         </div>
@@ -318,7 +318,7 @@ export const SettingsView: React.FC<Props> = ({ theme, onToggleTheme }) => {
               </div>
               <div>
                 <label className="block text-[10px] uppercase tracking-[0.2em] font-semibold text-neutral-400 mb-1.5">
-                  固定顆數
+                  預設建議顆數
                 </label>
                 <input
                   type="number"

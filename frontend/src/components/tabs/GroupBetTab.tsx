@@ -26,7 +26,6 @@ interface Props {
 
 export const GroupBetTab: React.FC<Props> = ({ group }) => {
   const { game, gameKey, loading: gameLoading } = useGame();
-  const fixedCount = group.ball_count;
   const [selectedBalls, setSelectedBalls] = useState<number[]>([]);
   const [cars, setCars] = useState<number>(5);
 
@@ -52,20 +51,27 @@ export const GroupBetTab: React.FC<Props> = ({ group }) => {
   const ledger = useLedger(group.mode, []);
   const records = ledger.records;
 
+  // 不固定顆數:依「這一組最新一筆下注紀錄」建議顆數 / 車數。沒有紀錄就退回設定的預設顆數。
+  const lastRecord = records.length > 0 ? records[records.length - 1] : null;
+  const lastCount = lastRecord?.selectedBalls?.length ?? 0;
+  const lastCars = lastRecord?.cars ?? lastRecord?.units ?? 0;
+  const suggestBalls = lastCount || group.ball_count; // 建議顆數:上次幾顆,沒紀錄用預設
+  // 成本 / 派彩試算用「實際選取顆數」,沒選就先用建議顆數,數字才不會是 0
+  const activeCount = selectedBalls.length || suggestBalls;
+
   // 二合盤口:每顆每車成本 = default_cost_per_car(2755)、每中一顆每車 = default_win_payout
   // (21200,不除以 4 —— 成本 2755 對應中一顆得 21200)
   const costPerCarPerBall = game ? game.default_cost_per_car : 0;
   const prizePerHitPerCar = game ? game.default_win_payout : 0;
-  // 成本以「固定顆數」計(這就是「固定顆數」的意義:成本由組設定決定,不隨部分選取變動)
   const { data: plan } = useAsync<ErhePlanDTO | null>(
     () =>
       game
-        ? api.erhePlan(gameKey, fixedCount, cars, {
+        ? api.erhePlan(gameKey, activeCount, cars, {
             cost_per_car: costPerCarPerBall,
             win_payout: prizePerHitPerCar,
           })
         : Promise.resolve(null),
-    [gameKey, fixedCount, cars, costPerCarPerBall, prizePerHitPerCar],
+    [gameKey, activeCount, cars, costPerCarPerBall, prizePerHitPerCar],
   );
 
   const cumPnl = records.length > 0 ? records[records.length - 1].cumPnl : 0;
@@ -85,16 +91,16 @@ export const GroupBetTab: React.FC<Props> = ({ group }) => {
   const numMax = game.num_max;
   const payoutOf = (hits: number) =>
     Math.round(plan?.hits.find(h => h.hits === hits)?.payout ?? cars * prizePerHitPerCar * hits);
-  const currentCost = Math.round(plan?.total_cost ?? cars * fixedCount * costPerCarPerBall);
+  const currentCost = Math.round(plan?.total_cost ?? cars * activeCount * costPerCarPerBall);
   const prize1Hit = payoutOf(1);
   const prize2Hits = payoutOf(2);
-  const prizeAllHits = payoutOf(fixedCount);
-  const isFull = selectedBalls.length === fixedCount;
+  const prizeAllHits = payoutOf(activeCount);
+  const canRecord = selectedBalls.length >= 1; // 不固定顆數:至少選 1 顆就能下
 
   // 建議車數(中1顆回本,照舊版):以「這一組自己的累積損益」算,不跟另一組混。
-  // 中1顆每車淨利 = 每車中獎(21200) − 顆數×每車成本(2755);<=0 就中1顆也追不回。
-  // 車數 = ⌈該組虧損 ÷ 每車淨利⌉,回本後回到起始車數。
-  const per1HitNet = Math.round(prizePerHitPerCar - fixedCount * costPerCarPerBall);
+  // 顆數用建議顆數(最新紀錄的顆數):中1顆每車淨利 = 每車中獎(21200) − 顆數×每車成本(2755)。
+  // 車數 = ⌈該組虧損 ÷ 每車淨利⌉;<=0 中1顆追不回、回本後用起始車數。
+  const per1HitNet = Math.round(prizePerHitPerCar - suggestBalls * costPerCarPerBall);
   const inLoss = cumPnl < 0;
   const canRecover1Hit = per1HitNet > 0;
   const suggestCars = !inLoss
@@ -102,15 +108,11 @@ export const GroupBetTab: React.FC<Props> = ({ group }) => {
     : !canRecover1Hit
     ? Infinity
     : Math.max(1, Math.ceil(-cumPnl / per1HitNet));
-  const suggestCost =
-    suggestCars != null && Number.isFinite(suggestCars)
-      ? fixedCount * (suggestCars as number) * costPerCarPerBall
-      : null;
 
   const handleToggleBall = (num: number) => {
     if (selectedBalls.includes(num)) {
       setSelectedBalls(selectedBalls.filter(n => n !== num));
-    } else if (selectedBalls.length < fixedCount) {
+    } else if (selectedBalls.length < numMax) {
       setSelectedBalls([...selectedBalls, num]);
     }
   };
@@ -125,7 +127,7 @@ export const GroupBetTab: React.FC<Props> = ({ group }) => {
       mode: group.mode,
       units: cars,
       cars,
-      betsCount: fixedCount,
+      betsCount: selectedBalls.length,
       selectedBalls: [...selectedBalls],
       drawBalls: [],
       result: status,
@@ -147,15 +149,34 @@ export const GroupBetTab: React.FC<Props> = ({ group }) => {
             <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-black/5 dark:bg-white/10 text-neutral-600 dark:text-neutral-300">
               {game.short_name}
             </span>
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-black/5 dark:bg-white/10 text-neutral-600 dark:text-neutral-300">
-              固定 {fixedCount} 顆
-            </span>
           </div>
           <div className="text-base sm:text-xl font-display font-bold text-neutral-900 dark:text-white mt-0.5">
             {group.name}下注控制台
           </div>
-          <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
-            鎖定 {fixedCount} 顆號碼組合,每組獨立計算損益。
+          {/* 建議顆數 / 建議車數(依這一組最新一筆紀錄 + 該組累積損益;中1顆回本) */}
+          <div className="flex flex-wrap items-center gap-2 mt-1.5">
+            <span className="px-2 py-1 rounded-lg text-[11px] font-mono bg-black/[0.04] dark:bg-white/[0.06] text-neutral-700 dark:text-neutral-200">
+              建議顆數 <strong className="text-neutral-900 dark:text-white">{suggestBalls}</strong> 顆
+              {lastRecord && <span className="text-neutral-400"> ・上次 {lastCount} 顆 {lastCars} 車</span>}
+            </span>
+            {!inLoss ? (
+              <span className="px-2 py-1 rounded-lg text-[11px] font-mono bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">
+                建議車數 —（{group.name}無虧損,用起始車數)
+              </span>
+            ) : !canRecover1Hit ? (
+              <span className="px-2 py-1 rounded-lg text-[11px] font-mono bg-amber-500/10 text-amber-700 dark:text-amber-400">
+                建議車數 無解(中1顆每車淨利 {per1HitNet.toLocaleString()})
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setCars(suggestCars as number)}
+                title="套用建議車數(中1顆回本)"
+                className="px-2 py-1 rounded-lg text-[11px] font-mono bg-black/[0.04] dark:bg-white/[0.06] text-neutral-700 dark:text-neutral-200 hover:bg-black/10 dark:hover:bg-white/10 active:scale-95 transition-colors"
+              >
+                建議車數 <strong className="text-neutral-900 dark:text-white">{(suggestCars as number).toLocaleString()}</strong> 車（中1顆回本・點我套用）
+              </button>
+            )}
           </div>
         </div>
 
@@ -192,10 +213,10 @@ export const GroupBetTab: React.FC<Props> = ({ group }) => {
                 selectedBalls={selectedBalls}
                 onToggleBall={handleToggleBall}
                 onClear={() => setSelectedBalls([])}
-                onQuickSelect={(balls) => setSelectedBalls(balls.slice(0, fixedCount))}
-                maxBalls={fixedCount}
+                onQuickSelect={(balls) => setSelectedBalls(balls)}
+                maxBalls={numMax}
                 totalBalls={numMax}
-                label={`鎖定下注號碼 (固定 ${fixedCount} 顆・已選 ${selectedBalls.length})`}
+                label={`選取下注號碼 (不固定顆數・建議 ${suggestBalls} 顆・已選 ${selectedBalls.length})`}
               />
             </div>
 
@@ -206,7 +227,7 @@ export const GroupBetTab: React.FC<Props> = ({ group }) => {
                   下注車數 (Cars)
                 </label>
                 <span className="text-xs font-mono font-bold text-neutral-900 dark:text-white">
-                  {cars} 車 ({fixedCount} 顆)
+                  {cars} 車 ({activeCount} 顆)
                 </span>
               </div>
               <div className="flex items-center gap-2">
@@ -271,7 +292,7 @@ export const GroupBetTab: React.FC<Props> = ({ group }) => {
                   </span>
                 </div>
                 <div>
-                  <span className="text-neutral-500 block text-[10px]">中 {fixedCount} 顆大賺:</span>
+                  <span className="text-neutral-500 block text-[10px]">中 {activeCount} 顆全中:</span>
                   <span className="font-mono font-bold text-sm text-emerald-600 dark:text-emerald-400">
                     NT$ {prizeAllHits.toLocaleString()}
                   </span>
@@ -279,61 +300,22 @@ export const GroupBetTab: React.FC<Props> = ({ group }) => {
               </div>
             </div>
 
-            {/* 建議車數(中1顆回本,照舊版;只追這一組自己的虧損) */}
-            <div className="p-3.5 sm:p-4 rounded-xl border border-black/[0.08] dark:border-white/[0.08] bg-black/[0.02] dark:bg-white/[0.03] space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] uppercase tracking-wider text-neutral-400 font-semibold">
-                  建議車數(中 1 顆回本)
-                </span>
-                <span className={`text-[11px] font-mono font-bold ${cumPnl < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
-                  {group.name}累積 {cumPnl >= 0 ? `+${cumPnl.toLocaleString()}` : cumPnl.toLocaleString()}
-                </span>
-              </div>
-              {!inLoss ? (
-                <div className="text-xs text-emerald-700 dark:text-emerald-400">
-                  目前沒有虧損要追,車數用起始值就好。
-                </div>
-              ) : !canRecover1Hit ? (
-                <div className="text-xs text-amber-700 dark:text-amber-400">
-                  無解:中 1 顆每車淨利 {per1HitNet.toLocaleString()}(≤0),中 1 顆也追不回本。
-                </div>
-              ) : (
-                <div className="flex items-end justify-between gap-2">
-                  <div>
-                    <div className="text-lg font-mono font-bold text-neutral-900 dark:text-white">
-                      {(suggestCars as number).toLocaleString()} 車
-                    </div>
-                    <div className="text-[10px] text-neutral-500 font-mono">
-                      本局成本 {suggestCost?.toLocaleString()}・中1顆淨利/車 {per1HitNet.toLocaleString()}
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setCars(suggestCars as number)}
-                    className="shrink-0 px-3 py-1.5 rounded-lg text-[11px] font-semibold border border-black/10 dark:border-white/10 text-neutral-700 dark:text-neutral-200 hover:bg-black/5 dark:hover:bg-white/5 active:scale-95 transition-colors"
-                  >
-                    套用車數
-                  </button>
-                </div>
-              )}
-            </div>
-
             {/* Actions */}
             <div className="pt-2 flex flex-col sm:flex-row gap-2">
               <button
                 type="button"
-                disabled={!isFull}
+                disabled={!canRecord}
                 onClick={() => handleRecord('待開獎', 0)}
                 className="w-full py-3 px-4 rounded-xl sm:rounded-full text-xs uppercase tracking-wider font-semibold bg-black text-white dark:bg-white dark:text-black hover:opacity-90 disabled:opacity-30 transition-opacity flex items-center justify-center gap-2 shadow-xs active:scale-98"
               >
                 <FileText className="w-4 h-4" />
-                {isFull ? '送出記帳 (待開獎)' : `請選滿 ${fixedCount} 顆`}
+                {canRecord ? '送出記帳 (待開獎)' : '請至少選 1 顆'}
               </button>
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
-                  disabled={!isFull}
-                  onClick={() => handleRecord(`中 ${fixedCount} 顆`, fixedCount)}
+                  disabled={!canRecord}
+                  onClick={() => handleRecord(`中 ${selectedBalls.length} 顆`, selectedBalls.length)}
                   className="py-2.5 px-3 rounded-xl sm:rounded-full text-xs uppercase tracking-wider font-semibold border border-emerald-600/30 text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 disabled:opacity-30 transition-colors flex items-center justify-center gap-1 active:scale-95"
                 >
                   <CheckCircle2 className="w-3.5 h-3.5" />
@@ -341,7 +323,7 @@ export const GroupBetTab: React.FC<Props> = ({ group }) => {
                 </button>
                 <button
                   type="button"
-                  disabled={!isFull}
+                  disabled={!canRecord}
                   onClick={() => handleRecord('槓龜 (0顆)', 0)}
                   className="py-2.5 px-3 rounded-xl sm:rounded-full text-xs uppercase tracking-wider font-semibold border border-rose-600/30 text-rose-700 dark:text-rose-400 bg-rose-500/10 hover:bg-rose-500/20 disabled:opacity-30 transition-colors flex items-center justify-center gap-1 active:scale-95"
                 >
