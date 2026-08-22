@@ -25,8 +25,8 @@ router = APIRouter(prefix="/leaderboard", tags=["leaderboard"])
 
 # 下法代號 → 顯示名稱(對應前端 DuoBetTab 的四個記帳分頁)
 MODE_NAMES = {
-    "single": "單顆下注",
-    "multi": "多顆下注",
+    "single": "1組",
+    "multi": "2組",
     "pillar1800": "三柱 1800碰",
     "combo": "連碰",
 }

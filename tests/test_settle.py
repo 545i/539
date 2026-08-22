@@ -17,11 +17,11 @@ def _rec(**kw) -> dict:
 
 
 def test_single_win_and_lose():
-    # 1組(舊 single)與 2組派彩公式統一:中幾顆 × 車數 ×(每車中獎 ÷ 4)
+    # 1組(舊 single)與 2組派彩公式統一:中幾顆 × 車數 × 每車中獎(不除以 4)
     draw = [5, 11, 12, 17, 18]
     win = settle.settle(_rec(mode="single", selectedBalls=[12], cars=3), draw, G)
-    assert win["payout"] == round(1 * 3 * (G.default_win_payout / 4))
-    assert win["pnl"] == round(1 * 3 * (G.default_win_payout / 4) - 1000)
+    assert win["payout"] == round(1 * 3 * G.default_win_payout)
+    assert win["pnl"] == round(1 * 3 * G.default_win_payout - 1000)
     assert win["result"] == "中 1 顆"
     assert win["drawBalls"] == draw
 
@@ -35,7 +35,7 @@ def test_manual_hit_count_ignores_draw():
     # 忘記期數但記得中幾顆:不看 draw,直接依組公式結算,drawBalls 不動
     r = settle.settle(_rec(mode="single", selectedBalls=[12], cars=3, cost=1000),
                       None, G, hit_count=2)
-    assert r["payout"] == round(2 * 3 * (G.default_win_payout / 4))
+    assert r["payout"] == round(2 * 3 * G.default_win_payout)
     assert r["result"] == "中 2 顆(手填)"
     assert r["pnl"] == r["payout"] - 1000
 
@@ -47,8 +47,8 @@ def test_multi_counts_hits():
     draw = [5, 11, 12, 17, 18]
     r = settle.settle(
         _rec(mode="multi", selectedBalls=[5, 12, 17, 30], cars=2), draw, G)
-    # 中 3 顆(5/12/17),每顆 = 車數 × (每車中獎可得 ÷ 4)
-    assert r["payout"] == round(3 * 2 * (G.default_win_payout / 4))
+    # 中 3 顆(5/12/17),每顆 = 車數 × 每車中獎可得(不除以 4)
+    assert r["payout"] == round(3 * 2 * G.default_win_payout)
     assert r["result"] == "中 3 顆"
 
 
@@ -160,7 +160,7 @@ def test_resettle_updates_and_is_reversible(client, alice):
     assert body["issue"] == "115000201"
     assert body["date"] == "2026-08-18"
     assert body["drawBalls"] == [5, 11, 12, 17, 18]
-    assert body["payout"] == round(1 * 3 * (G.default_win_payout / 4))
+    assert body["payout"] == round(1 * 3 * G.default_win_payout)
     assert "中" in body["result"]
 
     # 作廢那次對獎 → payload 回到改之前(待開獎、payout 0)
@@ -189,7 +189,7 @@ def test_settle_preview_no_auth_no_write(client):
     assert r.status_code == 200
     body = r.json()
     assert body["drawBalls"] == [5, 11, 12, 17, 18]
-    assert body["payout"] == round(1 * 3 * (G.default_win_payout / 4))
+    assert body["payout"] == round(1 * 3 * G.default_win_payout)
 
 
 def test_settle_preview_manual_hit_count(client):
@@ -199,7 +199,7 @@ def test_settle_preview_manual_hit_count(client):
                     json={"record": rec, "issue": "", "hit_count": 2})
     assert r.status_code == 200
     body = r.json()
-    assert body["payout"] == round(2 * 3 * (G.default_win_payout / 4))
+    assert body["payout"] == round(2 * 3 * G.default_win_payout)
     assert "手填" in body["result"]
 
 

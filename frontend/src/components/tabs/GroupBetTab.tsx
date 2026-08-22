@@ -16,8 +16,8 @@ import { useLedger } from '../../api/useLedger';
 // 二合買牌的「組」下注控制台。取代原本寫死的 SingleBetTab / MultiBetTab ——
 // 兩者其實只差「鎖幾顆」與標籤,現在統一成一個吃 group 參數的元件:
 //   - 球盤鎖成 group.ball_count(固定顆數,選滿即止)。
-//   - 成本 / 派彩公式統一走「多顆」盤口(每顆每車成本 = default_cost_per_car、
-//     每顆每車彩金 = default_win_payout ÷ 4),與 backend.settle 一致。
+//   - 成本 = 顆數 × 車數 × default_cost_per_car(2755);中一顆每車 = default_win_payout
+//     (21200,不除以 4),與 backend.settle 一致。
 //   - 流水存在 group.mode(1組=single、2組=multi;不搬舊資料)。
 
 interface Props {
@@ -52,9 +52,10 @@ export const GroupBetTab: React.FC<Props> = ({ group }) => {
   const ledger = useLedger(group.mode, []);
   const records = ledger.records;
 
-  // 盤口沿用多顆換算:每顆每車成本 = default_cost_per_car、每顆每車彩金 = default_win_payout ÷ 4
+  // 二合盤口:每顆每車成本 = default_cost_per_car(2755)、每中一顆每車 = default_win_payout
+  // (21200,不除以 4 —— 成本 2755 對應中一顆得 21200)
   const costPerCarPerBall = game ? game.default_cost_per_car : 0;
-  const prizePerHitPerCar = game ? game.default_win_payout / 4 : 0;
+  const prizePerHitPerCar = game ? game.default_win_payout : 0;
   // 成本以「固定顆數」計(這就是「固定顆數」的意義:成本由組設定決定,不隨部分選取變動)
   const { data: plan } = useAsync<ErhePlanDTO | null>(
     () =>

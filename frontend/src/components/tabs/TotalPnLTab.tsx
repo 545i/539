@@ -33,8 +33,8 @@ const RECOVERY_PLANS: {
 
 // 四種下法在績效表上的顯示順序與名稱
 const MODE_ROWS: { mode: LedgerMode; name: string }[] = [
-  { mode: 'single', name: '單顆下注' },
-  { mode: 'multi', name: '多顆下注' },
+  { mode: 'single', name: '1組' },
+  { mode: 'multi', name: '2組' },
   { mode: 'pillar1800', name: '三柱1800碰' },
   { mode: 'combo', name: '連碰 (星碰/立柱)' },
 ];
@@ -104,16 +104,16 @@ export const TotalPnLTab: React.FC = () => {
     const g = games.find(x => x.key === p.key);
     if (!g) return [];
     const balls = p.balls ?? 1;
-    // 多顆下法沿用 v2 的換算比例:每顆每車彩金 = 每車中獎可得 ÷ 4
+    // 二合盤口:每車成本 = 顆數 × 2755;中 1 顆每車 = 21200(不除以 4,單顆多顆一致)
     const perCarCost = g.default_cost_per_car * balls;
-    const perCarPrize = p.mode === 'multi' ? (g.default_win_payout / 4) * balls : g.default_win_payout;
+    const perCarPrize = g.default_win_payout;
     const cost = Math.round(p.cars * perCarCost);
     const prize = Math.round(p.cars * perCarPrize);
     return [{
       key: p.key,
       mode: p.mode,
       isCurrent: p.key === gameKey,
-      game: `${g.short_name} (${p.mode === 'single' ? '單顆' : `多顆 ${balls}顆`})`,
+      game: `${g.short_name} (${p.mode === 'single' ? '1組' : `2組 ${balls}顆`})`,
       cars: p.cars,
       net: prize - cost,
       costNum: cost,
