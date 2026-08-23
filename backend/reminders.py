@@ -66,6 +66,49 @@ def on_new_draw(game_key: str) -> None:
 
 
 # ── /提醒 指令:開獎狀況 + 區間組合斷檔 + 大區間斷檔(唯讀) ──────────
+def _thirds(num_max: int) -> list[tuple[str, list[int]]]:
+    """前 / 中 / 後三段(比照使用者的 0~12 / 13~25 / 26~39,依 num_max 等比)。"""
+    b1 = round(num_max * 12 / 39)
+    b2 = round(num_max * 25 / 39)
+    return [
+        ("前", list(range(1, b1 + 1))),
+        ("中", list(range(b1 + 1, b2 + 1))),
+        ("後", list(range(b2 + 1, num_max + 1))),
+    ]
+
+
+def _seg_absence_line(df, num_max: int) -> str:
+    """前中後段:各段連續幾期沒開出任何一顆(開出即歸 0)。"""
+    combos = [{"label": name, "nums": nums} for name, nums in _thirds(num_max)]
+    rows = {r["label"]: r for r in stats.combo_absence_alerts(df, combos, threshold=1)}
+    cells = [f"{name} <b>{rows[name]['streak']}</b> 期" for name, _ in _thirds(num_max)
+             if name in rows]
+    return "前中後段(幾期沒開):" + "、".join(cells)
+
+
+def _odd_even_line(df) -> str:
+    """單雙比:目前『單多』或『雙多』連續幾期(翻面就歸 0)。"""
+    draws = stats.draws_as_lists(df)
+    if not draws:
+        return "單雙比:無資料"
+
+    def side(draw):
+        odd = sum(1 for n in draw if n % 2 == 1)
+        even = len(draw) - odd
+        return "單多" if odd > even else ("雙多" if even > odd else None)
+
+    cur = side(draws[-1])
+    if cur is None:
+        return "單雙比:最新一期單雙相同(無偏向)"
+    streak = 0
+    for draw in reversed(draws):
+        if side(draw) == cur:
+            streak += 1
+        else:
+            break
+    return f"單雙比:目前 <b>{cur}</b> 連續 <b>{streak}</b> 期"
+
+
 def _latest_line(df) -> str:
     """最新一期:期號(日期)開出的號碼。"""
     if df is None or len(df) == 0:
@@ -103,6 +146,10 @@ def reminder_text() -> str:
                 lines.append(
                     f"9000碰({r['label']}):{mark}<b>{r['streak']}</b> 期沒一起開"
                     f"(最長 {r['max_gap']})")
+
+        # 前中後段斷檔 + 單雙比
+        lines.append(_seg_absence_line(df, g.num_max))
+        lines.append(_odd_even_line(df))
 
         blocks.append("\n".join(lines))
     return "\n".join(blocks)
