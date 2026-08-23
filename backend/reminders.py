@@ -60,9 +60,27 @@ def notify_combo_watch(game_key: str) -> bool:
     return notify.send("\n".join(lines))
 
 
+def push_game_update(game_key: str) -> bool:
+    """新開獎自動推播:只發「這一款」的完整提醒(格式同 /提醒,0 期不顯示)。
+
+    開獎時刻各款不同(見 core.drawtime),排程的 on_added 會帶入剛更新的
+    game_key,所以這裡只推該款,不會把三款全發一遍。沒設定 / 讀不到資料回 False。
+    """
+    if not notify.enabled():
+        return False
+    try:
+        df = load_df(game_key)
+        block = _game_block(get_game(game_key), df)
+    except Exception:       # noqa: BLE001 — 推播失敗不能影響排程
+        return False
+    if not block:
+        return False
+    return notify.send(block)
+
+
 def on_new_draw(game_key: str) -> None:
     """排程偵測到新開獎時的掛鉤(見 core.autoupdate 的 on_added)。"""
-    notify_combo_watch(game_key)
+    push_game_update(game_key)
 
 
 # ── /提醒 指令:開獎狀況 + 區間組合斷檔 + 大區間斷檔(唯讀) ──────────
@@ -78,15 +96,20 @@ def _thirds(num_max: int) -> list[tuple[str, list[int]]]:
 
 
 def _seg_missing_block(df, num_max: int) -> str:
-    """前中後段:精細到單顆遺漏(號碼·幾期沒開,開出歸0),用等寬 <pre> 對齊。
+    """前中後段:精細到單顆遺漏(號碼·幾期沒開),用等寬 <pre> 對齊。
 
-    每格「NN·MM」寬度固定 → 三段各一行、上下對齊,一覽無遺。
+    只列「遺漏 >= 1 期」的號碼(本期剛開出的 0 期不顯示);整段都沒遺漏
+    就不列那一行,三段都沒遺漏則整塊省略(回空字串)。
     """
     miss = stats.missing(df, num_max)
     rows = []
     for name, nums in _thirds(num_max):
-        cells = [f"{n:02d}·{miss.get(n, {}).get('current', 0):02d}" for n in nums]
-        rows.append(f"{name} " + " ".join(cells))
+        cells = [f"{n:02d}·{c:02d}" for n in nums
+                 if (c := miss.get(n, {}).get("current", 0)) >= 1]
+        if cells:
+            rows.append(f"{name} " + " ".join(cells))
+    if not rows:
+        return ""
     return "<u>前中後段</u>(號碼·遺漏期數)\n<pre>" + "\n".join(rows) + "</pre>"
 
 
@@ -124,35 +147,49 @@ def _latest_line(df) -> str:
             f"<b>{'  '.join(f'{n:02d}' for n in nums)}</b>")
 
 
+def _game_block(g, df) -> str:
+    """單一遊戲的提醒區塊:開獎 + 1800碰 + 9000碰 + 前中後段 + 單雙比。
+
+    一律「0 期不顯示」—— 沒斷檔的配對、剛開出的號碼都省略,避免洗版。
+    這塊同時給 `/提醒`(彙整全部)與新開獎自動推播(只發該款)共用。
+    """
+    lines = [f"<b>【{g.name}】</b>", _latest_line(df)]
+
+    # 1800碰(雙雙):只列「連續 >=1 期沒一起開」的十位段配對(0 期不顯示)
+    hot_pairs = sorted(
+        (p for p in stats.tens_pair_alerts(df, threshold=1, num_max=g.num_max)
+         if p["streak"] >= 1),
+        key=lambda p: (-p["streak"], p["bands"][0], p["bands"][1]))
+    if hot_pairs:
+        cells = [f"{p['labels'][0]}+{p['labels'][1]}·{p['streak']:02d}"
+                 for p in hot_pairs]
+        lines.append("<u>1800碰</u>(配對·幾期沒開)\n<pre>" + "  ".join(cells) + "</pre>")
+
+    # 9000碰(全段同開):只列連續 >=1 期沒一起開的(0 期不顯示)
+    for c in watch_store.get_combos(g.key):
+        for r in stats.combo_cooccurrence_alerts(df, [c], threshold=1):
+            if r["streak"] >= 1:
+                lines.append(
+                    f"<u>9000碰</u> {r['label']} <b>{r['streak']}</b> 期沒一起開"
+                    f"(最長 {r['max_gap']})")
+
+    # 前中後段(精細到單顆遺漏,0 期不顯示)+ 單雙比
+    seg = _seg_missing_block(df, g.num_max)
+    if seg:
+        lines.append(seg)
+    lines.append(_odd_even_line(df))
+    return "\n".join(lines)
+
+
 def reminder_text() -> str:
-    """`/提醒` 的回覆:每款「開獎 + 1800碰 + 9000碰 + 前中後段 + 單雙比」。"""
+    """`/提醒` 的回覆:彙整每一款的提醒區塊(0 期不顯示)。"""
     blocks = ["<b>開獎與區間提醒</b>"]
     for g in all_games():
         try:
             df = load_df(g.key)
         except Exception:       # noqa: BLE001 — 讀不到資料就跳過該款
             continue
-        lines = [f"<b>【{g.name}】</b>", _latest_line(df)]
-
-        # 1800碰(雙雙):列出「每一組」十位段配對各幾期沒一起沒開(開出歸0),斷檔的加粗
-        all_pairs = sorted(
-            stats.tens_pair_alerts(df, threshold=1, num_max=g.num_max),
-            key=lambda p: (p["bands"][0], p["bands"][1]))
-        cells = [f"{p['labels'][0]}+{p['labels'][1]}·{p['streak']:02d}" for p in all_pairs]
-        lines.append("<u>1800碰</u>(配對·幾期沒開)\n<pre>" + "  ".join(cells) + "</pre>")
-
-        # 9000碰(全段同開):沒一起開就 +1(不設門檻)
-        for c in watch_store.get_combos(g.key):
-            for r in stats.combo_cooccurrence_alerts(df, [c], threshold=1):
-                lines.append(
-                    f"<u>9000碰</u> {r['label']} <b>{r['streak']}</b> 期沒一起開"
-                    f"(最長 {r['max_gap']})")
-
-        # 前中後段(精細到單顆遺漏)+ 單雙比
-        lines.append(_seg_missing_block(df, g.num_max))
-        lines.append(_odd_even_line(df))
-
-        blocks.append("\n".join(lines))
+        blocks.append(_game_block(g, df))
     return "\n\n".join(blocks)
 
 
