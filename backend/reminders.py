@@ -50,7 +50,7 @@ def notify_combo_watch(game_key: str) -> bool:
     if not pairs and not nine:
         return False
     g = get_game(game_key)
-    lines = [f"🔔 <b>{g.name} 斷檔提醒</b>"]
+    lines = [f"<b>{g.name} 斷檔提醒</b>"]
     if pairs:
         cells = [f"{p['labels'][0]}×{p['labels'][1]} <b>{p['streak']}</b> 期"
                  for p in pairs]
@@ -77,13 +77,17 @@ def _thirds(num_max: int) -> list[tuple[str, list[int]]]:
     ]
 
 
-def _seg_absence_line(df, num_max: int) -> str:
-    """前中後段:各段連續幾期沒開出任何一顆(開出即歸 0)。"""
-    combos = [{"label": name, "nums": nums} for name, nums in _thirds(num_max)]
-    rows = {r["label"]: r for r in stats.combo_absence_alerts(df, combos, threshold=1)}
-    cells = [f"{name} <b>{rows[name]['streak']}</b> 期" for name, _ in _thirds(num_max)
-             if name in rows]
-    return "前中後段(幾期沒開):" + "、".join(cells)
+def _seg_missing_block(df, num_max: int) -> str:
+    """前中後段:精細到單顆遺漏(號碼·幾期沒開,開出歸0),用等寬 <pre> 對齊。
+
+    每格「NN·MM」寬度固定 → 三段各一行、上下對齊,一覽無遺。
+    """
+    miss = stats.missing(df, num_max)
+    rows = []
+    for name, nums in _thirds(num_max):
+        cells = [f"{n:02d}·{miss.get(n, {}).get('current', 0):02d}" for n in nums]
+        rows.append(f"{name} " + " ".join(cells))
+    return "<u>前中後段</u>(號碼·遺漏期數)\n<pre>" + "\n".join(rows) + "</pre>"
 
 
 def _odd_even_line(df) -> str:
@@ -99,60 +103,59 @@ def _odd_even_line(df) -> str:
 
     cur = side(draws[-1])
     if cur is None:
-        return "單雙比:最新一期單雙相同(無偏向)"
+        return "<u>單雙比</u> 最新一期單雙相同(無偏向)"
     streak = 0
     for draw in reversed(draws):
         if side(draw) == cur:
             streak += 1
         else:
             break
-    return f"單雙比:目前 <b>{cur}</b> 連續 <b>{streak}</b> 期"
+    return f"<u>單雙比</u> 目前 <b>{cur}</b> 連續 <b>{streak}</b> 期"
 
 
 def _latest_line(df) -> str:
     """最新一期:期號(日期)開出的號碼。"""
     if df is None or len(df) == 0:
-        return "・(尚無開獎資料)"
+        return "(尚無開獎資料)"
     row = df.iloc[-1]
     nums = [int(row[c]) for c in df.columns if str(c).startswith("n")]
     date = str(row.get("date", ""))[:10]
-    return (f"・最新 期{row.get('issue', '')}({date})開出 "
-            f"<b>{' '.join(f'{n:02d}' for n in nums)}</b>")
+    return (f"<u>最新</u> 期{row.get('issue', '')}({date}) "
+            f"<b>{'  '.join(f'{n:02d}' for n in nums)}</b>")
 
 
 def reminder_text() -> str:
-    """`/提醒` 的回覆:每款「開獎狀況 + 區間組合斷檔 + 大區間斷檔」。"""
-    blocks = ["🔔 <b>開獎與區間斷檔提醒</b>"]
+    """`/提醒` 的回覆:每款「開獎 + 1800碰 + 9000碰 + 前中後段 + 單雙比」。"""
+    blocks = ["<b>開獎與區間提醒</b>"]
     for g in all_games():
         try:
             df = load_df(g.key)
         except Exception:       # noqa: BLE001 — 讀不到資料就跳過該款
             continue
-        lines = [f"\n<b>【{g.name}】</b>", _latest_line(df)]
+        lines = [f"<b>【{g.name}】</b>", _latest_line(df)]
 
         # 1800碰(雙雙):兩兩十位段配對,沒開就 +1(不設門檻)
         hot = _pairs_hot(df, g.num_max)
         if hot:
-            cells = [f"{p['labels'][0]}×{p['labels'][1]} <b>{p['streak']}</b> 期"
+            cells = [f"{p['labels'][0]}×{p['labels'][1]} <b>{p['streak']}</b>"
                      for p in hot]
-            lines.append("1800碰(雙雙,幾期沒開):" + "、".join(cells))
+            lines.append("<u>1800碰</u> 雙雙沒開 " + "、".join(cells) + " 期")
         else:
-            lines.append("1800碰(雙雙):各配對近期都有開")
+            lines.append("<u>1800碰</u> 各雙雙配對近期都有開")
 
         # 9000碰(全段同開):沒一起開就 +1(不設門檻)
         for c in watch_store.get_combos(g.key):
             for r in stats.combo_cooccurrence_alerts(df, [c], threshold=1):
-                mark = "⚠️ " if r["streak"] >= 1 else ""
                 lines.append(
-                    f"9000碰({r['label']}):{mark}<b>{r['streak']}</b> 期沒一起開"
+                    f"<u>9000碰</u> {r['label']} <b>{r['streak']}</b> 期沒一起開"
                     f"(最長 {r['max_gap']})")
 
-        # 前中後段斷檔 + 單雙比
-        lines.append(_seg_absence_line(df, g.num_max))
+        # 前中後段(精細到單顆遺漏)+ 單雙比
+        lines.append(_seg_missing_block(df, g.num_max))
         lines.append(_odd_even_line(df))
 
         blocks.append("\n".join(lines))
-    return "\n".join(blocks)
+    return "\n\n".join(blocks)
 
 
 def handle_command(text: str) -> str | None:
