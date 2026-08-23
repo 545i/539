@@ -186,6 +186,13 @@ export interface ComboTogetherIn {
   label: string;
   groups: number[][]; // 每個區間的號碼
 }
+
+// 區間組合斷檔的公共設定(全站共用):每組多帶 threshold(連幾期沒一起開就提醒)
+export interface ComboWatchItem {
+  label: string;
+  groups: number[][];
+  threshold: number;
+}
 export interface ComboTogetherDTO {
   label: string;
   groups: number;
@@ -849,6 +856,14 @@ export const api = {
     threshold = 3,
   ) =>
     post<ComboTogetherDTO[]>('stats/combo-together', {game, threshold, combos}),
+  // 區間組合斷檔的公共設定(讀公開、寫要登入;全站共用,提醒機器人也讀這份)
+  getComboWatch: (game: GameKey) =>
+    get<ComboWatchItem[]>(`stats/combo-watch?game=${game}`),
+  setComboWatch: (game: GameKey, combos: ComboWatchItem[]) =>
+    put<ComboWatchItem[]>('stats/combo-watch', {game, combos}),
+  testComboWatch: (game: GameKey) =>
+    post<{alerts: unknown[]; sent: boolean; notify_enabled: boolean}>(
+      `stats/combo-watch/test?game=${game}`, {}),
   tensBands: (game: GameKey) => get<TensBandsDTO>(`stats/tens-bands?game=${game}`),
   parity: (game: GameKey) => get<ParityDTO>(`stats/parity?game=${game}`),
 

@@ -20,7 +20,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from backend.data import DATA_DIR, PROJECT_ROOT, all_games, game_data_path
-from backend import star_cost_store
+from backend import reminders, star_cost_store
 from backend.routers import (audit, auth, combo, editions, erhe, export, games,
                              groups, history, importer, ledger, leaderboard,
                              pillar, predict, settings, star_cost, stats)
@@ -36,8 +36,10 @@ async def lifespan(app: FastAPI):
     DATA_DIR.mkdir(exist_ok=True)
     # 把後台存的連碰盤口套進 core.combo(全域生效)
     star_cost_store.apply_to_core()
+    # 有新開獎 → 檢查區間組合斷檔,達門檻推 Telegram(見 backend.reminders)
     autoupdate.start_scheduler(
-        {g.key: game_data_path(g) for g in all_games()}, on_done=None)
+        {g.key: game_data_path(g) for g in all_games()},
+        on_done=None, on_added=reminders.on_new_draw)
     yield
 
 

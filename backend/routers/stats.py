@@ -1,11 +1,13 @@
 """開獎統計:遺漏、冷熱號、頻率,以及新功能「區間組合提醒」。"""
 from __future__ import annotations
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
+from backend import reminders, watch_store
 from backend.data import get_game, load_df
-from core import stats
+from backend.deps import current_user
+from core import notify, stats
 
 router = APIRouter(prefix="/stats", tags=["stats"])
 
@@ -103,6 +105,42 @@ def combo_together(body: ComboTogetherIn):
     df = load_df(body.game)
     combos = [{"label": c.label, "groups": c.groups} for c in body.combos]
     return stats.combo_cooccurrence_alerts(df, combos, threshold=body.threshold)
+
+
+# ── 區間組合斷檔:公共設定 + Telegram 提醒 ──────────────────
+class ComboWatchItem(BaseModel):
+    label: str = ""
+    groups: list[list[int]] = Field(default_factory=list)
+    threshold: int = Field(watch_store.DEFAULT_THRESHOLD, ge=1)
+
+
+class ComboWatchIn(BaseModel):
+    game: str
+    combos: list[ComboWatchItem] = Field(default_factory=list)
+
+
+@router.get("/combo-watch")
+def get_combo_watch(game: str = Query(...)):
+    """這款目前盯的區間組合(全站公共;含各自的斷檔門檻)。"""
+    get_game(game)
+    return watch_store.get_combos(game)
+
+
+@router.put("/combo-watch")
+def set_combo_watch(body: ComboWatchIn, user: str = Depends(current_user)):
+    """整組覆寫這款的區間組合設定(全站共用,改一次全站生效)。"""
+    get_game(body.game)
+    combos = [c.model_dump() for c in body.combos]
+    return watch_store.set_combos(body.game, combos)
+
+
+@router.post("/combo-watch/test")
+def test_combo_watch(game: str = Query(...), user: str = Depends(current_user)):
+    """立即檢查並(若有斷檔)推一則 Telegram —— 測試提醒是否會發。"""
+    get_game(game)
+    alerts = reminders.check_combo_watch(game)
+    sent = reminders.notify_combo_watch(game)
+    return {"alerts": alerts, "sent": sent, "notify_enabled": notify.enabled()}
 
 
 @router.get("/tens-bands")

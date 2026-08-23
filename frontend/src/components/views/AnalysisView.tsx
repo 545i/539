@@ -230,17 +230,17 @@ export const AnalysisView: React.FC = () => {
   );
   const [newLabel, setNewLabel] = useState('');
   const [newNums, setNewNums] = useState('');
-  // 區間組合(多久沒一起開)也是各遊戲一份;沒存過就帶一個範例組合
-  const [comboMap, setComboMap] = useState<Record<string, ComboTogetherIn[]>>(() =>
-    readStore<Record<string, ComboTogetherIn[]>>(COMBOS_KEY, {}),
-  );
+  // 區間組合斷檔改為「全站公共設定」(存後端 stats/combo-watch,提醒機器人也讀這份)。
+  // comboVer 變一下就重抓(存檔後刷新)。
+  const [comboVer, setComboVer] = useState(0);
+  const comboWatch = useAsync(() => api.getComboWatch(gameKey), [gameKey, comboVer]);
   const [newComboLabel, setNewComboLabel] = useState('');
+  const [watchMsg, setWatchMsg] = useState<string | null>(null);
   // 勾選上方那份區間清單來組出一個組合(勾的是區間 index)
   const [pickedIvs, setPickedIvs] = useState<number[]>([]);
 
   useEffect(() => writeStore(WATCH_THRESHOLD_KEY, threshold), [threshold]);
   useEffect(() => writeStore(INTERVALS_KEY, intervalMap), [intervalMap]);
-  useEffect(() => writeStore(COMBOS_KEY, comboMap), [comboMap]);
 
   // 號碼上限跟著遊戲走(今彩539/天天樂 39、六合彩 49);後端還沒回來前先用 39 撐版面
   const numMax = game?.num_max ?? 39;
@@ -322,22 +322,32 @@ export const AnalysisView: React.FC = () => {
       .map(i => (intervals[i] ? numsSummary(intervals[i].nums) : '?'))
       .join(' × ');
 
-  // ── 特殊組合(整組全沒開)──────────────────────────────
-  // 使用者刪光時是空陣列(不是 undefined),所以不會又被塞回預設範例
-  const combos = useMemo(
-    () => comboMap[gameKey] ?? defaultCombos(numMax),
-    [comboMap, gameKey, numMax],
+  // ── 區間組合斷檔(全站公共)──────────────────────────────
+  const watchCombos = useMemo(() => comboWatch.data ?? [], [comboWatch.data]);
+  const combos = useMemo<ComboTogetherIn[]>(
+    () => watchCombos.map(c => ({ label: c.label, groups: c.groups })),
+    [watchCombos],
   );
+  // 提醒門檻取第一組的(全部同一個);沒資料先用 5
+  const watchThreshold = watchCombos[0]?.threshold ?? 5;
   const combosKey = useMemo(() => JSON.stringify(combos), [combos]);
-  // 共現斷檔:alert 由後端依 threshold 算,門檻/組合改了都要重抓
+  // 共現斷檔:alert 由後端依門檻算,門檻/組合改了都要重抓
   const comboTogether = useAsync<ComboTogetherDTO[]>(
     () =>
       combos.length > 0
-        ? api.comboTogether(gameKey, combos, threshold)
+        ? api.comboTogether(gameKey, combos, watchThreshold)
         : Promise.resolve([]),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [gameKey, threshold, combosKey],
+    [gameKey, watchThreshold, combosKey],
   );
+
+  // 存回全站公共設定(每組帶同一個門檻),存完刷新
+  const saveCombos = (list: ComboTogetherIn[], thr: number) => {
+    setWatchMsg(null);
+    api.setComboWatch(gameKey, list.map(c => ({ label: c.label, groups: c.groups, threshold: thr })))
+      .then(() => { setComboVer(v => v + 1); setWatchMsg('已儲存(全站生效,提醒機器人也會用這份)。'); })
+      .catch(e => setWatchMsg((e as Error).message));
+  };
 
   // 後端把結果依 streak 重排過,對不回原本的順序 —— 用 label 配回本地清單拿 index
   // (同名組合按出現順序逐一取用,不會互相錯位)
@@ -357,7 +367,7 @@ export const AnalysisView: React.FC = () => {
   const comboAlertCount = comboRows.filter(r => r.stat?.alert).length;
 
   const updateCombos = (fn: (cur: ComboTogetherIn[]) => ComboTogetherIn[]) =>
-    setComboMap(prev => ({ ...prev, [gameKey]: fn(prev[gameKey] ?? defaultCombos(numMax)) }));
+    saveCombos(fn(combos), watchThreshold);
   const removeCombo = (idx: number) => updateCombos(cur => cur.filter((_, i) => i !== idx));
 
   // 換遊戲時區間清單整份換掉,舊的勾選 index 已無意義
@@ -694,19 +704,54 @@ export const AnalysisView: React.FC = () => {
             <div className="flex items-center gap-2 text-neutral-900 dark:text-white font-display font-bold text-sm uppercase tracking-wide">
               <Target className="w-4 h-4 text-amber-500" />
               <span>區間組合同時出現(多久沒一起開)</span>
+              <span className="px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 text-[10px] font-semibold">
+                全站公共・提醒機器人
+              </span>
               {comboAlertCount > 0 && (
                 <span className="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-300 text-[10px] font-mono font-bold">
                   {comboAlertCount} 組警示
                 </span>
               )}
             </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[10px] text-neutral-400">提醒門檻</span>
+              <div className="inline-flex p-1 rounded-xl bg-black/[0.03] dark:bg-white/[0.04] border border-black/[0.06] dark:border-white/[0.06] gap-1">
+                {THRESHOLD_OPTIONS.map(n => (
+                  <button
+                    key={n}
+                    type="button"
+                    onClick={() => saveCombos(combos, n)}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-mono font-semibold transition-all ${
+                      watchThreshold === n
+                        ? 'bg-black text-white dark:bg-white dark:text-black shadow-xs'
+                        : 'text-neutral-600 dark:text-neutral-400 hover:text-black dark:hover:text-white'
+                    }`}
+                  >
+                    {n} 期
+                  </button>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={() => api.testComboWatch(gameKey).then(r =>
+                  setWatchMsg(r.notify_enabled
+                    ? (r.sent ? '已發測試提醒到群組(目前有斷檔)。' : '目前沒有達門檻的斷檔,未發送。')
+                    : 'Telegram 尚未設定(遠端未設 chat_id/token)。'))
+                  .catch(e => setWatchMsg((e as Error).message))}
+                className="px-3 py-1.5 rounded-xl border border-black/[0.08] dark:border-white/[0.08] text-xs font-semibold text-neutral-600 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5"
+              >
+                測試提醒
+              </button>
+            </div>
           </div>
 
           <div className="text-[11px] text-neutral-500 dark:text-neutral-400">
             勾選上方那份區間清單裡的幾個區間組成一組(例:01~09 + 10~19 + 20~29 + 30~39),
-            追蹤距上次「每個區間在同一期都至少開出一顆」過了幾期;連續 {threshold} 期
-            (同上方門檻)沒有一起開就跳警示。目前 {gameName} 監看 {combos.length} 組。
+            追蹤距上次「每個區間在同一期都至少開出一顆」過了幾期;連續 <strong>{watchThreshold}</strong> 期
+            沒有一起開就跳警示、並由<strong>提醒機器人推到群組</strong>。這份設定<strong>全站共用</strong>,
+            目前 {gameName} 監看 {combos.length} 組。
           </div>
+          {watchMsg && <div className="text-[11px] text-emerald-600 dark:text-emerald-400">{watchMsg}</div>}
 
           {comboTogether.loading && <div className="text-xs text-neutral-400">載入區間組合統計中…</div>}
           {comboTogether.error && <div className="text-xs text-rose-500">{comboTogether.error}</div>}

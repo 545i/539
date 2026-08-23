@@ -135,7 +135,7 @@ def catch_up(game_key: str, data_path: str | Path) -> dict:
             "latest": pd.to_datetime(merged["date"]).max().date()}
 
 
-def _run(game_key: str, data_path: Path, on_done) -> None:
+def _run(game_key: str, data_path: Path, on_done, on_added=None) -> None:
     """背景執行緒:補抓一次,把結果寫進狀態。"""
     try:
         res = catch_up(game_key, data_path)
@@ -149,12 +149,18 @@ def _run(game_key: str, data_path: Path, on_done) -> None:
                 on_done()  # 清 load_df 快取,讓各頁面下次 rerun 讀到新資料
             except Exception:
                 pass
+        if added > 0 and on_added is not None:
+            try:
+                on_added(game_key)  # 有新開獎 → 檢查斷檔提醒等(見 backend.reminders)
+            except Exception:
+                pass
     except Exception as e:  # noqa: BLE001 — 背景執行緒,任何錯誤都記進狀態
         _set(game_key, running=False, error=str(e), done_ts=time.time(), idle=False,
              msg=f"自動補抓失敗:{e}")
 
 
-def kick(game_key: str, data_path: str | Path, latest=None, on_done=None) -> bool:
+def kick(game_key: str, data_path: str | Path, latest=None, on_done=None,
+         on_added=None) -> bool:
     """資料落後就觸發背景補抓;回傳是否真的啟動。
 
     是否落後由 core.drawtime 依開獎時刻表判斷 —— 「今天還沒到開獎時間」
@@ -187,26 +193,27 @@ def kick(game_key: str, data_path: str | Path, latest=None, on_done=None) -> boo
         s.update(running=True, msg="背景補抓開獎資料中…", error="",
                  attempts=s.get("attempts", 0) + 1)
     threading.Thread(
-        target=_run, args=(game_key, data_path, on_done), daemon=True
+        target=_run, args=(game_key, data_path, on_done, on_added), daemon=True
     ).start()
     return True
 
 
-def _loop(paths: dict[str, Path], on_done) -> None:
+def _loop(paths: dict[str, Path], on_done, on_added=None) -> None:
     while True:
         for game_key, path in paths.items():
             if drawtime.get(game_key) is None:
                 continue                   # 沒登記開獎時刻的款不自動更新
             try:
-                kick(game_key, path, on_done=on_done)
+                kick(game_key, path, on_done=on_done, on_added=on_added)
             except Exception:              # noqa: BLE001 — 排程不能被單款拖垮
                 pass
         time.sleep(TICK_SECONDS)
 
 
-def start_scheduler(paths: dict[str, Path], on_done=None) -> bool:
+def start_scheduler(paths: dict[str, Path], on_done=None, on_added=None) -> bool:
     """啟動背景排程(整個行程只會起一條);回傳這次是否真的啟動。
 
+    on_added(game_key):有新開獎期被寫入時呼叫(斷檔提醒等)。
     可以重複呼叫 —— Streamlit 每次 rerun 都會走到,第二次以後直接回 False。
     """
     global _scheduler
@@ -214,7 +221,8 @@ def start_scheduler(paths: dict[str, Path], on_done=None) -> bool:
         if _scheduler is not None and _scheduler.is_alive():
             return False
         _scheduler = threading.Thread(
-            target=_loop, args=({k: Path(v) for k, v in paths.items()}, on_done),
+            target=_loop,
+            args=({k: Path(v) for k, v in paths.items()}, on_done, on_added),
             daemon=True, name="lotto-autoupdate")
         _scheduler.start()
     return True
