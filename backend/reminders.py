@@ -134,14 +134,12 @@ def reminder_text() -> str:
             continue
         lines = [f"<b>【{g.name}】</b>", _latest_line(df)]
 
-        # 1800碰(雙雙):兩兩十位段配對,沒開就 +1(不設門檻)
-        hot = _pairs_hot(df, g.num_max)
-        if hot:
-            cells = [f"{p['labels'][0]}×{p['labels'][1]} <b>{p['streak']}</b>"
-                     for p in hot]
-            lines.append("<u>1800碰</u> 雙雙沒開 " + "、".join(cells) + " 期")
-        else:
-            lines.append("<u>1800碰</u> 各雙雙配對近期都有開")
+        # 1800碰(雙雙):列出「每一組」十位段配對各幾期沒一起沒開(開出歸0),斷檔的加粗
+        all_pairs = sorted(
+            stats.tens_pair_alerts(df, threshold=1, num_max=g.num_max),
+            key=lambda p: (p["bands"][0], p["bands"][1]))
+        cells = [f"{p['labels'][0]}+{p['labels'][1]}·{p['streak']:02d}" for p in all_pairs]
+        lines.append("<u>1800碰</u>(配對·幾期沒開)\n<pre>" + "  ".join(cells) + "</pre>")
 
         # 9000碰(全段同開):沒一起開就 +1(不設門檻)
         for c in watch_store.get_combos(g.key):
