@@ -26,3 +26,7 @@ data/exports/
 
 # 資料檔的手動備份(改資料前留的),不入版控
 *.bak_*
+
+# Telegram bot / 其他機密環境變數(不入版控)
+.env
+*.env
