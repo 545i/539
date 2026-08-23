@@ -20,7 +20,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from backend.data import DATA_DIR, PROJECT_ROOT, all_games, game_data_path
-from backend import reminders, star_cost_store
+from backend import bot, reminders, star_cost_store
 from backend.routers import (audit, auth, combo, editions, erhe, export, games,
                              groups, history, importer, ledger, leaderboard,
                              pillar, predict, settings, star_cost, stats)
@@ -40,6 +40,8 @@ async def lifespan(app: FastAPI):
     autoupdate.start_scheduler(
         {g.key: game_data_path(g) for g in all_games()},
         on_done=None, on_added=reminders.on_new_draw)
+    # Telegram bot 收訊(/提醒 + 清除按鈕);沒設 token/chat_id 就不起
+    bot.start()
     yield
 
 

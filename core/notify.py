@@ -46,23 +46,48 @@ def _call(method: str, params: dict, timeout: float = 8.0) -> dict | None:
 
 
 def send(text: str, chat_id: str | None = None, parse_mode: str = "HTML",
-         disable_preview: bool = True) -> bool:
-    """發一則訊息;回傳是否成功。沒設定或失敗都回 False(不丟例外)。"""
+         disable_preview: bool = True, reply_markup: dict | None = None) -> bool:
+    """發一則訊息;回傳是否成功。沒設定或失敗都回 False(不丟例外)。
+
+    reply_markup 可帶 inline_keyboard(例如「清除」按鈕)。
+    """
     cid = (chat_id or _chat_id()).strip()
     if not (_token() and cid and text):
         return False
-    res = _call("sendMessage", {
+    params = {
         "chat_id": cid,
         "text": text,
         "parse_mode": parse_mode,
         "disable_web_page_preview": "true" if disable_preview else "false",
-    })
+    }
+    if reply_markup is not None:
+        params["reply_markup"] = json.dumps(reply_markup)
+    res = _call("sendMessage", params)
     return bool(res and res.get("ok"))
 
 
-def get_updates(timeout: float = 8.0) -> list[dict]:
-    """抓最近的 updates(用來找剛把 bot 加進去的群組 chat_id)。"""
-    res = _call("getUpdates", {}, timeout=timeout)
+def delete_message(chat_id, message_id) -> bool:
+    """刪掉某則訊息(「清除」按鈕用)。"""
+    res = _call("deleteMessage", {"chat_id": str(chat_id), "message_id": int(message_id)})
+    return bool(res and res.get("ok"))
+
+
+def answer_callback(callback_query_id: str, text: str = "") -> bool:
+    """回應 inline 按鈕點擊(讓 Telegram 停止轉圈)。"""
+    res = _call("answerCallbackQuery",
+                {"callback_query_id": str(callback_query_id), "text": text})
+    return bool(res and res.get("ok"))
+
+
+def get_updates(offset: int | None = None, timeout: float = 0,
+                http_timeout: float = 8.0) -> list[dict]:
+    """抓 updates;offset 用來確認上一批(long polling),timeout 為 long-poll 秒數。"""
+    params: dict = {}
+    if offset is not None:
+        params["offset"] = int(offset)
+    if timeout:
+        params["timeout"] = int(timeout)
+    res = _call("getUpdates", params, timeout=max(http_timeout, timeout + 5))
     return res.get("result", []) if res else []
 
 
