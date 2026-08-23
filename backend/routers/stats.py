@@ -140,7 +140,8 @@ def test_combo_watch(game: str = Query(...), user: str = Depends(current_user)):
     get_game(game)
     alerts = reminders.check_combo_watch(game)
     sent = reminders.notify_combo_watch(game)
-    return {"alerts": alerts, "sent": sent, "notify_enabled": notify.enabled()}
+    return {"alerts": alerts, "sent": sent, "notify_enabled": notify.enabled(),
+            "last_error": notify.last_error()}
 
 
 @router.get("/reminder-text")
