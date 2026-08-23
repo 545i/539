@@ -109,7 +109,7 @@ def _seg_missing_block(df, num_max: int) -> str:
         if cells:
             rows.append(f"{name} " + " ".join(cells))
     if not rows:
-        return ""
+        return "<u>前中後段</u> 目前全部號碼近期皆有開出"
     return "<u>前中後段</u>(號碼·遺漏期數)\n<pre>" + "\n".join(rows) + "</pre>"
 
 
@@ -150,12 +150,13 @@ def _latest_line(df) -> str:
 def _game_block(g, df) -> str:
     """單一遊戲的提醒區塊:開獎 + 1800碰 + 9000碰 + 前中後段 + 單雙比。
 
-    一律「0 期不顯示」—— 沒斷檔的配對、剛開出的號碼都省略,避免洗版。
+    「0 期不顯示」只針對細項 —— 沒斷檔的配對、剛開出的號碼不列;但**區塊標題
+    一律保留**,全部都 0(沒有任何斷檔)時改印「目前無斷檔」,不讓區塊整個消失。
     這塊同時給 `/提醒`(彙整全部)與新開獎自動推播(只發該款)共用。
     """
     lines = [f"<b>【{g.name}】</b>", _latest_line(df)]
 
-    # 1800碰(雙雙):只列「連續 >=1 期沒一起開」的十位段配對(0 期不顯示)
+    # 1800碰(雙雙):只列「連續 >=1 期沒一起開」的十位段配對(0 期不列);全 0 保留標題
     hot_pairs = sorted(
         (p for p in stats.tens_pair_alerts(df, threshold=1, num_max=g.num_max)
          if p["streak"] >= 1),
@@ -164,19 +165,24 @@ def _game_block(g, df) -> str:
         cells = [f"{p['labels'][0]}+{p['labels'][1]}·{p['streak']:02d}"
                  for p in hot_pairs]
         lines.append("<u>1800碰</u>(配對·幾期沒開)\n<pre>" + "  ".join(cells) + "</pre>")
+    else:
+        lines.append("<u>1800碰</u> 目前無斷檔(各配對都有一起開)")
 
-    # 9000碰(全段同開):只列連續 >=1 期沒一起開的(0 期不顯示)
+    # 9000碰(全段同開):只列連續 >=1 期沒一起開的(0 期不列);全 0 保留標題
+    nine = []
     for c in watch_store.get_combos(g.key):
         for r in stats.combo_cooccurrence_alerts(df, [c], threshold=1):
             if r["streak"] >= 1:
-                lines.append(
+                nine.append(
                     f"<u>9000碰</u> {r['label']} <b>{r['streak']}</b> 期沒一起開"
                     f"(最長 {r['max_gap']})")
+    if nine:
+        lines.extend(nine)
+    else:
+        lines.append("<u>9000碰</u> 目前無斷檔(各段都有一起開)")
 
-    # 前中後段(精細到單顆遺漏,0 期不顯示)+ 單雙比
-    seg = _seg_missing_block(df, g.num_max)
-    if seg:
-        lines.append(seg)
+    # 前中後段(精細到單顆遺漏,0 期不列;標題一律保留)+ 單雙比
+    lines.append(_seg_missing_block(df, g.num_max))
     lines.append(_odd_even_line(df))
     return "\n".join(lines)
 
