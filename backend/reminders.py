@@ -9,7 +9,7 @@
 from __future__ import annotations
 
 from backend import watch_store
-from backend.data import get_game, load_df
+from backend.data import all_games, get_game, load_df
 from core import notify, stats
 
 
@@ -50,3 +50,41 @@ def notify_combo_watch(game_key: str) -> bool:
 def on_new_draw(game_key: str) -> None:
     """排程偵測到新開獎時的掛鉤(見 core.autoupdate 的 on_added)。"""
     notify_combo_watch(game_key)
+
+
+# ── /提醒 指令:回目前各款區間組合的斷檔現況(唯讀,不只警示的) ──────
+def reminder_text() -> str:
+    """`/提醒` 的回覆:每款各組「距上次全部同時開出幾期」+ 是否達門檻。"""
+    lines = ["🔔 <b>區間組合斷檔現況</b>"]
+    for g in all_games():
+        combos = watch_store.get_combos(g.key)
+        if not combos:
+            continue
+        try:
+            df = load_df(g.key)
+        except Exception:       # noqa: BLE001 — 讀不到資料就跳過該款
+            continue
+        rows = []
+        for c in combos:
+            thr = int(c.get("threshold", watch_store.DEFAULT_THRESHOLD))
+            for r in stats.combo_cooccurrence_alerts(df, [c], threshold=thr):
+                mark = "⚠️ " if r["alert"] else ""
+                rows.append(
+                    f"・{mark}{r['label']}:目前 <b>{r['streak']}</b> 期沒一起開"
+                    f"(門檻 {thr}、史上最長 {r['max_gap']} 期)")
+        if rows:
+            lines.append(f"\n【{g.name}】")
+            lines.extend(rows)
+    return "\n".join(lines)
+
+
+def handle_command(text: str) -> str | None:
+    """把收到的訊息文字對應到回覆;認得的指令才回,其他回 None。
+
+    支援 /提醒 與 /提醒@botname(群組裡指令會被 Telegram 加上 @bot)。
+    """
+    cmd = (text or "").strip().split()[0] if text and text.strip() else ""
+    cmd = cmd.split("@", 1)[0]          # 去掉 @botname
+    if cmd in ("/提醒", "/remind", "/reminder"):
+        return reminder_text()
+    return None

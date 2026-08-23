@@ -143,6 +143,23 @@ def test_combo_watch(game: str = Query(...), user: str = Depends(current_user)):
     return {"alerts": alerts, "sent": sent, "notify_enabled": notify.enabled()}
 
 
+@router.get("/reminder-text")
+def reminder_text():
+    """`/提醒` 指令的回覆文字(唯讀,不發 Telegram)—— 本地 curl 測試用。"""
+    return {"text": reminders.reminder_text()}
+
+
+class CommandIn(BaseModel):
+    text: str = ""
+
+
+@router.post("/reminder-command")
+def reminder_command(body: CommandIn):
+    """模擬收到一則訊息文字,回機器人會回什麼(認得才回;不發 Telegram)。"""
+    reply = reminders.handle_command(body.text)
+    return {"matched": reply is not None, "reply": reply}
+
+
 @router.get("/tens-bands")
 def tens_bands(game: str = Query(...)):
     """星數統計:各十位區段出現總次數、每期落幾個區段、牌型分布。"""
