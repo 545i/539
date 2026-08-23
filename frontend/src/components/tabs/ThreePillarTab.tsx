@@ -491,7 +491,7 @@ export const ThreePillarTab: React.FC = () => {
           <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-xs font-display font-bold uppercase tracking-wider text-neutral-900 dark:text-white">
-                03 / 區間組合斷檔提醒
+                03 / 1800碰斷檔提醒
               </span>
               <span className="text-[11px] font-mono text-neutral-400">
                 連續 3 期未開

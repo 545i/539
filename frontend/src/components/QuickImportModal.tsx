@@ -255,7 +255,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported})
           <div className="rounded-xl border border-black/[0.08] dark:border-white/[0.08] bg-black/[0.02] dark:bg-white/[0.03] p-3 space-y-2">
             <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.2em] font-semibold text-neutral-400">
               <AlertTriangle className="w-3.5 h-3.5" />
-              <span>區間斷檔提醒（{game?.short_name ?? gameKey}・參考）</span>
+              <span>1800碰斷檔提醒（{game?.short_name ?? gameKey}・參考）</span>
             </div>
             {pairs.loading && <div className="text-[11px] text-neutral-400">載入中…</div>}
             {!pairs.loading && brokenPairs.length === 0 && (

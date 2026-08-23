@@ -541,7 +541,7 @@ export const AnalysisView: React.FC = () => {
           <div className="flex items-center justify-between flex-wrap gap-3">
             <div className="flex items-center gap-2 text-neutral-900 dark:text-white font-display font-bold text-sm uppercase tracking-wide">
               <Bell className="w-4 h-4 text-amber-500" />
-              <span>區間組合斷檔提醒</span>
+              <span>1800碰斷檔提醒</span>
               {alertPairs.length > 0 && (
                 <span className="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-300 text-[10px] font-mono font-bold">
                   {alertPairs.length} 組警示
@@ -703,7 +703,7 @@ export const AnalysisView: React.FC = () => {
           <div className="flex items-center justify-between flex-wrap gap-3">
             <div className="flex items-center gap-2 text-neutral-900 dark:text-white font-display font-bold text-sm uppercase tracking-wide">
               <Target className="w-4 h-4 text-amber-500" />
-              <span>區間組合同時出現(多久沒一起開)</span>
+              <span>9000碰(全段同開,多久沒一起開)</span>
               <span className="px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 text-[10px] font-semibold">
                 全站公共・提醒機器人
               </span>
