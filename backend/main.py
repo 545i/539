@@ -70,7 +70,24 @@ def health():
     return {"ok": True}
 
 
+class SpaStaticFiles(StaticFiles):
+    """SPA 靜態檔:index.html 不快取(每次重新驗證 → 部署後自動拿到新版),
+    帶 hash 的 assets 長快取(檔名一變就自動失效,可放心 immutable)。
+
+    先前 index.html 沒有 Cache-Control,手機瀏覽器會啟發式快取,導致部署後
+    使用者一直看到舊版前端。
+    """
+    async def get_response(self, path, scope):
+        resp = await super().get_response(path, scope)
+        ctype = resp.headers.get("content-type", "")
+        if "text/html" in ctype:
+            resp.headers["Cache-Control"] = "no-cache"
+        elif path.startswith("assets/") or "/assets/" in path:
+            resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        return resp
+
+
 # 前端靜態檔(build 後才有;dev 由 vite 提供,不掛)
 if DIST_DIR.exists():
-    app.mount(f"{PREFIX}/", StaticFiles(directory=str(DIST_DIR), html=True),
+    app.mount(f"{PREFIX}/", SpaStaticFiles(directory=str(DIST_DIR), html=True),
               name="frontend")

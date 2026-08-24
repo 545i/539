@@ -130,6 +130,50 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported})
   // 每次開啟清掉上次的成功/錯誤橫幅(歷史保留)
   useEffect(() => { if (isOpen) { setDone(null); setError(null); } }, [isOpen]);
 
+  // 預覽即時試算成本:把目前(可能改過的)draft 丟後端 dry_run commit 只重算不寫入,
+  // 拿回每筆 record.cost / costExpr。debounce 350ms,避免打字時一直打 API。
+  // ⚠ 必須在任何 early return 之前(Hooks 規則);開啟且有 preview 才真的算。
+  useEffect(() => {
+    if (!isOpen || !preview || draftItems.length === 0 || !loggedIn) {
+      setCosts([]);
+      return;
+    }
+    let cancelled = false;
+    setCostBusy(true);
+    const t = window.setTimeout(async () => {
+      try {
+        const items = draftItems.map(d => ({
+          mode: d.mode,
+          selectedBalls: parseBalls(d.balls),
+          units: d.units,
+          stars: d.stars,
+          hit_count: d.hit.trim() === '' ? null : Math.max(0, Math.floor(Number(d.hit) || 0)),
+        }));
+        const res = await api.quickImportCommit(gameKey, items, {issue, edition: eid, dryRun: true});
+        if (cancelled) return;
+        // 後端把算不出來的收進 errors(line_no = 1-based draft 序),其餘依序在 items
+        const errLines = new Set(res.errors.map(e => e.line_no));
+        const arr: ({cost: number; expr: string} | null)[] = [];
+        let k = 0;
+        for (let i = 1; i <= items.length; i++) {
+          if (errLines.has(i)) {
+            arr.push(null);
+          } else {
+            const rec = res.items[k]?.record ?? {};
+            arr.push({cost: typeof rec.cost === 'number' ? rec.cost : 0, expr: String(rec.costExpr ?? '')});
+            k++;
+          }
+        }
+        setCosts(arr);
+      } catch {
+        if (!cancelled) setCosts([]);
+      } finally {
+        if (!cancelled) setCostBusy(false);
+      }
+    }, 350);
+    return () => { cancelled = true; window.clearTimeout(t); };
+  }, [isOpen, draftItems, issue, eid, gameKey, preview, loggedIn]);
+
   // 區間斷檔提醒(參考用):依目前選的遊戲,只顯示未開(streak>=1)的配對
   const pairs = useAsync<TensPairDTO[]>(
     () => (isOpen ? api.tensPairs(gameKey, 3) : Promise.resolve([])),
@@ -235,50 +279,6 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported})
   };
 
   const historyTotal = history.reduce((s, h) => s + h.totalCost, 0);
-
-  // 預覽即時試算成本:把目前(可能改過的)draft 丟後端 dry_run commit 只重算不寫入,
-  // 拿回每筆 record.cost / costExpr。debounce 350ms,避免打字時一直打 API。
-  useEffect(() => {
-    if (!preview || draftItems.length === 0 || !loggedIn) {
-      setCosts([]);
-      return;
-    }
-    let cancelled = false;
-    setCostBusy(true);
-    const t = window.setTimeout(async () => {
-      try {
-        const items = draftItems.map(d => ({
-          mode: d.mode,
-          selectedBalls: parseBalls(d.balls),
-          units: d.units,
-          stars: d.stars,
-          hit_count: d.hit.trim() === '' ? null : Math.max(0, Math.floor(Number(d.hit) || 0)),
-        }));
-        const res = await api.quickImportCommit(gameKey, items, {issue, edition: eid, dryRun: true});
-        if (cancelled) return;
-        // 後端把算不出來的收進 errors(line_no = 1-based draft 序),其餘依序在 items
-        const errLines = new Set(res.errors.map(e => e.line_no));
-        const arr: ({cost: number; expr: string} | null)[] = [];
-        let k = 0;
-        for (let i = 1; i <= items.length; i++) {
-          if (errLines.has(i)) {
-            arr.push(null);
-          } else {
-            const rec = res.items[k]?.record ?? {};
-            arr.push({cost: num(rec.cost), expr: String(rec.costExpr ?? '')});
-            k++;
-          }
-        }
-        setCosts(arr);
-      } catch {
-        if (!cancelled) setCosts([]);
-      } finally {
-        if (!cancelled) setCostBusy(false);
-      }
-    }, 350);
-    return () => { cancelled = true; window.clearTimeout(t); };
-  }, [draftItems, issue, eid, gameKey, preview, loggedIn]);
-
   const costTotal = costs.reduce((s, c) => s + (c ? c.cost : 0), 0);
 
   const setDraft = (i: number, patch: Partial<DraftItem>) =>
