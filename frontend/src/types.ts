@@ -46,6 +46,7 @@ export interface BetRecord {
   betsCount: number; // 注數
   selectedBalls: number[];
   drawBalls: number[];
+  pillars?: number[][]; // 自訂柱部分包牌:各柱號碼(對獎用各柱∩開獎相乘)
   pillarDist?: string; // e.g. "4 + 0 + 1"
   result: string; // e.g. "中 4 碰", "待開獎", "槓龜"
   cost: number;

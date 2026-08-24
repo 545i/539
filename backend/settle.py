@@ -139,11 +139,22 @@ def settle(record: dict, draw: list[int] | None, g: GameConfig,
         result = f"中 {matched} 顆" if matched > 0 else "槓龜"
 
     elif mode == "pillar1800":
-        counts = pillar.pillar_counts(draw, g.num_max)
-        ph = pillar.hits_from_counts(counts)          # 4 / 3 / 0
-        payout = cars * ph * odds["bet_prize"]
-        result = pillar.result_text(ph) if ph else "槓龜(斷柱)"
-        out["pillarDist"] = " + ".join(str(c) for c in counts)
+        groups = record.get("pillars") or []
+        if groups:
+            # 自訂柱(部分包牌):過關注數 = 各柱命中數相乘(∩ 開獎),與全包同一套公式
+            hits = [len({int(x) for x in gp} & set(draw)) for gp in groups]
+            ph = 1
+            for h in hits:
+                ph *= h
+            payout = cars * ph * odds["bet_prize"]
+            result = f"中 {ph:,} 注" if ph > 0 else "槓龜(斷柱)"
+            out["pillarDist"] = " × ".join(str(h) for h in hits)
+        else:
+            counts = pillar.pillar_counts(draw, g.num_max)
+            ph = pillar.hits_from_counts(counts)          # 4 / 3 / 0
+            payout = cars * ph * odds["bet_prize"]
+            result = pillar.result_text(ph) if ph else "槓龜(斷柱)"
+            out["pillarDist"] = " + ".join(str(c) for c in counts)
 
     elif mode == "combo":
         play_type = str(record.get("playType", "") or "")

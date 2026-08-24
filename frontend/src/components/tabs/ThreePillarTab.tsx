@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { INITIAL_PILLAR_RECORDS, PILLAR_THEORY_ROWS } from '../../data/lotteryData';
 import { LotteryGame } from '../../types';
-import { api, PartialBetsDTO, PillarInfoDTO, TensPairDTO } from '../../api/client';
+import { api, PillarInfoDTO, TensPairDTO } from '../../api/client';
 import { useAsync } from '../../api/useAsync';
 import { useGame } from '../../api/useGame';
 import { useLedger } from '../../api/useLedger';
@@ -62,6 +62,8 @@ export const ThreePillarTab: React.FC = () => {
   };
   const [isTheoryOpen, setIsTheoryOpen] = useState(false);
   const [selectedBalls, setSelectedBalls] = useState<number[]>([]);
+  // 自選手動組柱:已保存的各柱號碼(不再自動依範圍歸柱)
+  const [savedPillars, setSavedPillars] = useState<number[][]>([]);
 
   const supported = !!gameCfg?.supports_pillar;
 
@@ -75,15 +77,6 @@ export const ThreePillarTab: React.FC = () => {
   // 柱位切法也讀後端,不在前端寫死 9/10/20
   const pillars: number[][] = infoReq.data ? infoReq.data.pillars : [[], [], []];
   const sizes: number[] = infoReq.data ? infoReq.data.sizes : [0, 0, 0];
-
-  // 部分包牌(選號變動就重算)
-  const partialReq = useAsync<PartialBetsDTO | null>(
-    () =>
-      !supported || selectedBalls.length === 0
-        ? Promise.resolve(null)
-        : api.pillarPartial(gameKey, selectedBalls),
-    [gameKey, supported, selectedBalls.join(',')],
-  );
 
   // 區間組合斷檔提醒
   const pairsReq = useAsync<TensPairDTO[] | null>(
@@ -161,6 +154,55 @@ export const ThreePillarTab: React.FC = () => {
     });
   };
 
+  // ── 自選手動組柱 ──────────────────────────────────────────
+  const PILLAR_NAMES = ['第一柱', '第二柱', '第三柱', '第四柱', '第五柱'];
+  // 已被保存到某柱的號碼(同一顆不重複進兩柱)
+  const usedInPillars = new Set(savedPillars.flat());
+  const pillarSizes = savedPillars.map(p => p.length);
+  // 過關注數 = 各柱顆數相乘(至少 2 柱才成一注)
+  const customBets = savedPillars.length >= 2
+    ? pillarSizes.reduce((a, b) => a * b, 1) : 0;
+  const customCost = customBets * betCost;
+  const canSubmitCustom = savedPillars.length >= 2 && savedPillars.every(p => p.length > 0);
+
+  // 保存目前選取為下一柱(排除已在其他柱的號碼)
+  const savePillar = () => {
+    const fresh = selectedBalls.filter(n => !usedInPillars.has(n));
+    if (fresh.length === 0) return;
+    setSavedPillars(prev => [...prev, [...fresh].sort((a, b) => a - b)]);
+    setSelectedBalls([]);
+  };
+  const removePillar = (i: number) =>
+    setSavedPillars(prev => prev.filter((_, j) => j !== i));
+  // 一鍵帶入固定柱範圍當作目前選取(方便快速組牌)
+  const presetFromFixed = (i: number) =>
+    setSelectedBalls((pillars[i] || []).filter(n => !usedInPillars.has(n)));
+
+  const handleRecordCustom = () => {
+    if (!canSubmitCustom) return;
+    const sizes = savedPillars.map(p => p.length);
+    ledger.add({
+      date: betDate,
+      issue,
+      game,
+      mode: 'pillar1800',
+      edition: eid,
+      units: 1,
+      cars: 1,
+      betsCount: customBets,
+      selectedBalls: savedPillars.flat(),
+      drawBalls: [],
+      pillars: savedPillars,
+      pillarDist: sizes.join(' × '),
+      result: '待開獎',
+      cost: customCost,
+      payout: 0,
+      pnl: 0,
+    });
+    setSavedPillars([]);
+    setSelectedBalls([]);
+  };
+
   return (
     <div className="space-y-4 sm:space-y-5 animate-in fade-in duration-200 w-full overflow-hidden">
       {/* Top Banner Bar */}
@@ -202,12 +244,12 @@ export const ThreePillarTab: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5">
         
         {/* Left Column (5/12) - Configuration & Execution Panel */}
-        <div className="lg:col-span-5 space-y-4">
-          
-          <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] space-y-4">
+        <div className="lg:col-span-5 flex flex-col gap-4">
+
+          <div className="order-2 p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] space-y-4">
             <div className="flex items-center justify-between">
               <span className="text-xs font-display font-bold uppercase tracking-wider text-neutral-900 dark:text-white">
-                01 / 三柱下注配置
+                02 / 三柱全包配置(固定 {sizes.join('/')})
               </span>
               <span className="text-[11px] font-mono text-neutral-400">
                 1 支 = {totalBets.toLocaleString()} 注
@@ -378,15 +420,67 @@ export const ThreePillarTab: React.FC = () => {
             </div>
           </div>
 
-          {/* 自選號碼・部分包牌 */}
-          <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] space-y-3">
+          {/* 自選號碼・逐柱組牌(手動指定各柱,不自動判斷區間) */}
+          <div className="order-1 p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-xs font-display font-bold uppercase tracking-wider text-neutral-900 dark:text-white">
-                02 / 自選號碼・部分包牌
+                01 / 自選號碼・逐柱組牌
               </span>
               <span className="text-[11px] font-mono text-neutral-400">
-                全包 {totalBets.toLocaleString()} 注
+                各柱相乘 = 注數
               </span>
+            </div>
+
+            <div className="text-[11px] text-neutral-500 dark:text-neutral-400 leading-relaxed">
+              選一批號碼 → <strong>保存為一柱</strong> → 再選下一柱。滿 <strong>2 柱</strong>即可送出記帳,
+              注數 = 各柱顆數相乘。號碼由你決定屬於哪一柱,系統不自動歸類。
+            </div>
+
+            {/* 已保存的柱 */}
+            {savedPillars.length > 0 && (
+              <div className="space-y-1.5">
+                {savedPillars.map((p, i) => {
+                  const theme = [
+                    'border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.03] text-neutral-900 dark:text-white',
+                    'border-amber-500/20 bg-amber-500/5 text-amber-700 dark:text-amber-300',
+                    'border-emerald-500/20 bg-emerald-500/5 text-emerald-700 dark:text-emerald-300',
+                  ][i % 3];
+                  return (
+                    <div key={i} className={`p-2.5 rounded-xl border flex items-center justify-between gap-2 ${theme}`}>
+                      <div className="min-w-0">
+                        <div className="text-[10px] uppercase tracking-wider font-semibold opacity-70">
+                          {PILLAR_NAMES[i] ?? `第${i + 1}柱`}({p.length}顆)
+                        </div>
+                        <div className="text-xs font-mono font-bold mt-0.5 break-all">
+                          {p.map(pad).join(' ')}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removePillar(i)}
+                        className="shrink-0 p-1 rounded-lg text-neutral-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+                      >
+                        <XCircle className="w-4 h-4" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* 預設柱:一鍵帶入固定柱範圍當作目前選取(快速組牌) */}
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-[10px] uppercase tracking-wider text-neutral-400 font-semibold">預設柱</span>
+              {pillars.map((p, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => presetFromFixed(i)}
+                  className="px-2.5 py-1 rounded-lg text-[10px] font-mono font-semibold border border-black/10 dark:border-white/10 text-neutral-700 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5 active:scale-95 transition-all"
+                >
+                  {pillarRange(p)}
+                </button>
+              ))}
             </div>
 
             <LotteryBallPad
@@ -401,95 +495,77 @@ export const ThreePillarTab: React.FC = () => {
               onClear={() => setSelectedBalls([])}
               totalBalls={gameCfg.num_max}
               maxBalls={gameCfg.num_max}
-              label="自選包牌號碼"
+              label={`選取號碼 → 保存為${PILLAR_NAMES[savedPillars.length] ?? `第${savedPillars.length + 1}柱`}`}
               layout="grid"
             />
 
-            {partialReq.loading && (
-              <div className="text-xs text-neutral-400">計算注數中…</div>
-            )}
-            {partialReq.error && (
-              <div className="text-xs text-rose-500">{partialReq.error}</div>
-            )}
+            {/* 保存為下一柱 */}
+            {(() => {
+              const fresh = selectedBalls.filter(n => !usedInPillars.has(n)).length;
+              const nextName = PILLAR_NAMES[savedPillars.length] ?? `第${savedPillars.length + 1}柱`;
+              return (
+                <button
+                  type="button"
+                  onClick={savePillar}
+                  disabled={fresh === 0}
+                  className="w-full py-2.5 rounded-xl text-xs font-semibold border border-black/10 dark:border-white/10 text-neutral-700 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5 disabled:opacity-30 transition-colors flex items-center justify-center gap-2 active:scale-98"
+                >
+                  <Plus className="w-4 h-4" />
+                  保存為 {nextName}{fresh > 0 ? `(${fresh} 顆)` : ''}
+                </button>
+              );
+            })()}
 
-            {!partialReq.loading && !partialReq.error && !partialReq.data && (
-              <div className="text-xs text-neutral-400">
-                尚未選號。三柱各選幾顆，就組出幾注。
-              </div>
-            )}
-
-            {partialReq.data && (
-              <div className="space-y-2.5">
-                <div className="grid grid-cols-3 gap-2">
-                  <div className="p-2.5 rounded-xl border border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.03]">
-                    <div className="text-[10px] uppercase tracking-wider text-neutral-400 font-semibold">第一柱</div>
-                    <div className="text-xs font-mono font-bold text-neutral-900 dark:text-white mt-0.5">
-                      {partialReq.data.counts[0]} 顆
-                    </div>
-                  </div>
-                  <div className="p-2.5 rounded-xl border border-amber-500/20 bg-amber-500/5">
-                    <div className="text-[10px] uppercase tracking-wider text-amber-600 dark:text-amber-400 font-semibold">第二柱</div>
-                    <div className="text-xs font-mono font-bold text-amber-700 dark:text-amber-300 mt-0.5">
-                      {partialReq.data.counts[1]} 顆
-                    </div>
-                  </div>
-                  <div className="p-2.5 rounded-xl border border-emerald-500/20 bg-emerald-500/5">
-                    <div className="text-[10px] uppercase tracking-wider text-emerald-600 dark:text-emerald-400 font-semibold">第三柱</div>
-                    <div className="text-xs font-mono font-bold text-emerald-700 dark:text-emerald-300 mt-0.5">
-                      {partialReq.data.counts[2]} 顆
-                    </div>
-                  </div>
+            {/* 部分包牌試算 */}
+            <div className="p-3.5 sm:p-4 rounded-xl bg-black/[0.02] dark:bg-white/[0.03] border border-black/[0.06] dark:border-white/[0.06] space-y-2">
+              <div className="text-[10px] uppercase tracking-wider text-neutral-400 font-semibold">部分包牌試算</div>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div>
+                  <span className="text-neutral-500 block text-[10px]">已保存柱數:</span>
+                  <span className="font-mono font-bold text-sm text-neutral-900 dark:text-white">
+                    {savedPillars.length} 柱{pillarSizes.length ? `(${pillarSizes.join('×')})` : ''}
+                  </span>
                 </div>
-
-                <div className="p-3.5 sm:p-4 rounded-xl bg-black/[0.02] dark:bg-white/[0.03] border border-black/[0.06] dark:border-white/[0.06] space-y-2">
-                  <div className="text-[10px] uppercase tracking-wider text-neutral-400 font-semibold">
-                    部分包牌試算
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    <div>
-                      <span className="text-neutral-500 block text-[10px]">可組出注數:</span>
-                      <span className="font-mono font-bold text-sm text-neutral-900 dark:text-white">
-                        {partialReq.data.bets.toLocaleString()} / {partialReq.data.total.toLocaleString()} 注
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-neutral-500 block text-[10px]">涵蓋率:</span>
-                      <span className="font-mono font-bold text-sm text-neutral-900 dark:text-white">
-                        {(partialReq.data.coverage * 100).toFixed(2)}%
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-neutral-500 block text-[10px]">投注成本:</span>
-                      <span className="font-mono font-bold text-sm text-neutral-900 dark:text-white">
-                        NT$ {(partialReq.data.bets * betCost).toLocaleString()}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-neutral-500 block text-[10px]">已選號碼:</span>
-                      <span className="font-mono font-bold text-sm text-neutral-900 dark:text-white">
-                        {selectedBalls.length} 顆
-                      </span>
-                    </div>
-                  </div>
+                <div>
+                  <span className="text-neutral-500 block text-[10px]">可組出注數:</span>
+                  <span className="font-mono font-bold text-sm text-neutral-900 dark:text-white">
+                    {customBets.toLocaleString()} 注
+                  </span>
                 </div>
-
-                {partialReq.data.buyable ? (
-                  <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-[11px] text-emerald-800 dark:text-emerald-300 flex items-start gap-2">
-                    <CheckCircle2 className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-                    <span>三柱都有號碼，這組選號可以下注。</span>
-                  </div>
-                ) : (
-                  <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-[11px] text-rose-700 dark:text-rose-400 flex items-start gap-2">
-                    <XCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-                    <span>某柱未選，組不出任何一注。</span>
-                  </div>
-                )}
+                <div>
+                  <span className="text-neutral-500 block text-[10px]">投注成本:</span>
+                  <span className="font-mono font-bold text-sm text-neutral-900 dark:text-white">
+                    NT$ {customCost.toLocaleString()}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-neutral-500 block text-[10px]">目前選取:</span>
+                  <span className="font-mono font-bold text-sm text-neutral-900 dark:text-white">
+                    {selectedBalls.length} 顆
+                  </span>
+                </div>
               </div>
+            </div>
+
+            {savedPillars.length < 2 ? (
+              <div className="p-2.5 rounded-xl bg-black/[0.03] dark:bg-white/[0.05] text-[11px] text-neutral-500 dark:text-neutral-400 flex items-start gap-2">
+                <Info className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                <span>至少保存 2 柱才能送出記帳(目前 {savedPillars.length} 柱)。</span>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={handleRecordCustom}
+                className="w-full py-3 rounded-xl sm:rounded-full text-xs uppercase tracking-wider font-semibold bg-black text-white dark:bg-white dark:text-black hover:opacity-90 transition-opacity flex items-center justify-center gap-2 shadow-xs active:scale-98"
+              >
+                <FileText className="w-4 h-4" />
+                送出記帳 {customBets.toLocaleString()} 注(待開獎)
+              </button>
             )}
           </div>
 
           {/* 區間組合斷檔提醒 */}
-          <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] space-y-3">
+          <div className="order-3 p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-xs font-display font-bold uppercase tracking-wider text-neutral-900 dark:text-white">
                 03 / 1800碰斷檔提醒
