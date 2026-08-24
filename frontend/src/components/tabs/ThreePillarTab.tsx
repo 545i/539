@@ -124,46 +124,21 @@ export const ThreePillarTab: React.FC = () => {
   // 每注成本 / 中一注可得取「這個版」的盤口;讀不到先用 GameConfig 預設
   const betCost = odds?.bet_cost?.value ?? gameCfg.default_bet_cost;
   const betPrize = odds?.bet_prize?.value ?? gameCfg.default_bet_prize;
-  const unitCost = totalBets * betCost; // 1800 x 63
   const prize4 = 4 * betPrize;
   const prize3 = 3 * betPrize;
-  const currentCost = units * unitCost;
 
-  const handleRecord = (resultType: '待開獎' | '中 4 碰' | '中 3 碰' | '槓龜(斷柱)') => {
-    let payout = 0;
-    if (resultType === '中 4 碰') payout = units * prize4;
-    if (resultType === '中 3 碰') payout = units * prize3;
-    const pnl = resultType === '待開獎' ? 0 : payout - currentCost;
-
-    ledger.add({
-      date: betDate,
-      issue,
-      game,
-      mode: 'pillar1800',
-      edition: eid,
-      units,
-      cars: units,
-      betsCount: units * totalBets,
-      selectedBalls: [],
-      drawBalls: [],
-      pillarDist: resultType === '中 4 碰' ? '2 + 2 + 1' : (resultType === '中 3 碰' ? '2 + 1 + 2' : '3 + 2 + 0'),
-      result: resultType,
-      cost: currentCost,
-      payout,
-      pnl
-    });
-  };
-
-  // ── 自選手動組柱 ──────────────────────────────────────────
+  // ── 三柱組牌(自選逐柱 / 一鍵全包)+ 支數倍投 ─────────────────────
   const PILLAR_NAMES = ['第一柱', '第二柱', '第三柱', '第四柱', '第五柱'];
   // 已被保存到某柱的號碼(同一顆不重複進兩柱)
   const usedInPillars = new Set(savedPillars.flat());
   const pillarSizes = savedPillars.map(p => p.length);
-  // 過關注數 = 各柱顆數相乘(至少 2 柱才成一注)
-  const customBets = savedPillars.length >= 2
-    ? pillarSizes.reduce((a, b) => a * b, 1) : 0;
-  const customCost = customBets * betCost;
-  const canSubmitCustom = savedPillars.length >= 2 && savedPillars.every(p => p.length > 0);
+  // 一組過關注數 = 各柱顆數相乘(至少 2 柱才成一注);支數再倍投
+  const comboBets = savedPillars.length >= 2 ? pillarSizes.reduce((a, b) => a * b, 1) : 0;
+  const betsWithUnits = comboBets * units;
+  const submitCost = betsWithUnits * betCost;
+  const canSubmit = savedPillars.length >= 2 && savedPillars.every(p => p.length > 0);
+  // 全包 = 三柱剛好等於固定切法(9×10×20 = 1800),此時額外顯示過關機率/彩金
+  const isFullWheel = comboBets === totalBets && savedPillars.length === sizes.length;
 
   // 保存目前選取為下一柱(排除已在其他柱的號碼)
   const savePillar = () => {
@@ -177,25 +152,29 @@ export const ThreePillarTab: React.FC = () => {
   // 一鍵帶入固定柱範圍當作目前選取(方便快速組牌)
   const presetFromFixed = (i: number) =>
     setSelectedBalls((pillars[i] || []).filter(n => !usedInPillars.has(n)));
+  // 一鍵全包:三柱各自全選(固定 9/10/20)→ 1800 注
+  const loadFullWheel = () => {
+    setSavedPillars(pillars.map(p => [...p]));
+    setSelectedBalls([]);
+  };
 
-  const handleRecordCustom = () => {
-    if (!canSubmitCustom) return;
-    const sizes = savedPillars.map(p => p.length);
+  const handleSubmit = () => {
+    if (!canSubmit) return;
     ledger.add({
       date: betDate,
       issue,
       game,
       mode: 'pillar1800',
       edition: eid,
-      units: 1,
-      cars: 1,
-      betsCount: customBets,
+      units,
+      cars: units,
+      betsCount: betsWithUnits,
       selectedBalls: savedPillars.flat(),
       drawBalls: [],
       pillars: savedPillars,
-      pillarDist: sizes.join(' × '),
+      pillarDist: pillarSizes.join(' × '),
       result: '待開獎',
-      cost: customCost,
+      cost: submitCost,
       payout: 0,
       pnl: 0,
     });
@@ -246,185 +225,11 @@ export const ThreePillarTab: React.FC = () => {
         {/* Left Column (5/12) - Configuration & Execution Panel */}
         <div className="lg:col-span-5 flex flex-col gap-4">
 
-          <div className="order-2 p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] space-y-4">
+          {/* 三柱 1800 碰下注:逐柱組牌 / 一鍵全包(同一功能) */}
+          <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-xs font-display font-bold uppercase tracking-wider text-neutral-900 dark:text-white">
-                02 / 三柱全包配置(固定 {sizes.join('/')})
-              </span>
-              <span className="text-[11px] font-mono text-neutral-400">
-                1 支 = {totalBets.toLocaleString()} 注
-              </span>
-            </div>
-
-            {/* 期號選擇:預設最新一期,可改記到別期 */}
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-mono text-neutral-400">記帳期號</span>
-              <IssuePicker issue={issue} date={betDate} draws={draws} onSelect={pickIssue} />
-            </div>
-
-            {/* Pillar Structure Visualizer Cards */}
-            <div className="space-y-2">
-              <label className="block text-[10px] uppercase tracking-[0.2em] font-semibold text-neutral-400">
-                固定包牌柱位矩陣 ({gameCfg.num_max} 顆全包)
-              </label>
-
-              <div className="grid grid-cols-3 gap-2">
-                {[
-                  {name: '第一柱', box: 'border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.03]', head: 'text-neutral-400', body: 'text-neutral-900 dark:text-white', sub: 'text-neutral-400'},
-                  {name: '第二柱', box: 'border-amber-500/20 bg-amber-500/5', head: 'text-amber-600 dark:text-amber-400', body: 'text-amber-700 dark:text-amber-300', sub: 'text-amber-600/70'},
-                  {name: '第三柱', box: 'border-emerald-500/20 bg-emerald-500/5', head: 'text-emerald-600 dark:text-emerald-400', body: 'text-emerald-700 dark:text-emerald-300', sub: 'text-emerald-600/70'},
-                ].map((p, i) => (
-                  <div key={p.name} className={`p-2.5 rounded-xl border ${p.box}`}>
-                    <div className={`text-[10px] uppercase tracking-wider font-semibold ${p.head}`}>
-                      {p.name} ({sizes[i]}顆)
-                    </div>
-                    <div className={`text-xs font-mono font-bold mt-0.5 ${p.body}`}>
-                      {pillarRange(pillars[i])}
-                    </div>
-                    <div className={`text-[9px] ${p.sub}`}>
-                      {pillars[i].slice(0, 5).map(pad).join(' ')}
-                      {pillars[i].length > 5 ? '…' : ''}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Units Multiplier Stepper */}
-            <div className="space-y-2 pt-1">
-              <div className="flex items-center justify-between">
-                <label className="text-[10px] uppercase tracking-[0.2em] font-semibold text-neutral-400">
-                  包牌支數 (Units)
-                </label>
-                <span className="text-xs font-mono font-bold text-neutral-900 dark:text-white">
-                  {units} 支 ({units * totalBets} 注)
-                </span>
-              </div>
-
-              {/* Stepper with Large Buttons */}
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setUnits(Math.max(1, units - 1))}
-                  className="w-10 h-10 rounded-xl border border-black/10 dark:border-white/10 flex items-center justify-center text-neutral-700 dark:text-neutral-200 hover:bg-black/5 dark:hover:bg-white/5 active:scale-95 transition-all"
-                >
-                  <Minus className="w-4 h-4" />
-                </button>
-                
-                <div className="flex-1 h-10 rounded-xl border border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.03] flex items-center justify-center font-mono font-bold text-sm text-neutral-900 dark:text-white">
-                  {units} 支
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setUnits(units + 1)}
-                  className="w-10 h-10 rounded-xl border border-black/10 dark:border-white/10 flex items-center justify-center text-neutral-700 dark:text-neutral-200 hover:bg-black/5 dark:hover:bg-white/5 active:scale-95 transition-all"
-                >
-                  <Plus className="w-4 h-4" />
-                </button>
-              </div>
-
-              {/* Quick Preset Pills */}
-              <div className="flex flex-wrap gap-1.5 pt-1">
-                {[1, 2, 3, 5].map(u => (
-                  <button
-                    key={u}
-                    type="button"
-                    onClick={() => setUnits(u)}
-                    className={`flex-1 py-1 text-xs font-mono font-semibold rounded-lg border transition-all active:scale-95 ${
-                      units === u
-                        ? 'bg-black text-white dark:bg-white dark:text-black border-black dark:border-white'
-                        : 'border-black/10 dark:border-white/10 text-neutral-700 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5'
-                    }`}
-                  >
-                    {u} 支
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Live Financial Preview Card */}
-            <div className="p-3.5 sm:p-4 rounded-xl bg-black/[0.02] dark:bg-white/[0.03] border border-black/[0.06] dark:border-white/[0.06] space-y-2">
-              <div className="text-[10px] uppercase tracking-wider text-neutral-400 font-semibold">
-                成本與過關彩金試算 (Live HUD)
-              </div>
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                <div>
-                  <span className="text-neutral-500 block text-[10px]">本局投入成本:</span>
-                  <span className="font-mono font-bold text-sm text-neutral-900 dark:text-white">
-                    NT$ {currentCost.toLocaleString()}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-neutral-500 block text-[10px]">過關機率:</span>
-                  <span className="font-mono font-bold text-sm text-emerald-600 dark:text-emerald-400">
-                    {passProb !== null
-                      ? `${(passProb * 100).toFixed(2)}% (1/${(1 / passProb).toFixed(1)}局)`
-                      : '—'}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-neutral-500 block text-[10px]">開 3 碰彩金 (2+2+1):</span>
-                  <span className="font-mono font-bold text-sm text-emerald-600 dark:text-emerald-400">
-                    NT$ {(units * prize3).toLocaleString()}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-neutral-500 block text-[10px]">開 4 碰彩金 (2+1+2):</span>
-                  <span className="font-mono font-bold text-sm text-emerald-600 dark:text-emerald-400">
-                    NT$ {(units * prize4).toLocaleString()}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Action Buttons Panel */}
-            <div className="pt-2 space-y-2">
-              <button
-                type="button"
-                onClick={() => handleRecord('待開獎')}
-                className="w-full py-3 px-4 rounded-xl sm:rounded-full text-xs uppercase tracking-wider font-semibold bg-black text-white dark:bg-white dark:text-black hover:opacity-90 transition-opacity flex items-center justify-center gap-2 shadow-xs active:scale-98"
-              >
-                <FileText className="w-4 h-4" />
-                送出記帳 (待開獎)
-              </button>
-
-              <div className="grid grid-cols-3 gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => handleRecord('中 4 碰')}
-                  className="py-2.5 px-2 rounded-xl text-[11px] font-semibold border border-emerald-600/30 text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 transition-colors flex items-center justify-center gap-1 active:scale-95"
-                >
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  模擬中4碰
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => handleRecord('中 3 碰')}
-                  className="py-2.5 px-2 rounded-xl text-[11px] font-semibold border border-emerald-600/30 text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 transition-colors flex items-center justify-center gap-1 active:scale-95"
-                >
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  模擬中3碰
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => handleRecord('槓龜(斷柱)')}
-                  className="py-2.5 px-2 rounded-xl text-[11px] font-semibold border border-rose-600/30 text-rose-700 dark:text-rose-400 bg-rose-500/10 hover:bg-rose-500/20 transition-colors flex items-center justify-center gap-1 active:scale-95"
-                >
-                  <XCircle className="w-3.5 h-3.5" />
-                  模擬斷柱
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* 自選號碼・逐柱組牌(手動指定各柱,不自動判斷區間) */}
-          <div className="order-1 p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-display font-bold uppercase tracking-wider text-neutral-900 dark:text-white">
-                01 / 自選號碼・逐柱組牌
+                01 / 三柱 1800 碰下注
               </span>
               <span className="text-[11px] font-mono text-neutral-400">
                 各柱相乘 = 注數
@@ -432,8 +237,8 @@ export const ThreePillarTab: React.FC = () => {
             </div>
 
             <div className="text-[11px] text-neutral-500 dark:text-neutral-400 leading-relaxed">
-              選一批號碼 → <strong>保存為一柱</strong> → 再選下一柱。滿 <strong>2 柱</strong>即可送出記帳,
-              注數 = 各柱顆數相乘。號碼由你決定屬於哪一柱,系統不自動歸類。
+              逐柱組牌:選一批號碼 → <strong>保存為一柱</strong> → 再選下一柱(滿 2 柱可送出)。
+              或按<strong>「一鍵全包」</strong>包下 {sizes.join('×')} = {totalBets.toLocaleString()} 注。號碼由你決定屬於哪一柱。
             </div>
 
             {/* 已保存的柱 */}
@@ -468,9 +273,16 @@ export const ThreePillarTab: React.FC = () => {
               </div>
             )}
 
-            {/* 預設柱:一鍵帶入固定柱範圍當作目前選取(快速組牌) */}
+            {/* 快速:一鍵全包(三柱各自全選)或帶入某柱範圍當作目前選取 */}
             <div className="flex flex-wrap items-center gap-1.5">
-              <span className="text-[10px] uppercase tracking-wider text-neutral-400 font-semibold">預設柱</span>
+              <button
+                type="button"
+                onClick={loadFullWheel}
+                className="px-2.5 py-1 rounded-lg text-[10px] font-bold border border-black/80 dark:border-white/80 bg-black text-white dark:bg-white dark:text-black hover:opacity-90 active:scale-95 transition-all"
+              >
+                一鍵全包 ({totalBets.toLocaleString()} 注)
+              </button>
+              <span className="text-[10px] uppercase tracking-wider text-neutral-400 font-semibold ml-1">預設柱</span>
               {pillars.map((p, i) => (
                 <button
                   key={i}
@@ -516,26 +328,55 @@ export const ThreePillarTab: React.FC = () => {
               );
             })()}
 
-            {/* 部分包牌試算 */}
+            {/* 下注支數(倍投) */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="text-[10px] uppercase tracking-[0.2em] font-semibold text-neutral-400">下注支數 (Units)</label>
+                <span className="text-xs font-mono font-bold text-neutral-900 dark:text-white">{units} 支</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setUnits(Math.max(1, units - 1))}
+                  className="w-9 h-9 rounded-xl border border-black/10 dark:border-white/10 flex items-center justify-center text-neutral-700 dark:text-neutral-200 hover:bg-black/5 dark:hover:bg-white/5 active:scale-95 transition-all"
+                >
+                  <Minus className="w-4 h-4" />
+                </button>
+                <div className="flex-1 h-9 rounded-xl border border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.03] flex items-center justify-center font-mono font-bold text-sm text-neutral-900 dark:text-white">
+                  {units} 支
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setUnits(units + 1)}
+                  className="w-9 h-9 rounded-xl border border-black/10 dark:border-white/10 flex items-center justify-center text-neutral-700 dark:text-neutral-200 hover:bg-black/5 dark:hover:bg-white/5 active:scale-95 transition-all"
+                >
+                  <Plus className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* 試算(全包時多顯示過關機率 / 彩金) */}
             <div className="p-3.5 sm:p-4 rounded-xl bg-black/[0.02] dark:bg-white/[0.03] border border-black/[0.06] dark:border-white/[0.06] space-y-2">
-              <div className="text-[10px] uppercase tracking-wider text-neutral-400 font-semibold">部分包牌試算</div>
+              <div className="text-[10px] uppercase tracking-wider text-neutral-400 font-semibold">
+                {isFullWheel ? '全包試算 (1800 碰)' : '部分包牌試算'}
+              </div>
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <div>
-                  <span className="text-neutral-500 block text-[10px]">已保存柱數:</span>
+                  <span className="text-neutral-500 block text-[10px]">柱 × 支數:</span>
                   <span className="font-mono font-bold text-sm text-neutral-900 dark:text-white">
-                    {savedPillars.length} 柱{pillarSizes.length ? `(${pillarSizes.join('×')})` : ''}
+                    {savedPillars.length} 柱{pillarSizes.length ? `(${pillarSizes.join('×')})` : ''} × {units}
                   </span>
                 </div>
                 <div>
                   <span className="text-neutral-500 block text-[10px]">可組出注數:</span>
                   <span className="font-mono font-bold text-sm text-neutral-900 dark:text-white">
-                    {customBets.toLocaleString()} 注
+                    {betsWithUnits.toLocaleString()} 注
                   </span>
                 </div>
                 <div>
                   <span className="text-neutral-500 block text-[10px]">投注成本:</span>
                   <span className="font-mono font-bold text-sm text-neutral-900 dark:text-white">
-                    NT$ {customCost.toLocaleString()}
+                    NT$ {submitCost.toLocaleString()}
                   </span>
                 </div>
                 <div>
@@ -544,31 +385,47 @@ export const ThreePillarTab: React.FC = () => {
                     {selectedBalls.length} 顆
                   </span>
                 </div>
+                {isFullWheel && (
+                  <>
+                    <div>
+                      <span className="text-neutral-500 block text-[10px]">過關機率:</span>
+                      <span className="font-mono font-bold text-sm text-emerald-600 dark:text-emerald-400">
+                        {passProb !== null ? `${(passProb * 100).toFixed(2)}%` : '—'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-neutral-500 block text-[10px]">開 4/3 碰彩金:</span>
+                      <span className="font-mono font-bold text-sm text-emerald-600 dark:text-emerald-400">
+                        {(units * prize4).toLocaleString()} / {(units * prize3).toLocaleString()}
+                      </span>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
 
-            {savedPillars.length < 2 ? (
+            {!canSubmit ? (
               <div className="p-2.5 rounded-xl bg-black/[0.03] dark:bg-white/[0.05] text-[11px] text-neutral-500 dark:text-neutral-400 flex items-start gap-2">
                 <Info className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-                <span>至少保存 2 柱才能送出記帳(目前 {savedPillars.length} 柱)。</span>
+                <span>至少保存 2 柱才能送出記帳(目前 {savedPillars.length} 柱)。也可按上方「一鍵全包」。</span>
               </div>
             ) : (
               <button
                 type="button"
-                onClick={handleRecordCustom}
+                onClick={handleSubmit}
                 className="w-full py-3 rounded-xl sm:rounded-full text-xs uppercase tracking-wider font-semibold bg-black text-white dark:bg-white dark:text-black hover:opacity-90 transition-opacity flex items-center justify-center gap-2 shadow-xs active:scale-98"
               >
                 <FileText className="w-4 h-4" />
-                送出記帳 {customBets.toLocaleString()} 注(待開獎)
+                送出記帳 {betsWithUnits.toLocaleString()} 注(待開獎)
               </button>
             )}
           </div>
 
           {/* 區間組合斷檔提醒 */}
-          <div className="order-3 p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] space-y-3">
+          <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-xs font-display font-bold uppercase tracking-wider text-neutral-900 dark:text-white">
-                03 / 1800碰斷檔提醒
+                02 / 1800碰斷檔提醒
               </span>
               <span className="text-[11px] font-mono text-neutral-400">
                 連續 3 期未開
