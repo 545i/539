@@ -98,29 +98,36 @@ def _thirds(num_max: int) -> list[tuple[str, list[int]]]:
 def _seg_missing_block(df, num_max: int) -> str:
     """前中後三段各成一直柱(欄)並排,每格「號碼:遺漏」,精細到單顆。
 
-    只列「遺漏 >= 1 期」的號碼(本期剛開出的 0 期不顯示);三段號碼數不同,
-    較短的欄補空白對齊。三段都沒遺漏則保留標題、不畫柱。
-    CJK 標題(前/中/後)在等寬字型約佔 2 格,補到與資料格同寬 → 上下對齊。
+    **每顆號碼固定佔一格**:遺漏 >= 1 顯示「NN:MM」,本期剛開出的 0 期用等寬
+    空白佔位(不移除、不往上壓),號碼才不會跳位、上下對齊。三段都沒遺漏則
+    保留標題、不畫柱。CJK 標題(前/中/後)約佔 2 格,補到與資料格同寬。
     """
     miss = stats.missing(df, num_max)
-    cols = []          # 三段各自的 "NN:MM" 清單(只含遺漏 >= 1)
+    cell_w = 5         # "NN:MM"
+    blank = " " * cell_w
+    cols = []          # 三段各自的欄:遺漏>=1 顯示,0 期用空白佔位
     names = []
     for name, nums in _thirds(num_max):
-        cols.append([f"{n:02d}:{c:02d}" for n in nums
-                     if (c := miss.get(n, {}).get("current", 0)) >= 1])
+        cells = []
+        for n in nums:
+            c = miss.get(n, {}).get("current", 0)
+            cells.append(f"{n:02d}:{c:02d}" if c >= 1 else blank)
+        cols.append(cells)
         names.append(name)
-    height = max((len(c) for c in cols), default=0)
-    if height == 0:
+
+    # 全部號碼近期皆有開出(整塊都空白)→ 只保留標題
+    if all(cell == blank for col in cols for cell in col):
         return "<u>前中後段</u> 目前全部號碼近期皆有開出"
 
-    cell_w = 5         # "NN:MM"
     gap = "  "
-    blank = " " * cell_w
+    height = max((len(c) for c in cols), default=0)
     header = gap.join(f"{nm}{' ' * (cell_w - 2)}" for nm in names)  # CJK 約 2 格
     rows = [header.rstrip()]
     for i in range(height):
         row = gap.join(col[i] if i < len(col) else blank for col in cols)
         rows.append(row.rstrip())
+    while len(rows) > 1 and rows[-1] == "":      # 去掉尾端整列空白
+        rows.pop()
     return "<u>前中後段</u>(號碼:遺漏)\n<pre>" + "\n".join(rows) + "</pre>"
 
 
