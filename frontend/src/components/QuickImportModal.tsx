@@ -49,6 +49,7 @@ interface UploadHistoryItem {
   balls: number[];    // 號碼
   units: number;      // 支 / 車
   cost: number;       // 這筆成本(後端重算)
+  costExpr: string;   // 成本計算式(怎麼算的)
 }
 
 interface UploadHistoryEntry {
@@ -113,6 +114,9 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported})
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<number | null>(null);
   const [history, setHistory] = useState<UploadHistoryEntry[]>(() => loadHistory());
+  // 每筆試算成本 + 計算式(對齊 draftItems;算不出來的 null)
+  const [costs, setCosts] = useState<({cost: number; expr: string} | null)[]>([]);
+  const [costBusy, setCostBusy] = useState(false);
 
   // 下注期數:預設帶入「最新一期 +1」(下一期);使用者可自行改
   const hist = useAsync(() => (isOpen ? api.history(gameKey, 1) : Promise.resolve(null)), [gameKey, isOpen]);
@@ -194,6 +198,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported})
         balls: (it.record.selectedBalls as number[]) ?? [],
         units: num(it.record.units),
         cost: num(it.record.cost),
+        costExpr: String(it.record.costExpr ?? ''),
       }));
       const totalCost = detail.reduce((s, d) => s + d.cost, 0);
       const entry: UploadHistoryEntry = {
@@ -230,6 +235,51 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported})
   };
 
   const historyTotal = history.reduce((s, h) => s + h.totalCost, 0);
+
+  // 預覽即時試算成本:把目前(可能改過的)draft 丟後端 dry_run commit 只重算不寫入,
+  // 拿回每筆 record.cost / costExpr。debounce 350ms,避免打字時一直打 API。
+  useEffect(() => {
+    if (!preview || draftItems.length === 0 || !loggedIn) {
+      setCosts([]);
+      return;
+    }
+    let cancelled = false;
+    setCostBusy(true);
+    const t = window.setTimeout(async () => {
+      try {
+        const items = draftItems.map(d => ({
+          mode: d.mode,
+          selectedBalls: parseBalls(d.balls),
+          units: d.units,
+          stars: d.stars,
+          hit_count: d.hit.trim() === '' ? null : Math.max(0, Math.floor(Number(d.hit) || 0)),
+        }));
+        const res = await api.quickImportCommit(gameKey, items, {issue, edition: eid, dryRun: true});
+        if (cancelled) return;
+        // 後端把算不出來的收進 errors(line_no = 1-based draft 序),其餘依序在 items
+        const errLines = new Set(res.errors.map(e => e.line_no));
+        const arr: ({cost: number; expr: string} | null)[] = [];
+        let k = 0;
+        for (let i = 1; i <= items.length; i++) {
+          if (errLines.has(i)) {
+            arr.push(null);
+          } else {
+            const rec = res.items[k]?.record ?? {};
+            arr.push({cost: num(rec.cost), expr: String(rec.costExpr ?? '')});
+            k++;
+          }
+        }
+        setCosts(arr);
+      } catch {
+        if (!cancelled) setCosts([]);
+      } finally {
+        if (!cancelled) setCostBusy(false);
+      }
+    }, 350);
+    return () => { cancelled = true; window.clearTimeout(t); };
+  }, [draftItems, issue, eid, gameKey, preview, loggedIn]);
+
+  const costTotal = costs.reduce((s, c) => s + (c ? c.cost : 0), 0);
 
   const setDraft = (i: number, patch: Partial<DraftItem>) =>
     setDraftItems(prev => prev.map((d, j) => (j === i ? {...d, ...patch} : d)));
@@ -418,8 +468,8 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported})
                     </thead>
                     <tbody className="font-mono">
                       {draftItems.map((d, i) => (
+                        <React.Fragment key={i}>
                         <tr
-                          key={i}
                           className={`border-t border-black/[0.06] dark:border-white/[0.06] ${
                             d.incomplete ? 'bg-amber-500/10' : ''
                           }`}
@@ -467,8 +517,37 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported})
                             />
                           </td>
                         </tr>
+                        {/* 成本解析:這一筆成本是怎麼算出來的 */}
+                        <tr
+                          key={`cost-${i}`}
+                          className={`border-t-0 ${d.incomplete ? 'bg-amber-500/10' : ''}`}
+                        >
+                          <td colSpan={4} className="px-3 pb-2 pt-0">
+                            <div className="flex items-baseline justify-between gap-2 text-[10px] text-neutral-500 dark:text-neutral-400">
+                              <span className="font-mono">
+                                {costs[i]
+                                  ? (costs[i]!.expr || '—')
+                                  : (costBusy ? '試算中…' : '—')}
+                              </span>
+                              <span className="font-mono font-bold text-neutral-800 dark:text-neutral-200 whitespace-nowrap">
+                                {costs[i] ? money(costs[i]!.cost) : ''}
+                              </span>
+                            </div>
+                          </td>
+                        </tr>
+                      </React.Fragment>
                       ))}
                     </tbody>
+                    <tfoot>
+                      <tr className="border-t-2 border-black/10 dark:border-white/15 bg-black/[0.03] dark:bg-white/[0.05]">
+                        <td colSpan={3} className="px-3 py-2 text-right font-sans font-semibold text-neutral-700 dark:text-neutral-200">
+                          總下注成本{costBusy && ' (試算中…)'}
+                        </td>
+                        <td className="px-3 py-2 text-right font-mono font-bold text-neutral-900 dark:text-white whitespace-nowrap">
+                          {money(costTotal)}
+                        </td>
+                      </tr>
+                    </tfoot>
                   </table>
                 </div>
               )}
@@ -539,22 +618,31 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported})
                     <table className="w-full text-[11px]">
                       <tbody className="font-mono">
                         {h.items.map((it, i) => (
-                          <tr key={i} className="border-t border-black/[0.05] dark:border-white/[0.05] first:border-t-0">
-                            <td className="px-3 py-1.5 align-top">
-                              <span className="px-1.5 py-0.5 rounded-full bg-black/5 dark:bg-white/10 text-[10px] mr-1.5 font-sans">
-                                {MODE_LABEL[it.mode]}
-                              </span>
-                              <span className="font-sans text-neutral-600 dark:text-neutral-400">{it.playType}</span>
-                            </td>
-                            <td className="px-3 py-1.5 align-top text-neutral-700 dark:text-neutral-300">
-                              {it.balls.length > 0
-                                ? it.balls.map(n => String(n).padStart(2, '0')).join(' ')
-                                : '—'}
-                            </td>
-                            <td className="px-3 py-1.5 align-top text-right whitespace-nowrap text-neutral-900 dark:text-white">
-                              {money(it.cost)}
-                            </td>
-                          </tr>
+                          <React.Fragment key={i}>
+                            <tr className="border-t border-black/[0.05] dark:border-white/[0.05] first:border-t-0">
+                              <td className="px-3 pt-1.5 pb-0 align-top">
+                                <span className="px-1.5 py-0.5 rounded-full bg-black/5 dark:bg-white/10 text-[10px] mr-1.5 font-sans">
+                                  {MODE_LABEL[it.mode]}
+                                </span>
+                                <span className="font-sans text-neutral-600 dark:text-neutral-400">{it.playType}</span>
+                              </td>
+                              <td className="px-3 pt-1.5 pb-0 align-top text-neutral-700 dark:text-neutral-300">
+                                {it.balls.length > 0
+                                  ? it.balls.map(n => String(n).padStart(2, '0')).join(' ')
+                                  : '—'}
+                              </td>
+                              <td className="px-3 pt-1.5 pb-0 align-top text-right whitespace-nowrap font-bold text-neutral-900 dark:text-white">
+                                {money(it.cost)}
+                              </td>
+                            </tr>
+                            {it.costExpr && (
+                              <tr>
+                                <td colSpan={3} className="px-3 pt-0 pb-1.5 text-[10px] text-neutral-400 dark:text-neutral-500">
+                                  {it.costExpr}
+                                </td>
+                              </tr>
+                            )}
+                          </React.Fragment>
                         ))}
                       </tbody>
                       <tfoot>

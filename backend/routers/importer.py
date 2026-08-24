@@ -111,6 +111,15 @@ def _units(amount: int) -> float:
     return int(u) if u == int(u) else u
 
 
+def _money(x: float) -> str:
+    return f"${round(x):,}"
+
+
+def _g(x: float) -> str:
+    """去掉多餘小數(20.0 → 20、137.75 → 137.75)。"""
+    return f"{x:g}"
+
+
 @dataclass
 class _Item:
     """解析出來的一筆(還沒變成 ledger 紀錄)。"""
@@ -123,6 +132,7 @@ class _Item:
     line: str             # 產生這一筆的原文(1800碰 是三行併起來)
     stars: int = 0        # 星碰的星數(其他下法 0);提交時重算成本要用
     incomplete: bool = False  # 星碰向上補足仍湊不到宣告顆數 → 提醒使用者手動補
+    cost_expr: str = ""   # 成本怎麼算出來的(給前端顯示計算式)
 
 
 @dataclass
@@ -178,6 +188,7 @@ def _star_item(odds: dict, stars: int, picks: list[int], units: float,
     if bets <= 0 and not incomplete:
         raise ValueError(f"選 {len(picks)} 顆湊不出{combo_mod.star_name(stars)}碰")
     per_bet = float(odds[f"combo_cost{stars}"])
+    cost = units * bets * per_bet
     return _Item(
         mode="combo",
         play_type=f"星碰 {combo_mod.star_name(stars)}({bets} 碰/支)",
@@ -185,10 +196,11 @@ def _star_item(odds: dict, stars: int, picks: list[int], units: float,
         units=units,
         # 碰數欄比照連碰分頁:記「一支幾碰」,支數另外一欄,兩者不相乘
         bets_count=bets,
-        cost=units * bets * per_bet,
+        cost=cost,
         line=line,
         stars=stars,
         incomplete=incomplete,
+        cost_expr=f"{_g(units)} 支 × {bets} 碰 × {_money(per_bet)}/碰 = {_money(cost)}",
     )
 
 
@@ -197,14 +209,17 @@ def _pillar_item(odds: dict, g: GameConfig, units: float, line: str) -> _Item:
     if not pillar_mod.supports(g):
         raise ValueError(f"{g.name}不適用 1800碰(三柱結構綁定 39 選 5)")
     total = pillar_mod.total_bets(g.num_max)
+    bet_cost = float(odds["bet_cost"])
+    cost = pillar_mod.round_cost(bet_cost, 1, g.num_max) * units
     return _Item(
         mode="pillar1800",
         play_type=f"1800碰({total:,} 注)",
         balls=[],
         units=units,
         bets_count=int(round(units * total)),
-        cost=pillar_mod.round_cost(float(odds["bet_cost"]), 1, g.num_max) * units,
+        cost=cost,
         line=line,
+        cost_expr=f"{total:,} 注 × {_money(bet_cost)}/注 × {_g(units)} 支 = {_money(cost)}",
     )
 
 
@@ -242,14 +257,17 @@ def parse(text: str, g: GameConfig, odds: dict) -> tuple[list[_Item], list[dict]
             if not grp["enabled"]:
                 st.fail(line_no, line, f"{grp['name']}已停用,無法記入")
                 continue
+            cpc = float(odds["cost_per_car"])
+            erhe_cost = _erhe_cost(odds, len(balls), cars)
             st.items.append(_Item(
                 mode=grp["mode"],
                 play_type=f"{grp['name']} {cars} 車({len(balls)} 顆)",
                 balls=balls,
                 units=cars,
                 bets_count=len(balls),
-                cost=_erhe_cost(odds, len(balls), cars),
+                cost=erhe_cost,
                 line=line,
+                cost_expr=f"{len(balls)} 顆 × {cars} 車 × {_money(cpc)}/車 = {_money(erhe_cost)}",
             ))
             continue
 
@@ -325,6 +343,7 @@ def to_record(item: _Item, g: GameConfig, bet_date: str, issue: str,
         "drawBalls": [],
         "result": "待開獎",       # 這一版不結算,開獎後另外對獎
         "cost": round(item.cost),
+        "costExpr": item.cost_expr,   # 成本計算式(給前端顯示「怎麼算的」)
         "payout": 0,
         "pnl": 0,
     }
@@ -352,14 +371,17 @@ def _recost(g: GameConfig, odds: dict, mode: str, balls: list[int], units: float
             raise ValueError("這一組至少要選 1 顆號碼")
         grp = group_store.get_group(group_store.MODE_TO_GID[mode])
         name = grp["name"] if grp else mode
+        cpc = float(odds["cost_per_car"])
+        erhe_cost = _erhe_cost(odds, len(balls), units)
         return _Item(
             mode=mode,
             play_type=f"{name} {int(units)} 車({len(balls)} 顆)",
             balls=balls,
             units=units,
             bets_count=len(balls),
-            cost=_erhe_cost(odds, len(balls), units),
+            cost=erhe_cost,
             line="",
+            cost_expr=f"{len(balls)} 顆 × {_g(units)} 車 × {_money(cpc)}/車 = {_money(erhe_cost)}",
         )
     raise ValueError(f"未知的下注模式:{mode}")
 
@@ -432,6 +454,7 @@ class QuickImportCommitIn(BaseModel):
     date: str | None = None
     issue: str = ""
     edition: int = 1
+    dry_run: bool = Field(default=False, description="只重算成本不寫入(預覽試算用)")
 
 
 @router.post("/quick-import/commit")
@@ -457,6 +480,9 @@ def quick_import_commit(body: QuickImportCommitIn, user: str = Depends(current_u
         # 有填中獎顆數就直接手填結算(不必期數);settle 依 record 的版取盤口算派彩
         if it.hit_count is not None:
             record = settle.settle(record, None, g, hit_count=it.hit_count)
+        if body.dry_run:                # 只試算成本、不寫入(預覽用)
+            out.append({"id": None, "mode": item.mode, "record": record})
+            continue
         entry = ledger_store.add_entry(user, item.mode, record)
         saved.append(entry)
         out.append({"id": entry["id"], "mode": item.mode, "record": record})

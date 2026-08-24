@@ -767,7 +767,7 @@ export const api = {
   quickImportCommit: (
     game: GameKey,
     items: QuickImportCommitItem[],
-    opts: {date?: string; issue?: string; edition?: number} = {},
+    opts: {date?: string; issue?: string; edition?: number; dryRun?: boolean} = {},
   ) =>
     post<QuickImportDTO>('ledger/quick-import/commit', {
       game,
@@ -775,6 +775,7 @@ export const api = {
       date: opts.date ?? null,
       issue: opts.issue ?? '',
       edition: opts.edition ?? 1,
+      dry_run: opts.dryRun ?? false,
     }),
 
   // 二合下注組設定(讀不用登入,改要登入;全站共用)
