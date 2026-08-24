@@ -267,7 +267,7 @@ export const ComboBetTab: React.FC = () => {
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => setUnits(Math.max(1, units - 2))}
+                  onClick={() => setUnits(Math.max(1, units - 1))}
                   className="w-10 h-10 rounded-xl border border-black/10 dark:border-white/10 flex items-center justify-center text-neutral-700 dark:text-neutral-200 hover:bg-black/5 dark:hover:bg-white/5 active:scale-95 transition-all"
                 >
                   <Minus className="w-4 h-4" />
@@ -279,7 +279,7 @@ export const ComboBetTab: React.FC = () => {
 
                 <button
                   type="button"
-                  onClick={() => setUnits(units + 2)}
+                  onClick={() => setUnits(units + 1)}
                   className="w-10 h-10 rounded-xl border border-black/10 dark:border-white/10 flex items-center justify-center text-neutral-700 dark:text-neutral-200 hover:bg-black/5 dark:hover:bg-white/5 active:scale-95 transition-all"
                 >
                   <Plus className="w-4 h-4" />

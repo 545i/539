@@ -90,7 +90,7 @@ export const LotteryBallPad: React.FC<Props> = ({
         type="button"
         id={`ball-btn-${num}`}
         onClick={() => onToggleBall(num)}
-        className={`w-8 h-8 sm:w-8 sm:h-8 rounded-full flex items-center justify-center font-bold text-xs font-mono border transition-all duration-100 active:scale-90 select-none ${
+        className={`${layout === 'grid' ? 'w-full aspect-square' : 'w-8 h-8 sm:w-8 sm:h-8'} rounded-full flex items-center justify-center font-bold text-xs font-mono border transition-all duration-100 active:scale-90 select-none ${
           isSelected ? selectedColorClasses : baseColorClasses
         }`}
       >
@@ -177,8 +177,8 @@ export const LotteryBallPad: React.FC<Props> = ({
       )}
 
       {layout === 'grid' ? (
-        /* 01~39 平鋪:不分柱,依號碼順序一路排下去 */
-        <div className="flex flex-wrap gap-1.5 max-w-full">
+        /* 依十位分排:每排 10 顆(01~10 / 11~20 / 21~30 / 31~39…),10 欄對齊 */
+        <div className="grid grid-cols-10 gap-1 sm:gap-1.5 max-w-full">
           {Array.from({ length: totalBalls }, (_, i) => i + 1).map(n => renderBall(n, 1))}
         </div>
       ) : (
