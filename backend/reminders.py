@@ -95,15 +95,26 @@ def _thirds(num_max: int) -> list[tuple[str, list[int]]]:
     ]
 
 
-def _seg_missing_block(df, num_max: int) -> str:
-    """前中後三段各成一直柱(欄)並排,每格「號碼:遺漏」,精細到單顆。
+def _circled(n: int) -> str:
+    """號碼 → 圓圈數字 icon(①-⑳、㉑-㉟、㊱-㊿ 涵蓋 1~50);超出範圍回原數字。"""
+    if 1 <= n <= 20:
+        return chr(0x2460 + n - 1)      # ①-⑳
+    if 21 <= n <= 35:
+        return chr(0x3250 + n - 20)     # ㉑-㉟
+    if 36 <= n <= 50:
+        return chr(0x32B0 + n - 35)     # ㊱-㊿
+    return str(n)
 
-    **每顆號碼固定佔一格**:遺漏 >= 1 顯示「NN:MM」,本期剛開出的 0 期用等寬
+
+def _seg_missing_block(df, num_max: int) -> str:
+    """前中後三段各成一直柱(欄)並排,每格「圓圈號碼 遺漏」,精細到單顆。
+
+    **每顆號碼固定佔一格**:遺漏 >= 1 顯示「⑤ MM」,本期剛開出的 0 期用等寬
     空白佔位(不移除、不往上壓),號碼才不會跳位、上下對齊。三段都沒遺漏則
     保留標題、不畫柱。CJK 標題(前/中/後)約佔 2 格,補到與資料格同寬。
     """
     miss = stats.missing(df, num_max)
-    cell_w = 5         # "NN:MM"
+    cell_w = 4         # "⑤ MM"(圓圈 1 + 空白 1 + 兩位數)
     blank = " " * cell_w
     cols = []          # 三段各自的欄:遺漏>=1 顯示,0 期用空白佔位
     names = []
@@ -111,7 +122,7 @@ def _seg_missing_block(df, num_max: int) -> str:
         cells = []
         for n in nums:
             c = miss.get(n, {}).get("current", 0)
-            cells.append(f"{n:02d}:{c:02d}" if c >= 1 else blank)
+            cells.append(f"{_circled(n)} {c:02d}" if c >= 1 else blank)
         cols.append(cells)
         names.append(name)
 
@@ -128,7 +139,7 @@ def _seg_missing_block(df, num_max: int) -> str:
         rows.append(row.rstrip())
     while len(rows) > 1 and rows[-1] == "":      # 去掉尾端整列空白
         rows.pop()
-    return "<u>前中後段</u>(號碼:遺漏)\n<pre>" + "\n".join(rows) + "</pre>"
+    return "<u>前中後段</u>(圈=號碼 數=遺漏)\n<pre>" + "\n".join(rows) + "</pre>"
 
 
 def _odd_even_line(df) -> str:
