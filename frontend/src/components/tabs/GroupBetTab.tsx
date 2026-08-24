@@ -284,6 +284,7 @@ export const GroupBetTab: React.FC<Props> = ({ group }) => {
                 maxBalls={numMax}
                 totalBalls={numMax}
                 label={`選取下注號碼 (不固定顆數・建議 ${suggestBalls} 顆・已選 ${selectedBalls.length})`}
+                layout="grid"
               />
             </div>
 

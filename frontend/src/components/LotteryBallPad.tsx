@@ -10,6 +10,8 @@ interface Props {
   totalBalls?: number;
   label?: string;
   theme?: 'light' | 'dark';
+  /** 'pillars' = 分三柱(預設);'grid' = 01~39 平鋪不分柱 */
+  layout?: 'pillars' | 'grid';
 }
 
 export const LotteryBallPad: React.FC<Props> = ({
@@ -20,6 +22,7 @@ export const LotteryBallPad: React.FC<Props> = ({
   maxBalls = 20,
   totalBalls = 39,
   label,
+  layout = 'pillars',
 }) => {
   const [isKeypadOpen, setIsKeypadOpen] = useState(false);
   const [manualInput, setManualInput] = useState('');
@@ -173,48 +176,57 @@ export const LotteryBallPad: React.FC<Props> = ({
         </div>
       )}
 
-      {/* Pillar 1 */}
-      <div>
-        <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-semibold text-neutral-500 mb-1.5">
-          <span className="w-1.5 h-1.5 rounded-full bg-neutral-900 dark:bg-white"></span>
-          <span>第 1 柱 (10-18)</span>
-        </div>
+      {layout === 'grid' ? (
+        /* 01~39 平鋪:不分柱,依號碼順序一路排下去 */
         <div className="flex flex-wrap gap-1.5 max-w-full">
-          {pillar1.map(n => renderBall(n, 1))}
+          {Array.from({ length: totalBalls }, (_, i) => i + 1).map(n => renderBall(n, 1))}
         </div>
-      </div>
-
-      {/* Pillar 2 */}
-      <div>
-        <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-semibold text-amber-600 dark:text-amber-400 mb-1.5">
-          <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
-          <span>第 2 柱 (20-29)</span>
-        </div>
-        <div className="flex flex-wrap gap-1.5 max-w-full">
-          {pillar2.map(n => renderBall(n, 2))}
-        </div>
-      </div>
-
-      {/* Pillar 3 */}
-      <div>
-        <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-semibold text-emerald-600 dark:text-emerald-400 mb-1.5">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-          <span>第 3 柱 (其餘號碼)</span>
-        </div>
-        <div className="space-y-1.5 max-w-full">
-          <div className="flex flex-wrap gap-1.5">
-            {pillar3Part1.map(n => renderBall(n, 3))}
-          </div>
-          <div className="flex flex-wrap gap-1.5">
-            {pillar3Part2.map(n => renderBall(n, 3))}
-          </div>
-          {pillar3Part3.length > 0 && (
-            <div className="flex flex-wrap gap-1.5">
-              {pillar3Part3.map(n => renderBall(n, 3))}
+      ) : (
+        <>
+          {/* Pillar 1 */}
+          <div>
+            <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-semibold text-neutral-500 mb-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-neutral-900 dark:bg-white"></span>
+              <span>第 1 柱 (10-18)</span>
             </div>
-          )}
-        </div>
-      </div>
+            <div className="flex flex-wrap gap-1.5 max-w-full">
+              {pillar1.map(n => renderBall(n, 1))}
+            </div>
+          </div>
+
+          {/* Pillar 2 */}
+          <div>
+            <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-semibold text-amber-600 dark:text-amber-400 mb-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+              <span>第 2 柱 (20-29)</span>
+            </div>
+            <div className="flex flex-wrap gap-1.5 max-w-full">
+              {pillar2.map(n => renderBall(n, 2))}
+            </div>
+          </div>
+
+          {/* Pillar 3 */}
+          <div>
+            <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-semibold text-emerald-600 dark:text-emerald-400 mb-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+              <span>第 3 柱 (其餘號碼)</span>
+            </div>
+            <div className="space-y-1.5 max-w-full">
+              <div className="flex flex-wrap gap-1.5">
+                {pillar3Part1.map(n => renderBall(n, 3))}
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {pillar3Part2.map(n => renderBall(n, 3))}
+              </div>
+              {pillar3Part3.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {pillar3Part3.map(n => renderBall(n, 3))}
+                </div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Footer / Selected counter & Clear */}
       <div className="flex items-center justify-between pt-2.5 border-t border-black/[0.06] dark:border-white/[0.06] text-xs gap-2 flex-wrap">

@@ -402,6 +402,7 @@ export const ThreePillarTab: React.FC = () => {
               totalBalls={gameCfg.num_max}
               maxBalls={gameCfg.num_max}
               label="自選包牌號碼"
+              layout="grid"
             />
 
             {partialReq.loading && (

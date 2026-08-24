@@ -248,6 +248,7 @@ export const ComboBetTab: React.FC = () => {
                 maxBalls={numMax}
                 totalBalls={numMax}
                 label={`選取號碼 (已選 ${n} 顆・${k} 星 = ${totalComb} 碰)`}
+                layout="grid"
               />
             </div>
 
