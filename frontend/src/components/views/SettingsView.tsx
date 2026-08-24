@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { Settings, Sliders, Moon, Sun, Save, RefreshCw, Database, Coins, RotateCcw, Layers } from 'lucide-react';
+import { Settings, Moon, Sun, Save, RefreshCw, Database, Layers } from 'lucide-react';
 import { ThemeMode } from '../../types';
-import { api, AutoupdateGameDTO, GroupDTO, StarCostInput } from '../../api/client';
+import { api, AutoupdateGameDTO, GroupDTO } from '../../api/client';
 import { useAsync } from '../../api/useAsync';
 import { useAuth } from '../../api/useAuth';
 import { useGame } from '../../api/useGame';
@@ -14,31 +14,9 @@ interface Props {
 }
 
 export const SettingsView: React.FC<Props> = ({ theme, onToggleTheme }) => {
-  // 盤口欄位的預設值由後端 GameDTO 的 default_* 帶入,遊戲來自頁首的全域切換器;
-  // 下面的字面值只是後端還沒回來前的初值,與 core/games.py 相同。
+  // 盤口一律走「各版盤口」(EditionSettings);這裡只留遊戲/gameName 供其他區塊用。
   const { gameKey, game } = useGame();
   const gameName = game?.short_name ?? '本遊戲';
-  const [pillarCost, setPillarCost] = useState<number>(63);
-  const [pillarPrize, setPillarPrize] = useState<number>(57000);
-  const [singleCarCost, setSingleCarCost] = useState<number>(2755);
-  const [singleCarPrize, setSingleCarPrize] = useState<number>(21200);
-  // 記「這組欄位是照哪個遊戲填的」:同一個遊戲只帶一次(不蓋掉使用者輸入),
-  // 換了遊戲就重帶那個遊戲的預設盤口。
-  const [seededFor, setSeededFor] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!game || seededFor === game.key) return;
-    setPillarCost(game.default_bet_cost);
-    setPillarPrize(game.default_bet_prize);
-    setSingleCarCost(game.default_cost_per_car);
-    setSingleCarPrize(game.default_win_payout);
-    setSeededFor(game.key);
-  }, [game, seededFor]);
-
-  // TODO(api): 設定儲存端點 —— 後端沒有寫入盤口參數的端點,維持 v2 的模擬儲存。
-  const handleSave = () => {
-    alert('已成功儲存盤口與偏好設定！');
-  };
 
   // ── 下注組設定(/groups,全站共用)───────────────────────
   // 固定顆數 + 是否啟用;存下去之後分頁列 / 快速上傳 / 各組分頁一起更新。
@@ -65,82 +43,6 @@ export const SettingsView: React.FC<Props> = ({ theme, onToggleTheme }) => {
       setGroupErr((e as Error).message);
     } finally {
       setGroupSaving(false);
-    }
-  };
-
-  // ── 連碰星數盤口(/star-cost)─────────────────────────────
-  // 這一區跟上面那組不一樣:上面是前端自己的欄位,這裡改的是**後端全域**的
-  // 成本與派彩 —— 存下去之後全站的連碰試算、快速上傳算出來的成本都跟著變,
-  // 所以要登入才給改,旁邊也標出原本的出廠預設讓人有得對照。
-  const starCost = useAsync(() => api.getStarCosts(), []);
-  const [starDraft, setStarDraft] = useState<StarCostInput>({});
-  const [starSaving, setStarSaving] = useState(false);
-  const [starMsg, setStarMsg] = useState<string | null>(null);
-  const [starErr, setStarErr] = useState<string | null>(null);
-
-  // 後端回來就把欄位填成目前生效的值(使用者還沒動過才填,免得蓋掉輸入)
-  useEffect(() => {
-    if (!starCost.data) return;
-    setStarDraft(prev =>
-      Object.keys(prev).length
-        ? prev
-        : Object.fromEntries(
-            Object.entries(starCost.data!.costs).map(([k, v]) => [
-              k,
-              { cost: v.cost, prize: v.prize },
-            ]),
-          ),
-    );
-  }, [starCost.data]);
-
-  // 兩個欄位共用一個 setter;prev 還沒有這個星數時先補上後端目前的值,
-  // 免得只送出改過的那一欄、另一欄變成 undefined 被後端擋下來。
-  const setStarField = (stars: string, field: 'cost' | 'prize', value: number) =>
-    setStarDraft(prev => {
-      const base = prev[stars] ?? {
-        cost: starCost.data?.costs[stars]?.cost ?? 0,
-        prize: starCost.data?.costs[stars]?.prize ?? 0,
-      };
-      return { ...prev, [stars]: { ...base, [field]: value } };
-    });
-
-  const handleSaveStarCost = async () => {
-    setStarSaving(true);
-    setStarMsg(null);
-    setStarErr(null);
-    try {
-      const res = await api.setStarCosts(starDraft);
-      setStarDraft(
-        Object.fromEntries(
-          Object.entries(res.costs).map(([k, v]) => [k, { cost: v.cost, prize: v.prize }]),
-        ),
-      );
-      starCost.reload(); // 重抓一次:讓「已自訂」標記與最後修改時間跟著更新
-      setStarMsg('已儲存,全站的連碰成本與派彩立即生效。');
-    } catch (e) {
-      setStarErr((e as Error).message);
-    } finally {
-      setStarSaving(false);
-    }
-  };
-
-  const handleResetStarCost = async () => {
-    setStarSaving(true);
-    setStarMsg(null);
-    setStarErr(null);
-    try {
-      const res = await api.resetStarCosts();
-      setStarDraft(
-        Object.fromEntries(
-          Object.entries(res.costs).map(([k, v]) => [k, { cost: v.cost, prize: v.prize }]),
-        ),
-      );
-      starCost.reload();
-      setStarMsg('已還原成程式內建的預設盤口。');
-    } catch (e) {
-      setStarErr((e as Error).message);
-    } finally {
-      setStarSaving(false);
     }
   };
 
@@ -187,7 +89,7 @@ export const SettingsView: React.FC<Props> = ({ theme, onToggleTheme }) => {
               系統與盤口設定
             </h2>
             <p className="text-xs text-neutral-500 dark:text-neutral-400">
-              目前設定 {gameName} 的下注成本、派彩金額、三柱1800碰參數與外觀佈景
+              盤口一律在下方「各版盤口」設定;此頁還有下注組、外觀主題與開獎資料狀態
             </p>
           </div>
         </div>
@@ -213,88 +115,6 @@ export const SettingsView: React.FC<Props> = ({ theme, onToggleTheme }) => {
             className="px-4 py-2 rounded-full text-xs uppercase tracking-wider font-semibold bg-black text-white dark:bg-white dark:text-black hover:opacity-90 transition-opacity"
           >
             切換為 {theme === 'dark' ? '亮色模式' : '深色模式'}
-          </button>
-        </div>
-      </div>
-
-      {/* Odds Parameters */}
-      <div className="p-6 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] space-y-4">
-        <h3 className="text-sm font-display font-bold text-neutral-900 dark:text-white uppercase tracking-wide flex items-center gap-2">
-          <Sliders className="w-4 h-4" />
-          <span>盤口設定 — 三柱 1800 碰</span>
-        </h3>
-
-        {game && !game.supports_pillar && (
-          <div className="text-[11px] text-amber-600 dark:text-amber-400">
-            {gameName}沒有三柱玩法,下面這組參數對它不會生效(換回今彩539 / 天天樂才有用)。
-          </div>
-        )}
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-[10px] uppercase tracking-[0.2em] font-semibold text-neutral-400 dark:text-neutral-500 mb-1.5">
-              每注成本 (元)
-            </label>
-            <input
-              type="number"
-              value={pillarCost}
-              onChange={e => setPillarCost(Number(e.target.value) || 0)}
-              className="w-full px-3 py-2 text-xs sm:text-sm rounded-xl border border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.03] text-neutral-900 dark:text-white font-mono focus:outline-hidden"
-            />
-          </div>
-
-          <div>
-            <label className="block text-[10px] uppercase tracking-[0.2em] font-semibold text-neutral-400 dark:text-neutral-500 mb-1.5">
-              中一注可得 (元)
-            </label>
-            <input
-              type="number"
-              value={pillarPrize}
-              onChange={e => setPillarPrize(Number(e.target.value) || 0)}
-              className="w-full px-3 py-2 text-xs sm:text-sm rounded-xl border border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.03] text-neutral-900 dark:text-white font-mono focus:outline-hidden"
-            />
-          </div>
-        </div>
-
-        <h3 className="text-sm font-display font-bold text-neutral-900 dark:text-white uppercase tracking-wide flex items-center gap-2 pt-3 border-t border-black/[0.06] dark:border-white/[0.06]">
-          <Sliders className="w-4 h-4" />
-          <span>盤口設定 — 二合每車成本 (1組/2組共用・{gameName})</span>
-        </h3>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-[10px] uppercase tracking-[0.2em] font-semibold text-neutral-400 dark:text-neutral-500 mb-1.5">
-              每車成本 (元)
-            </label>
-            <input
-              type="number"
-              value={singleCarCost}
-              onChange={e => setSingleCarCost(Number(e.target.value) || 0)}
-              className="w-full px-3 py-2 text-xs sm:text-sm rounded-xl border border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.03] text-neutral-900 dark:text-white font-mono focus:outline-hidden"
-            />
-          </div>
-
-          <div>
-            <label className="block text-[10px] uppercase tracking-[0.2em] font-semibold text-neutral-400 dark:text-neutral-500 mb-1.5">
-              中獎可得 (元)
-            </label>
-            <input
-              type="number"
-              value={singleCarPrize}
-              onChange={e => setSingleCarPrize(Number(e.target.value) || 0)}
-              className="w-full px-3 py-2 text-xs sm:text-sm rounded-xl border border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.03] text-neutral-900 dark:text-white font-mono focus:outline-hidden"
-            />
-          </div>
-        </div>
-
-        <div className="pt-3">
-          <button
-            type="button"
-            onClick={handleSave}
-            className="px-6 py-2.5 rounded-full text-xs uppercase tracking-wider font-semibold bg-black text-white dark:bg-white dark:text-black hover:opacity-90 transition-opacity flex items-center gap-2 shadow-xs"
-          >
-            <Save className="w-3.5 h-3.5" />
-            儲存所有設定
           </button>
         </div>
       </div>
@@ -360,128 +180,8 @@ export const SettingsView: React.FC<Props> = ({ theme, onToggleTheme }) => {
         </div>
       </div>
 
-      {/* 下注版本與各版盤口 */}
+      {/* 下注版本與各版盤口(全站唯一的盤口設定入口) */}
       <EditionSettings />
-
-      {/* 連碰星數成本設定(全域,存在後端) */}
-      <div className="p-6 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] space-y-4">
-        <h3 className="text-sm font-display font-bold text-neutral-900 dark:text-white uppercase tracking-wide flex items-center gap-2">
-          <Coins className="w-4 h-4" />
-          <span>連碰星數成本設定</span>
-        </h3>
-
-        <div className="text-[11px] text-neutral-500 dark:text-neutral-400">
-          這一組是<strong className="text-neutral-700 dark:text-neutral-200">全站共用</strong>的盤口,不是個人偏好:
-          改完之後所有人的連碰 / 星碰試算、快速上傳算出來的成本都用新的數字。
-        </div>
-
-        {starCost.loading && (
-          <div className="text-[11px] text-neutral-500">載入中…</div>
-        )}
-        {starCost.error && (
-          <div className="text-[11px] text-rose-600 dark:text-rose-400">載入失敗:{starCost.error}</div>
-        )}
-
-        <div className="space-y-3">
-          {starCost.data?.stars.map(s => {
-            const key = String(s);
-            const row = starCost.data!.costs[key];
-            const def = starCost.data!.defaults[key];
-            const draft = starDraft[key] ?? { cost: row?.cost ?? 0, prize: row?.prize ?? 0 };
-            return (
-              <div
-                key={key}
-                className="p-4 rounded-xl bg-black/[0.02] dark:bg-white/[0.03] border border-black/[0.06] dark:border-white/[0.06] space-y-3"
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <div className="font-semibold text-xs text-neutral-900 dark:text-white">
-                    {starCost.data!.star_names[key]}
-                  </div>
-                  <span className={`text-[10px] px-2.5 py-1 rounded-full font-semibold whitespace-nowrap ${
-                    row?.custom
-                      ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
-                      : 'bg-black/5 dark:bg-white/10 text-neutral-500 dark:text-neutral-400'
-                  }`}>
-                    {row?.custom ? '已自訂' : '預設值'}
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-[10px] uppercase tracking-[0.2em] font-semibold text-neutral-400 dark:text-neutral-500 mb-1.5">
-                      每碰成本 (元)
-                    </label>
-                    <input
-                      type="number"
-                      value={draft.cost}
-                      disabled={!loggedIn || starSaving}
-                      onChange={e => setStarField(key, 'cost', Number(e.target.value) || 0)}
-                      className="w-full px-3 py-2 text-xs sm:text-sm rounded-xl border border-black/10 dark:border-white/10 bg-white dark:bg-white/[0.03] text-neutral-900 dark:text-white font-mono focus:outline-hidden disabled:opacity-50"
-                    />
-                    <div className="text-[10px] text-neutral-400 mt-1 font-mono">
-                      預設 {def?.cost.toLocaleString()}
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-[10px] uppercase tracking-[0.2em] font-semibold text-neutral-400 dark:text-neutral-500 mb-1.5">
-                      中一碰派彩 (元)
-                    </label>
-                    <input
-                      type="number"
-                      value={draft.prize}
-                      disabled={!loggedIn || starSaving}
-                      onChange={e => setStarField(key, 'prize', Number(e.target.value) || 0)}
-                      className="w-full px-3 py-2 text-xs sm:text-sm rounded-xl border border-black/10 dark:border-white/10 bg-white dark:bg-white/[0.03] text-neutral-900 dark:text-white font-mono focus:outline-hidden disabled:opacity-50"
-                    />
-                    <div className="text-[10px] text-neutral-400 mt-1 font-mono">
-                      預設 {def?.prize.toLocaleString()}
-                      {draft.cost > 0 && ` / 約 1 賠 ${(draft.prize / draft.cost).toFixed(1)}`}
-                    </div>
-                  </div>
-                </div>
-
-                {row?.custom && row.updated && (
-                  <div className="text-[10px] text-neutral-400">
-                    最後修改 {row.updated}
-                    {row.updated_by && ` — ${row.updated_by}`}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-
-        {starMsg && <div className="text-[11px] text-emerald-600 dark:text-emerald-400">{starMsg}</div>}
-        {starErr && <div className="text-[11px] text-rose-600 dark:text-rose-400">儲存失敗:{starErr}</div>}
-        {!loggedIn && (
-          <div className="text-[11px] text-neutral-500 dark:text-neutral-400">
-            修改全站盤口需要登入(未登入仍看得到目前生效的數字)。
-          </div>
-        )}
-
-        <div className="flex flex-wrap items-center gap-3">
-          <button
-            type="button"
-            onClick={handleSaveStarCost}
-            disabled={!loggedIn || starSaving || !starCost.data}
-            className="px-6 py-2.5 rounded-full text-xs uppercase tracking-wider font-semibold bg-black text-white dark:bg-white dark:text-black hover:opacity-90 transition-opacity flex items-center gap-2 shadow-xs disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            <Save className="w-3.5 h-3.5" />
-            {starSaving ? '儲存中…' : '儲存星數盤口'}
-          </button>
-
-          <button
-            type="button"
-            onClick={handleResetStarCost}
-            disabled={!loggedIn || starSaving || !starCost.data}
-            className="px-4 py-2.5 rounded-full text-xs uppercase tracking-wider font-semibold border border-black/10 dark:border-white/10 text-neutral-600 dark:text-neutral-300 hover:bg-black/[0.03] dark:hover:bg-white/[0.05] transition-colors flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-            還原預設
-          </button>
-        </div>
-      </div>
 
       {/* 開獎資料更新狀態 */}
       <div className="p-6 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] space-y-4">

@@ -569,25 +569,35 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported})
           )}
 
           {/* 上傳歷史:每批的下注明細(玩法/號碼/成本)+ 這批總下注成本 */}
-          {history.length > 0 && (
-            <div className="space-y-2">
+          <div className="space-y-2 pt-2 border-t border-black/[0.06] dark:border-white/[0.06]">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] font-semibold text-neutral-400">
                   <History className="w-3.5 h-3.5" />
                   <span>上傳歷史</span>
-                  <span className="font-mono text-neutral-500 normal-case tracking-normal">
-                    (累計 {money(historyTotal)})
-                  </span>
+                  {history.length > 0 && (
+                    <span className="font-mono text-neutral-500 normal-case tracking-normal">
+                      (累計 {money(historyTotal)})
+                    </span>
+                  )}
                 </div>
-                <button
-                  type="button"
-                  onClick={clearHistory}
-                  className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold text-neutral-500 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
-                >
-                  <Trash2 className="w-3 h-3" />
-                  清除歷史
-                </button>
+                {history.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={clearHistory}
+                    className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold text-neutral-500 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                    清除歷史
+                  </button>
+                )}
               </div>
+
+              {history.length === 0 && (
+                <div className="text-[11px] text-neutral-400 dark:text-neutral-500 leading-relaxed p-2.5 rounded-xl bg-black/[0.02] dark:bg-white/[0.03]">
+                  完成一次「確認上傳」後,這裡會保留該批的<strong>原始文本</strong>、
+                  每筆<strong>下注明細與成本</strong>,以及<strong>總下注成本</strong>(存在本機瀏覽器,重開仍在)。
+                </div>
+              )}
 
               <div className="space-y-2">
                 {history.map(h => (
@@ -659,8 +669,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported})
                   </div>
                 ))}
               </div>
-            </div>
-          )}
+          </div>
         </div>
 
         {/* Modal Footer */}
