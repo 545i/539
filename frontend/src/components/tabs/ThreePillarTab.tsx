@@ -241,38 +241,6 @@ export const ThreePillarTab: React.FC = () => {
               或按<strong>「一鍵全包」</strong>包下 {sizes.join('×')} = {totalBets.toLocaleString()} 注。號碼由你決定屬於哪一柱。
             </div>
 
-            {/* 已保存的柱 */}
-            {savedPillars.length > 0 && (
-              <div className="space-y-1.5">
-                {savedPillars.map((p, i) => {
-                  const theme = [
-                    'border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.03] text-neutral-900 dark:text-white',
-                    'border-amber-500/20 bg-amber-500/5 text-amber-700 dark:text-amber-300',
-                    'border-emerald-500/20 bg-emerald-500/5 text-emerald-700 dark:text-emerald-300',
-                  ][i % 3];
-                  return (
-                    <div key={i} className={`p-2.5 rounded-xl border flex items-center justify-between gap-2 ${theme}`}>
-                      <div className="min-w-0">
-                        <div className="text-[10px] uppercase tracking-wider font-semibold opacity-70">
-                          {PILLAR_NAMES[i] ?? `第${i + 1}柱`}({p.length}顆)
-                        </div>
-                        <div className="text-xs font-mono font-bold mt-0.5 break-all">
-                          {p.map(pad).join(' ')}
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => removePillar(i)}
-                        className="shrink-0 p-1 rounded-lg text-neutral-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
-                      >
-                        <XCircle className="w-4 h-4" />
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
             {/* 快速:一鍵全包(三柱各自全選)或帶入某柱範圍當作目前選取 */}
             <div className="flex flex-wrap items-center gap-1.5">
               <button
@@ -327,6 +295,38 @@ export const ThreePillarTab: React.FC = () => {
                 </button>
               );
             })()}
+
+            {/* 已保存的柱(在保存動作下方,順著由上往下的操作流程) */}
+            {savedPillars.length > 0 && (
+              <div className="space-y-1.5">
+                {savedPillars.map((p, i) => {
+                  const theme = [
+                    'border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.03] text-neutral-900 dark:text-white',
+                    'border-amber-500/20 bg-amber-500/5 text-amber-700 dark:text-amber-300',
+                    'border-emerald-500/20 bg-emerald-500/5 text-emerald-700 dark:text-emerald-300',
+                  ][i % 3];
+                  return (
+                    <div key={i} className={`p-2.5 rounded-xl border flex items-center justify-between gap-2 ${theme}`}>
+                      <div className="min-w-0">
+                        <div className="text-[10px] uppercase tracking-wider font-semibold opacity-70">
+                          {PILLAR_NAMES[i] ?? `第${i + 1}柱`}({p.length}顆)
+                        </div>
+                        <div className="text-xs font-mono font-bold mt-0.5 break-all">
+                          {p.map(pad).join(' ')}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removePillar(i)}
+                        className="shrink-0 p-1 rounded-lg text-neutral-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+                      >
+                        <XCircle className="w-4 h-4" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
 
             {/* 下注支數(倍投) */}
             <div className="space-y-1.5">
