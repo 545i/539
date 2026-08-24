@@ -85,9 +85,9 @@ def on_new_draw(game_key: str) -> None:
 
 # ── /提醒 指令:開獎狀況 + 區間組合斷檔 + 大區間斷檔(唯讀) ──────────
 def _thirds(num_max: int) -> list[tuple[str, list[int]]]:
-    """前 / 中 / 後三段(比照使用者的 0~12 / 13~25 / 26~39,依 num_max 等比)。"""
-    b1 = round(num_max * 12 / 39)
-    b2 = round(num_max * 25 / 39)
+    """前 / 中 / 後三段,均分(39 → 前 01~13、中 14~26、後 27~39,各 13 顆)。"""
+    b1 = round(num_max / 3)
+    b2 = round(num_max * 2 / 3)
     return [
         ("前", list(range(1, b1 + 1))),
         ("中", list(range(b1 + 1, b2 + 1))),
