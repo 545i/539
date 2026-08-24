@@ -60,6 +60,16 @@ def test_parse_routes_by_order():
     assert items[0].balls == [21, 24] and items[1].balls == [3, 11, 35]
 
 
+def test_parse_car_without_char():
+    # 結尾「車」字可省略:21_24x20 等同 21_24x20車
+    text = "21_24x20\n03_11_35x10"
+    items, errors = importer.parse(text, G, _odds())
+    assert errors == []
+    assert [it.mode for it in items] == ["single", "multi"]
+    assert items[0].balls == [21, 24] and items[0].units == 20
+    assert items[1].balls == [3, 11, 35] and items[1].units == 10
+
+
 def test_parse_third_erhe_line_errors():
     text = "01_02x5車\n03_04x5車\n05_06x5車"
     items, errors = importer.parse(text, G, _odds())
