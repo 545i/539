@@ -4,7 +4,8 @@ import {
   ChevronDown,
   ShieldAlert,
   Info,
-  ClipboardPaste
+  ClipboardPaste,
+  History
 } from 'lucide-react';
 import { NavItem, DuoBetTab, ThemeMode } from './types';
 import { Sidebar } from './components/Sidebar';
@@ -12,6 +13,7 @@ import { Header } from './components/Header';
 import { FormulaModal } from './components/FormulaModal';
 import { LoginModal } from './components/LoginModal';
 import { QuickImportModal } from './components/QuickImportModal';
+import { UploadHistoryModal } from './components/UploadHistoryModal';
 import { useAuth } from './api/useAuth';
 import { useGroups } from './api/useGroups';
 import { useEditions } from './api/useEditions';
@@ -52,6 +54,9 @@ export default function App() {
   const [formulaModalType, setFormulaModalType] = useState<'formula' | 'disclaimer'>('formula');
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [isQuickImportOpen, setIsQuickImportOpen] = useState(false);
+  const [isUploadHistoryOpen, setIsUploadHistoryOpen] = useState(false);
+  // 從上傳歷史「填回」帶回快速上傳的文本
+  const [importInitialText, setImportInitialText] = useState<string>('');
   // 快速上傳寫進去的紀錄要讓各分頁重抓 —— useLedger 只在 loggedIn / mode 變才撈,
   // 所以拿這個計數器當分頁容器的 key,一變就重掛,流水自然重新載入。
   const [ledgerVersion, setLedgerVersion] = useState(0);
@@ -148,15 +153,25 @@ export default function App() {
                     紀錄下注矩陣
                   </h2>
                   {/* 貼一段下注文字 → 一次記多筆(解析規則見 backend/routers/importer.py) */}
-                  <button
-                    type="button"
-                    id="open-quick-import-btn"
-                    onClick={() => setIsQuickImportOpen(true)}
-                    className="shrink-0 py-2 px-3.5 rounded-full text-xs font-semibold uppercase tracking-wider bg-white dark:bg-[#161616] border border-black/[0.08] dark:border-white/[0.08] text-neutral-700 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5 transition-colors flex items-center gap-1.5"
-                  >
-                    <ClipboardPaste className="w-3.5 h-3.5" />
-                    <span>快速上傳</span>
-                  </button>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setIsUploadHistoryOpen(true)}
+                      className="py-2 px-3.5 rounded-full text-xs font-semibold uppercase tracking-wider bg-white dark:bg-[#161616] border border-black/[0.08] dark:border-white/[0.08] text-neutral-700 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5 transition-colors flex items-center gap-1.5"
+                    >
+                      <History className="w-3.5 h-3.5" />
+                      <span>上傳歷史</span>
+                    </button>
+                    <button
+                      type="button"
+                      id="open-quick-import-btn"
+                      onClick={() => setIsQuickImportOpen(true)}
+                      className="py-2 px-3.5 rounded-full text-xs font-semibold uppercase tracking-wider bg-white dark:bg-[#161616] border border-black/[0.08] dark:border-white/[0.08] text-neutral-700 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5 transition-colors flex items-center gap-1.5"
+                    >
+                      <ClipboardPaste className="w-3.5 h-3.5" />
+                      <span>快速上傳</span>
+                    </button>
+                  </div>
                 </div>
 
                 {/* 版切換:紀錄下注 / 快速上傳都記到選中的版(各版盤口、累積損益獨立) */}
@@ -308,8 +323,20 @@ export default function App() {
       {/* 快速上傳下注紀錄 */}
       <QuickImportModal
         isOpen={isQuickImportOpen}
-        onClose={() => setIsQuickImportOpen(false)}
+        onClose={() => { setIsQuickImportOpen(false); setImportInitialText(''); }}
         onImported={() => setLedgerVersion(v => v + 1)}
+        initialText={importInitialText}
+      />
+
+      {/* 上傳歷史(獨立彈窗):查看文本 + 明細 + 總成本;「填回」帶回快速上傳 */}
+      <UploadHistoryModal
+        isOpen={isUploadHistoryOpen}
+        onClose={() => setIsUploadHistoryOpen(false)}
+        onRefill={(t) => {
+          setImportInitialText(t);
+          setIsUploadHistoryOpen(false);
+          setIsQuickImportOpen(true);
+        }}
       />
     </div>
   );

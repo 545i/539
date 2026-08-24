@@ -1,10 +1,14 @@
 import React, {useEffect, useMemo, useState} from 'react';
-import {X, ClipboardPaste, ListChecks, Upload, AlertTriangle, CheckCircle2, History, Trash2, CornerDownLeft} from 'lucide-react';
+import {X, ClipboardPaste, ListChecks, Upload, AlertTriangle, CheckCircle2} from 'lucide-react';
 import {api, QuickImportDTO, LedgerMode, TensPairDTO} from '../api/client';
 import {useAsync} from '../api/useAsync';
 import {useAuth} from '../api/useAuth';
 import {useGame} from '../api/useGame';
 import {useEditions} from '../api/useEditions';
+import {
+  UploadHistoryEntry, UploadHistoryItem, MODE_LABEL, HISTORY_CAP,
+  loadHistory, saveHistory, money,
+} from './uploadHistory';
 
 // 快速上傳下注紀錄:貼一段下注文字 → 預覽 → 確認寫進自己的記帳流水。
 //
@@ -13,19 +17,16 @@ import {useEditions} from '../api/useEditions';
 //
 // 先「解析預覽」(dry_run)再「確認上傳」是刻意的兩步:文字認錯行的機率不低,
 // 直接寫進去要一筆一筆撤銷很麻煩。
+//
+// 上傳歷史(文本 + 明細 + 總成本)在獨立彈窗 UploadHistoryModal;這裡只負責
+// 在「確認上傳」成功後把該批寫進 localStorage(見 uploadHistory.ts)。
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
   onImported?: () => void; // 上傳成功後通知外面重抓流水
+  initialText?: string;    // 從上傳歷史「填回」帶回來的文本(開啟時預填文字框)
 }
-
-const MODE_LABEL: Record<LedgerMode, string> = {
-  single: '1組',
-  multi: '2組',
-  pillar1800: '1800碰',
-  combo: '連碰',
-};
 
 // 預覽裡一列可編輯的解析結果(號碼與支/車可改;連碰另記 stars 供後端重算成本)
 interface DraftItem {
@@ -42,56 +43,6 @@ function parseBalls(s: string): number[] {
   return (s.match(/\d{1,2}/g) ?? []).map(Number).filter(n => n > 0);
 }
 
-// ── 上傳歷史(存 localStorage:記原始文本 + 下注明細 + 總成本,重開仍在)────
-interface UploadHistoryItem {
-  mode: LedgerMode;
-  playType: string;   // 玩法(含碰/注數)
-  balls: number[];    // 號碼
-  units: number;      // 支 / 車
-  cost: number;       // 這筆成本(後端重算)
-  costExpr: string;   // 成本計算式(怎麼算的)
-}
-
-interface UploadHistoryEntry {
-  ts: number;
-  gameName: string;
-  editionName: string;
-  issue: string;
-  text: string;                 // 原始文本(可填回文字框重用)
-  count: number;                // 實際寫入筆數
-  totalCost: number;            // 這批的總下注成本(每筆 cost 加總)
-  items: UploadHistoryItem[];   // 下注明細(每筆玩法/號碼/成本)
-}
-
-const HISTORY_KEY = 'lotto539_quick_import_history';
-const HISTORY_CAP = 30;
-
-function loadHistory(): UploadHistoryEntry[] {
-  try {
-    const raw = localStorage.getItem(HISTORY_KEY);
-    const arr = raw ? (JSON.parse(raw) as UploadHistoryEntry[]) : [];
-    return Array.isArray(arr) ? arr : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveHistory(list: UploadHistoryEntry[]): void {
-  try {
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(list.slice(0, HISTORY_CAP)));
-  } catch {
-    // localStorage 滿了 / 隱私模式 —— 歷史是加分功能,存不了就算了
-  }
-}
-
-function fmtTime(ts: number): string {
-  const d = new Date(ts);
-  const p = (n: number) => String(n).padStart(2, '0');
-  return `${p(d.getMonth() + 1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
-}
-
-const money = (n: number) => `$${Math.round(n).toLocaleString()}`;
-
 const SAMPLE = `02x50車
 09_15_19_20x20車
 02_09_15_19_20_25_28_33
@@ -102,7 +53,7 @@ const SAMPLE = `02x50車
 其他400`;
 
 
-export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported}) => {
+export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, initialText}) => {
   const {loggedIn} = useAuth();
   const {gameKey, game, games, setGameKey} = useGame();
   const {editions, eid, setEid} = useEditions();
@@ -113,7 +64,6 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported})
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<number | null>(null);
-  const [history, setHistory] = useState<UploadHistoryEntry[]>(() => loadHistory());
   // 每筆試算成本 + 計算式(對齊 draftItems;算不出來的 null)
   const [costs, setCosts] = useState<({cost: number; expr: string} | null)[]>([]);
   const [costBusy, setCostBusy] = useState(false);
@@ -129,6 +79,8 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported})
   useEffect(() => { setIssue(nextIssue); }, [nextIssue]);
   // 每次開啟清掉上次的成功/錯誤橫幅(歷史保留)
   useEffect(() => { if (isOpen) { setDone(null); setError(null); } }, [isOpen]);
+  // 從上傳歷史「填回」帶回來的文本:開啟時預填文字框
+  useEffect(() => { if (isOpen && initialText) setText(initialText); }, [isOpen, initialText]);
 
   // 預覽即時試算成本:把目前(可能改過的)draft 丟後端 dry_run commit 只重算不寫入,
   // 拿回每筆 record.cost / costExpr。debounce 350ms,避免打字時一直打 API。
@@ -255,13 +207,10 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported})
         totalCost,
         items: detail,
       };
-      setHistory(prev => {
-        const next = [entry, ...prev].slice(0, HISTORY_CAP);
-        saveHistory(next);
-        return next;
-      });
+      // 寫進 localStorage 上傳歷史(獨立彈窗 UploadHistoryModal 讀取)
+      saveHistory([entry, ...loadHistory()].slice(0, HISTORY_CAP));
       onImported?.();
-      // 不自動關閉:讓使用者留在頁上看到「上傳歷史」與這批的總成本
+      // 不自動關閉:讓使用者看到成功訊息;歷史到「上傳歷史」彈窗查看
       setDone(res.saved);
       setText('');
       setPreview(null);
@@ -273,12 +222,6 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported})
     }
   };
 
-  const clearHistory = () => {
-    setHistory([]);
-    saveHistory([]);
-  };
-
-  const historyTotal = history.reduce((s, h) => s + h.totalCost, 0);
   const costTotal = costs.reduce((s, c) => s + (c ? c.cost : 0), 0);
 
   const setDraft = (i: number, patch: Partial<DraftItem>) =>
@@ -568,108 +511,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported})
             </div>
           )}
 
-          {/* 上傳歷史:每批的下注明細(玩法/號碼/成本)+ 這批總下注成本 */}
-          <div className="space-y-2 pt-2 border-t border-black/[0.06] dark:border-white/[0.06]">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] font-semibold text-neutral-400">
-                  <History className="w-3.5 h-3.5" />
-                  <span>上傳歷史</span>
-                  {history.length > 0 && (
-                    <span className="font-mono text-neutral-500 normal-case tracking-normal">
-                      (累計 {money(historyTotal)})
-                    </span>
-                  )}
-                </div>
-                {history.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={clearHistory}
-                    className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold text-neutral-500 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
-                  >
-                    <Trash2 className="w-3 h-3" />
-                    清除歷史
-                  </button>
-                )}
-              </div>
-
-              {history.length === 0 && (
-                <div className="text-[11px] text-neutral-400 dark:text-neutral-500 leading-relaxed p-2.5 rounded-xl bg-black/[0.02] dark:bg-white/[0.03]">
-                  完成一次「確認上傳」後,這裡會保留該批的<strong>原始文本</strong>、
-                  每筆<strong>下注明細與成本</strong>,以及<strong>總下注成本</strong>(存在本機瀏覽器,重開仍在)。
-                </div>
-              )}
-
-              <div className="space-y-2">
-                {history.map(h => (
-                  <div
-                    key={h.ts}
-                    className="rounded-xl border border-black/[0.08] dark:border-white/[0.08] bg-black/[0.02] dark:bg-white/[0.03] overflow-hidden"
-                  >
-                    <div className="flex items-center justify-between px-3 py-2 border-b border-black/[0.06] dark:border-white/[0.06]">
-                      <div className="text-[11px] font-semibold text-neutral-700 dark:text-neutral-300">
-                        {h.gameName}・{h.editionName}
-                        {h.issue ? `・第 ${h.issue} 期` : ''}
-                        <span className="ml-1.5 font-normal text-neutral-400">{h.count} 筆</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-[11px] text-neutral-400 font-mono">{fmtTime(h.ts)}</span>
-                        <button
-                          type="button"
-                          onClick={() => { setText(h.text); reset(); }}
-                          title="把這批文本填回上方文字框"
-                          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold text-neutral-500 hover:text-black dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
-                        >
-                          <CornerDownLeft className="w-3 h-3" />
-                          填回
-                        </button>
-                      </div>
-                    </div>
-
-                    <table className="w-full text-[11px]">
-                      <tbody className="font-mono">
-                        {h.items.map((it, i) => (
-                          <React.Fragment key={i}>
-                            <tr className="border-t border-black/[0.05] dark:border-white/[0.05] first:border-t-0">
-                              <td className="px-3 pt-1.5 pb-0 align-top">
-                                <span className="px-1.5 py-0.5 rounded-full bg-black/5 dark:bg-white/10 text-[10px] mr-1.5 font-sans">
-                                  {MODE_LABEL[it.mode]}
-                                </span>
-                                <span className="font-sans text-neutral-600 dark:text-neutral-400">{it.playType}</span>
-                              </td>
-                              <td className="px-3 pt-1.5 pb-0 align-top text-neutral-700 dark:text-neutral-300">
-                                {it.balls.length > 0
-                                  ? it.balls.map(n => String(n).padStart(2, '0')).join(' ')
-                                  : '—'}
-                              </td>
-                              <td className="px-3 pt-1.5 pb-0 align-top text-right whitespace-nowrap font-bold text-neutral-900 dark:text-white">
-                                {money(it.cost)}
-                              </td>
-                            </tr>
-                            {it.costExpr && (
-                              <tr>
-                                <td colSpan={3} className="px-3 pt-0 pb-1.5 text-[10px] text-neutral-400 dark:text-neutral-500">
-                                  {it.costExpr}
-                                </td>
-                              </tr>
-                            )}
-                          </React.Fragment>
-                        ))}
-                      </tbody>
-                      <tfoot>
-                        <tr className="border-t border-black/10 dark:border-white/10 bg-black/[0.03] dark:bg-white/[0.05]">
-                          <td className="px-3 py-1.5 font-sans font-semibold text-neutral-600 dark:text-neutral-300" colSpan={2}>
-                            總下注成本
-                          </td>
-                          <td className="px-3 py-1.5 text-right font-mono font-bold text-neutral-900 dark:text-white">
-                            {money(h.totalCost)}
-                          </td>
-                        </tr>
-                      </tfoot>
-                    </table>
-                  </div>
-                ))}
-              </div>
-          </div>
+          {/* 上傳歷史已抽成獨立彈窗 UploadHistoryModal(見紀錄下注頁的「上傳歷史」鈕) */}
         </div>
 
         {/* Modal Footer */}
