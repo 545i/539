@@ -13,7 +13,8 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from backend import audit_store, autosettle, data, ledger_store, settle, ws
+from backend import (audit_store, autosettle, data, ledger_store, reconcile,
+                     settle, ws)
 from backend.deps import current_user
 from core import games
 
@@ -94,6 +95,40 @@ def add_entry(body: EntryIn, user: str = Depends(current_user)):
         reverse_data={"entry_id": entry["id"]},
     )
     return entry
+
+
+class ReconcileIn(BaseModel):
+    bill: str = ""
+    edition: int = 1
+
+
+@router.post("/reconcile")
+def reconcile_bill(body: ReconcileIn, user: str = Depends(current_user)):
+    """貼對接人帳單 → 解析 → 抓同版×同日期×同遊戲的流水(已對獎)→ 並排對帳。
+
+    回 {bill(解析結果), report(每桶 我們/他/差異 + 落差提示), records_used}。
+    找不到日期/遊戲就只回 bill 與其 errors,不硬對。
+    """
+    bill = reconcile.parse_bill(body.bill)
+    report = None
+    used = 0
+    if bill.get("date") and bill.get("game"):
+        recs = []
+        for e in ledger_store.list_entries(user):
+            rec = e.get("record") or {}
+            if str(rec.get("date", ""))[:10] != bill["date"]:
+                continue
+            if int(rec.get("edition", 1) or 1) != int(body.edition):
+                continue
+            try:
+                if games.by_name(str(rec.get("game", ""))).key != bill["game"]:
+                    continue
+            except Exception:       # noqa: BLE001
+                continue
+            recs.append(rec)
+        used = len(recs)
+        report = reconcile.reconcile(bill, recs)
+    return {"bill": bill, "report": report, "records_used": used}
 
 
 @router.post("/settle-pending")
