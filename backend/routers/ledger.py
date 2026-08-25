@@ -13,7 +13,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from backend import audit_store, autosettle, data, ledger_store, settle
+from backend import audit_store, autosettle, data, ledger_store, settle, ws
 from backend.deps import current_user
 from core import games
 
@@ -100,6 +100,11 @@ def add_entry(body: EntryIn, user: str = Depends(current_user)):
 def settle_pending(user: str = Depends(current_user)):
     """備援:一鍵把自己所有『待開獎』且該期已開的紀錄自動對獎。回傳結算幾筆。"""
     n = autosettle.settle_pending(username=user)
+    if n:
+        try:
+            ws.hub.publish({"type": "settle", "user": user, "settled": n})
+        except Exception:       # noqa: BLE001
+            pass
     return {"settled": n}
 
 

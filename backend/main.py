@@ -11,16 +11,17 @@
 """
 from __future__ import annotations
 
+import asyncio
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from backend.data import DATA_DIR, PROJECT_ROOT, all_games, game_data_path
-from backend import autosettle, bot, reminders, star_cost_store
+from backend import autosettle, bot, reminders, star_cost_store, ws
 from backend.routers import (audit, auth, combo, editions, erhe, export, games,
                              groups, history, importer, ledger, leaderboard,
                              pillar, predict, settings, star_cost, stats)
@@ -31,10 +32,15 @@ DIST_DIR = PROJECT_ROOT / "frontend" / "dist"
 
 
 def _on_new_draw(game_key: str) -> None:
-    """排程抓到新開獎時:先自動對獎(結算待開獎),再推 Telegram 提醒。"""
+    """排程抓到新開獎時:先自動對獎(結算待開獎),廣播給前端,再推 Telegram。"""
+    settled = 0
     try:
-        autosettle.settle_pending(game_key)   # 開獎時自動對獎(跨所有人 / 版)
+        settled = autosettle.settle_pending(game_key)   # 開獎時自動對獎(跨所有人 / 版)
     except Exception:       # noqa: BLE001 — 對獎失敗不影響提醒與排程
+        pass
+    try:
+        ws.hub.publish({"type": "draw", "game": game_key, "settled": settled})
+    except Exception:       # noqa: BLE001
         pass
     try:
         reminders.on_new_draw(game_key)
@@ -46,6 +52,8 @@ def _on_new_draw(game_key: str) -> None:
 async def lifespan(app: FastAPI):
     # 背景抓開獎資料(daemon thread,全行程只起一條)
     DATA_DIR.mkdir(exist_ok=True)
+    # WebSocket 廣播要用主事件迴圈(背景排程從別的執行緒丟訊息回來)
+    ws.hub.bind_loop(asyncio.get_running_loop())
     # 把後台存的連碰盤口套進 core.combo(全域生效)
     star_cost_store.apply_to_core()
     # 啟動先掃一次:補上停機期間錯過、卻已經開了的待開獎紀錄
@@ -85,6 +93,22 @@ for r in (auth.router, games.router, history.router, stats.router,
 @app.get(f"{PREFIX}/api/health")
 def health():
     return {"ok": True}
+
+
+@app.websocket(f"{PREFIX}/api/ws")
+async def ws_endpoint(websocket: WebSocket):
+    """前端連這條就會收到「開獎 / 自動對獎」等資料變動通知,收到就重抓資料。
+
+    只做保活:收到什麼都忽略,斷線就移除。真正的訊息一律由後端 hub.publish 推出。
+    """
+    await ws.hub.connect(websocket)
+    try:
+        while True:
+            await websocket.receive_text()   # 保活;內容忽略(斷線會拋例外)
+    except Exception:       # noqa: BLE001 — 斷線 / 任何錯 → 收掉這條連線
+        pass
+    finally:
+        ws.hub.disconnect(websocket)
 
 
 class SpaStaticFiles(StaticFiles):

@@ -61,6 +61,34 @@ export default function App() {
   // 所以拿這個計數器當分頁容器的 key,一變就重掛,流水自然重新載入。
   const [ledgerVersion, setLedgerVersion] = useState(0);
 
+  // WebSocket:開獎 / 自動對獎後後端會推一則,收到就 bump ledgerVersion →
+  // 各下注分頁重抓流水與開獎,不必手動刷新。斷線 3 秒自動重連。
+  useEffect(() => {
+    const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+    const url = `${wsProto}//${window.location.host}${base}/api/ws`;
+    let sock: WebSocket | null = null;
+    let alive = true;
+    let retry: number | undefined;
+    const connect = () => {
+      if (!alive) return;
+      try {
+        sock = new WebSocket(url);
+        sock.onmessage = () => setLedgerVersion(v => v + 1);
+        sock.onclose = () => { if (alive) retry = window.setTimeout(connect, 3000); };
+        sock.onerror = () => { try { sock?.close(); } catch { /* ignore */ } };
+      } catch {
+        if (alive) retry = window.setTimeout(connect, 3000);
+      }
+    };
+    connect();
+    return () => {
+      alive = false;
+      if (retry) window.clearTimeout(retry);
+      try { sock?.close(); } catch { /* ignore */ }
+    };
+  }, []);
+
   // Sync theme class to documentElement
   useEffect(() => {
     const root = document.documentElement;
