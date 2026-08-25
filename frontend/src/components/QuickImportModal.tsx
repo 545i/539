@@ -1,6 +1,7 @@
 import React, {useEffect, useMemo, useState} from 'react';
 import {X, ClipboardPaste, ListChecks, Upload, AlertTriangle, CheckCircle2} from 'lucide-react';
 import {api, QuickImportDTO, LedgerMode, TensPairDTO} from '../api/client';
+import {IssuePicker} from './IssuePicker';
 import {useAsync} from '../api/useAsync';
 import {useAuth} from '../api/useAuth';
 import {useGame} from '../api/useGame';
@@ -68,15 +69,17 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
   const [costs, setCosts] = useState<({cost: number; expr: string} | null)[]>([]);
   const [costBusy, setCostBusy] = useState(false);
 
-  // 下注期數:預設帶入「最新一期 +1」(下一期);使用者可自行改
-  const hist = useAsync(() => (isOpen ? api.history(gameKey, 1) : Promise.resolve(null)), [gameKey, isOpen]);
+  // 下注期數 / 日期:預設帶「最新一期 +1」(下一期),可用下拉改到別期(補記)
+  const [betDate, setBetDate] = useState('');
+  const hist = useAsync(() => (isOpen ? api.history(gameKey, 30) : Promise.resolve(null)), [gameKey, isOpen]);
+  const draws = hist.data?.draws ?? [];
   const nextIssue = useMemo(() => {
     const last = hist.data?.latest?.issue;
     if (!last) return '';
     const m = last.match(/^(\d+)$/);
     return m ? String(Number(m[1]) + 1) : last;
   }, [hist.data]);
-  useEffect(() => { setIssue(nextIssue); }, [nextIssue]);
+  useEffect(() => { setIssue(nextIssue); setBetDate(hist.data?.latest?.date ?? ''); }, [nextIssue, hist.data]);
   // 每次開啟清掉上次的成功/錯誤橫幅(歷史保留)
   useEffect(() => { if (isOpen) { setDone(null); setError(null); } }, [isOpen]);
   // 從上傳歷史「填回」帶回來的文本:開啟時預填文字框
@@ -101,7 +104,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
           stars: d.stars,
           hit_count: d.hit.trim() === '' ? null : Math.max(0, Math.floor(Number(d.hit) || 0)),
         }));
-        const res = await api.quickImportCommit(gameKey, items, {issue, edition: eid, dryRun: true});
+        const res = await api.quickImportCommit(gameKey, items, {issue, edition: eid, date: betDate, dryRun: true});
         if (cancelled) return;
         // 後端把算不出來的收進 errors(line_no = 1-based draft 序),其餘依序在 items
         const errLines = new Set(res.errors.map(e => e.line_no));
@@ -149,7 +152,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
     setBusy(true);
     setError(null);
     try {
-      const res = await api.quickImport(gameKey, text, true, {issue, edition: eid});
+      const res = await api.quickImport(gameKey, text, true, {issue, edition: eid, date: betDate});
       setPreview(res);
       setDraftItems(
         res.items.map(it => ({
@@ -185,7 +188,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
           stars: d.stars,
           hit_count: d.hit.trim() === '' ? null : Math.max(0, Math.floor(Number(d.hit) || 0)),
         })),
-        {issue, edition: eid},
+        {issue, edition: eid, date: betDate},
       );
       // 下注明細 + 總成本:全用後端重算後的 record(前端不重算金額)
       const detail: UploadHistoryItem[] = res.items.map(it => ({
@@ -309,17 +312,27 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
             </div>
             <div>
               <label className="block text-[10px] uppercase tracking-[0.2em] font-semibold text-neutral-400 mb-1.5">
-                下注期數
+                下注期數(可下拉選日期)
               </label>
-              <input
-                id="quick-import-issue"
-                type="text"
-                inputMode="numeric"
-                value={issue}
-                placeholder={nextIssue || '期別'}
-                onChange={e => setIssue(e.target.value)}
-                className="h-10 w-40 px-3 rounded-xl border border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.03] text-sm font-mono text-neutral-900 dark:text-white outline-hidden focus:border-black/40 dark:focus:border-white/40 transition-colors"
-              />
+              <div className="flex items-center gap-2 flex-wrap">
+                <IssuePicker
+                  issue={issue}
+                  date={betDate}
+                  draws={draws}
+                  gameLabel={game?.short_name}
+                  onSelect={(iss, d) => { setIssue(iss); setBetDate(d); reset(); }}
+                />
+                <input
+                  id="quick-import-issue"
+                  type="text"
+                  inputMode="numeric"
+                  value={issue}
+                  placeholder={nextIssue || '期別'}
+                  onChange={e => { setIssue(e.target.value); reset(); }}
+                  title="下一期(還沒開)可直接打期號"
+                  className="h-8 w-28 px-2.5 rounded-lg border border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.03] text-xs font-mono text-neutral-900 dark:text-white outline-hidden focus:border-black/40 dark:focus:border-white/40"
+                />
+              </div>
             </div>
             <div className="text-[11px] text-neutral-500 dark:text-neutral-400 pb-2.5">
               記到 <strong>{game?.name ?? gameKey}</strong>(由上方遊戲切換器決定),
