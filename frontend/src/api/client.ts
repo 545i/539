@@ -84,6 +84,8 @@ const post = <T>(path: string, body: unknown) =>
 const put = <T>(path: string, body: unknown) =>
   request<T>(path, {method: 'PUT', body: JSON.stringify(body)});
 const del = <T>(path: string) => request<T>(path, {method: 'DELETE'});
+const patch = <T>(path: string, body: unknown) =>
+  request<T>(path, {method: 'PATCH', body: JSON.stringify(body)});
 
 // ── 型別(對應後端回傳)────────────────────────────────────
 export type GameKey = 'lotto539' | 'fantasy5' | 'marksix';
@@ -796,6 +798,13 @@ export const api = {
   // 某期別×版×遊戲的已結算彙總(給上傳歷史父列顯示 獲利/盈虧)
   ledgerDateSummary: (issue: string, edition: number, game: string) =>
     post<{cost: number; payout: number; n: number}>('ledger/date-summary', {issue, edition, game}),
+
+  // 快速上傳歷史(登入帳號綁定,存後端 SQL,跨裝置);entry 型別見 uploadHistory.ts
+  uploadHistoryList: <T>() => get<T[]>('upload-history'),
+  uploadHistoryAdd: <T>(entry: T) => post<T>('upload-history', {entry}),
+  uploadHistoryUpdate: <T>(ts: number, patchData: Record<string, unknown>) =>
+    patch<T>(`upload-history/${ts}`, {patch: patchData}),
+  uploadHistoryClear: () => del<{deleted: number}>('upload-history'),
 
   // 快速上傳:貼一段下注文字,dryRun 先預覽、再確認寫入(需登入)
   quickImport: (

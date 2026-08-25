@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { X, History, Trash2, CornerDownLeft, ClipboardCheck, AlertTriangle } from 'lucide-react';
 import {
-  UploadHistoryEntry, MODE_LABEL, loadHistory, saveHistory, updateHistory, fmtTime, money,
+  UploadHistoryEntry, MODE_LABEL, loadHistory, updateEntry, clearHistory as apiClearHistory, fmtTime, money,
 } from './uploadHistory';
 import { api, ReconcileDTO } from '../api/client';
 
@@ -126,9 +126,9 @@ export const UploadHistoryModal: React.FC<Props> = ({ isOpen, onClose, onRefill 
     setRecon(h?.recon ?? null);       // 帶回已保存的對帳結果
     setReconErr(null);
   };
-  const saveRecon = (ts: number) => {
+  const saveRecon = async (ts: number) => {
     if (!recon) return;
-    setHistory(updateHistory(ts, { bill: billText, recon, reconAt: Date.now() }));
+    setHistory(await updateEntry(ts, { bill: billText, recon, reconAt: Date.now() }));
   };
   const runRecon = async (eid: number) => {
     setReconBusy(true); setReconErr(null); setRecon(null);
@@ -143,9 +143,13 @@ export const UploadHistoryModal: React.FC<Props> = ({ isOpen, onClose, onRefill 
 
   const [winMap, setWinMap] = useState<Record<number, number>>({}); // ts → 已結算派彩(獲利)
 
-  // 每次開啟重讀一次(可能剛在快速上傳新增了一批)
+  // 每次開啟重讀一次(可能剛在快速上傳新增了一批);後端讀取,用 alive 防 race
   useEffect(() => {
-    if (isOpen) { setHistory(loadHistory()); setFilterEdition('all'); setExpanded(new Set()); }
+    if (!isOpen) return;
+    setFilterEdition('all'); setExpanded(new Set());
+    let alive = true;
+    loadHistory().then(list => { if (alive) setHistory(list); });
+    return () => { alive = false; };
   }, [isOpen]);
 
   // 開啟後抓每批「該期×版×遊戲」已結算派彩 → 父列直接顯示獲利(不必先對帳)
@@ -173,7 +177,7 @@ export const UploadHistoryModal: React.FC<Props> = ({ isOpen, onClose, onRefill 
     ? history
     : history.filter(h => h.editionName === filterEdition);
   const historyTotal = shown.reduce((s, h) => s + h.totalCost, 0);
-  const clearHistory = () => { setHistory([]); saveHistory([]); };
+  const clearHistory = async () => { await apiClearHistory(); setHistory([]); };
 
   return (
     <div className="fixed inset-0 z-50 flex items-stretch sm:items-center justify-center p-0 sm:p-4 bg-black/70 backdrop-blur-xs animate-in fade-in duration-200">

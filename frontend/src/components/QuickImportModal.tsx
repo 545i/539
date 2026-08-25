@@ -7,8 +7,7 @@ import {useAuth} from '../api/useAuth';
 import {useGame} from '../api/useGame';
 import {useEditions} from '../api/useEditions';
 import {
-  UploadHistoryEntry, UploadHistoryItem, MODE_LABEL, HISTORY_CAP,
-  loadHistory, saveHistory, money,
+  UploadHistoryEntry, UploadHistoryItem, MODE_LABEL, saveEntry, money,
 } from './uploadHistory';
 
 // 快速上傳下注紀錄:貼一段下注文字 → 預覽 → 確認寫進自己的記帳流水。
@@ -211,8 +210,8 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
         totalCost,
         items: detail,
       };
-      // 寫進 localStorage 上傳歷史(獨立彈窗 UploadHistoryModal 讀取)
-      saveHistory([entry, ...loadHistory()].slice(0, HISTORY_CAP));
+      // 寫進後端上傳歷史(獨立彈窗 UploadHistoryModal 讀取);未登入靜默略過
+      await saveEntry(entry);
       onImported?.();
       // 不自動關閉:讓使用者看到成功訊息;歷史到「上傳歷史」彈窗查看
       setDone(res.saved);

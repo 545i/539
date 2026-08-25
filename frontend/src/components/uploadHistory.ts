@@ -1,5 +1,6 @@
-// 快速上傳歷史:型別 + localStorage 工具(QuickImportModal 寫入、UploadHistoryModal 讀取)。
-import { LedgerMode, ReconcileDTO } from '../api/client';
+// 快速上傳歷史:型別 + 後端 SQL 存取(登入帳號綁定、跨裝置)。
+// 原本走 localStorage;現改呼叫 /upload-history(見 backend/routers/upload_history.py)。
+import { api, LedgerMode, ReconcileDTO } from '../api/client';
 
 export const MODE_LABEL: Record<LedgerMode, string> = {
   single: '1組',
@@ -32,32 +33,46 @@ export interface UploadHistoryEntry {
   reconAt?: number;             // 保存對帳的時間
 }
 
-const HISTORY_KEY = 'lotto539_quick_import_history';
 export const HISTORY_CAP = 30;
 
-export function loadHistory(): UploadHistoryEntry[] {
+/** 讀全部上傳歷史(新→舊);未登入 / 出錯回空陣列。 */
+export async function loadHistory(): Promise<UploadHistoryEntry[]> {
   try {
-    const raw = localStorage.getItem(HISTORY_KEY);
-    const arr = raw ? (JSON.parse(raw) as UploadHistoryEntry[]) : [];
-    return Array.isArray(arr) ? arr : [];
+    const list = await api.uploadHistoryList<UploadHistoryEntry>();
+    return Array.isArray(list) ? list : [];
   } catch {
     return [];
   }
 }
 
-export function saveHistory(list: UploadHistoryEntry[]): void {
+/** 新增一批;上限由後端維持。未登入 / 出錯吞掉(不影響上傳流程)。 */
+export async function saveEntry(entry: UploadHistoryEntry): Promise<void> {
   try {
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(list.slice(0, HISTORY_CAP)));
+    await api.uploadHistoryAdd<UploadHistoryEntry>(entry);
   } catch {
-    // localStorage 滿了 / 隱私模式 —— 歷史是加分功能,存不了就算了
+    // 未登入沒有跨裝置歷史;存不了就算了
   }
 }
 
-/** 更新某一批歷史(以 ts 為鍵),回傳更新後清單。 */
-export function updateHistory(ts: number, patch: Partial<UploadHistoryEntry>): UploadHistoryEntry[] {
-  const list = loadHistory().map(h => (h.ts === ts ? { ...h, ...patch } : h));
-  saveHistory(list);
-  return list;
+/** 更新某一批(以 ts 為鍵);回傳更新後清單(重讀)。 */
+export async function updateEntry(
+  ts: number, patch: Partial<UploadHistoryEntry>,
+): Promise<UploadHistoryEntry[]> {
+  try {
+    await api.uploadHistoryUpdate<UploadHistoryEntry>(ts, patch as Record<string, unknown>);
+  } catch {
+    // 略過
+  }
+  return loadHistory();
+}
+
+/** 清空自己的上傳歷史。 */
+export async function clearHistory(): Promise<void> {
+  try {
+    await api.uploadHistoryClear();
+  } catch {
+    // 略過
+  }
 }
 
 export function fmtTime(ts: number): string {

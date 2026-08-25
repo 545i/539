@@ -24,7 +24,8 @@ from backend.data import DATA_DIR, PROJECT_ROOT, all_games, game_data_path
 from backend import autosettle, bot, reminders, star_cost_store, ws
 from backend.routers import (audit, auth, combo, editions, erhe, export, games,
                              groups, history, importer, ledger, leaderboard,
-                             pillar, predict, settings, star_cost, stats)
+                             pillar, predict, settings, star_cost, stats,
+                             upload_history)
 from core import autoupdate
 
 PREFIX = os.environ.get("APP_PREFIX", "").rstrip("/")
@@ -86,7 +87,7 @@ for r in (auth.router, games.router, history.router, stats.router,
           pillar.router, combo.router, erhe.router, ledger.router,
           leaderboard.router, export.router, settings.router,
           predict.router, importer.router, star_cost.router, audit.router,
-          groups.router, editions.router):
+          groups.router, editions.router, upload_history.router):
     app.include_router(r, prefix=api_prefix)
 
 
