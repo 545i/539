@@ -35,10 +35,11 @@ def settle_record_if_drawn(record: dict, g) -> dict:
     return out
 
 
-def settle_pending(game_key: str | None = None) -> int:
-    """把所有『待開獎』且該期已開的紀錄結算掉(跨所有使用者 / 版);回傳結算幾筆。
+def settle_pending(game_key: str | None = None, username: str | None = None) -> int:
+    """把『待開獎』且該期已開的紀錄結算掉;回傳結算幾筆。
 
     game_key 有給就只處理那一款(開獎時只動剛更新的款)。
+    username 有給就只處理那個人的(使用者按「一鍵對獎」備援鈕時用);None = 全站。
     """
     settled = 0
     try:
@@ -46,6 +47,8 @@ def settle_pending(game_key: str | None = None) -> int:
     except Exception:       # noqa: BLE001 — 讀不到就當作沒有,別拖垮排程
         return 0
     for e in entries:
+        if username is not None and e.get("username") != username:
+            continue
         rec = e.get("record") or {}
         if str(rec.get("result", "")) != PENDING:
             continue

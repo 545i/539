@@ -8,6 +8,7 @@ import {
   XCircle,
   Layers,
   RotateCcw,
+  RefreshCw,
   Minus,
   Plus
 } from 'lucide-react';
@@ -63,6 +64,9 @@ export const ThreePillarTab: React.FC = () => {
   const [selectedBalls, setSelectedBalls] = useState<number[]>([]);
   // 自選手動組柱:已保存的各柱號碼(不再自動依範圍歸柱)
   const [savedPillars, setSavedPillars] = useState<number[][]>([]);
+  // 備援「一鍵對獎」狀態
+  const [settleBusy, setSettleBusy] = useState(false);
+  const [settleMsg, setSettleMsg] = useState<string | null>(null);
 
   const supported = !!gameCfg?.supports_pillar;
 
@@ -191,6 +195,21 @@ export const ThreePillarTab: React.FC = () => {
     });
     setSavedPillars([]);
     setSelectedBalls([]);
+  };
+
+  // 備援:一鍵把所有「待開獎」且該期已開的紀錄自動對獎,再重抓流水
+  const handleSettlePending = async () => {
+    setSettleBusy(true);
+    setSettleMsg(null);
+    try {
+      const res = await api.ledgerSettlePending();
+      ledger.reload();
+      setSettleMsg(res.settled > 0 ? `已自動對獎 ${res.settled} 筆` : '沒有待對獎的紀錄(都對過了)');
+    } catch (e) {
+      setSettleMsg((e as Error).message);
+    } finally {
+      setSettleBusy(false);
+    }
   };
 
   return (
@@ -546,16 +565,31 @@ export const ThreePillarTab: React.FC = () => {
               <h3 className="text-xs sm:text-sm font-display font-bold text-neutral-900 dark:text-white uppercase tracking-wide">
                 02 / 三柱流水帳與過關核對
               </h3>
-              <button
-                type="button"
-                onClick={ledger.undo}
-                disabled={records.length === 0}
-                className="text-[11px] font-semibold text-neutral-500 hover:text-neutral-900 dark:hover:text-white disabled:opacity-30 transition-colors flex items-center gap-1 active:scale-95"
-              >
-                <RotateCcw className="w-3 h-3" />
-                撤銷上一筆
-              </button>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={handleSettlePending}
+                  disabled={settleBusy || !ledger.loggedIn}
+                  title="備援:一鍵把所有待開獎且已開的紀錄自動對獎"
+                  className="text-[11px] font-semibold text-neutral-500 hover:text-neutral-900 dark:hover:text-white disabled:opacity-30 transition-colors flex items-center gap-1 active:scale-95"
+                >
+                  <RefreshCw className={`w-3 h-3 ${settleBusy ? 'animate-spin' : ''}`} />
+                  {settleBusy ? '對獎中…' : '一鍵對獎'}
+                </button>
+                <button
+                  type="button"
+                  onClick={ledger.undo}
+                  disabled={records.length === 0}
+                  className="text-[11px] font-semibold text-neutral-500 hover:text-neutral-900 dark:hover:text-white disabled:opacity-30 transition-colors flex items-center gap-1 active:scale-95"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  撤銷上一筆
+                </button>
+              </div>
             </div>
+            {settleMsg && (
+              <div className="text-[11px] text-emerald-600 dark:text-emerald-400">{settleMsg}</div>
+            )}
 
             {ledger.loading && <div className="text-xs text-neutral-400">載入流水帳中…</div>}
             {ledger.error && <div className="text-xs text-rose-500">{ledger.error}</div>}
@@ -585,6 +619,7 @@ export const ThreePillarTab: React.FC = () => {
                         onRefresh={() => ledger.resettle(rec.id, rec.issue)}
                         onManualHit={(k) => ledger.resettle(rec.id, rec.issue, k)}
                         manualPillars={rec.pillars?.length || 3}
+                        gameLabel={gameCfg.short_name}
                       />
                     </div>
 
@@ -659,6 +694,7 @@ export const ThreePillarTab: React.FC = () => {
                           onRefresh={() => ledger.resettle(rec.id, rec.issue)}
                         onManualHit={(k) => ledger.resettle(rec.id, rec.issue, k)}
                         manualPillars={rec.pillars?.length || 3}
+                        gameLabel={gameCfg.short_name}
                         />
                       </td>
                       <td className="text-xs font-semibold">{rec.game.split('(')[0]}</td>

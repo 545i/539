@@ -25,6 +25,8 @@ interface IssuePickerProps {
   onManualHit?: (hitCount: number) => void;
   // 1800碰:分幾柱填「各柱中幾顆」,中碰=各柱相乘(取代單一「中N」)。
   manualPillars?: number;
+  // 下拉選項要不要一起顯示遊戲名(期號+日期+遊戲+開獎號)。
+  gameLabel?: string;
   className?: string;
 }
 
@@ -36,8 +38,14 @@ export const IssuePicker: React.FC<IssuePickerProps> = ({
   onRefresh,
   onManualHit,
   manualPillars,
+  gameLabel,
   className = '',
 }) => {
+  // 期號 + 日期 +(遊戲)+ 開獎號 —— 下拉展開時每個選項都看得到,方便核對
+  const optionText = (o: DrawDTO): string => {
+    const nums = (o.nums ?? []).map(n => String(n).padStart(2, '0')).join(' ');
+    return `${o.issue}（${o.date}）${gameLabel ? ` ${gameLabel}` : ''}${nums ? ` ${nums}` : ''}`;
+  };
   // 新→舊,最新一期排最上面
   const options = React.useMemo(() => [...draws].reverse(), [draws]);
   const inList = options.some(o => o.issue === issue);
@@ -71,7 +79,7 @@ export const IssuePicker: React.FC<IssuePickerProps> = ({
           )}
           {options.map(o => (
             <option key={o.issue} value={o.issue}>
-              {o.issue}（{o.date}）
+              {optionText(o)}
             </option>
           ))}
         </select>

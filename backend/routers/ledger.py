@@ -96,6 +96,13 @@ def add_entry(body: EntryIn, user: str = Depends(current_user)):
     return entry
 
 
+@router.post("/settle-pending")
+def settle_pending(user: str = Depends(current_user)):
+    """備援:一鍵把自己所有『待開獎』且該期已開的紀錄自動對獎。回傳結算幾筆。"""
+    n = autosettle.settle_pending(username=user)
+    return {"settled": n}
+
+
 @router.post("/settle-preview")
 def settle_preview(body: PreviewIn):
     """把一筆紀錄對到某期開獎號後長怎樣 —— 不寫 DB(未登入的核對列表用)。

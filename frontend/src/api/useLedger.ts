@@ -46,6 +46,8 @@ export function useLedger(
   const [remote, setRemote] = useState<BetRecord[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+  const reload = useCallback(() => setReloadKey(k => k + 1), []);
 
   useEffect(() => {
     if (!loggedIn) {
@@ -70,7 +72,7 @@ export function useLedger(
     return () => {
       alive = false;
     };
-  }, [loggedIn, mode]);
+  }, [loggedIn, mode, reloadKey]);
 
   const add = useCallback(
     async (rec: NewBetRecord) => {
@@ -171,7 +173,7 @@ export function useLedger(
     return withRunning(filtered);
   }, [loggedIn, remote, local, edition, combine]);
 
-  return {records, add, undo, clear, resettle, loading, error, loggedIn};
+  return {records, add, undo, clear, resettle, reload, loading, error, loggedIn};
 }
 
 /** 總損益頁用:一次撈四種下法的紀錄(未登入回空陣列)。 */

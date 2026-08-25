@@ -748,6 +748,10 @@ export const api = {
   ledgerClear: (mode?: LedgerMode) =>
     del<{ok: boolean; deleted: number}>(`ledger${mode ? `?mode=${mode}` : ''}`),
 
+  // 備援:一鍵把自己所有「待開獎」且該期已開的紀錄自動對獎
+  ledgerSettlePending: () =>
+    post<{settled: number}>('ledger/settle-pending', {}),
+
   // 快速上傳:貼一段下注文字,dryRun 先預覽、再確認寫入(需登入)
   quickImport: (
     game: GameKey,
