@@ -41,11 +41,10 @@ export const IssuePicker: React.FC<IssuePickerProps> = ({
   gameLabel,
   className = '',
 }) => {
-  // 期號 + 日期 +(遊戲)+ 開獎號 —— 下拉展開時每個選項都看得到,方便核對
-  const optionText = (o: DrawDTO): string => {
-    const nums = (o.nums ?? []).map(n => String(n).padStart(2, '0')).join(' ');
-    return `${o.issue}（${o.date}）${gameLabel ? ` ${gameLabel}` : ''}${nums ? ` ${nums}` : ''}`;
-  };
+  // 下拉列表只顯示 期號(日期);開獎號碼移到選到後才在 select 旁邊顯示
+  const optionText = (o: DrawDTO): string => `${o.issue}（${o.date}）`;
+  const selNums = (options.find(o => o.issue === issue)?.nums ?? [])
+    .map(n => String(n).padStart(2, '0')).join(' ');
   // 新→舊,最新一期排最上面
   const options = React.useMemo(() => [...draws].reverse(), [draws]);
   const inList = options.some(o => o.issue === issue);
@@ -85,6 +84,11 @@ export const IssuePicker: React.FC<IssuePickerProps> = ({
         </select>
         <ChevronDown className="w-3 h-3 text-neutral-400 absolute right-1.5 pointer-events-none" />
       </div>
+      {selNums && (
+        <span className="text-[11px] font-mono font-semibold text-neutral-600 dark:text-neutral-300 whitespace-nowrap">
+          {gameLabel ? `${gameLabel} ` : ''}{selNums}
+        </span>
+      )}
       {onRefresh && (
         <button
           type="button"
