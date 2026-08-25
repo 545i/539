@@ -36,10 +36,10 @@ function toRecord(entry: LedgerEntryDTO): BetRecord {
 export function useLedger(
   mode: LedgerMode,
   demoRecords: BetRecord[] = [],
-  opts: {edition?: number; combine?: boolean; game?: string} = {},
+  opts: {edition?: number; combine?: boolean} = {},
 ) {
   const {loggedIn} = useAuth();
-  const {edition, combine = false, game} = opts;
+  const {edition, combine = false} = opts;
   // 未登入時用的本地流水(沿用 v2 行為,含原本的示範資料)
   const [local, setLocal] = useState<BetRecord[]>(demoRecords);
   // 登入時用的後端流水;null = 還沒載到
@@ -165,19 +165,15 @@ export function useLedger(
 
   const records = useMemo(() => {
     const all = loggedIn ? remote ?? [] : local;
-    // 依「遊戲 + 版」篩選:
-    // - game:各下注分頁只看當前遊戲的流水。後端 ledgerList 只用 mode 撈,會把
-    //   539 / 天天樂 / 六合彩 的同一下法混在一起;不依遊戲切分,期號選擇器就會把
-    //   A 遊戲的期號套到 B 遊戲的記錄上(遊戲/期號不匹配 → 永遠對不到獎)。
-    // - edition:combine=true 看全部版合併;否則只看選中的版(舊紀錄沒 edition 當第一版)。
-    const filtered = all.filter(r => {
-      const rec = r as BetRecord;
-      const gameOk = game == null || rec.game === game;
-      const edOk = combine || edition == null || (rec.edition ?? 1) === edition;
-      return gameOk && edOk;
-    });
+    // 依版篩選:combine=true 看全部版合併;否則只看選中的版(舊紀錄沒 edition 當第一版)。
+    // 刻意不依「遊戲」篩選 —— 核對表格要混合顯示所有遊戲的流水;跨遊戲對不到期號的
+    // 問題改由「每列期號選擇器認自己記錄的遊戲」解決(見各下注分頁的 IssuePicker)。
+    const filtered =
+      combine || edition == null
+        ? all
+        : all.filter(r => ((r as BetRecord).edition ?? 1) === edition);
     return withRunning(filtered);
-  }, [loggedIn, remote, local, edition, combine, game]);
+  }, [loggedIn, remote, local, edition, combine]);
 
   return {records, add, undo, clear, resettle, reload, loading, error, loggedIn};
 }

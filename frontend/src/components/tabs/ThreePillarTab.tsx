@@ -18,6 +18,7 @@ import { api, PillarInfoDTO, TensPairDTO } from '../../api/client';
 import { useAsync } from '../../api/useAsync';
 import { useGame } from '../../api/useGame';
 import { useLedger } from '../../api/useLedger';
+import { useHistoriesByGame } from '../../api/useHistories';
 import { useEditions } from '../../api/useEditions';
 import { LotteryBallPad } from '../LotteryBallPad';
 import { IssuePicker } from '../IssuePicker';
@@ -40,15 +41,15 @@ export const ThreePillarTab: React.FC = () => {
   const oddsReq = useAsync(() => api.getEditionOdds(eid, gameKey), [eid, gameKey]);
   const odds = oddsReq.data?.fields;
   // 登入時流水存後端;未登入沿用 v2 的前端 state。依版篩選
-  const ledger = useLedger('pillar1800', INITIAL_PILLAR_RECORDS, {edition: eid, combine: combineEditions, game: gameCfg?.name});
+  const ledger = useLedger('pillar1800', INITIAL_PILLAR_RECORDS, {edition: eid, combine: combineEditions});
   const records = ledger.records;
   const [units, setUnits] = useState<number>(1);
   // 期號 / 日期:預設帶最新一期,使用者可用下拉選單改記到別期(補記 / 修期)
   const histReq = useAsync(() => api.history(gameKey, 30), [gameKey]);
   const latest = histReq.data?.latest ?? null;
-  const draws = histReq.data?.draws ?? [];
-  // 下一期(還沒開):給核對列的期號選擇器當常駐選項,讓「最新未開一期」永遠選得到
-  const nextOpt = histReq.data?.next ?? undefined;
+  // 核對表格混合顯示各遊戲的流水:每列的期號選擇器要用「那列記錄自己的遊戲」的期別,
+  // 不能用當前全域遊戲的(否則會把 A 遊戲的期號套到 B 遊戲的記錄)。以遊戲名取用。
+  const histByGame = useHistoriesByGame();
   const [issue, setIssue] = useState<string>('');
   const [issueTouched, setIssueTouched] = useState(false);
   const [betDate, setBetDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
@@ -616,9 +617,9 @@ export const ThreePillarTab: React.FC = () => {
                       <IssuePicker
                         issue={rec.issue}
                         date={rec.date}
-                        draws={draws}
+                        draws={histByGame[rec.game]?.draws ?? []}
                         onSelect={(iss) => ledger.resettle(rec.id, iss)}
-                        extraOption={nextOpt}
+                        extraOption={histByGame[rec.game]?.next ?? undefined}
                         showNums={false}
                         onRefresh={() => ledger.resettle(rec.id, rec.issue)}
                         onManualHit={(k) => ledger.resettle(rec.id, rec.issue, k)}
@@ -693,9 +694,9 @@ export const ThreePillarTab: React.FC = () => {
                         <IssuePicker
                           issue={rec.issue}
                           date={rec.date}
-                          draws={draws}
+                          draws={histByGame[rec.game]?.draws ?? []}
                           onSelect={(iss) => ledger.resettle(rec.id, iss)}
-                          extraOption={nextOpt}
+                          extraOption={histByGame[rec.game]?.next ?? undefined}
                           showNums={false}
                           onRefresh={() => ledger.resettle(rec.id, rec.issue)}
                         onManualHit={(k) => ledger.resettle(rec.id, rec.issue, k)}

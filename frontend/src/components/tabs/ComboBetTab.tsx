@@ -15,6 +15,7 @@ import { api } from '../../api/client';
 import { useAsync } from '../../api/useAsync';
 import { useGame } from '../../api/useGame';
 import { useLedger } from '../../api/useLedger';
+import { useHistoriesByGame } from '../../api/useHistories';
 import { useEditions } from '../../api/useEditions';
 
 // UI 的中文玩法名 → core.combo 的 play key(注數規則由後端依這個決定)
@@ -34,7 +35,7 @@ export const ComboBetTab: React.FC = () => {
   const oddsReq = useAsync(() => api.getEditionOdds(eid, gameKey), [eid, gameKey]);
   const odds = oddsReq.data?.fields;
   // 登入時流水存後端;未登入沿用 v2 的前端 state。依版篩選
-  const ledger = useLedger('combo', INITIAL_COMBO_RECORDS, {edition: eid, combine: combineEditions, game: game?.name});
+  const ledger = useLedger('combo', INITIAL_COMBO_RECORDS, {edition: eid, combine: combineEditions});
   const records = ledger.records;
   const [playMethod, setPlayMethod] = useState<PlayMethod>('星碰');
   const [starCount, setStarCount] = useState<'二星' | '三星' | '四星'>('三星');
@@ -44,8 +45,8 @@ export const ComboBetTab: React.FC = () => {
   const histReq = useAsync(() => api.history(gameKey, 30), [gameKey]);
   const latest = histReq.data?.latest ?? null;
   const draws = histReq.data?.draws ?? [];
-  // 下一期(還沒開):給核對列的期號選擇器當常駐選項,讓「最新未開一期」永遠選得到
-  const nextOpt = histReq.data?.next ?? undefined;
+  // 核對列的期號選擇器用「那列記錄自己的遊戲」的期別(混合顯示各遊戲,不能用全域遊戲)
+  const histByGame = useHistoriesByGame();
   const [curIssue, setCurIssue] = useState<string>('');
   const [issueTouched, setIssueTouched] = useState(false);
   const [betDate, setBetDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
@@ -437,9 +438,9 @@ export const ComboBetTab: React.FC = () => {
                       <IssuePicker
                         issue={rec.issue}
                         date={rec.date}
-                        draws={draws}
+                        draws={histByGame[rec.game]?.draws ?? []}
                         onSelect={(iss) => ledger.resettle(rec.id, iss)}
-                        extraOption={nextOpt}
+                        extraOption={histByGame[rec.game]?.next ?? undefined}
                         showNums={false}
                         onRefresh={() => ledger.resettle(rec.id, rec.issue)}
                         onManualHit={(k) => ledger.resettle(rec.id, rec.issue, k)}
@@ -512,9 +513,9 @@ export const ComboBetTab: React.FC = () => {
                         <IssuePicker
                           issue={rec.issue}
                           date={rec.date}
-                          draws={draws}
+                          draws={histByGame[rec.game]?.draws ?? []}
                           onSelect={(iss) => ledger.resettle(rec.id, iss)}
-                          extraOption={nextOpt}
+                          extraOption={histByGame[rec.game]?.next ?? undefined}
                           showNums={false}
                           onRefresh={() => ledger.resettle(rec.id, rec.issue)}
                         onManualHit={(k) => ledger.resettle(rec.id, rec.issue, k)}

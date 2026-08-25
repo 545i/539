@@ -12,6 +12,7 @@ import { api, ErhePlanDTO, GroupDTO } from '../../api/client';
 import { useAsync } from '../../api/useAsync';
 import { useGame } from '../../api/useGame';
 import { useLedger } from '../../api/useLedger';
+import { useHistoriesByGame } from '../../api/useHistories';
 import { useEditions } from '../../api/useEditions';
 
 // 二合買牌的「組」下注控制台。取代原本寫死的 SingleBetTab / MultiBetTab ——
@@ -38,8 +39,8 @@ export const GroupBetTab: React.FC<Props> = ({ group }) => {
   const histReq = useAsync(() => api.history(gameKey, 30), [gameKey]);
   const latest = histReq.data?.latest ?? null;
   const draws = histReq.data?.draws ?? [];
-  // 下一期(還沒開):給核對列的期號選擇器當常駐選項,讓「最新未開一期」永遠選得到
-  const nextOpt = histReq.data?.next ?? undefined;
+  // 核對列的期號選擇器用「那列記錄自己的遊戲」的期別(混合顯示各遊戲,不能用全域遊戲)
+  const histByGame = useHistoriesByGame();
   const [curIssue, setCurIssue] = useState<string>('');
   const [issueTouched, setIssueTouched] = useState(false);
   const [betDate, setBetDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
@@ -55,7 +56,7 @@ export const GroupBetTab: React.FC<Props> = ({ group }) => {
   };
 
   // 登入時流水存後端;未登入沿用前端 state。依「版」篩選(本版 / 全部版合併由滑塊決定)
-  const ledger = useLedger(group.mode, [], {edition: eid, combine: combineEditions, game: game?.name});
+  const ledger = useLedger(group.mode, [], {edition: eid, combine: combineEditions});
   const records = ledger.records;
 
   // 不固定顆數:依「這一組最新一筆下注紀錄」建議顆數 / 車數。沒有紀錄就退回設定的預設顆數。
@@ -485,9 +486,9 @@ export const GroupBetTab: React.FC<Props> = ({ group }) => {
                         <IssuePicker
                           issue={rec.issue}
                           date={rec.date}
-                          draws={draws}
+                          draws={histByGame[rec.game]?.draws ?? []}
                           onSelect={(iss) => ledger.resettle(rec.id, iss)}
-                          extraOption={nextOpt}
+                          extraOption={histByGame[rec.game]?.next ?? undefined}
                           showNums={false}
                           onRefresh={() => ledger.resettle(rec.id, rec.issue)}
                           onManualHit={(k) => ledger.resettle(rec.id, rec.issue, k)}
