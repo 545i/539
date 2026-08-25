@@ -42,28 +42,17 @@ export const IssuePicker: React.FC<IssuePickerProps> = ({
   const options = React.useMemo(() => [...draws].reverse(), [draws]);
   const inList = options.some(o => o.issue === issue);
   const [hit, setHit] = React.useState('');
-  const [pHits, setPHits] = React.useState<string[]>([]);
 
-  const usePillarHit = !!onManualHit && (manualPillars ?? 0) > 1;
+  // 1800碰 直接填「中幾碰」,其他玩法填「中幾顆」—— 差在標籤,值都是直接送去結算
+  const isPillar = (manualPillars ?? 0) > 1;
+  const hitLabel = isPillar ? '碰' : '顆';
+  const hitPlaceholder = isPillar ? '中碰' : '中N';
 
   const applyHit = () => {
     const k = Number(hit);
     if (!onManualHit || hit === '' || Number.isNaN(k) || k < 0) return;
     onManualHit(Math.floor(k));
     setHit('');
-  };
-
-  // 1800碰:各柱中幾顆 → 中碰=相乘(任一柱空白就不套用;填 0 = 斷柱)
-  const setPHit = (i: number, v: string) =>
-    setPHits(prev => { const next = [...prev]; next[i] = v; return next; });
-  const applyPillarHit = () => {
-    const n = manualPillars ?? 0;
-    if (!onManualHit || n < 1) return;
-    if (Array.from({ length: n }, (_, i) => pHits[i]).some(v => v === undefined || v.trim() === '')) return;
-    const product = Array.from({ length: n }, (_, i) => Math.max(0, Math.floor(Number(pHits[i]) || 0)))
-      .reduce((a, b) => a * b, 1);
-    onManualHit(product);
-    setPHits([]);
   };
 
   return (
@@ -98,39 +87,13 @@ export const IssuePicker: React.FC<IssuePickerProps> = ({
           <RotateCw className="w-3 h-3" />
         </button>
       )}
-      {onManualHit && usePillarHit && (
-        <div className="inline-flex items-center gap-0.5" title="忘記期數?填各柱中幾顆,中碰=各柱相乘">
-          {Array.from({ length: manualPillars ?? 0 }, (_, i) => (
-            <React.Fragment key={i}>
-              {i > 0 && <span className="text-[10px] text-neutral-400">×</span>}
-              <input
-                type="number"
-                min={0}
-                value={pHits[i] ?? ''}
-                placeholder={`柱${i + 1}`}
-                onChange={e => setPHit(i, e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') applyPillarHit(); }}
-                className="w-9 px-1 py-1 rounded-lg border border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.03] text-[11px] font-mono text-neutral-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-black/20 dark:focus:ring-white/20"
-              />
-            </React.Fragment>
-          ))}
-          <button
-            type="button"
-            onClick={applyPillarHit}
-            title="依各柱中幾顆結算(中碰=相乘,不查開獎號)"
-            className="shrink-0 px-1.5 py-1 rounded-lg border border-black/10 dark:border-white/10 text-[10px] font-semibold text-neutral-500 hover:text-neutral-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 active:scale-95 transition-colors"
-          >
-            碰
-          </button>
-        </div>
-      )}
-      {onManualHit && !usePillarHit && (
-        <div className="inline-flex items-center gap-0.5" title="忘記期數?直接填中幾顆結算">
+      {onManualHit && (
+        <div className="inline-flex items-center gap-0.5" title={`忘記期數?直接填中幾${hitLabel}結算`}>
           <input
             type="number"
             min={0}
             value={hit}
-            placeholder="中N"
+            placeholder={hitPlaceholder}
             onChange={e => setHit(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') applyHit(); }}
             className="w-12 px-1 py-1 rounded-lg border border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.03] text-[11px] font-mono text-neutral-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-black/20 dark:focus:ring-white/20"
@@ -138,10 +101,10 @@ export const IssuePicker: React.FC<IssuePickerProps> = ({
           <button
             type="button"
             onClick={applyHit}
-            title="依填入的中獎顆數結算(不查開獎號)"
+            title={`依填入的中獎${hitLabel}數結算(不查開獎號)`}
             className="shrink-0 px-1.5 py-1 rounded-lg border border-black/10 dark:border-white/10 text-[10px] font-semibold text-neutral-500 hover:text-neutral-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 active:scale-95 transition-colors"
           >
-            顆
+            {hitLabel}
           </button>
         </div>
       )}
