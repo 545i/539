@@ -325,19 +325,22 @@ def star_bets(stars: int, picked: int = STAR_PICK) -> int:
     return comb(n, k)
 
 
-def star_hits(stars: int, picked: int, matched: int) -> int:
-    """星碰中幾碰 = 選幾顆 − 星數(重不到星數就是 0)。
+def star_hits(stars: int, matched: int) -> int:
+    """星碰開獎中幾碰 = C(中顆, 星數);中不到星數就是 0(下注顆數不影響)。
 
-    重更多顆不會中更多碰 —— 一組星就是一組星,配的還是你剩下那幾顆。
+    中顆(matched)= 你選的號碼裡有幾顆開出。三星:中3→1、中4→4、中5→10;
+    四星:中4→1、中5→C(5,4)=5。
+    (四星中5顆:C(5,4)=5;已與使用者確認。)
     """
-    k, n = int(stars), int(picked)
-    return (n - k) if int(matched) >= k and n > k else 0
+    k, m = int(stars), int(matched)
+    return comb(m, k) if m >= k else 0
 
 
 def star_hits_of(stars: int, drawn, nums) -> int:
-    """由開獎號碼直接算星碰中幾碰。"""
+    """由開獎號碼直接算星碰中幾碰:中顆 = 選號 ∩ 開獎,碰數 = C(中顆, 星數)。"""
     nums = {int(x) for x in nums}
-    return star_hits(stars, len(nums), len(nums & {int(x) for x in drawn}))
+    matched = len(nums & {int(x) for x in drawn})
+    return star_hits(stars, matched)
 
 
 def star_hit_probs(stars: int, picked: int, num_max: int = 39,
@@ -345,7 +348,7 @@ def star_hit_probs(stars: int, picked: int, num_max: int = 39,
     """星碰:中的碰數 → 機率。"""
     out: dict[int, float] = {}
     for m, p in match_probs(picked, num_max, pick).items():
-        h = star_hits(stars, picked, m)
+        h = star_hits(stars, m)
         out[h] = out.get(h, 0.0) + p
     return dict(sorted(out.items()))
 
@@ -409,7 +412,7 @@ def star_joint_outcomes(stars_list, picked: int, num_max: int = 39,
         out.append({
             "matched": m,
             "prob": p,
-            "hits": {int(k): star_hits(int(k), picked, m) for k in stars_list},
+            "hits": {int(k): star_hits(int(k), m) for k in stars_list},
         })
     return out
 

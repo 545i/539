@@ -202,14 +202,18 @@ def test_star_return_reconciles_with_the_per_combo_probability():
         # 組頭報的每碰派彩低於兩平點,差額就是抽成
         assert combo.MARKET_PRIZE[k] < cost / e
 
-def test_real_payouts_match_what_the_bookie_pays():
-    """使用者的實際派彩:八顆三星中 5 碰共 285,000、四星中 4 碰共 3,000,000。
+def test_star_carry_is_combination_of_matched():
+    """星碰中碰 = C(中顆, 星數),與下注顆數無關(使用者規格)。
 
-    這兩個數字同時釘住「中幾碰」與「每碰多少」—— 對得起來才代表星碰的
-    碰數規則沒推錯。
+    三星:中3→1、中4→4、中5→10;四星:中4→1、中5→C(5,4)=5。
     """
-    assert combo.star_hits(3, 8, 3) * combo.MARKET_PRIZE[3] == 285_000
-    assert combo.star_hits(4, 8, 4) * combo.MARKET_PRIZE[4] == 3_000_000
+    assert combo.star_hits(3, 3) == 1
+    assert combo.star_hits(3, 4) == 4
+    assert combo.star_hits(3, 5) == 10
+    assert combo.star_hits(4, 4) == 1
+    assert combo.star_hits(4, 5) == 5
+    assert combo.star_hits(3, 2) == 0     # 中不到 3 顆就是槓龜
+    assert combo.star_hits(4, 3) == 0
 
 
 def test_return_rates_of_the_market_odds():
@@ -313,24 +317,19 @@ _DRAWN = [5, 11, 13, 15, 27]
 
 
 def test_star_hits_matches_the_real_example():
-    assert combo.star_hits_of(4, _DRAWN, _NUMS) == 4
-    assert combo.star_hits_of(3, _DRAWN, _NUMS) == 5
+    # _NUMS ∩ _DRAWN = {5,11,13,15} → 中 4 顆
+    # 四星:C(4,4)=1;三星:C(4,3)=4(下注 8 顆不影響)
+    assert combo.star_hits_of(4, _DRAWN, _NUMS) == 1
+    assert combo.star_hits_of(3, _DRAWN, _NUMS) == 4
 
 
-def test_star_hits_is_picked_minus_stars_not_a_combination():
-    """碰數 = 選幾顆 − 星數,**跟重了幾顆無關**(重到門檻就是那個數)。
-
-    這是星碰跟連碰最容易搞混的地方:連碰是 C(重的顆數, 星數),
-    重越多中越多;星碰重再多也還是同一組星配同樣那幾顆。
-    """
-    for m in (3, 4, 5):
-        assert combo.star_hits(3, 8, m) == 5
-    for m in (4, 5):
-        assert combo.star_hits(4, 8, m) == 4
-    assert combo.star_hits(3, 8, 2) == 0        # 重不到 3 顆就是槓龜
-    assert combo.star_hits(4, 8, 3) == 0
-    # 不是 C(重,星) × 剩餘 —— 重 4 顆的三星是 5 碰,不是 C(4,3)×4 = 16
-    assert combo.star_hits(3, 8, 4) != comb(4, 3) * 4
+def test_star_hits_is_a_combination_of_matched():
+    """星碰中碰 = C(中顆, 星數),與下注顆數無關(規則已改)。"""
+    assert [combo.star_hits(3, m) for m in (3, 4, 5)] == [1, 4, 10]
+    assert [combo.star_hits(4, m) for m in (4, 5)] == [1, 5]
+    assert combo.star_hits(3, 2) == 0        # 中不到 3 顆就是槓龜
+    assert combo.star_hits(4, 3) == 0
+    assert combo.star_hits(3, 4) == comb(4, 3)   # 就是組合數
 
 
 def test_star_bets_is_the_number_of_star_groups():
@@ -363,8 +362,8 @@ def test_star_joint_outcomes_links_the_star_levels():
     rows = combo.star_joint_outcomes([3, 4], 8)
     assert sum(r["prob"] for r in rows) == pytest.approx(1.0)
     by_m = {r["matched"]: r["hits"] for r in rows}
-    assert by_m[4] == {3: 5, 4: 4}      # 重 4 顆:三星 5 碰、四星 4 碰
-    assert by_m[3] == {3: 5, 4: 0}      # 重 3 顆:只有三星中
+    assert by_m[4] == {3: 4, 4: 1}      # 中 4 顆:三星 C(4,3)=4、四星 C(4,4)=1
+    assert by_m[3] == {3: 1, 4: 0}      # 中 3 顆:只有三星中 C(3,3)=1
     assert by_m[2] == {3: 0, 4: 0}
     # 邊際分布要跟各自算的一致
     for k in (3, 4):

@@ -87,10 +87,12 @@ def _manual(record: dict, hit_count: int, g: GameConfig) -> dict:
     odds = _odds(record, g)
 
     if mode == "combo":
+        # 星碰手填的是「中獎顆數」;碰數 = C(中顆, 星數),不受下注顆數影響
         stars = _stars_of(str(record.get("playType", "") or ""))
         prize = float(odds.get(f"combo_prize{stars}", g.default_bet_prize) or 0.0)
-        payout = k * prize * cars
-        result = f"中 {k} 碰(手填)" if k > 0 else "槓龜(手填)"
+        carry = combo.star_hits(stars, k)
+        payout = carry * prize * cars
+        result = f"中 {k} 顆・{carry} 碰(手填)" if carry > 0 else "槓龜(手填)"
     elif mode == "pillar1800":
         payout = k * cars * odds["bet_prize"]
         result = f"中 {k} 碰(手填)" if k > 0 else "槓龜(手填)"
