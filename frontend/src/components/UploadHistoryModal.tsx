@@ -14,15 +14,21 @@ interface Props {
 // 資料存在 localStorage(見 uploadHistory.ts),重開瀏覽器仍在。
 export const UploadHistoryModal: React.FC<Props> = ({ isOpen, onClose, onRefill }) => {
   const [history, setHistory] = useState<UploadHistoryEntry[]>([]);
+  const [filterEdition, setFilterEdition] = useState<string>('all');
 
   // 每次開啟重讀一次(可能剛在快速上傳新增了一批)
   useEffect(() => {
-    if (isOpen) setHistory(loadHistory());
+    if (isOpen) { setHistory(loadHistory()); setFilterEdition('all'); }
   }, [isOpen]);
 
   if (!isOpen) return null;
 
-  const historyTotal = history.reduce((s, h) => s + h.totalCost, 0);
+  // 版篩選:歷史裡出現過的版別
+  const editions = Array.from(new Set(history.map(h => h.editionName).filter(Boolean)));
+  const shown = filterEdition === 'all'
+    ? history
+    : history.filter(h => h.editionName === filterEdition);
+  const historyTotal = shown.reduce((s, h) => s + h.totalCost, 0);
   const clearHistory = () => { setHistory([]); saveHistory([]); };
 
   return (
@@ -33,9 +39,9 @@ export const UploadHistoryModal: React.FC<Props> = ({ isOpen, onClose, onRefill 
           <div className="flex items-center gap-2 font-display font-bold text-base text-neutral-900 dark:text-white uppercase tracking-wide">
             <History className="w-4 h-4 text-neutral-500" />
             <span>快速上傳歷史</span>
-            {history.length > 0 && (
+            {shown.length > 0 && (
               <span className="font-mono text-xs font-normal text-neutral-400">
-                {history.length} 批・累計 {money(historyTotal)}
+                {shown.length} 批・累計 {money(historyTotal)}
               </span>
             )}
           </div>
@@ -69,7 +75,28 @@ export const UploadHistoryModal: React.FC<Props> = ({ isOpen, onClose, onRefill 
             </div>
           )}
 
-          {history.map(h => (
+          {/* 版篩選:只看某一版的上傳歷史 */}
+          {editions.length > 1 && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-[10px] uppercase tracking-wider text-neutral-400 font-semibold">版</span>
+              {['all', ...editions].map(ed => (
+                <button
+                  key={ed}
+                  type="button"
+                  onClick={() => setFilterEdition(ed)}
+                  className={`px-2.5 py-1 rounded-lg text-[10px] font-semibold transition-all ${
+                    filterEdition === ed
+                      ? 'bg-black text-white dark:bg-white dark:text-black'
+                      : 'border border-black/10 dark:border-white/10 text-neutral-600 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5'
+                  }`}
+                >
+                  {ed === 'all' ? '全部版' : ed}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {shown.map(h => (
             <div
               key={h.ts}
               className="rounded-xl border border-black/[0.08] dark:border-white/[0.08] bg-black/[0.02] dark:bg-white/[0.03] overflow-hidden"
