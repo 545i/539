@@ -41,13 +41,14 @@ export const IssuePicker: React.FC<IssuePickerProps> = ({
   gameLabel,
   className = '',
 }) => {
-  // 下拉列表只顯示 期號(日期);開獎號碼移到選到後才在 select 旁邊顯示
-  const optionText = (o: DrawDTO): string => `${o.issue}（${o.date}）`;
-  const selNums = (options.find(o => o.issue === issue)?.nums ?? [])
-    .map(n => String(n).padStart(2, '0')).join(' ');
   // 新→舊,最新一期排最上面
   const options = React.useMemo(() => [...draws].reverse(), [draws]);
   const inList = options.some(o => o.issue === issue);
+  // 下拉「選項」顯示 期號(日期)+ 開獎號;關閉的「外觀」只顯示期號(日期)(靠 overlay)
+  const optionText = (o: DrawDTO): string => {
+    const nums = (o.nums ?? []).map(n => String(n).padStart(2, '0')).join(' ');
+    return `${o.issue}（${o.date}）${nums ? '  ' + nums : ''}`;
+  };
   const [hit, setHit] = React.useState('');
 
   // 1800碰 直接填「中幾碰」,其他玩法填「中幾顆」—— 差在標籤,值都是直接送去結算
@@ -71,7 +72,7 @@ export const IssuePicker: React.FC<IssuePickerProps> = ({
             const picked = options.find(o => o.issue === e.target.value);
             onSelect(e.target.value, picked?.date ?? date);
           }}
-          className="appearance-none pr-6 pl-2 py-1 rounded-lg border border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.03] text-[11px] font-mono font-bold text-neutral-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-black/20 dark:focus:ring-white/20 cursor-pointer"
+          className="appearance-none pr-6 pl-2 py-1 rounded-lg border border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.03] text-[11px] font-mono font-bold text-transparent focus:outline-none focus:ring-1 focus:ring-black/20 dark:focus:ring-white/20 cursor-pointer"
         >
           {issue && !inList && (
             <option value={issue}>{issue}（{date}）</option>
@@ -82,13 +83,12 @@ export const IssuePicker: React.FC<IssuePickerProps> = ({
             </option>
           ))}
         </select>
+        {/* 關閉時的乾淨外觀:只顯示 期號(日期);pointer-events-none 不擋點擊 */}
+        <span className="absolute left-2 right-6 pointer-events-none text-[11px] font-mono font-bold text-neutral-900 dark:text-white truncate">
+          {issue ? `${issue}（${date}）` : '期別'}
+        </span>
         <ChevronDown className="w-3 h-3 text-neutral-400 absolute right-1.5 pointer-events-none" />
       </div>
-      {selNums && (
-        <span className="text-[11px] font-mono font-semibold text-neutral-600 dark:text-neutral-300 whitespace-nowrap">
-          {gameLabel ? `${gameLabel} ` : ''}{selNums}
-        </span>
-      )}
       {onRefresh && (
         <button
           type="button"
