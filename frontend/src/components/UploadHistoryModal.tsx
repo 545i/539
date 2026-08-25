@@ -176,8 +176,8 @@ export const UploadHistoryModal: React.FC<Props> = ({ isOpen, onClose, onRefill 
   const clearHistory = () => { setHistory([]); saveHistory([]); };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-in fade-in duration-200">
-      <div className="w-full max-w-2xl max-h-[90vh] bg-white dark:bg-[#121212] border border-black/10 dark:border-white/10 rounded-2xl shadow-2xl flex flex-col text-neutral-800 dark:text-neutral-200">
+    <div className="fixed inset-0 z-50 flex items-stretch sm:items-center justify-center p-0 sm:p-4 bg-black/70 backdrop-blur-xs animate-in fade-in duration-200">
+      <div className="w-full h-full sm:h-auto max-w-full sm:max-w-2xl sm:max-h-[90vh] bg-white dark:bg-[#121212] border-0 sm:border border-black/10 dark:border-white/10 rounded-none sm:rounded-2xl shadow-2xl flex flex-col text-neutral-800 dark:text-neutral-200">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-black/[0.08] dark:border-white/[0.08] shrink-0">
           <div className="flex items-center gap-2 font-display font-bold text-base text-neutral-900 dark:text-white uppercase tracking-wide">
@@ -210,7 +210,7 @@ export const UploadHistoryModal: React.FC<Props> = ({ isOpen, onClose, onRefill 
           </div>
         </div>
 
-        <div className="p-6 space-y-3 overflow-y-auto">
+        <div className="flex-1 min-h-0 p-4 sm:p-6 space-y-3 overflow-y-auto">
           {history.length === 0 && (
             <div className="text-[11px] text-neutral-400 dark:text-neutral-500 leading-relaxed p-3 rounded-xl bg-black/[0.02] dark:bg-white/[0.03]">
               目前沒有上傳紀錄。到「快速上傳」貼下注文字、按<strong>「確認上傳」</strong>後,
