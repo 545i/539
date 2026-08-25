@@ -167,6 +167,28 @@ def _carry_of(rec: dict) -> int:
     return _int(m.group(1)) if m else 0
 
 
+def _cars(rec: dict) -> float:
+    """支數 / 車數:優先 cars,退而求其次 units;都沒有當 1。"""
+    for k in ("cars", "units"):
+        v = rec.get(k)
+        if isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0:
+            return float(v)
+    return 1.0
+
+
+def _total_carry(rec: dict) -> int:
+    """這筆的「總碰/注數」= 對接人帳單的「支」。
+
+    星碰(combo)/二合(single/multi):betsCount 是「每支幾碰 / 顆數」,要 × 支(車)數。
+    三柱1800碰:betsCount 已是總注數(units × 1800),直接用。
+    """
+    bc = int(rec.get("betsCount", 0) or 0)
+    mode = rec.get("mode")
+    if mode in ("combo", "single", "multi"):
+        return int(round(bc * _cars(rec)))
+    return bc
+
+
 def _slip(bill: dict, star: int) -> dict:
     slips = bill.get("slips") or {}
     return slips.get(star) or slips.get(str(star)) or {}
@@ -181,7 +203,7 @@ def reconcile(bill: dict, records: list[dict]) -> dict:
         if s is None:
             continue
         b = buckets[s]
-        b["units"] += int(rec.get("betsCount", 0) or 0)
+        b["units"] += _total_carry(rec)     # 總碰/注數(= 對接人的「支」)
         b["cost"] += round(float(rec.get("cost", 0) or 0))
         b["payout"] += round(float(rec.get("payout", 0) or 0))
         b["carry"] += _carry_of(rec)
@@ -216,11 +238,21 @@ def reconcile(bill: dict, records: list[dict]) -> dict:
     # 有紀錄、成本落差超過一半(或 > 1 萬)→ 可能貼錯日期的帳單
     maybe_wrong_date = have_records and abs(cost_gap) > max(total_theirs * 0.5, 10000)
 
+    # 該日期中獎金額 + 最終需付(誰付誰):需付 = 總成本 − 總得到
+    payout_ours = sum(b["payout"] for b in buckets.values())
+    payout_theirs = sum(w["amount"] for w in bill.get("wins", []))
+    net_ours = total_ours - payout_ours          # 正 = 我方要付,負 = 對方要付
+    net_theirs = int(bill.get("net", total_theirs - payout_theirs) or 0)
+
     return {
         "rows": rows,
         "total_cost_ours": total_ours,
         "total_cost_theirs": total_theirs,
         "cost_gap": cost_gap,
+        "payout_ours": payout_ours,
+        "payout_theirs": payout_theirs,
+        "net_ours": net_ours,
+        "net_theirs": net_theirs,
         "have_records": have_records,
         "maybe_wrong_date": maybe_wrong_date,
     }

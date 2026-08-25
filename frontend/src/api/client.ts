@@ -464,6 +464,10 @@ export interface ReconcileDTO {
     total_cost_ours: number;
     total_cost_theirs: number;
     cost_gap: number;
+    payout_ours: number;
+    payout_theirs: number;
+    net_ours: number;      // 正=我方付,負=對方付
+    net_theirs: number;
     have_records: boolean;
     maybe_wrong_date: boolean;
   } | null;

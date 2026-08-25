@@ -76,8 +76,28 @@ const ReconReport: React.FC<{ data: ReconcileDTO }> = ({ data }) => {
           </tbody>
         </table>
       </div>
+      {/* 該日期結算:中獎金額 + 最終需付(誰付誰)*/}
+      <div className="rounded-lg border border-black/10 dark:border-white/10 p-2.5 text-[11px] font-mono space-y-1">
+        <div className="flex items-center justify-between">
+          <span className="text-neutral-500">總成本 我/他</span>
+          <span>{money(report.total_cost_ours)} / {money(report.total_cost_theirs)}</span>
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="text-neutral-500">中獎金額 我/他</span>
+          <span className="text-emerald-600 dark:text-emerald-400">{money(report.payout_ours)} / {money(report.payout_theirs)}</span>
+        </div>
+        <div className="flex items-center justify-between border-t border-black/10 dark:border-white/10 pt-1">
+          <span className="font-sans font-semibold text-neutral-700 dark:text-neutral-200">最終{report.net_theirs >= 0 ? '(收/我方付)' : '(付/對方付)'}</span>
+          <span className="font-bold">
+            我 {money(report.net_ours)} / 帳單 {money(report.net_theirs)}
+            {report.net_ours !== report.net_theirs && (
+              <span className="ml-1.5 text-rose-600 dark:text-rose-400">差 {money(report.net_ours - report.net_theirs)}</span>
+            )}
+          </span>
+        </div>
+      </div>
       <div className="text-[10px] text-neutral-500 leading-relaxed">
-        紅字 = 和對接人不一致(<strong>中碰 / 得到</strong>不一致最要注意 → 誰算錯);成本差多半是盤口率不同,把這版盤口設成對接人的率即可歸零。
+        「最終」= 總成本 − 中獎金額(正 = 我方要付組頭,負 = 組頭付我方)。紅字 = 和對接人不一致(<strong>中碰 / 得到 / 最終</strong>最要注意);成本差多為盤口率不同,把這版盤口設成對接人的率即可歸零。
       </div>
     </div>
   );
