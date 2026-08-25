@@ -13,7 +13,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from backend import audit_store, data, ledger_store, settle
+from backend import audit_store, autosettle, data, ledger_store, settle
 from backend.deps import current_user
 from core import games
 
@@ -76,9 +76,18 @@ def list_entries(mode: str | None = Query(default=None),
 
 @router.post("")
 def add_entry(body: EntryIn, user: str = Depends(current_user)):
-    """新增一筆,回傳含資料庫 id 的那筆(前端拿 id 才刪得掉)。"""
+    """新增一筆,回傳含資料庫 id 的那筆(前端拿 id 才刪得掉)。
+
+    上傳時自動對獎:若這一期已經開了,直接結算(不必等使用者手動點期號)。
+    """
     _check_mode(body.mode)
-    entry = ledger_store.add_entry(user, body.mode, body.record)
+    record = body.record
+    try:
+        g = games.by_name(str(record.get("game", "")))
+        record = autosettle.settle_record_if_drawn(record, g)
+    except Exception:       # noqa: BLE001 — 對不了就照原樣存(待開獎)
+        record = body.record
+    entry = ledger_store.add_entry(user, body.mode, record)
     audit_store.log(
         user, "bet_add", target_id=entry["id"],
         summary=audit_store.summarize_record(body.mode, entry["record"]),

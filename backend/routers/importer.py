@@ -32,7 +32,8 @@ from datetime import date as _date
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
-from backend import audit_store, edition_store, group_store, ledger_store, settle
+from backend import (audit_store, autosettle, edition_store, group_store,
+                     ledger_store, settle)
 from backend.data import get_game
 from backend.deps import current_user
 from core import combo as combo_mod
@@ -413,6 +414,7 @@ def quick_import(body: QuickImportIn, user: str = Depends(current_user)):
         record = to_record(it, g, bet_date, body.issue, edition=body.edition)
         entry_id = None
         if not body.dry_run:
+            record = autosettle.settle_record_if_drawn(record, g)  # 上傳時該期已開就對獎
             entry = ledger_store.add_entry(user, it.mode, record)
             entry_id = entry["id"]
             saved.append(entry)
@@ -483,6 +485,8 @@ def quick_import_commit(body: QuickImportCommitIn, user: str = Depends(current_u
         if body.dry_run:                # 只試算成本、不寫入(預覽用)
             out.append({"id": None, "mode": item.mode, "record": record})
             continue
+        if it.hit_count is None:        # 沒手填 → 上傳時該期已開就自動對獎
+            record = autosettle.settle_record_if_drawn(record, g)
         entry = ledger_store.add_entry(user, item.mode, record)
         saved.append(entry)
         out.append({"id": entry["id"], "mode": item.mode, "record": record})

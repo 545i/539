@@ -78,6 +78,33 @@ def list_entries(username: str, mode: str | None = None) -> list[dict]:
     return [_row(r) for r in rows]
 
 
+def list_all(mode: str | None = None) -> list[dict]:
+    """全站所有紀錄(含 username / id / mode / record);自動對獎用。
+
+    跨所有使用者 —— 開獎時要把每個人的待開獎紀錄一起結算。mode 傳 None 全取。
+    """
+    where, params = "", []
+    if mode is not None:
+        where = " WHERE mode = ?"
+        params.append(mode)
+    with _conn() as c:
+        rows = c.execute(
+            "SELECT id, username, mode, payload, created FROM ledger_entries"
+            f"{where} ORDER BY id",
+            params,
+        ).fetchall()
+    out = []
+    for r in rows:
+        try:
+            record = json.loads(r[3])
+        except (ValueError, TypeError):
+            record = {}
+        out.append({"id": int(r[0]), "username": r[1], "mode": r[2],
+                    "record": record if isinstance(record, dict) else {},
+                    "created": r[4]})
+    return out
+
+
 def add_entry(username: str, mode: str, record: dict) -> dict:
     """新增一筆,回傳寫進去的那筆(含資料庫給的 id)。"""
     with _conn() as c:

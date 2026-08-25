@@ -20,7 +20,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from backend.data import DATA_DIR, PROJECT_ROOT, all_games, game_data_path
-from backend import bot, reminders, star_cost_store
+from backend import autosettle, bot, reminders, star_cost_store
 from backend.routers import (audit, auth, combo, editions, erhe, export, games,
                              groups, history, importer, ledger, leaderboard,
                              pillar, predict, settings, star_cost, stats)
@@ -30,16 +30,33 @@ PREFIX = os.environ.get("APP_PREFIX", "").rstrip("/")
 DIST_DIR = PROJECT_ROOT / "frontend" / "dist"
 
 
+def _on_new_draw(game_key: str) -> None:
+    """排程抓到新開獎時:先自動對獎(結算待開獎),再推 Telegram 提醒。"""
+    try:
+        autosettle.settle_pending(game_key)   # 開獎時自動對獎(跨所有人 / 版)
+    except Exception:       # noqa: BLE001 — 對獎失敗不影響提醒與排程
+        pass
+    try:
+        reminders.on_new_draw(game_key)
+    except Exception:       # noqa: BLE001
+        pass
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # 背景抓開獎資料(daemon thread,全行程只起一條)
     DATA_DIR.mkdir(exist_ok=True)
     # 把後台存的連碰盤口套進 core.combo(全域生效)
     star_cost_store.apply_to_core()
-    # 有新開獎 → 檢查區間組合斷檔,達門檻推 Telegram(見 backend.reminders)
+    # 啟動先掃一次:補上停機期間錯過、卻已經開了的待開獎紀錄
+    try:
+        autosettle.settle_pending()
+    except Exception:       # noqa: BLE001
+        pass
+    # 有新開獎 → 自動對獎 + 檢查斷檔推 Telegram(見 _on_new_draw)
     autoupdate.start_scheduler(
         {g.key: game_data_path(g) for g in all_games()},
-        on_done=None, on_added=reminders.on_new_draw)
+        on_done=None, on_added=_on_new_draw)
     # Telegram bot 收訊(/提醒 + 清除按鈕);沒設 token/chat_id 就不起
     bot.start()
     yield
