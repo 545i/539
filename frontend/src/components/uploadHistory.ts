@@ -1,5 +1,5 @@
 // 快速上傳歷史:型別 + localStorage 工具(QuickImportModal 寫入、UploadHistoryModal 讀取)。
-import { LedgerMode } from '../api/client';
+import { LedgerMode, ReconcileDTO } from '../api/client';
 
 export const MODE_LABEL: Record<LedgerMode, string> = {
   single: '1組',
@@ -27,6 +27,9 @@ export interface UploadHistoryEntry {
   count: number;                // 實際寫入筆數
   totalCost: number;            // 這批的總下注成本(每筆 cost 加總)
   items: UploadHistoryItem[];   // 下注明細(每筆玩法/號碼/成本)
+  bill?: string;                // 已保存的對帳帳單原文
+  recon?: ReconcileDTO;         // 已保存的對帳結果(重開就看得到)
+  reconAt?: number;             // 保存對帳的時間
 }
 
 const HISTORY_KEY = 'lotto539_quick_import_history';
@@ -48,6 +51,13 @@ export function saveHistory(list: UploadHistoryEntry[]): void {
   } catch {
     // localStorage 滿了 / 隱私模式 —— 歷史是加分功能,存不了就算了
   }
+}
+
+/** 更新某一批歷史(以 ts 為鍵),回傳更新後清單。 */
+export function updateHistory(ts: number, patch: Partial<UploadHistoryEntry>): UploadHistoryEntry[] {
+  const list = loadHistory().map(h => (h.ts === ts ? { ...h, ...patch } : h));
+  saveHistory(list);
+  return list;
 }
 
 export function fmtTime(ts: number): string {

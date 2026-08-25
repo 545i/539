@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { X, History, Trash2, CornerDownLeft, ClipboardCheck, AlertTriangle } from 'lucide-react';
 import {
-  UploadHistoryEntry, MODE_LABEL, loadHistory, saveHistory, fmtTime, money,
+  UploadHistoryEntry, MODE_LABEL, loadHistory, saveHistory, updateHistory, fmtTime, money,
 } from './uploadHistory';
 import { api, ReconcileDTO } from '../api/client';
 
@@ -116,7 +116,15 @@ export const UploadHistoryModal: React.FC<Props> = ({ isOpen, onClose, onRefill 
   const [reconErr, setReconErr] = useState<string | null>(null);
 
   const openRecon = (ts: number) => {
-    setReconTs(ts); setBillText(''); setRecon(null); setReconErr(null);
+    const h = history.find(x => x.ts === ts);
+    setReconTs(ts);
+    setBillText(h?.bill ?? '');       // 帶回已保存的帳單原文
+    setRecon(h?.recon ?? null);       // 帶回已保存的對帳結果
+    setReconErr(null);
+  };
+  const saveRecon = (ts: number) => {
+    if (!recon) return;
+    setHistory(updateHistory(ts, { bill: billText, recon, reconAt: Date.now() }));
   };
   const runRecon = async (eid: number) => {
     setReconBusy(true); setReconErr(null); setRecon(null);
@@ -219,6 +227,9 @@ export const UploadHistoryModal: React.FC<Props> = ({ isOpen, onClose, onRefill 
                   {h.gameName}・{h.editionName}
                   {h.issue ? `・第 ${h.issue} 期` : ''}
                   <span className="ml-1.5 font-normal text-neutral-400">{h.count} 筆</span>
+                  {h.reconAt && (
+                    <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[9px] font-semibold">已對帳</span>
+                  )}
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-[11px] text-neutral-400 font-mono">{fmtTime(h.ts)}</span>
@@ -273,6 +284,16 @@ export const UploadHistoryModal: React.FC<Props> = ({ isOpen, onClose, onRefill 
                       <ClipboardCheck className="w-3.5 h-3.5" />
                       {reconBusy ? '比對中…' : '比對'}
                     </button>
+                    {recon && (
+                      <button
+                        type="button"
+                        onClick={() => saveRecon(h.ts)}
+                        className="px-3 py-1.5 rounded-lg text-[11px] font-semibold border border-black/10 dark:border-white/10 text-neutral-700 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+                      >
+                        {h.reconAt ? '更新保存' : '保存對帳'}
+                      </button>
+                    )}
+                    {h.reconAt && <span className="text-[10px] text-emerald-600 dark:text-emerald-400">已保存 {fmtTime(h.reconAt)}</span>}
                     {reconErr && <span className="text-[11px] text-rose-600 dark:text-rose-400">{reconErr}</span>}
                   </div>
                   {recon && <ReconReport data={recon} />}
