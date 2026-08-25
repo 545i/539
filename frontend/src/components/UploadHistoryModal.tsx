@@ -141,10 +141,29 @@ export const UploadHistoryModal: React.FC<Props> = ({ isOpen, onClose, onRefill 
     }
   };
 
+  const [winMap, setWinMap] = useState<Record<number, number>>({}); // ts → 已結算派彩(獲利)
+
   // 每次開啟重讀一次(可能剛在快速上傳新增了一批)
   useEffect(() => {
-    if (isOpen) { setHistory(loadHistory()); setFilterEdition('all'); }
+    if (isOpen) { setHistory(loadHistory()); setFilterEdition('all'); setExpanded(new Set()); }
   }, [isOpen]);
+
+  // 開啟後抓每批「該期×版×遊戲」已結算派彩 → 父列直接顯示獲利(不必先對帳)
+  useEffect(() => {
+    if (!isOpen || history.length === 0) return;
+    let alive = true;
+    (async () => {
+      const pairs = await Promise.all(history.map(async h => {
+        if (!h.issue) return [h.ts, 0] as const;
+        try {
+          const s = await api.ledgerDateSummary(h.issue, h.eid ?? 1, h.gameName);
+          return [h.ts, s.payout] as const;
+        } catch { return [h.ts, 0] as const; }
+      }));
+      if (alive) setWinMap(Object.fromEntries(pairs));
+    })();
+    return () => { alive = false; };
+  }, [isOpen, history]);
 
   if (!isOpen) return null;
 
@@ -223,7 +242,8 @@ export const UploadHistoryModal: React.FC<Props> = ({ isOpen, onClose, onRefill 
 
           {shown.map(h => {
             const isOpen = expanded.has(h.ts);
-            const win = h.recon?.report?.payout_ours;              // 我方中獎金額(對帳後才有)
+            // 獲利:優先用已結算派彩(自動),沒有再用對帳的我方中獎金額
+            const win = winMap[h.ts] ?? h.recon?.report?.payout_ours;
             const pnl = win != null ? win - h.totalCost : undefined; // 盈虧 = 獲利 − 成本
             return (
             <div

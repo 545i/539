@@ -793,6 +793,10 @@ export const api = {
   ledgerReconcile: (bill: string, edition: number) =>
     post<ReconcileDTO>('ledger/reconcile', {bill, edition}),
 
+  // 某期別×版×遊戲的已結算彙總(給上傳歷史父列顯示 獲利/盈虧)
+  ledgerDateSummary: (issue: string, edition: number, game: string) =>
+    post<{cost: number; payout: number; n: number}>('ledger/date-summary', {issue, edition, game}),
+
   // 快速上傳:貼一段下注文字,dryRun 先預覽、再確認寫入(需登入)
   quickImport: (
     game: GameKey,

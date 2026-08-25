@@ -97,6 +97,34 @@ def add_entry(body: EntryIn, user: str = Depends(current_user)):
     return entry
 
 
+class DateSummaryIn(BaseModel):
+    issue: str = ""
+    edition: int = 1
+    game: str = ""      # 遊戲名(前端上傳歷史存的 gameName)
+
+
+@router.post("/date-summary")
+def date_summary(body: DateSummaryIn, user: str = Depends(current_user)):
+    """某期別 × 版 × 遊戲的已結算彙總:總成本 / 總派彩(獲利)/ 筆數。
+
+    給上傳歷史父列直接顯示「獲利 / 盈虧」用,不必先貼帳單對帳。
+    """
+    cost = payout = 0.0
+    n = 0
+    for e in ledger_store.list_entries(user):
+        rec = e.get("record") or {}
+        if str(rec.get("issue", "")) != str(body.issue):
+            continue
+        if int(rec.get("edition", 1) or 1) != int(body.edition):
+            continue
+        if body.game and str(rec.get("game", "")) != body.game:
+            continue
+        cost += float(rec.get("cost", 0) or 0)
+        payout += float(rec.get("payout", 0) or 0)
+        n += 1
+    return {"cost": round(cost), "payout": round(payout), "n": n}
+
+
 class ReconcileIn(BaseModel):
     bill: str = ""
     edition: int = 1
