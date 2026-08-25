@@ -15,6 +15,10 @@ interface IssuePickerProps {
   issue: string;
   date: string;
   draws: DrawDTO[]; // 舊→新(history API 的順序)
+  // 一個永遠出現在最上面的額外選項(通常是「下一期(還沒開)」)。它不在 draws 裡,
+  // 帶著自己的正確日期;不管目前選到哪期都選得回來 —— 解決「切到別期後就選不回
+  // 最新未開一期」。與 draws 重號時自動略過。
+  extraOption?: {issue: string; date: string};
   onSelect: (issue: string, date: string) => void;
   // 給了就在下拉旁多一顆「對獎」鈕:對同一期重抓開獎號重算(核對列表用)。
   // 需要它是因為 <select> 選同一個值不會觸發 onChange —— 記帳當下就是最新期,
@@ -27,6 +31,9 @@ interface IssuePickerProps {
   manualPillars?: number;
   // 下拉選項要不要一起顯示遊戲名(期號+日期+遊戲+開獎號)。
   gameLabel?: string;
+  // 選到的那期是否在下拉旁邊顯示開獎號碼(預設 true)。核對表格自己有「開獎號碼」
+  // 欄,旁邊再顯示一次是多餘的,那裡傳 false 關掉。
+  showNums?: boolean;
   className?: string;
 }
 
@@ -34,16 +41,30 @@ export const IssuePicker: React.FC<IssuePickerProps> = ({
   issue,
   date,
   draws,
+  extraOption,
   onSelect,
   onRefresh,
   onManualHit,
   manualPillars,
   gameLabel,
+  showNums = true,
   className = '',
 }) => {
   // 新→舊,最新一期排最上面
   const options = React.useMemo(() => [...draws].reverse(), [draws]);
-  const inList = options.some(o => o.issue === issue);
+  // 永遠置頂的額外選項(下一期未開)+ 目前 issue 若不在任何清單裡的合成 fallback。
+  // 兩者都不在 draws 裡、都沒有開獎號,合起來去重後排在真正的開獎期別之前。
+  const extras = React.useMemo(() => {
+    const list: {issue: string; date: string}[] = [];
+    if (extraOption && !options.some(o => o.issue === extraOption.issue)) {
+      list.push(extraOption);
+    }
+    if (issue && !options.some(o => o.issue === issue) &&
+        !list.some(e => e.issue === issue)) {
+      list.push({issue, date});
+    }
+    return list;
+  }, [extraOption, options, issue, date]);
   // 下拉選項只顯示 期號(日期)—— 乾淨、可讀、不撐寬(號碼另在選到後旁邊顯示)
   const optionText = (o: DrawDTO): string => `${o.issue}（${o.date}）`;
   const selNums = (options.find(o => o.issue === issue)?.nums ?? [])
@@ -68,14 +89,16 @@ export const IssuePicker: React.FC<IssuePickerProps> = ({
         <select
           value={issue}
           onChange={e => {
-            const picked = options.find(o => o.issue === e.target.value);
-            onSelect(e.target.value, picked?.date ?? date);
+            const val = e.target.value;
+            const picked = options.find(o => o.issue === val)
+              ?? extras.find(o => o.issue === val);
+            onSelect(val, picked?.date ?? date);
           }}
           className="appearance-none pr-6 pl-2 py-1 rounded-lg border border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.03] text-[11px] font-mono font-bold text-neutral-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-black/20 dark:focus:ring-white/20 cursor-pointer"
         >
-          {issue && !inList && (
-            <option value={issue}>{issue}（{date}）</option>
-          )}
+          {extras.map(o => (
+            <option key={o.issue} value={o.issue}>{o.issue}（{o.date}）</option>
+          ))}
           {options.map(o => (
             <option key={o.issue} value={o.issue}>
               {optionText(o)}
@@ -84,7 +107,7 @@ export const IssuePicker: React.FC<IssuePickerProps> = ({
         </select>
         <ChevronDown className="w-3 h-3 text-neutral-400 absolute right-1.5 pointer-events-none" />
       </div>
-      {selNums && (
+      {showNums && selNums && (
         <span className="text-[11px] font-mono font-semibold text-neutral-600 dark:text-neutral-300 whitespace-nowrap">
           {selNums}
         </span>

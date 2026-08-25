@@ -437,6 +437,7 @@ export const ComboBetTab: React.FC = () => {
                         date={rec.date}
                         draws={draws}
                         onSelect={(iss) => ledger.resettle(rec.id, iss)}
+                        showNums={false}
                         onRefresh={() => ledger.resettle(rec.id, rec.issue)}
                         onManualHit={(k) => ledger.resettle(rec.id, rec.issue, k)}
                       />
@@ -510,6 +511,7 @@ export const ComboBetTab: React.FC = () => {
                           date={rec.date}
                           draws={draws}
                           onSelect={(iss) => ledger.resettle(rec.id, iss)}
+                          showNums={false}
                           onRefresh={() => ledger.resettle(rec.id, rec.issue)}
                         onManualHit={(k) => ledger.resettle(rec.id, rec.issue, k)}
                         />

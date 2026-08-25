@@ -72,13 +72,18 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
   const [betDate, setBetDate] = useState('');
   const hist = useAsync(() => (isOpen ? api.history(gameKey, 30) : Promise.resolve(null)), [gameKey, isOpen]);
   const draws = hist.data?.draws ?? [];
+  // 下一期期號優先用後端算好的 next.issue(最新期 +1);後端算不出來才自己退回 +1。
   const nextIssue = useMemo(() => {
+    const fromApi = hist.data?.next?.issue;
+    if (fromApi) return fromApi;
     const last = hist.data?.latest?.issue;
     if (!last) return '';
     const m = last.match(/^(\d+)$/);
     return m ? String(Number(m[1]) + 1) : last;
   }, [hist.data]);
-  useEffect(() => { setIssue(nextIssue); setBetDate(hist.data?.latest?.date ?? ''); }, [nextIssue, hist.data]);
+  // 下一期日期用後端 next.date(真正的下一次開獎台灣日期);沒有才退回最新一期日期。
+  const nextDate = hist.data?.next?.date ?? hist.data?.latest?.date ?? '';
+  useEffect(() => { setIssue(nextIssue); setBetDate(nextDate); }, [nextIssue, nextDate]);
   // 每次開啟清掉上次的成功/錯誤橫幅(歷史保留)
   useEffect(() => { if (isOpen) { setDone(null); setError(null); } }, [isOpen]);
   // 從上傳歷史「填回」帶回來的文本:開啟時預填文字框
@@ -319,6 +324,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
                   date={betDate}
                   draws={draws}
                   gameLabel={game?.short_name}
+                  extraOption={nextIssue ? {issue: nextIssue, date: nextDate} : undefined}
                   onSelect={(iss, d) => { setIssue(iss); setBetDate(d); reset(); }}
                 />
                 <input

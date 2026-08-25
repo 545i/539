@@ -118,6 +118,9 @@ export interface HistoryDTO {
   count: number;
   draws: DrawDTO[];
   latest: (DrawDTO & {pillar_dist?: string; hits_summary?: string}) | null;
+  // 下一期(還沒開):期號 = 最新期 +1,date = 下一次開獎的台灣日期。
+  // 後端算不出來(期號非純數字/時刻表未登記)時為 null。
+  next?: {issue: string; date: string} | null;
 }
 
 export interface MissingDTO {
