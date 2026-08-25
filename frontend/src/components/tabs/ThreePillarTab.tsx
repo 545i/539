@@ -4,7 +4,6 @@ import {
   ChevronDown,
   AlertTriangle,
   FileText,
-  Info,
   CheckCircle2,
   XCircle,
   Layers,
@@ -131,17 +130,29 @@ export const ThreePillarTab: React.FC = () => {
   const PILLAR_NAMES = ['第一柱', '第二柱', '第三柱', '第四柱', '第五柱'];
   // 已被保存到某柱的號碼(同一顆不重複進兩柱)
   const usedInPillars = new Set(savedPillars.flat());
-  const pillarSizes = savedPillars.map(p => p.length);
-  // 一組過關注數 = 各柱顆數相乘(至少 2 柱才成一注);支數再倍投
-  const comboBets = savedPillars.length >= 2 ? pillarSizes.reduce((a, b) => a * b, 1) : 0;
+  const NUM_SLOTS = sizes.length || 3;   // 三柱固定 3 個柱位
+  const allNumbers = Array.from({ length: gameCfg.num_max }, (_, i) => i + 1);
+  // 你沒放進任何柱的號碼(自動補第三柱用;用「剩餘」而非固定範圍 → 不會重疊)
+  const remainingNums = allNumbers.filter(n => !usedInPillars.has(n));
+  // 三柱一律湊滿:自訂 2 柱 → 第三柱 = 剩下的號碼全包;自訂 3 柱 → 全照你的;不足 2 柱不成立
+  const effectivePillars: number[][] =
+    savedPillars.length >= NUM_SLOTS ? savedPillars.slice(0, NUM_SLOTS)
+      : savedPillars.length === NUM_SLOTS - 1 ? [...savedPillars, remainingNums]
+        : [];
+  const effSizes = effectivePillars.map(p => p.length);
+  const customCount = savedPillars.filter(p => p.length > 0).length;
+  // 過關注數 = 三柱各顆數相乘;支數再倍投
+  const comboBets = (effectivePillars.length === NUM_SLOTS && effSizes.every(s => s > 0))
+    ? effSizes.reduce((a, b) => a * b, 1) : 0;
   const betsWithUnits = comboBets * units;
   const submitCost = betsWithUnits * betCost;
-  const canSubmit = savedPillars.length >= 2 && savedPillars.every(p => p.length > 0);
-  // 全包 = 三柱剛好等於固定切法(9×10×20 = 1800),此時額外顯示過關機率/彩金
-  const isFullWheel = comboBets === totalBets && savedPillars.length === sizes.length;
+  const canSubmit = comboBets > 0;
+  // 全包 = 三柱剛好 1800 注,此時額外顯示過關機率/彩金
+  const isFullWheel = comboBets === totalBets;
 
-  // 保存目前選取為下一柱(排除已在其他柱的號碼)
+  // 保存目前選取為下一柱(排除已在其他柱的號碼);最多 3 柱
   const savePillar = () => {
+    if (savedPillars.length >= NUM_SLOTS) return;
     const fresh = selectedBalls.filter(n => !usedInPillars.has(n));
     if (fresh.length === 0) return;
     setSavedPillars(prev => [...prev, [...fresh].sort((a, b) => a - b)]);
@@ -169,10 +180,10 @@ export const ThreePillarTab: React.FC = () => {
       units,
       cars: units,
       betsCount: betsWithUnits,
-      selectedBalls: savedPillars.flat(),
+      selectedBalls: effectivePillars.flat(),
       drawBalls: [],
-      pillars: savedPillars,
-      pillarDist: pillarSizes.join(' × '),
+      pillars: effectivePillars,          // 三柱(含自動全包的柱)→ 對獎依各柱∩開獎相乘
+      pillarDist: effSizes.join(' × '),
       result: '待開獎',
       cost: submitCost,
       payout: 0,
@@ -237,8 +248,8 @@ export const ThreePillarTab: React.FC = () => {
             </div>
 
             <div className="text-[11px] text-neutral-500 dark:text-neutral-400 leading-relaxed">
-              逐柱組牌:選一批號碼 → <strong>保存為一柱</strong> → 再選下一柱(滿 2 柱可送出)。
-              或按<strong>「一鍵全包」</strong>包下 {sizes.join('×')} = {totalBets.toLocaleString()} 注。號碼由你決定屬於哪一柱。
+              自訂 <strong>2 柱</strong> → 第三柱自動全包「剩下的號碼」;或自訂滿 3 柱。
+              注數 = 三柱顆數相乘。要整組全包就按<strong>「一鍵全包」</strong>({totalBets.toLocaleString()} 注)。
             </div>
 
             {/* 快速:一鍵全包(三柱各自全選)或帶入某柱範圍當作目前選取 */}
@@ -275,12 +286,14 @@ export const ThreePillarTab: React.FC = () => {
               onClear={() => setSelectedBalls([])}
               totalBalls={gameCfg.num_max}
               maxBalls={gameCfg.num_max}
-              label={`選取號碼 → 保存為${PILLAR_NAMES[savedPillars.length] ?? `第${savedPillars.length + 1}柱`}`}
+              label={savedPillars.length >= NUM_SLOTS
+                ? '三柱已自訂完(可移除某柱再改)'
+                : `選取號碼 → 保存為${PILLAR_NAMES[savedPillars.length] ?? `第${savedPillars.length + 1}柱`}`}
               layout="grid"
             />
 
-            {/* 保存為下一柱 */}
-            {(() => {
+            {/* 保存為下一柱(最多 3 柱) */}
+            {savedPillars.length < NUM_SLOTS && (() => {
               const fresh = selectedBalls.filter(n => !usedInPillars.has(n)).length;
               const nextName = PILLAR_NAMES[savedPillars.length] ?? `第${savedPillars.length + 1}柱`;
               return (
@@ -362,9 +375,16 @@ export const ThreePillarTab: React.FC = () => {
               </div>
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <div>
-                  <span className="text-neutral-500 block text-[10px]">柱 × 支數:</span>
+                  <span className="text-neutral-500 block text-[10px]">三柱顆數 × 支:</span>
                   <span className="font-mono font-bold text-sm text-neutral-900 dark:text-white">
-                    {savedPillars.length} 柱{pillarSizes.length ? `(${pillarSizes.join('×')})` : ''} × {units}
+                    {effSizes.length ? effSizes.join(' × ') : '—'} × {units}
+                  </span>
+                  <span className="block text-[10px] text-neutral-400">
+                    {customCount >= NUM_SLOTS
+                      ? `自訂滿 ${NUM_SLOTS} 柱`
+                      : customCount === NUM_SLOTS - 1
+                        ? `自訂 ${customCount} 柱,第${NUM_SLOTS}柱全包剩 ${remainingNums.length} 顆`
+                        : `尚需自訂 ${NUM_SLOTS - 1 - customCount} 柱(或一鍵全包)`}
                   </span>
                 </div>
                 <div>
@@ -404,21 +424,15 @@ export const ThreePillarTab: React.FC = () => {
               </div>
             </div>
 
-            {!canSubmit ? (
-              <div className="p-2.5 rounded-xl bg-black/[0.03] dark:bg-white/[0.05] text-[11px] text-neutral-500 dark:text-neutral-400 flex items-start gap-2">
-                <Info className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-                <span>至少保存 2 柱才能送出記帳(目前 {savedPillars.length} 柱)。也可按上方「一鍵全包」。</span>
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={handleSubmit}
-                className="w-full py-3 rounded-xl sm:rounded-full text-xs uppercase tracking-wider font-semibold bg-black text-white dark:bg-white dark:text-black hover:opacity-90 transition-opacity flex items-center justify-center gap-2 shadow-xs active:scale-98"
-              >
-                <FileText className="w-4 h-4" />
-                送出記帳 {betsWithUnits.toLocaleString()} 注(待開獎)
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={!canSubmit}
+              className="w-full py-3 rounded-xl sm:rounded-full text-xs uppercase tracking-wider font-semibold bg-black text-white dark:bg-white dark:text-black hover:opacity-90 disabled:opacity-30 transition-opacity flex items-center justify-center gap-2 shadow-xs active:scale-98"
+            >
+              <FileText className="w-4 h-4" />
+              送出記帳 {betsWithUnits.toLocaleString()} 注(待開獎)
+            </button>
           </div>
 
           {/* 區間組合斷檔提醒 */}
