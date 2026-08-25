@@ -108,6 +108,10 @@ const ReconReport: React.FC<{ data: ReconcileDTO }> = ({ data }) => {
 export const UploadHistoryModal: React.FC<Props> = ({ isOpen, onClose, onRefill }) => {
   const [history, setHistory] = useState<UploadHistoryEntry[]>([]);
   const [filterEdition, setFilterEdition] = useState<string>('all');
+  const [expanded, setExpanded] = useState<Set<number>>(new Set()); // 預設全收疊
+  const toggle = (ts: number) => setExpanded(prev => {
+    const n = new Set(prev); n.has(ts) ? n.delete(ts) : n.add(ts); return n;
+  });
   // 對帳:哪一批正在對、貼上的帳單文字、比對結果
   const [reconTs, setReconTs] = useState<number | null>(null);
   const [billText, setBillText] = useState('');
@@ -217,20 +221,36 @@ export const UploadHistoryModal: React.FC<Props> = ({ isOpen, onClose, onRefill 
             </div>
           )}
 
-          {shown.map(h => (
+          {shown.map(h => {
+            const isOpen = expanded.has(h.ts);
+            const win = h.recon?.report?.payout_ours;              // 我方中獎金額(對帳後才有)
+            const pnl = win != null ? win - h.totalCost : undefined; // 盈虧 = 獲利 − 成本
+            return (
             <div
               key={h.ts}
               className="rounded-xl border border-black/[0.08] dark:border-white/[0.08] bg-black/[0.02] dark:bg-white/[0.03] overflow-hidden"
             >
-              <div className="flex items-center justify-between px-3 py-2 border-b border-black/[0.06] dark:border-white/[0.06]">
-                <div className="text-[11px] font-semibold text-neutral-700 dark:text-neutral-300">
-                  {h.gameName}・{h.editionName}
-                  {h.issue ? `・第 ${h.issue} 期` : ''}
-                  <span className="ml-1.5 font-normal text-neutral-400">{h.count} 筆</span>
-                  {h.reconAt && (
-                    <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[9px] font-semibold">已對帳</span>
-                  )}
-                </div>
+              <div className="flex items-center justify-between px-3 py-2 border-b border-black/[0.06] dark:border-white/[0.06] gap-2">
+                <button
+                  type="button"
+                  onClick={() => toggle(h.ts)}
+                  className="min-w-0 flex-1 text-left"
+                >
+                  <div className="text-[11px] font-semibold text-neutral-700 dark:text-neutral-300 truncate">
+                    <span className="text-neutral-400 mr-0.5">{isOpen ? '▾' : '▸'}</span>
+                    {h.gameName}・{h.editionName}
+                    {h.issue ? `・第 ${h.issue} 期` : ''}
+                    <span className="ml-1.5 font-normal text-neutral-400">{h.count} 筆</span>
+                    {h.reconAt && (
+                      <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[9px] font-semibold">已對帳</span>
+                    )}
+                  </div>
+                  <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] font-mono">
+                    <span className="text-neutral-500">成本 <span className="text-neutral-800 dark:text-neutral-200 font-bold">{money(h.totalCost)}</span></span>
+                    <span className="text-neutral-500">獲利 <span className="text-emerald-600 dark:text-emerald-400 font-bold">{win != null ? money(win) : '—'}</span></span>
+                    <span className="text-neutral-500">盈虧 <span className={`font-bold ${pnl == null ? 'text-neutral-400' : pnl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>{pnl != null ? (pnl >= 0 ? '+' : '') + money(pnl) : '—'}</span></span>
+                  </div>
+                </button>
                 <div className="flex items-center gap-2">
                   <span className="text-[11px] text-neutral-400 font-mono">{fmtTime(h.ts)}</span>
                   <button
@@ -300,14 +320,15 @@ export const UploadHistoryModal: React.FC<Props> = ({ isOpen, onClose, onRefill 
                 </div>
               )}
 
-              {/* 原始文本 */}
-              {h.text && (
+              {/* 原始文本(展開才顯示)*/}
+              {isOpen && h.text && (
                 <pre className="px-3 py-2 text-[10px] font-mono whitespace-pre-wrap break-all text-neutral-500 dark:text-neutral-400 border-b border-black/[0.06] dark:border-white/[0.06] max-h-28 overflow-y-auto">
                   {h.text}
                 </pre>
               )}
 
-              {/* 下注明細 + 成本 */}
+              {/* 下注明細 + 成本(展開才顯示)*/}
+              {isOpen && (
               <table className="w-full text-[11px]">
                 <tbody className="font-mono">
                   {h.items.map((it, i) => (
@@ -349,8 +370,10 @@ export const UploadHistoryModal: React.FC<Props> = ({ isOpen, onClose, onRefill 
                   </tr>
                 </tfoot>
               </table>
+              )}
             </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>
