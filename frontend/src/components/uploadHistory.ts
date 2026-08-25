@@ -21,6 +21,7 @@ export interface UploadHistoryEntry {
   ts: number;
   gameName: string;
   editionName: string;
+  eid?: number;       // 上傳到哪個版(對帳要用)
   issue: string;
   text: string;                 // 原始文本(可填回文字框重用)
   count: number;                // 實際寫入筆數

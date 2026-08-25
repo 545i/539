@@ -437,6 +437,39 @@ export interface LedgerEntryDTO {
 // 快速上傳下注紀錄(需登入):貼一段文字 → 後端解析成多筆流水。
 // dry_run = true 只解析回傳預覽,不寫入;確認後再打一次 dry_run = false。
 // 認不出來的行進 errors,不影響其他筆 —— 所以 items 與 errors 可能同時有東西。
+// 對帳:對接人帳單解析 + 與我們流水並排比對
+export interface ReconcileCellDTO { ours: number; theirs: number; diff: number; }
+export interface ReconcileRowDTO {
+  bucket: string;     // 二 / 三 / 四
+  star: number;
+  n: number;          // 我們這桶有幾筆
+  units: ReconcileCellDTO;
+  cost: ReconcileCellDTO;
+  carry: ReconcileCellDTO;   // 中碰
+  payout: ReconcileCellDTO;  // 得到的錢
+}
+export interface ReconcileDTO {
+  bill: {
+    date: string;
+    game: GameKey | null;
+    draw: number[];
+    slips: Record<string, {units: number; cost: number}>;
+    total_cost: number;
+    wins: Array<{star: number; carry: number; amount: number}>;
+    net: number;
+    errors: string[];
+  };
+  report: {
+    rows: ReconcileRowDTO[];
+    total_cost_ours: number;
+    total_cost_theirs: number;
+    cost_gap: number;
+    have_records: boolean;
+    maybe_wrong_date: boolean;
+  } | null;
+  records_used: number;
+}
+
 export interface QuickImportItemDTO {
   id: number | null; // dry_run 時為 null(還沒進資料庫)
   line: string; // 產生這一筆的原文
@@ -751,6 +784,10 @@ export const api = {
   // 備援:一鍵把自己所有「待開獎」且該期已開的紀錄自動對獎
   ledgerSettlePending: () =>
     post<{settled: number}>('ledger/settle-pending', {}),
+
+  // 對帳:貼對接人帳單 → 解析 + 抓同版同日期同遊戲流水並排比對
+  ledgerReconcile: (bill: string, edition: number) =>
+    post<ReconcileDTO>('ledger/reconcile', {bill, edition}),
 
   // 快速上傳:貼一段下注文字,dryRun 先預覽、再確認寫入(需登入)
   quickImport: (

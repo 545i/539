@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { X, History, Trash2, CornerDownLeft } from 'lucide-react';
+import { X, History, Trash2, CornerDownLeft, ClipboardCheck, AlertTriangle } from 'lucide-react';
 import {
   UploadHistoryEntry, MODE_LABEL, loadHistory, saveHistory, fmtTime, money,
 } from './uploadHistory';
+import { api, ReconcileDTO } from '../api/client';
 
 interface Props {
   isOpen: boolean;
@@ -10,11 +11,103 @@ interface Props {
   onRefill?: (text: string) => void; // 「填回快速上傳」:把某批文本帶回上傳文字框
 }
 
+const diffCls = (d: number) =>
+  d === 0 ? 'text-neutral-400' : 'text-rose-600 dark:text-rose-400 font-bold';
+const sign = (d: number) => (d > 0 ? '+' : '');
+
+// 對帳報告:二/三/四桶 × 支/成本/中碰/得到,我們 vs 對接人 + 差異
+const ReconReport: React.FC<{ data: ReconcileDTO }> = ({ data }) => {
+  const { bill, report, records_used } = data;
+  if (!report) {
+    return (
+      <div className="text-[11px] text-rose-600 dark:text-rose-400 space-y-0.5">
+        {bill.errors.length
+          ? bill.errors.map((e, i) => <div key={i}>· {e}</div>)
+          : <div>帳單缺日期或遊戲,無法比對。</div>}
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-2 text-[10px] text-neutral-500">
+        <span>帳單 {bill.date}・{bill.draw.map(n => String(n).padStart(2, '0')).join(' ')}</span>
+        <span className="text-neutral-400">比對我們 {records_used} 筆</span>
+      </div>
+      {report.maybe_wrong_date && (
+        <div className="text-[11px] text-amber-700 dark:text-amber-400 flex items-start gap-1.5">
+          <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+          <span>成本落差過大(我 {money(report.total_cost_ours)} vs 他 {money(report.total_cost_theirs)})—— 這張帳單會不會是別的日期?</span>
+        </div>
+      )}
+      {!report.have_records && (
+        <div className="text-[11px] text-amber-700 dark:text-amber-400">這一版該日期沒有我們的下注紀錄可比對。</div>
+      )}
+      <div className="overflow-x-auto rounded-lg border border-black/10 dark:border-white/10">
+        <table className="w-full text-[10px] font-mono whitespace-nowrap">
+          <thead className="bg-black/[0.04] dark:bg-white/[0.06] text-neutral-500">
+            <tr>
+              <th className="px-2 py-1 text-left">桶</th>
+              <th className="px-2 py-1 text-right">支 我/他</th>
+              <th className="px-2 py-1 text-right">成本 我/他</th>
+              <th className="px-2 py-1 text-right">中碰 我/他</th>
+              <th className="px-2 py-1 text-right">得到 我/他</th>
+            </tr>
+          </thead>
+          <tbody>
+            {report.rows.map(r => (
+              <tr key={r.bucket} className="border-t border-black/[0.05] dark:border-white/[0.05]">
+                <td className="px-2 py-1 font-sans font-semibold">
+                  {r.bucket}<span className="text-neutral-400 font-normal">({r.n})</span>
+                </td>
+                <td className="px-2 py-1 text-right">
+                  {r.units.ours}/{r.units.theirs} <span className={diffCls(r.units.diff)}>{r.units.diff ? sign(r.units.diff) + r.units.diff : ''}</span>
+                </td>
+                <td className="px-2 py-1 text-right">
+                  {money(r.cost.ours)}/{money(r.cost.theirs)} <span className="text-neutral-400">{r.cost.diff ? sign(r.cost.diff) + r.cost.diff : ''}</span>
+                </td>
+                <td className="px-2 py-1 text-right">
+                  {r.carry.ours}/{r.carry.theirs} <span className={diffCls(r.carry.diff)}>{r.carry.diff ? sign(r.carry.diff) + r.carry.diff : ''}</span>
+                </td>
+                <td className="px-2 py-1 text-right">
+                  {money(r.payout.ours)}/{money(r.payout.theirs)} <span className={diffCls(r.payout.diff)}>{r.payout.diff ? sign(r.payout.diff) + money(r.payout.diff) : ''}</span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="text-[10px] text-neutral-500 leading-relaxed">
+        紅字 = 和對接人不一致(<strong>中碰 / 得到</strong>不一致最要注意 → 誰算錯);成本差多半是盤口率不同,把這版盤口設成對接人的率即可歸零。
+      </div>
+    </div>
+  );
+};
+
 // 快速上傳歷史(獨立彈窗):查看每批上傳的原始文本、下注明細/成本、總下注成本。
 // 資料存在 localStorage(見 uploadHistory.ts),重開瀏覽器仍在。
 export const UploadHistoryModal: React.FC<Props> = ({ isOpen, onClose, onRefill }) => {
   const [history, setHistory] = useState<UploadHistoryEntry[]>([]);
   const [filterEdition, setFilterEdition] = useState<string>('all');
+  // 對帳:哪一批正在對、貼上的帳單文字、比對結果
+  const [reconTs, setReconTs] = useState<number | null>(null);
+  const [billText, setBillText] = useState('');
+  const [recon, setRecon] = useState<ReconcileDTO | null>(null);
+  const [reconBusy, setReconBusy] = useState(false);
+  const [reconErr, setReconErr] = useState<string | null>(null);
+
+  const openRecon = (ts: number) => {
+    setReconTs(ts); setBillText(''); setRecon(null); setReconErr(null);
+  };
+  const runRecon = async (eid: number) => {
+    setReconBusy(true); setReconErr(null); setRecon(null);
+    try {
+      setRecon(await api.ledgerReconcile(billText, eid));
+    } catch (e) {
+      setReconErr((e as Error).message);
+    } finally {
+      setReconBusy(false);
+    }
+  };
 
   // 每次開啟重讀一次(可能剛在快速上傳新增了一批)
   useEffect(() => {
@@ -109,6 +202,19 @@ export const UploadHistoryModal: React.FC<Props> = ({ isOpen, onClose, onRefill 
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-[11px] text-neutral-400 font-mono">{fmtTime(h.ts)}</span>
+                  <button
+                    type="button"
+                    onClick={() => (reconTs === h.ts ? setReconTs(null) : openRecon(h.ts))}
+                    title="貼對接人帳單,和這一版該日期的流水對帳"
+                    className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold transition-colors ${
+                      reconTs === h.ts
+                        ? 'bg-black text-white dark:bg-white dark:text-black'
+                        : 'text-neutral-500 hover:text-black dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5'
+                    }`}
+                  >
+                    <ClipboardCheck className="w-3 h-3" />
+                    對帳
+                  </button>
                   {onRefill && (
                     <button
                       type="button"
@@ -122,6 +228,36 @@ export const UploadHistoryModal: React.FC<Props> = ({ isOpen, onClose, onRefill 
                   )}
                 </div>
               </div>
+
+              {/* 對帳面板:貼帳單 → 比對這一版該日期的流水 */}
+              {reconTs === h.ts && (
+                <div className="px-3 py-2.5 border-b border-black/[0.06] dark:border-white/[0.06] bg-amber-500/[0.04] space-y-2">
+                  <div className="text-[10px] text-neutral-500 dark:text-neutral-400">
+                    貼上對接人帳單(含日期/獎號/二三四各支與成本/中碰),比對「{h.editionName}」這一版該日期的流水。
+                  </div>
+                  <textarea
+                    value={billText}
+                    rows={7}
+                    spellCheck={false}
+                    placeholder={`8/24\n539獎號\n09、10、19、23、26\n539牌支\n二2090支 150062\n三 2640支 165000\n四 1050支 51765\n牌支共收366827\n三中4碰 228000\n合計 收 138827`}
+                    onChange={e => setBillText(e.target.value)}
+                    className="w-full px-2 py-1.5 rounded-lg border border-black/10 dark:border-white/10 bg-white dark:bg-[#121212] text-[11px] font-mono leading-relaxed text-neutral-900 dark:text-white outline-hidden resize-y"
+                  />
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={reconBusy || !billText.trim()}
+                      onClick={() => runRecon(h.eid ?? 1)}
+                      className="px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-black text-white dark:bg-white dark:text-black hover:opacity-90 disabled:opacity-30 transition-opacity flex items-center gap-1.5"
+                    >
+                      <ClipboardCheck className="w-3.5 h-3.5" />
+                      {reconBusy ? '比對中…' : '比對'}
+                    </button>
+                    {reconErr && <span className="text-[11px] text-rose-600 dark:text-rose-400">{reconErr}</span>}
+                  </div>
+                  {recon && <ReconReport data={recon} />}
+                </div>
+              )}
 
               {/* 原始文本 */}
               {h.text && (
