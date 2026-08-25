@@ -109,6 +109,34 @@ def test_combo_incomplete_when_cannot_fill():
     assert len(combos[0].balls) == 3   # 湊不到 8,有幾顆算幾顆
 
 
+# ── 快速上傳:區塊分隔線 ──────────────────────────────────
+def test_parse_ignores_separator_lines():
+    # 使用者用 ___ / --- 隔開不同下注區塊,分隔線本身不該變成「看不懂這一行」
+    for sep in ("___", "---", "===", "＿＿＿"):
+        text = f"21_24x20車\n{sep}\n03_11_35x10車"
+        items, errors = importer.parse(text, G, _odds())
+        assert errors == [], f"分隔線 {sep!r} 不該報錯:{errors}"
+        assert [it.mode for it in items] == ["single", "multi"]
+
+
+def test_parse_full_slip_with_separator():
+    # 使用者實際貼的整張單:1800碰(兩柱區間+其他)、二合兩組、___ 分隔、星碰
+    text = (
+        "10_18\n20_29\n其他100\n"          # 1800碰(其他=剩餘號碼那一柱)
+        "06_32x20車\n05_12_28x5車\n"       # 1組 / 2組
+        "___\n"                             # 區塊分隔線
+        "25_37_39\n八顆三星1500\n八顆四星1500"
+    )
+    items, errors = importer.parse(text, G, _odds())
+    assert errors == [], f"整張單不該有看不懂的行:{errors}"
+    modes = [it.mode for it in items]
+    assert modes == ["pillar1800", "single", "multi", "combo", "combo"]
+    from core import combo as cm
+    combos = [it for it in items if it.mode == "combo"]
+    assert combos[0].bets_count == cm.star_bets(3, 8)   # 三星 8 顆
+    assert combos[1].bets_count == cm.star_bets(4, 8)   # 四星 8 顆
+
+
 def test_cn_int():
     assert importer._cn_int("八") == 8
     assert importer._cn_int("十") == 10

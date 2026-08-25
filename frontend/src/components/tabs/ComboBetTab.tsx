@@ -34,7 +34,7 @@ export const ComboBetTab: React.FC = () => {
   const oddsReq = useAsync(() => api.getEditionOdds(eid, gameKey), [eid, gameKey]);
   const odds = oddsReq.data?.fields;
   // 登入時流水存後端;未登入沿用 v2 的前端 state。依版篩選
-  const ledger = useLedger('combo', INITIAL_COMBO_RECORDS, {edition: eid, combine: combineEditions});
+  const ledger = useLedger('combo', INITIAL_COMBO_RECORDS, {edition: eid, combine: combineEditions, game: game?.name});
   const records = ledger.records;
   const [playMethod, setPlayMethod] = useState<PlayMethod>('星碰');
   const [starCount, setStarCount] = useState<'二星' | '三星' | '四星'>('三星');
@@ -44,6 +44,8 @@ export const ComboBetTab: React.FC = () => {
   const histReq = useAsync(() => api.history(gameKey, 30), [gameKey]);
   const latest = histReq.data?.latest ?? null;
   const draws = histReq.data?.draws ?? [];
+  // 下一期(還沒開):給核對列的期號選擇器當常駐選項,讓「最新未開一期」永遠選得到
+  const nextOpt = histReq.data?.next ?? undefined;
   const [curIssue, setCurIssue] = useState<string>('');
   const [issueTouched, setIssueTouched] = useState(false);
   const [betDate, setBetDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
@@ -437,6 +439,7 @@ export const ComboBetTab: React.FC = () => {
                         date={rec.date}
                         draws={draws}
                         onSelect={(iss) => ledger.resettle(rec.id, iss)}
+                        extraOption={nextOpt}
                         showNums={false}
                         onRefresh={() => ledger.resettle(rec.id, rec.issue)}
                         onManualHit={(k) => ledger.resettle(rec.id, rec.issue, k)}
@@ -511,6 +514,7 @@ export const ComboBetTab: React.FC = () => {
                           date={rec.date}
                           draws={draws}
                           onSelect={(iss) => ledger.resettle(rec.id, iss)}
+                          extraOption={nextOpt}
                           showNums={false}
                           onRefresh={() => ledger.resettle(rec.id, rec.issue)}
                         onManualHit={(k) => ledger.resettle(rec.id, rec.issue, k)}

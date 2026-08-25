@@ -69,6 +69,8 @@ _STAR_RE = re.compile(
     r"^(?:([一二三四五六七八九十0-9]+)\s*顆)?\s*([二三四234])\s*星\s*([0-9]+)$")
 # 其他400 —— 1800碰 那一組的收尾行,金額在這裡
 _OTHER_RE = re.compile(r"^其[他它餘余]\s*([0-9]+)$")
+# 純分隔線(___ / --- / === 之類):使用者用來隔開不同下注區塊,當空行略過、不報錯
+_SEP_RE = re.compile(r"^[_\-–—=~\s]+$")
 
 _STAR_NUM = {"二": 2, "三": 3, "四": 4, "2": 2, "3": 3, "4": 4}
 
@@ -234,6 +236,9 @@ def parse(text: str, g: GameConfig, odds: dict) -> tuple[list[_Item], list[dict]
     for line_no, raw in enumerate(_SPLIT_RE.split(text or ""), start=1):
         line = _norm(raw)
         if not line:
+            continue
+        # 純分隔線(___ / --- 之類)= 使用者隔開區塊用,當空行略過不報錯
+        if _SEP_RE.match(line):
             continue
 
         m = _CAR_RE.match(line)
