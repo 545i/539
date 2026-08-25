@@ -584,6 +584,7 @@ export const ThreePillarTab: React.FC = () => {
                         onSelect={(iss) => ledger.resettle(rec.id, iss)}
                         onRefresh={() => ledger.resettle(rec.id, rec.issue)}
                         onManualHit={(k) => ledger.resettle(rec.id, rec.issue, k)}
+                        manualPillars={rec.pillars?.length || 3}
                       />
                     </div>
 
@@ -657,6 +658,7 @@ export const ThreePillarTab: React.FC = () => {
                           onSelect={(iss) => ledger.resettle(rec.id, iss)}
                           onRefresh={() => ledger.resettle(rec.id, rec.issue)}
                         onManualHit={(k) => ledger.resettle(rec.id, rec.issue, k)}
+                        manualPillars={rec.pillars?.length || 3}
                         />
                       </td>
                       <td className="text-xs font-semibold">{rec.game.split('(')[0]}</td>

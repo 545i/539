@@ -23,6 +23,8 @@ interface IssuePickerProps {
   // 給了就在旁邊多一個「中N顆」小輸入 + 套用鈕:忘記期數但記得中幾顆時,直接
   // 依組公式手填結算(不查開獎號)。見 backend.settle 的 hit_count。
   onManualHit?: (hitCount: number) => void;
+  // 1800碰:分幾柱填「各柱中幾顆」,中碰=各柱相乘(取代單一「中N」)。
+  manualPillars?: number;
   className?: string;
 }
 
@@ -33,18 +35,35 @@ export const IssuePicker: React.FC<IssuePickerProps> = ({
   onSelect,
   onRefresh,
   onManualHit,
+  manualPillars,
   className = '',
 }) => {
   // 新→舊,最新一期排最上面
   const options = React.useMemo(() => [...draws].reverse(), [draws]);
   const inList = options.some(o => o.issue === issue);
   const [hit, setHit] = React.useState('');
+  const [pHits, setPHits] = React.useState<string[]>([]);
+
+  const usePillarHit = !!onManualHit && (manualPillars ?? 0) > 1;
 
   const applyHit = () => {
     const k = Number(hit);
     if (!onManualHit || hit === '' || Number.isNaN(k) || k < 0) return;
     onManualHit(Math.floor(k));
     setHit('');
+  };
+
+  // 1800碰:各柱中幾顆 → 中碰=相乘(任一柱空白就不套用;填 0 = 斷柱)
+  const setPHit = (i: number, v: string) =>
+    setPHits(prev => { const next = [...prev]; next[i] = v; return next; });
+  const applyPillarHit = () => {
+    const n = manualPillars ?? 0;
+    if (!onManualHit || n < 1) return;
+    if (Array.from({ length: n }, (_, i) => pHits[i]).some(v => v === undefined || v.trim() === '')) return;
+    const product = Array.from({ length: n }, (_, i) => Math.max(0, Math.floor(Number(pHits[i]) || 0)))
+      .reduce((a, b) => a * b, 1);
+    onManualHit(product);
+    setPHits([]);
   };
 
   return (
@@ -79,7 +98,33 @@ export const IssuePicker: React.FC<IssuePickerProps> = ({
           <RotateCw className="w-3 h-3" />
         </button>
       )}
-      {onManualHit && (
+      {onManualHit && usePillarHit && (
+        <div className="inline-flex items-center gap-0.5" title="忘記期數?填各柱中幾顆,中碰=各柱相乘">
+          {Array.from({ length: manualPillars ?? 0 }, (_, i) => (
+            <React.Fragment key={i}>
+              {i > 0 && <span className="text-[10px] text-neutral-400">×</span>}
+              <input
+                type="number"
+                min={0}
+                value={pHits[i] ?? ''}
+                placeholder={`柱${i + 1}`}
+                onChange={e => setPHit(i, e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') applyPillarHit(); }}
+                className="w-9 px-1 py-1 rounded-lg border border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.03] text-[11px] font-mono text-neutral-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-black/20 dark:focus:ring-white/20"
+              />
+            </React.Fragment>
+          ))}
+          <button
+            type="button"
+            onClick={applyPillarHit}
+            title="依各柱中幾顆結算(中碰=相乘,不查開獎號)"
+            className="shrink-0 px-1.5 py-1 rounded-lg border border-black/10 dark:border-white/10 text-[10px] font-semibold text-neutral-500 hover:text-neutral-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 active:scale-95 transition-colors"
+          >
+            碰
+          </button>
+        </div>
+      )}
+      {onManualHit && !usePillarHit && (
         <div className="inline-flex items-center gap-0.5" title="忘記期數?直接填中幾顆結算">
           <input
             type="number"

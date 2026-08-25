@@ -93,7 +93,7 @@ def _manual(record: dict, hit_count: int, g: GameConfig) -> dict:
         result = f"中 {k} 碰(手填)" if k > 0 else "槓龜(手填)"
     elif mode == "pillar1800":
         payout = k * cars * odds["bet_prize"]
-        result = f"中 {k} 注(手填)" if k > 0 else "槓龜(手填)"
+        result = f"中 {k} 碰(手填)" if k > 0 else "槓龜(手填)"
     else:  # single / multi 二合組:每中一顆 = 車數 × 每車中獎(不除以 4)
         payout = k * cars * odds["win_payout"]
         result = f"中 {k} 顆(手填)" if k > 0 else "槓龜(手填)"
@@ -147,7 +147,7 @@ def settle(record: dict, draw: list[int] | None, g: GameConfig,
             for h in hits:
                 ph *= h
             payout = cars * ph * odds["bet_prize"]
-            result = f"中 {ph:,} 注" if ph > 0 else "槓龜(斷柱)"
+            result = f"中 {ph:,} 碰" if ph > 0 else "槓龜(斷柱)"
             out["pillarDist"] = " × ".join(str(h) for h in hits)
         else:
             counts = pillar.pillar_counts(draw, g.num_max)
