@@ -176,16 +176,19 @@ def _cars(rec: dict) -> float:
     return 1.0
 
 
-def _total_carry(rec: dict) -> int:
+def _total_carry(rec: dict, num_max: int = 39) -> int:
     """這筆的「總碰/注數」= 對接人帳單的「支」。
 
-    星碰(combo)/二合(single/multi):betsCount 是「每支幾碰 / 顆數」,要 × 支(車)數。
+    星碰(combo):betsCount 是「每支幾碰」,× 支數。
+    二合(single/multi):每顆會和其餘 (num_max−1) 顆配成二星碰 → 顆 × 車 × (num_max−1)。
     三柱1800碰:betsCount 已是總注數(units × 1800),直接用。
     """
     bc = int(rec.get("betsCount", 0) or 0)
     mode = rec.get("mode")
-    if mode in ("combo", "single", "multi"):
+    if mode == "combo":
         return int(round(bc * _cars(rec)))
+    if mode in ("single", "multi"):
+        return int(round(bc * _cars(rec) * max(1, num_max - 1)))
     return bc
 
 
@@ -196,6 +199,11 @@ def _slip(bill: dict, star: int) -> dict:
 
 def reconcile(bill: dict, records: list[dict]) -> dict:
     """把我們的流水分桶加總,和帳單並排比;回傳每桶 我們/他/差異 + 提示。"""
+    try:
+        from core import games
+        num_max = games.get(bill.get("game") or "").num_max
+    except Exception:       # noqa: BLE001
+        num_max = 39
     buckets = {s: {"units": 0, "cost": 0, "payout": 0, "carry": 0, "n": 0}
                for s in (2, 3, 4)}
     for rec in records:
@@ -203,7 +211,7 @@ def reconcile(bill: dict, records: list[dict]) -> dict:
         if s is None:
             continue
         b = buckets[s]
-        b["units"] += _total_carry(rec)     # 總碰/注數(= 對接人的「支」)
+        b["units"] += _total_carry(rec, num_max)   # 總碰/注數(= 對接人的「支」)
         b["cost"] += round(float(rec.get("cost", 0) or 0))
         b["payout"] += round(float(rec.get("payout", 0) or 0))
         b["carry"] += _carry_of(rec)
