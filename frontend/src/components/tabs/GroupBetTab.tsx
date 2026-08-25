@@ -274,7 +274,7 @@ export const GroupBetTab: React.FC<Props> = ({ group }) => {
               </span>
               <div className="flex items-center gap-1.5">
                 <span className="text-[11px] font-mono text-neutral-400">期號</span>
-                <IssuePicker issue={curIssue} date={betDate} draws={draws} onSelect={pickIssue} />
+                <IssuePicker issue={curIssue} date={betDate} draws={draws} extraOption={histReq.data?.next ?? undefined} onSelect={pickIssue} />
               </div>
             </div>
 

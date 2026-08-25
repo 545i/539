@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import { NavItem, DuoBetTab, ThemeMode } from './types';
 import { Sidebar } from './components/Sidebar';
-import { Header } from './components/Header';
+import { Header, GameSwitcher } from './components/Header';
 import { FormulaModal } from './components/FormulaModal';
 import { LoginModal } from './components/LoginModal';
 import { QuickImportModal } from './components/QuickImportModal';
@@ -168,6 +168,8 @@ export default function App() {
           onOpenMobileMenu={() => setIsMobileSidebarOpen(true)}
           onOpenFormula={openFormula}
           title={getNavTitle()}
+          // 下注頁把遊戲選擇搬進下注流程,右上角就不再顯示;分析頁保留全站切換。
+          showGameSwitcher={activeNav !== 'duo_bet'}
         />
 
         {/* Content View Container */}
@@ -200,6 +202,13 @@ export default function App() {
                       <span>快速上傳</span>
                     </button>
                   </div>
+                </div>
+
+                {/* 選遊戲(下注流程第一步):遊戲選擇從 Header 右上角搬到這裡,設的是全域
+                    遊戲(全站跟著換),下注 / 對獎 / 區間提醒都以此為準。 */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[11px] font-semibold text-neutral-500 dark:text-neutral-400">下注遊戲</span>
+                  <GameSwitcher />
                 </div>
 
                 {/* 版切換:紀錄下注 / 快速上傳都記到選中的版(各版盤口、累積損益獨立) */}
