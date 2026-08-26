@@ -37,6 +37,7 @@ const MODE_ROWS: { mode: LedgerMode; name: string }[] = [
   { mode: 'single', name: '1組' },
   { mode: 'multi', name: '2組' },
   { mode: 'pillar1800', name: '三柱1800碰' },
+  { mode: 'combo9000', name: '9000碰' },
   { mode: 'combo', name: '連碰 (星碰/立柱)' },
 ];
 

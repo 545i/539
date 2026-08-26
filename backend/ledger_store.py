@@ -20,7 +20,7 @@ import sys
 from pathlib import Path
 
 # 允許的下法(對應前端 DuoBetTab 的四個記帳分頁)
-MODES = ("single", "multi", "pillar1800", "combo")
+MODES = ("single", "multi", "pillar1800", "combo9000", "combo")
 
 
 def _db_path() -> Path:
