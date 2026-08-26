@@ -16,7 +16,7 @@ import pandas as pd
 from fastapi import APIRouter, Query
 
 from backend.data import get_game, load_df
-from core import picker, predictor
+from core import analysis, picker, predictor
 from core.games import GameConfig
 from core.loader import detect_num_cols
 
@@ -102,6 +102,32 @@ def predict(game: str = Query(...), sets: int = Query(1, ge=1, le=10),
         },
         "strategies": strategies,
         "notice": NOTICE,
+    }
+
+
+ANALYSIS_NOTICE = (
+    "以下是對『選定範圍』歷史開獎的隨機性檢定(均勻度 / 獨立性 / 相關 / 變異數模擬),"
+    "用來看這批號碼有多接近『公平隨機』。彩券每期獨立、無記憶,這些數字**不能預測"
+    "下一期**;結果同一範圍固定不變。")
+
+
+@router.get("/analysis")
+def analysis_route(game: str = Query(...),
+                   mode: str = Query("periods", pattern="^(periods|days)$"),
+                   n: int = Query(30, ge=1, le=100000)):
+    """對選定範圍(最近 n 期 / 最近 n 天)做六項統計檢定。
+
+    確定性:同一 game + mode + n → 同一結果(變異數模擬用固定種子)。
+    """
+    g = get_game(game)
+    df = load_df(game)
+    res = analysis.analyze(df, g.num_max, g.pick, mode=mode, n=n)
+    return {
+        "game": g.key, "game_name": g.label,
+        "num_max": g.num_max, "pick": g.pick,
+        "total_periods": int(len(df)),
+        **res,
+        "notice": ANALYSIS_NOTICE,
     }
 
 

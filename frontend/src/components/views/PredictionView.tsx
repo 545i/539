@@ -1,11 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Sparkles, Info, ChevronRight, Trophy, ListOrdered } from 'lucide-react';
-import { api, PredictReviewDTO, PredictStrategyDTO } from '../../api/client';
+import { Sparkles, Info, ChevronRight, Trophy, ListOrdered, FlaskConical } from 'lucide-react';
+import { api, PredictAnalysisDTO, PredictReviewDTO, PredictStrategyDTO } from '../../api/client';
 import { useAsync } from '../../api/useAsync';
 import { useGame } from '../../api/useGame';
 
 const SET_OPTIONS = [1, 3, 5] as const;
 const REVIEW_OPTIONS = [10, 20, 50] as const;
+const RANGE_PERIOD_OPTS = [30, 50, 100] as const;   // 依期數
+const RANGE_DAY_OPTS = [14, 30, 90] as const;        // 依日期
 const MEDALS = ['🥇', '🥈', '🥉'];
 
 // 號球依十位分色,跟統計分析頁一致(01~09 / 10~19 / … / 40~49)
@@ -83,11 +85,40 @@ const StrategyRow: React.FC<{ s: PredictStrategyDTO }> = ({ s }) => (
   </div>
 );
 
+// 統計檢定用的小卡片 + 結論徽章(綠=符合隨機、琥珀=偏離,只是樣本波動不代表可預測)
+const StatCard: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
+  <div className="rounded-xl border border-black/[0.06] dark:border-white/[0.08] bg-black/[0.015] dark:bg-white/[0.02] p-3.5 space-y-1.5">
+    <div className="text-[11px] font-display font-bold uppercase tracking-wide text-neutral-700 dark:text-neutral-200">
+      {title}
+    </div>
+    {children}
+  </div>
+);
+
+const Verdict: React.FC<{ ok: boolean; text: string }> = ({ ok, text }) => (
+  <span
+    className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+      ok
+        ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+        : 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
+    }`}
+  >
+    {text}
+  </span>
+);
+
 export const PredictionView: React.FC = () => {
   const { gameKey, game } = useGame();
   const [sets, setSets] = useState<number>(1);
   const [reviewN, setReviewN] = useState<number>(20);
   const [open, setOpen] = useState<string | null>(null);
+  // 統計檢定的計算範圍:依期數(最近 n 期)或依日期(最近 n 天)。切回同一範圍結果固定。
+  const [rangeMode, setRangeMode] = useState<'periods' | 'days'>('periods');
+  const [rangeN, setRangeN] = useState<number>(50);
+  const ana = useAsync<PredictAnalysisDTO | null>(
+    () => api.predictAnalysis(gameKey, rangeMode, rangeN),
+    [gameKey, rangeMode, rangeN],
+  );
 
   // 本期預測固定用「期號推導的確定性種子」(後端在 seed 省略時採用),同一期永遠同一組。
   // 不再提供「重新抽一組」—— 預測結果不該隨手動抽組變動(切回同一期要答案一致)。
@@ -197,6 +228,151 @@ export const PredictionView: React.FC = () => {
             本期預測依期號推導的固定種子出號(seed {pred.data.seed}),同一期永遠同一組 ——
             重整、切走再切回都不變。
           </p>
+        )}
+      </div>
+
+      {/* ── 1b. 統計檢定(依選定範圍;同範圍結果固定)──── */}
+      <div className="p-5 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] space-y-4">
+        <div className="flex items-start justify-between flex-wrap gap-3">
+          <div>
+            <h3 className="text-sm font-display font-bold text-neutral-900 dark:text-white uppercase tracking-wide flex items-center gap-2">
+              <FlaskConical className="w-4 h-4" />
+              統計檢定
+            </h3>
+            <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
+              對選定範圍的開獎做隨機性檢定
+              {ana.data ? `(範圍內共 ${ana.data.periods} 期)` : ''}
+            </p>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="inline-flex p-1 rounded-xl bg-black/[0.03] dark:bg-white/[0.04] border border-black/[0.06] dark:border-white/[0.06] gap-1">
+              {(['periods', 'days'] as const).map(m => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => { setRangeMode(m); setRangeN(m === 'periods' ? 50 : 30); }}
+                  className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
+                    rangeMode === m
+                      ? 'bg-black text-white dark:bg-white dark:text-black shadow-xs'
+                      : 'text-neutral-600 dark:text-neutral-400 hover:text-black dark:hover:text-white'
+                  }`}
+                >
+                  {m === 'periods' ? '依期數' : '依日期'}
+                </button>
+              ))}
+            </div>
+            <div className="inline-flex p-1 rounded-xl bg-black/[0.03] dark:bg-white/[0.04] border border-black/[0.06] dark:border-white/[0.06] gap-1">
+              {(rangeMode === 'periods' ? RANGE_PERIOD_OPTS : RANGE_DAY_OPTS).map(nOpt => (
+                <button
+                  key={nOpt}
+                  type="button"
+                  onClick={() => setRangeN(nOpt)}
+                  className={`px-3 py-1 rounded-lg text-xs font-mono font-semibold transition-all ${
+                    rangeN === nOpt
+                      ? 'bg-black text-white dark:bg-white dark:text-black shadow-xs'
+                      : 'text-neutral-600 dark:text-neutral-400 hover:text-black dark:hover:text-white'
+                  }`}
+                >
+                  {nOpt}{rangeMode === 'periods' ? ' 期' : ' 天'}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {ana.loading && <div className="text-xs text-neutral-400">計算中…</div>}
+        {ana.error && <div className="text-xs text-rose-500">{ana.error}</div>}
+
+        {ana.data && ana.data.periods > 0 && (
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {/* 敘述性統計 */}
+              <StatCard title="敘述性統計">
+                {ana.data.descriptive.sum && (
+                  <p className="text-[11px] text-neutral-600 dark:text-neutral-300">
+                    和值 平均 <b>{ana.data.descriptive.sum.mean}</b> · 中位 {ana.data.descriptive.sum.median} ·
+                    標準差 {ana.data.descriptive.sum.std}({ana.data.descriptive.sum.min}~{ana.data.descriptive.sum.max})
+                  </p>
+                )}
+                <p className="text-[11px] text-neutral-600 dark:text-neutral-300">
+                  每期平均 奇數 {ana.data.descriptive.odd_avg} 個、大數 {ana.data.descriptive.big_avg} 個;
+                  每號期望出現 {ana.data.descriptive.expected_per_num} 次
+                </p>
+                <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                  <span className="text-[10px] text-neutral-400">熱</span>
+                  {ana.data.descriptive.hot.map(h => <Ball key={h.num} n={h.num} size="sm" />)}
+                </div>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-[10px] text-neutral-400">冷</span>
+                  {ana.data.descriptive.cold.map(h => <Ball key={h.num} n={h.num} size="sm" />)}
+                </div>
+              </StatCard>
+
+              {/* 均勻度檢定 */}
+              <StatCard title="均勻度檢定(χ² vs 均勻)">
+                <p className="text-[11px] font-mono text-neutral-600 dark:text-neutral-300">
+                  χ² = {ana.data.uniformity.chi2}(自由度 {ana.data.uniformity.dof}) · p = {ana.data.uniformity.p}
+                </p>
+                <Verdict ok={ana.data.uniformity.uniform} text={ana.data.uniformity.verdict} />
+              </StatCard>
+
+              {/* 獨立性檢定 */}
+              <StatCard title="獨立性檢定(前後期 χ²)">
+                <p className="text-[11px] font-mono text-neutral-600 dark:text-neutral-300">
+                  χ² = {ana.data.independence.chi2}(自由度 {ana.data.independence.dof}) · p = {ana.data.independence.p}
+                </p>
+                <Verdict ok={ana.data.independence.independent} text={ana.data.independence.verdict} />
+              </StatCard>
+
+              {/* 皮爾森相關 */}
+              <StatCard title="皮爾森相關(相鄰兩期特徵)">
+                {ana.data.pearson.features.map(f => (
+                  <div key={f.feature} className="flex items-center justify-between text-[11px] text-neutral-600 dark:text-neutral-300">
+                    <span>{f.feature}</span>
+                    <span className="font-mono">
+                      r = {f.r} <span className="text-neutral-400">({f.note})</span>
+                    </span>
+                  </div>
+                ))}
+              </StatCard>
+
+              {/* 貢獻性分析 */}
+              <StatCard title="貢獻性分析(各號對均勻度 χ² 的貢獻)">
+                <div className="space-y-1">
+                  {ana.data.contribution.rows.slice(0, 6).map(r => (
+                    <div key={r.num} className="flex items-center gap-2 text-[11px]">
+                      <Ball n={r.num} size="sm" />
+                      <span className="font-mono text-neutral-500">
+                        實{r.observed}/期{r.expected}
+                      </span>
+                      <span className={r.dir === '熱' ? 'text-rose-500' : r.dir === '冷' ? 'text-blue-500' : 'text-neutral-400'}>
+                        {r.dir}
+                      </span>
+                      <span className="ml-auto font-mono text-neutral-600 dark:text-neutral-300">{r.pct}%</span>
+                    </div>
+                  ))}
+                </div>
+              </StatCard>
+
+              {/* 變異數模擬 */}
+              <StatCard title="變異數模擬(蒙地卡羅 vs 公平隨機)">
+                <p className="text-[11px] font-mono text-neutral-600 dark:text-neutral-300">
+                  觀測變異 {ana.data.variance_sim.observed_var} · 隨機常態 {ana.data.variance_sim.sim_lo}~{ana.data.variance_sim.sim_hi}
+                </p>
+                <p className="text-[11px] text-neutral-600 dark:text-neutral-300">
+                  落在模擬分佈第 <b>{ana.data.variance_sim.percentile}</b> 百分位
+                </p>
+                <Verdict
+                  ok={ana.data.variance_sim.percentile >= 2.5 && ana.data.variance_sim.percentile <= 97.5}
+                  text={ana.data.variance_sim.verdict}
+                />
+              </StatCard>
+            </div>
+            <p className="text-[11px] text-neutral-400 dark:text-neutral-500">{ana.data.notice}</p>
+          </>
+        )}
+        {ana.data && ana.data.periods === 0 && (
+          <div className="text-xs text-neutral-400">這個範圍內沒有開獎資料,換個範圍試試。</div>
         )}
       </div>
 

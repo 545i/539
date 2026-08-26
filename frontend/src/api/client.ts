@@ -427,6 +427,40 @@ export interface PredictReviewDTO {
   notice: string;
 }
 
+// 統計檢定(依選定範圍;同範圍結果固定)
+export interface PredictAnalysisDTO {
+  game: GameKey;
+  game_name: string;
+  num_max: number;
+  pick: number;
+  total_periods: number;
+  mode: 'periods' | 'days';
+  n: number;
+  periods: number;
+  descriptive: {
+    periods: number;
+    expected_per_num: number;
+    sum: {mean: number; median: number; std: number; min: number; max: number} | null;
+    odd_avg: number;
+    big_avg: number;
+    hot: {num: number; count: number}[];
+    cold: {num: number; count: number}[];
+  };
+  uniformity: {chi2: number; dof: number; p: number; uniform: boolean; verdict: string};
+  contribution: {
+    expected: number;
+    chi2_total: number;
+    rows: {num: number; observed: number; expected: number; contrib: number; pct: number; dir: string}[];
+  };
+  independence: {chi2: number; dof: number; p: number; independent: boolean; verdict: string};
+  pearson: {features: {feature: string; r: number; p: number; note: string}[]};
+  variance_sim: {
+    observed_var: number; sim_mean: number; sim_lo: number; sim_hi: number;
+    percentile: number; verdict: string;
+  };
+  notice: string;
+}
+
 // 記帳流水帳(需登入)
 // mode 對應各下注分頁;record 就是前端的 BetRecord,後端原封不動存成 JSON,
 // 所以這裡刻意用寬鬆型別 —— 後端不解讀內容,欄位增減不必兩邊同步改。
@@ -936,6 +970,9 @@ export const api = {
     get<PredictDTO>(`predict?${qs({game, sets, seed})}`),
   predictReview: (game: GameKey, periods = 20) =>
     get<PredictReviewDTO>(`predict/review?${qs({game, periods})}`),
+  // 統計檢定:mode=periods(最近 n 期)或 days(最近 n 天);同範圍結果固定
+  predictAnalysis: (game: GameKey, mode: 'periods' | 'days', n: number) =>
+    get<PredictAnalysisDTO>(`predict/analysis?${qs({game, mode, n})}`),
 
   // pillar 1800碰
   pillarInfo: (game: GameKey) => get<PillarInfoDTO>(`pillar/info?game=${game}`),
