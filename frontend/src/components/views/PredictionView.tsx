@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Sparkles, Info, ChevronRight, Trophy, ListOrdered, FlaskConical } from 'lucide-react';
-import { api, PredictAnalysisDTO, PredictReviewDTO, PredictStrategyDTO } from '../../api/client';
+import { api, ComboSource, PredictAnalysisDTO, PredictReviewDTO, PredictStrategyDTO } from '../../api/client';
 import { useAsync } from '../../api/useAsync';
 import { useGame } from '../../api/useGame';
 
@@ -18,6 +18,14 @@ const BAND_BALL = [
   'bg-emerald-600 text-white',
   'bg-fuchsia-600 text-white',
 ];
+
+// 「我們的組合」每顆的來源桶 → 標籤 + 球色 + 小徽章色
+const COMBO_SOURCE: Record<ComboSource, { label: string; ball: string; chip: string }> = {
+  hot: { label: '熱', ball: 'bg-rose-600 text-white', chip: 'bg-rose-500/15 text-rose-600 dark:text-rose-300' },
+  cold: { label: '冷', ball: 'bg-blue-600 text-white', chip: 'bg-blue-500/15 text-blue-600 dark:text-blue-300' },
+  history: { label: '歷史', ball: 'bg-amber-600 text-white', chip: 'bg-amber-500/15 text-amber-700 dark:text-amber-300' },
+  parity: { label: '單雙', ball: 'bg-violet-600 text-white', chip: 'bg-violet-500/15 text-violet-600 dark:text-violet-300' },
+};
 
 const pad2 = (n: number) => n.toString().padStart(2, '0');
 const bandBall = (n: number) =>
@@ -334,6 +342,38 @@ export const PredictionView: React.FC = () => {
           <div className="text-xs text-neutral-400">這個範圍內沒有開獎資料,換個範圍試試。</div>
         )}
       </div>
+
+      {/* ── 1a. 我們的組合(熱2+冷2+歷史2+單雙2)高亮參考組合 ── */}
+      {pred.data?.our_combo?.length ? (
+        <div className="p-5 rounded-2xl border-2 border-amber-500/40 bg-gradient-to-br from-amber-500/[0.09] to-transparent dark:from-amber-500/[0.07] shadow-sm space-y-3">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-amber-500" />
+            <h3 className="text-sm font-display font-bold uppercase tracking-wide text-neutral-900 dark:text-white">
+              我們的組合(熱2+冷2+歷史2+單雙2)
+            </h3>
+          </div>
+          <div className="flex items-end gap-3 flex-wrap">
+            {pred.data.our_combo.map(c => {
+              const cfg = COMBO_SOURCE[c.source];
+              return (
+                <div key={c.num} className="flex flex-col items-center gap-1">
+                  <span
+                    className={`inline-flex items-center justify-center rounded-full font-mono font-bold w-10 h-10 text-sm ring-2 ring-amber-400/60 ${cfg.ball}`}
+                  >
+                    {pad2(c.num)}
+                  </span>
+                  <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-semibold ${cfg.chip}`}>
+                    {cfg.label}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+          <p className="text-[11px] leading-relaxed text-neutral-500 dark:text-neutral-400">
+            這是把熱2、冷2、歷史2、單雙(1奇1偶)各取幾顆併成的參考組合。
+          </p>
+        </div>
+      ) : null}
 
       {/* ── 1b. 本期預測(承接統計檢定,依同一範圍輸出五策略)── */}
       <div className="p-5 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] space-y-4">

@@ -56,6 +56,43 @@ def test_days_mode_ok():
     assert r.json()["mode"] == "days"
 
 
+def test_our_combo_eight_unique_labeled():
+    """我們的組合:剛好 8 顆、不重複、來源標籤合法,且對齊策略排名。"""
+    r = client.get(BASE, params={"game": "lotto539", "mode": "periods", "n": 50}).json()
+    combo = r["our_combo"]
+    assert len(combo) == 8, "39選5 的組合應剛好 8 顆(2+2+2+2)"
+    nums = [c["num"] for c in combo]
+    assert len(set(nums)) == 8, "8 顆必須不重複"
+    assert all(c["source"] in ("hot", "cold", "history", "parity") for c in combo)
+
+    by = {s["key"]: s for s in r["strategies"]}
+    # 前 2 顆熱來源必為 hot 排名前 2(依挑選順序,尚未去重前)
+    hot_picks = [c["num"] for c in combo if c["source"] == "hot"]
+    assert set(hot_picks) <= set(by["hot"]["sets"][0]), "熱來源號碼須落在 hot 排名前段"
+    cold_picks = [c["num"] for c in combo if c["source"] == "cold"]
+    assert set(cold_picks) <= set(by["cold"]["sets"][0]), "冷來源號碼須落在 cold 排名前段"
+    # 單雙來源:應是 1 奇 + 1 偶(除非奇/偶不夠被 frequency 補走)
+    parity = [c["num"] for c in combo if c["source"] == "parity"]
+    if len(parity) == 2:
+        assert sum(n % 2 for n in parity) == 1, "單雙來源應是 1 奇 1 偶"
+
+
+def test_our_combo_deterministic():
+    a = client.get(BASE, params={"game": "lotto539", "mode": "periods", "n": 50}).json()
+    b = client.get(BASE, params={"game": "lotto539", "mode": "periods", "n": 50}).json()
+    assert a["our_combo"] == b["our_combo"], "同範圍組合須一致(確定性)"
+
+
+def test_our_combo_marksix_no_error():
+    """六合彩(49選6)不用特別優化,但不能報錯,且仍不重複。"""
+    r = client.get(BASE, params={"game": "marksix", "mode": "periods", "n": 50})
+    assert r.status_code == 200
+    combo = r.json()["our_combo"]
+    nums = [c["num"] for c in combo]
+    assert len(nums) == len(set(nums)), "組合不得重複"
+    assert all(c["source"] in ("hot", "cold", "history", "parity") for c in combo)
+
+
 def test_review_odd_even_win_only_for_balanced():
     """回測「單雙比中」只適用『均衡』:其餘策略 oe_win=None,不判單雙中獎。"""
     d = client.get(f"{BASE}/review", params={"game": "lotto539", "periods": 8}).json()

@@ -77,6 +77,73 @@ def _top_by_count(cnt: dict[int, int], pick: int, most: bool = True) -> list[int
     return sorted(n for n, _ in ranked[:pick])
 
 
+def _rank_order(cnt: dict[int, int], most: bool = True) -> list[int]:
+    """整份排名的號碼順序(不截斷):most=True 由多到少、False 由少到多,
+    平手以號碼小者優先。用來一路遞補湊「我們的組合」。"""
+    return [n for n, _ in sorted(
+        cnt.items(), key=lambda kv: (-kv[1] if most else kv[1], kv[0]))]
+
+
+# 「我們的組合」目標顆數:熱2 + 冷2 + 歷史2 + 單雙(1奇1偶)= 8(為 39選5 設計)
+OUR_COMBO_TARGET = 8
+
+
+def _build_our_combo(cnt_range: dict[int, int],
+                     cnt_all: dict[int, int]) -> list[dict]:
+    """確定性組出「我們的 8 顆(2+2+2+2)」,每顆帶來源標籤。
+
+    配方(每步都跳過已選號碼、往該排名下一個遞補,確保最後剛好 8 顆不重複):
+      1. 熱 2:cnt_range 由多到少(hot 排名)前 2。
+      2. 冷 2:cnt_range 由少到多(cold 排名)前 2。
+      3. 歷史 2:cnt_all 由多到少(frequency 排名)前 2。
+      4. 單雙 2:從 hot 排名補「最熱 1 奇 + 最熱 1 偶」(尚未被選的)。
+      5. 若單雙湊不到(奇或偶不夠),用 frequency 排名補滿到 8。
+    來源標籤:hot / cold / history / parity(給前端上色用)。
+    """
+    hot_order = _rank_order(cnt_range, most=True)
+    cold_order = _rank_order(cnt_range, most=False)
+    freq_order = _rank_order(cnt_all, most=True)
+
+    chosen: list[dict] = []
+    seen: set[int] = set()
+
+    def _take(order: list[int], count: int, source: str) -> None:
+        added = 0
+        for n in order:
+            if added >= count:
+                break
+            if n in seen:
+                continue
+            seen.add(n)
+            chosen.append({"num": n, "source": source})
+            added += 1
+
+    _take(hot_order, 2, "hot")
+    _take(cold_order, 2, "cold")
+    _take(freq_order, 2, "history")
+
+    # 單雙:從 hot 排名補最熱 1 奇 + 最熱 1 偶(尚未被選)
+    for want_odd in (True, False):
+        for n in hot_order:
+            if n in seen:
+                continue
+            if (n % 2 == 1) == want_odd:
+                seen.add(n)
+                chosen.append({"num": n, "source": "parity"})
+                break
+
+    # 湊不到 8(奇/偶不夠)→ 用 frequency 排名補滿
+    for n in freq_order:
+        if len(chosen) >= OUR_COMBO_TARGET:
+            break
+        if n in seen:
+            continue
+        seen.add(n)
+        chosen.append({"num": n, "source": "history"})
+
+    return chosen[:OUR_COMBO_TARGET]
+
+
 @router.get("")
 def predict(game: str = Query(...), sets: int = Query(1, ge=1, le=10),
             mode: str = Query("periods", pattern="^(periods|days)$"),
@@ -143,6 +210,7 @@ def predict(game: str = Query(...), sets: int = Query(1, ge=1, le=10),
             "label": predictor.period_label(target_issue, target_date),
         },
         "strategies": strategies,
+        "our_combo": _build_our_combo(cnt_range, cnt_all),
         "notice": NOTICE,
     }
 

@@ -386,6 +386,13 @@ export interface PredictStrategyDTO {
   error: string | null;
 }
 
+// 「我們的組合」每顆:號碼 + 來源桶(給前端上色)
+export type ComboSource = 'hot' | 'cold' | 'history' | 'parity';
+export interface OurComboPickDTO {
+  num: number;
+  source: ComboSource;
+}
+
 export interface PredictDTO {
   game: GameKey;
   game_name: string;
@@ -399,6 +406,7 @@ export interface PredictDTO {
   periods: number;
   target: {issue: string; date: string | null; label: string};
   strategies: PredictStrategyDTO[];
+  our_combo: OurComboPickDTO[]; // 熱2+冷2+歷史2+單雙2 併成的參考組合
   notice: string;
 }
 
