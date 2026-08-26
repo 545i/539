@@ -56,8 +56,17 @@ const StrategyRow: React.FC<{ s: PredictStrategyDTO }> = ({ s }) => (
         <div className="text-xs font-display font-bold text-neutral-900 dark:text-white tracking-wide">
           {s.label}
         </div>
-        <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-neutral-400 mt-0.5">
-          {s.key}
+        <div className="flex items-center gap-1.5 mt-0.5">
+          <span className="text-[10px] font-mono uppercase tracking-[0.18em] text-neutral-400">
+            {s.key}
+          </span>
+          <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-semibold ${
+            s.ranked
+              ? 'bg-blue-500/15 text-blue-600 dark:text-blue-300'
+              : 'bg-neutral-500/15 text-neutral-500 dark:text-neutral-400'
+          }`}>
+            {s.ranked ? '排名' : '抽樣'}
+          </span>
         </div>
       </div>
       <div className="min-w-0 flex-1 space-y-2">
@@ -122,7 +131,8 @@ export const PredictionView: React.FC = () => {
 
   // 本期預測固定用「期號推導的確定性種子」(後端在 seed 省略時採用),同一期永遠同一組。
   // 不再提供「重新抽一組」—— 預測結果不該隨手動抽組變動(切回同一期要答案一致)。
-  const pred = useAsync(() => api.predict(gameKey, sets), [gameKey, sets]);
+  const pred = useAsync(() => api.predict(gameKey, sets, rangeMode, rangeN),
+    [gameKey, sets, rangeMode, rangeN]);
   const review = useAsync<PredictReviewDTO | null>(
     () => api.predictReview(gameKey, reviewN),
     [gameKey, reviewN],
@@ -180,58 +190,7 @@ export const PredictionView: React.FC = () => {
         </p>
       </div>
 
-      {/* ── 1. 本期預測 ───────────────────────────────── */}
-      <div className="p-5 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] space-y-4">
-        <div className="flex items-start justify-between flex-wrap gap-3">
-          <div>
-            <h3 className="text-sm font-display font-bold text-neutral-900 dark:text-white uppercase tracking-wide">
-              本期預測
-            </h3>
-            <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
-              目標期:
-              <span className="font-semibold text-neutral-800 dark:text-neutral-200">
-                {pred.data?.target.label ?? '—'}
-              </span>
-            </p>
-          </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <div className="inline-flex p-1 rounded-xl bg-black/[0.03] dark:bg-white/[0.04] border border-black/[0.06] dark:border-white/[0.06] gap-1">
-              {SET_OPTIONS.map(n => (
-                <button
-                  key={n}
-                  type="button"
-                  onClick={() => setSets(n)}
-                  className={`px-3 py-1 rounded-lg text-xs font-mono font-semibold transition-all ${
-                    sets === n
-                      ? 'bg-black text-white dark:bg-white dark:text-black shadow-xs'
-                      : 'text-neutral-600 dark:text-neutral-400 hover:text-black dark:hover:text-white'
-                  }`}
-                >
-                  {n} 組
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {pred.loading && <div className="text-xs text-neutral-400">出號中…</div>}
-        {pred.error && <div className="text-xs text-rose-500">{pred.error}</div>}
-
-        <div>
-          {(pred.data?.strategies ?? []).map(s => (
-            <StrategyRow key={s.key} s={s} />
-          ))}
-        </div>
-
-        {pred.data && (
-          <p className="text-[11px] text-neutral-400 dark:text-neutral-500">
-            本期預測依期號推導的固定種子出號(seed {pred.data.seed}),同一期永遠同一組 ——
-            重整、切走再切回都不變。
-          </p>
-        )}
-      </div>
-
-      {/* ── 1b. 統計檢定(依選定範圍;同範圍結果固定)──── */}
+      {/* ── 1. 統計檢定(依選定範圍;同範圍結果固定)──── */}
       <div className="p-5 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] space-y-4">
         <div className="flex items-start justify-between flex-wrap gap-3">
           <div>
@@ -373,6 +332,61 @@ export const PredictionView: React.FC = () => {
         )}
         {ana.data && ana.data.periods === 0 && (
           <div className="text-xs text-neutral-400">這個範圍內沒有開獎資料,換個範圍試試。</div>
+        )}
+      </div>
+
+      {/* ── 1b. 本期預測(承接統計檢定,依同一範圍輸出五策略)── */}
+      <div className="p-5 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] space-y-4">
+        <div className="flex items-start justify-between flex-wrap gap-3">
+          <div>
+            <h3 className="text-sm font-display font-bold text-neutral-900 dark:text-white uppercase tracking-wide">
+              本期預測(依上方範圍)
+            </h3>
+            <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
+              目標期:
+              <span className="font-semibold text-neutral-800 dark:text-neutral-200">
+                {pred.data?.target.label ?? '—'}
+              </span>
+              <span className="ml-2 text-neutral-400">
+                熱/冷/頻率=排名(對齊統計檢定);隨機/均衡=抽樣
+              </span>
+            </p>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[10px] text-neutral-400">組數(只影響隨機/均衡)</span>
+            <div className="inline-flex p-1 rounded-xl bg-black/[0.03] dark:bg-white/[0.04] border border-black/[0.06] dark:border-white/[0.06] gap-1">
+              {SET_OPTIONS.map(n => (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => setSets(n)}
+                  className={`px-3 py-1 rounded-lg text-xs font-mono font-semibold transition-all ${
+                    sets === n
+                      ? 'bg-black text-white dark:bg-white dark:text-black shadow-xs'
+                      : 'text-neutral-600 dark:text-neutral-400 hover:text-black dark:hover:text-white'
+                  }`}
+                >
+                  {n} 組
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {pred.loading && <div className="text-xs text-neutral-400">出號中…</div>}
+        {pred.error && <div className="text-xs text-rose-500">{pred.error}</div>}
+
+        <div>
+          {(pred.data?.strategies ?? []).map(s => (
+            <StrategyRow key={s.key} s={s} />
+          ))}
+        </div>
+
+        {pred.data && (
+          <p className="text-[11px] text-neutral-400 dark:text-neutral-500">
+            熱/冷/頻率為選定範圍內的確定性排名 —— 與統計檢定完全一致;隨機/均衡依期號推導的
+            固定種子出號(seed {pred.data.seed})。同一範圍、同一期永遠同一組,切走再切回都不變。
+          </p>
         )}
       </div>
 

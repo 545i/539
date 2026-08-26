@@ -26,13 +26,18 @@ router = APIRouter(prefix="/predict", tags=["predict"])
 STRATEGY_DESCS = {
     "random": "01~{num_max} 等機率隨機抽 {pick} 顆。數學上最誠實的基準 —— "
               "每期開獎互相獨立,這就是真實的中獎機率。",
-    "hot": "近 30 期常開的號碼權重高。看起來「正在發燒」,但發燒不會延續到下一期。",
-    "cold": "很久沒開的號碼權重高(賭徒謬誤)。號碼沒有記憶,久沒開不代表快開了,"
-            "但很多人愛用。",
-    "frequency": "依歷史總出現次數加權。長期下來各號次數本來就會接近,差異多半是雜訊。",
-    "balanced": "先隨機抽,再過濾到奇偶比與和值落在歷史常見區間 —— 號碼看起來"
+    "hot": "選定範圍內出現次數最多的 {pick} 顆(與統計檢定的『熱號』一致)。"
+           "看起來「正在發燒」,但發燒不會延續到下一期。",
+    "cold": "選定範圍內出現次數最少的 {pick} 顆(賭徒謬誤,與統計檢定的『冷號』一致)。"
+            "號碼沒有記憶,少開不代表快開了,但很多人愛用。",
+    "frequency": "全部歷史出現次數最多的 {pick} 顆。長期下來各號次數本來就會接近,"
+                 "差異多半是雜訊。",
+    "balanced": "先隨機抽,再過濾到奇偶比與和值落在(範圍內)常見區間 —— 號碼看起來"
                 "「像一般開獎結果」,中獎機率跟純隨機一模一樣。",
 }
+
+# 依「排名」出號的策略(確定性,直接對應統計檢定);其餘走隨機抽樣
+RANKING_STRATEGIES = {"hot", "cold", "frequency"}
 
 NOTICE = ("五種策略的期望中獎率完全相同,差別只有運氣。任何冷熱號 / 頻率加權都"
           "無法預測下一期,號碼僅供參考,請理性娛樂。")
@@ -50,12 +55,26 @@ def _row_nums(row, cols: list[str]) -> list[int]:
     return sorted(int(row[c]) for c in cols)
 
 
+def _top_by_count(cnt: dict[int, int], pick: int, most: bool = True) -> list[int]:
+    """依出現次數取前 pick 名:most=True 取最多(熱),False 取最少(冷)。
+    平手以號碼小者優先。回排序後的號碼清單(確定性)。"""
+    ranked = sorted(cnt.items(),
+                    key=lambda kv: (-kv[1] if most else kv[1], kv[0]))
+    return sorted(n for n, _ in ranked[:pick])
+
+
 @router.get("")
 def predict(game: str = Query(...), sets: int = Query(1, ge=1, le=10),
-            window: int = Query(30, ge=1), seed: int | None = Query(None)):
-    """5 種策略各自的推薦號碼(依該款的 num_max / pick 出號)。
+            mode: str = Query("periods", pattern="^(periods|days)$"),
+            n: int = Query(50, ge=1, le=100000),
+            seed: int | None = Query(None)):
+    """5 種策略各自的推薦號碼,依「選定範圍(最近 n 期 / n 天)」計算。
 
-    seed 不給時依「下一期期號」推導 —— 同一期結果可重現;給了就照給的抽。
+    - hot / cold / frequency:**確定性排名**(直接對應統計檢定的熱/冷/總頻率),
+      同範圍永遠同一組。
+    - random / balanced:隨機抽樣,seed 不給時依「下一期期號」推導 → 同一期可重現。
+
+    sets 只對隨機抽樣的策略有意義(排名策略永遠是排名前 pick 那一組)。
     """
     g = get_game(game)
     df = load_df(game)
@@ -63,29 +82,35 @@ def predict(game: str = Query(...), sets: int = Query(1, ge=1, le=10),
     base = seed if seed is not None else predictor.seed_for_issue(
         target_issue, target_date)
 
+    sub = analysis.slice_range(df, mode, n)
+    cnt_range = analysis.counts(sub, g.num_max, g.pick)   # 熱/冷:選定範圍
+    cnt_all = analysis.counts(df, g.num_max, g.pick)      # 頻率:全部歷史
+    ranking = {
+        "hot": _top_by_count(cnt_range, g.pick, most=True),
+        "cold": _top_by_count(cnt_range, g.pick, most=False),
+        "frequency": _top_by_count(cnt_all, g.pick, most=True),
+    }
+
     strategies = []
     for s in picker.STRATEGIES:
         meta = _strategy_meta(s, g)
-        # 每個策略錯開 seed,否則權重接近均勻時不同策略會抽出一模一樣的號碼
+        if s in RANKING_STRATEGIES:
+            # 確定性排名:一組(對應統計檢定,不做隨機、不吃 sets)
+            strategies.append({**meta, "sets": [ranking[s]], "top_numbers": [],
+                               "uniform": False, "ranked": True, "error": None})
+            continue
+        # random / balanced:隨機抽樣(balanced 的和值/奇偶區間取自選定範圍)
         offset = picker.STRATEGIES.index(s) * 7919
+        src = sub if s == "balanced" else df
         try:
-            nums = picker.pick(df, strategy=s, sets=sets, seed=base + offset,
+            nums = picker.pick(src, strategy=s, sets=sets, seed=base + offset,
                                num_max=g.num_max, pick_n=g.pick)
         except (ValueError, KeyError, IndexError) as e:
             strategies.append({**meta, "sets": [], "top_numbers": [],
-                               "error": str(e)})
+                               "uniform": True, "ranked": False, "error": str(e)})
             continue
-        probs = picker.draw_probabilities(df, strategy=s, window=window,
-                                          num_max=g.num_max, pick=g.pick)
-        top = sorted(probs.items(), key=lambda kv: (-kv[1], kv[0]))[:6]
-        strategies.append({
-            **meta,
-            "sets": nums,
-            # 該策略「偏好」的號碼:random / balanced 是均勻的,所以會等值
-            "top_numbers": [{"num": n, "weight": p / g.pick} for n, p in top],
-            "uniform": s in ("random", "balanced"),
-            "error": None,
-        })
+        strategies.append({**meta, "sets": nums, "top_numbers": [],
+                           "uniform": True, "ranked": False, "error": None})
 
     return {
         "game": g.key,
@@ -94,6 +119,9 @@ def predict(game: str = Query(...), sets: int = Query(1, ge=1, le=10),
         "pick": g.pick,
         "sets": sets,
         "seed": base,
+        "mode": mode,
+        "n": int(n),
+        "range_periods": int(len(sub)),
         "periods": int(len(df)),
         "target": {
             "issue": target_issue,

@@ -379,8 +379,9 @@ export interface PredictStrategyDTO {
   label: string;
   desc: string;
   sets: number[][]; // 每組推薦號碼(依該款 pick 顆)
-  top_numbers: {num: number; weight: number}[]; // 該策略偏好的號碼
-  uniform: boolean; // true = 權重均勻(random / balanced),偏好清單沒有意義
+  top_numbers: {num: number; weight: number}[]; // 該策略偏好的號碼(保留欄位,前端未用)
+  uniform: boolean; // true = 權重均勻(random / balanced)
+  ranked?: boolean; // true = 確定性排名(hot/cold/frequency);false = 隨機抽樣
   error: string | null;
 }
 
@@ -391,6 +392,9 @@ export interface PredictDTO {
   pick: number;
   sets: number;
   seed: number;
+  mode: 'periods' | 'days';
+  n: number;
+  range_periods: number; // 選定範圍內的實際期數
   periods: number;
   target: {issue: string; date: string | null; label: string};
   strategies: PredictStrategyDTO[];
@@ -966,8 +970,9 @@ export const api = {
   // predict 五策略參考選號(純計算,不需登入)
   // seed 不給時後端依「下一期期號」推導 —— 同一期重整拿到同一組號碼;
   // 要重抽就帶一個新的 seed(例如 Date.now())。
-  predict: (game: GameKey, sets = 1, seed?: number) =>
-    get<PredictDTO>(`predict?${qs({game, sets, seed})}`),
+  predict: (game: GameKey, sets = 1, mode: 'periods' | 'days' = 'periods',
+            n = 50, seed?: number) =>
+    get<PredictDTO>(`predict?${qs({game, sets, mode, n, seed})}`),
   predictReview: (game: GameKey, periods = 20) =>
     get<PredictReviewDTO>(`predict/review?${qs({game, periods})}`),
   // 統計檢定:mode=periods(最近 n 期)或 days(最近 n 天);同範圍結果固定
