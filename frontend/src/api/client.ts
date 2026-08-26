@@ -842,8 +842,8 @@ export const api = {
     post<{settled: number}>('ledger/settle-pending', {}),
 
   // 對帳:貼對接人帳單 → 解析 + 抓同版同日期同遊戲流水並排比對
-  ledgerReconcile: (bill: string, edition: number) =>
-    post<ReconcileDTO>('ledger/reconcile', {bill, edition}),
+  ledgerReconcile: (bill: string, edition: number, date = '') =>
+    post<ReconcileDTO>('ledger/reconcile', {bill, edition, date}),
 
   // 某期別×版×遊戲的已結算彙總(給上傳歷史父列顯示 獲利/盈虧)
   ledgerDateSummary: (issue: string, edition: number, game: string) =>

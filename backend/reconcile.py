@@ -45,6 +45,17 @@ _TOTAL_RE = re.compile(r"共收\s*([\d,]+)")
 _WIN_RE = re.compile(r"^([二三四])\s*中\s*(\d+)\s*碰\s*([\d,]+)")
 _NET_RE = re.compile(r"合計.*?收\s*([\d,]+)")
 
+# ── 第二種帳單格式(碰數彙總,無每桶成本):─────────────────
+#   今彩
+#   全5320 包三1800 三840 四1050      ← 各類碰數(全=車=二桶、包三+三=三桶、四=四桶)
+#   收604163                          ← 總額(沒寫每桶成本就對照總金額)
+# 也認 539牌支604163 / 共604163 這種「牌支/共 + 數字」的總額寫法。
+_SEG_TOKEN_RE = re.compile(r"(全|二|三|四)\s*(\d+)")   # 包三 的「包」不在字元類,自動歸「三」
+_SEG_MAP = {"全": 2, "二": 2, "三": 3, "四": 4}
+_PAIZHI_RE = re.compile(r"牌支\s*([\d,]+)\s*$")        # 539牌支604163
+_GONG_RE = re.compile(r"^共\s*([\d,]+)\s*$")           # 共604163
+_SHOU_RE = re.compile(r"^收\s*([\d,]+)\s*$")           # 收604163
+
 
 def _int(s: str) -> int:
     return int(str(s).replace(",", "").strip() or 0)
@@ -126,6 +137,27 @@ def parse_bill(text: str, today: dt.date | None = None) -> dict:
         m = _NET_RE.search(line)
         if m:
             net = _int(m.group(1))
+            continue
+
+        # ── 第二種格式 ──
+        # 碰數彙總行(需有「全」或「包」當招牌,免得誤吃舊格式的「三 2640支…」)
+        if ("全" in line or "包" in line) and _SEG_TOKEN_RE.search(line):
+            for tok, n in _SEG_TOKEN_RE.findall(line):
+                star = _SEG_MAP[tok]
+                sl = slips.setdefault(star, {"units": 0, "cost": 0})
+                sl["units"] = int(sl.get("units", 0)) + _int(n)
+            continue
+        # 「539牌支604163」/「共604163」= 總成本(第一個出現的當總額)
+        m = _PAIZHI_RE.search(line) or _GONG_RE.match(line)
+        if m and total_cost == 0:
+            total_cost = _int(m.group(1))
+            continue
+        # 「收604163」= 這張單的實收(淨額);沒有每桶成本時就靠這個總額對帳
+        m = _SHOU_RE.match(line)
+        if m:
+            net = _int(m.group(1))
+            if total_cost == 0:
+                total_cost = _int(m.group(1))
             continue
 
     if not date:

@@ -118,6 +118,7 @@ export const UploadHistoryModal: React.FC<Props> = ({ isOpen, onClose, onRefill 
   const [recon, setRecon] = useState<ReconcileDTO | null>(null);
   const [reconBusy, setReconBusy] = useState(false);
   const [reconErr, setReconErr] = useState<string | null>(null);
+  const [reconDate, setReconDate] = useState('');   // 帳單沒日期時,手動補的日期
 
   const openRecon = (ts: number) => {
     const h = history.find(x => x.ts === ts);
@@ -133,7 +134,13 @@ export const UploadHistoryModal: React.FC<Props> = ({ isOpen, onClose, onRefill 
   const runRecon = async (eid: number) => {
     setReconBusy(true); setReconErr(null); setRecon(null);
     try {
-      setRecon(await api.ledgerReconcile(billText, eid));
+      const res = await api.ledgerReconcile(billText, eid, reconDate);
+      setRecon(res);
+      // 帳單沒日期、又沒手動補 → 提示補日期(第二種帳單格式常見)
+      const noDate = (res?.bill?.errors ?? []).some(e => e.includes('日期'));
+      if (noDate && !reconDate) {
+        setReconErr('這張帳單沒有日期,請在上方填「對帳日期」後再比對。');
+      }
     } catch (e) {
       setReconErr((e as Error).message);
     } finally {
@@ -318,7 +325,17 @@ export const UploadHistoryModal: React.FC<Props> = ({ isOpen, onClose, onRefill 
                     onChange={e => setBillText(e.target.value)}
                     className="w-full px-2 py-1.5 rounded-lg border border-black/10 dark:border-white/10 bg-white dark:bg-[#121212] text-[11px] font-mono leading-relaxed text-neutral-900 dark:text-white outline-hidden resize-y"
                   />
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <label className="text-[10px] text-neutral-500 dark:text-neutral-400 flex items-center gap-1">
+                      對帳日期
+                      <input
+                        type="date"
+                        value={reconDate}
+                        onChange={e => setReconDate(e.target.value)}
+                        title="帳單沒寫日期時填這裡(第二種帳單格式)"
+                        className="px-1.5 py-1 rounded-md border border-black/10 dark:border-white/10 bg-white dark:bg-[#121212] text-[11px] font-mono text-neutral-900 dark:text-white outline-hidden"
+                      />
+                    </label>
                     <button
                       type="button"
                       disabled={reconBusy || !billText.trim()}

@@ -128,6 +128,7 @@ def date_summary(body: DateSummaryIn, user: str = Depends(current_user)):
 class ReconcileIn(BaseModel):
     bill: str = ""
     edition: int = 1
+    date: str = ""     # 帳單沒寫日期時,前端補的日期(YYYY-MM-DD)覆寫用
 
 
 @router.post("/reconcile")
@@ -136,8 +137,12 @@ def reconcile_bill(body: ReconcileIn, user: str = Depends(current_user)):
 
     回 {bill(解析結果), report(每桶 我們/他/差異 + 落差提示), records_used}。
     找不到日期/遊戲就只回 bill 與其 errors,不硬對。
+    body.date 有給就覆寫帳單日期(第二種帳單格式沒寫日期,由前端彈窗補)。
     """
     bill = reconcile.parse_bill(body.bill)
+    if body.date and not bill.get("date"):
+        bill["date"] = body.date[:10]
+        bill["errors"] = [e for e in bill.get("errors", []) if "日期" not in e]
     report = None
     used = 0
     if bill.get("date") and bill.get("game"):
