@@ -19,6 +19,7 @@ import { useGroups } from './api/useGroups';
 import { useEditions } from './api/useEditions';
 import { GroupBetTab } from './components/tabs/GroupBetTab';
 import { ThreePillarTab } from './components/tabs/ThreePillarTab';
+import { Combo9000Tab } from './components/tabs/Combo9000Tab';
 import { ComboBetTab } from './components/tabs/ComboBetTab';
 import { TotalPnLTab } from './components/tabs/TotalPnLTab';
 import { CalculatorView } from './components/views/CalculatorView';
@@ -118,6 +119,7 @@ export default function App() {
   const duoTabList: { id: DuoBetTab; label: string; count?: number }[] = [
     ...enabledGroups.map(g => ({ id: g.mode as DuoBetTab, label: g.name, count: 0 })),
     { id: 'pillar1800', label: '三柱1800碰', count: 2 },
+    { id: 'combo9000', label: '9000碰', count: 2 },
     { id: 'combo', label: '連碰', count: 2 },
     { id: 'totals', label: '總損益' },
   ];
@@ -300,6 +302,7 @@ export default function App() {
                   .filter(g => g.mode === duoTab)
                   .map(g => <GroupBetTab key={g.gid} group={g} />)}
                 {duoTab === 'pillar1800' && <ThreePillarTab />}
+                {duoTab === 'combo9000' && <Combo9000Tab />}
                 {duoTab === 'combo' && <ComboBetTab />}
                 {duoTab === 'totals' && <TotalPnLTab />}
               </div>

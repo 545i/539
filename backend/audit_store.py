@@ -44,6 +44,7 @@ MODE_LABELS = {
     "single": "1組",       # 二合買牌第一組(舊「單顆」的 mode key)
     "multi": "2組",        # 二合買牌第二組(舊「多顆」的 mode key)
     "pillar1800": "三柱1800碰",
+    "combo9000": "9000碰",
     "combo": "連碰",
 }
 

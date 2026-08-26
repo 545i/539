@@ -37,6 +37,7 @@ from backend import (audit_store, autosettle, edition_store, group_store,
 from backend.data import get_game
 from backend.deps import current_user
 from core import combo as combo_mod
+from core import combo9000 as combo9000_mod
 from core import pillar as pillar_mod
 from core.games import GameConfig
 
@@ -226,6 +227,25 @@ def _pillar_item(odds: dict, g: GameConfig, units: float, line: str) -> _Item:
     )
 
 
+def _combo9000_item(odds: dict, g: GameConfig, units: float, line: str) -> _Item:
+    """9000碰:碰數 = total_bets × 支數,每碰成本沿用四星每碰單價(combo_cost4)。"""
+    if not combo9000_mod.supports(g):
+        raise ValueError(f"{g.name}不適用 9000碰(四段結構綁定 39 選 5)")
+    total = combo9000_mod.total_bets(g.num_max)
+    bet_cost = float(odds["combo_cost4"])
+    cost = combo9000_mod.round_cost(bet_cost, 1, g.num_max) * units
+    return _Item(
+        mode="combo9000",
+        play_type=f"9000碰({total:,} 碰)",
+        balls=[],
+        units=units,
+        bets_count=int(round(units * total)),
+        cost=cost,
+        line=line,
+        cost_expr=f"{total:,} 碰 × {_money(bet_cost)}/碰 × {_g(units)} 支 = {_money(cost)}",
+    )
+
+
 # ── 解析 ─────────────────────────────────────────────────
 def parse(text: str, g: GameConfig, odds: dict) -> tuple[list[_Item], list[dict]]:
     """把整段文字翻成待寫入的紀錄;認不出來的行收進 errors,不中斷。
@@ -372,6 +392,8 @@ def _recost(g: GameConfig, odds: dict, mode: str, balls: list[int], units: float
         return _star_item(odds, int(stars), balls, units, "", incomplete=False)
     if mode == "pillar1800":
         return _pillar_item(odds, g, units, "")
+    if mode == "combo9000":
+        return _combo9000_item(odds, g, units, "")
     if mode in group_store.MODE_TO_GID:
         if not balls:
             raise ValueError("這一組至少要選 1 顆號碼")

@@ -6,6 +6,7 @@ export const MODE_LABEL: Record<LedgerMode, string> = {
   single: '1組',
   multi: '2組',
   pillar1800: '1800碰',
+  combo9000: '9000碰',
   combo: '連碰',
 };
 

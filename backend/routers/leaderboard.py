@@ -28,6 +28,7 @@ MODE_NAMES = {
     "single": "1組",
     "multi": "2組",
     "pillar1800": "三柱 1800碰",
+    "combo9000": "9000碰",
     "combo": "連碰",
 }
 

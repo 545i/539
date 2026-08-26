@@ -101,6 +101,7 @@ export interface GameDTO {
   prize: Record<string, number>;
   total_comb: number;
   supports_pillar: boolean;
+  supports_combo9000: boolean;
   default_bet_cost: number;
   default_bet_prize: number;
   default_cost_per_car: number;
@@ -477,7 +478,7 @@ export interface PredictAnalysisDTO {
 // 記帳流水帳(需登入)
 // mode 對應各下注分頁;record 就是前端的 BetRecord,後端原封不動存成 JSON,
 // 所以這裡刻意用寬鬆型別 —— 後端不解讀內容,欄位增減不必兩邊同步改。
-export type LedgerMode = 'single' | 'multi' | 'pillar1800' | 'combo';
+export type LedgerMode = 'single' | 'multi' | 'pillar1800' | 'combo9000' | 'combo';
 
 export interface LedgerEntryDTO {
   id: number;

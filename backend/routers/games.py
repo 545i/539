@@ -4,7 +4,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from backend.data import all_games
-from core import pillar
+from core import combo9000, pillar
 from core.games import GameConfig
 
 router = APIRouter(prefix="/games", tags=["games"])
@@ -22,6 +22,7 @@ def serialize(g: GameConfig) -> dict:
         "prize": {str(k): v for k, v in g.prize.items()},
         "total_comb": g.total_comb,
         "supports_pillar": pillar.supports(g),
+        "supports_combo9000": combo9000.supports(g),
         "default_bet_cost": g.default_bet_cost,
         "default_bet_prize": g.default_bet_prize,
         "default_cost_per_car": g.default_cost_per_car,

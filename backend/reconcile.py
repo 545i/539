@@ -182,6 +182,8 @@ def record_bucket(rec: dict) -> int | None:
         return 2                     # 二合 1組/2組 → 二桶
     if mode == "pillar1800":
         return 3                     # 三柱1800碰 → 三桶
+    if mode == "combo9000":
+        return 4                     # 9000碰:每碰 = 一注四星 → 四桶
     if mode == "combo":              # 星碰:看星數
         pt = str(rec.get("playType", ""))
         for s, kw in ((2, "二星"), (3, "三星"), (4, "四星")):

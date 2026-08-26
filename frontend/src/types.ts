@@ -14,6 +14,7 @@ export type DuoBetTab =
   | 'single'       // 1組(固定顆數可設定;single 是沿用的 ledger mode key)
   | 'multi'        // 2組(同上,multi 是沿用的 mode key)
   | 'pillar1800'   // 三柱1800碰
+  | 'combo9000'    // 9000碰(四段全包)
   | 'combo'        // 連碰
   | 'totals';      // 總損益
 

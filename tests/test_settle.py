@@ -82,6 +82,35 @@ def test_pillar_four_and_broken():
     assert broke["result"] == "槓龜(斷柱)"
 
 
+def test_combo9000_pass_and_broken():
+    from core import combo
+    prize4 = combo.market_prize(4, G.default_bet_prize)
+    # 5,11,12,22,34 → 四段 (1,2,1,1) 都有開 → 過關固定中 2 碰
+    win = settle.settle(
+        _rec(mode="combo9000", cars=1, betsCount=9000), [5, 11, 12, 22, 34], G)
+    assert win["result"] == "中 2 碰"
+    assert win["payout"] == round(1 * 2 * prize4)
+    assert win["pillarDist"] == "1 + 2 + 1 + 1"
+
+    # 全部落 3頭(30~39)→ 缺 0/1/2 頭 → 槓龜
+    broke = settle.settle(
+        _rec(mode="combo9000", cars=1), [30, 31, 32, 33, 34], G)
+    assert broke["payout"] == 0
+    assert broke["result"] == "槓龜(缺頭)"
+    assert broke["pillarDist"] == "0 + 0 + 0 + 5"
+
+
+def test_combo9000_manual_hit_count():
+    from core import combo
+    prize4 = combo.market_prize(4, G.default_bet_prize)
+    r = settle.settle(_rec(mode="combo9000", cars=2, cost=900000),
+                      None, G, hit_count=2)
+    assert r["payout"] == round(2 * 2 * prize4)
+    assert r["result"] == "中 2 碰(手填)"
+    zero = settle.settle(_rec(mode="combo9000", cars=1), None, G, hit_count=0)
+    assert zero["payout"] == 0 and zero["result"] == "槓龜(手填)"
+
+
 def test_combo_star_hits():
     # 星碰三星選 8 顆,中 3 顆(1,2,3)→ 碰數 = C(3,3) = 1(下注顆數不影響)
     # playType 用真實格式「星碰 三星 (支)」—— 星數是中文,不能被支數 12 蓋掉

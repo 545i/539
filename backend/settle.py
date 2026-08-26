@@ -11,6 +11,8 @@
                   (single 是舊「單顆」的 mode key,如今就是 1組;不再特例。)
 - pillar1800  三柱全包,命中注數只可能是 4 / 3 / 0(見 core.pillar),
               回收 = 支數 × 命中注數 × 每注可得。
+- combo9000  四段(0/1/2/3 頭)全包,四段各開 ≥ 1 顆 → 過關固定中 2 碰,
+             否則 0(見 core.combo9000);回收 = 支數 × 命中碰數 × 四星每碰派彩。
 - combo   星碰用 core.combo.star_hits_of(中的碰數),其餘連碰家族用 hits_of。
           回收 = 中的碰/注數 × 中一碰可得(盤口後台可改) × 支數。
           注:連碰家族的「膽」沒存進紀錄,這裡一律當 dans=0(全碰)——
@@ -27,7 +29,7 @@ from __future__ import annotations
 import re
 
 from backend import edition_store
-from core import combo, pillar
+from core import combo, combo9000, pillar
 from core.games import GameConfig
 
 
@@ -96,6 +98,11 @@ def _manual(record: dict, hit_count: int, g: GameConfig) -> dict:
     elif mode == "pillar1800":
         payout = k * cars * odds["bet_prize"]
         result = f"中 {k} 碰(手填)" if k > 0 else "槓龜(手填)"
+    elif mode == "combo9000":
+        # 9000碰:一碰就是一注四星,派彩沿用四星「中一碰可得」(combo_prize4)
+        prize4 = float(odds.get("combo_prize4", g.default_bet_prize) or 0.0)
+        payout = k * cars * prize4
+        result = f"中 {k} 碰(手填)" if k > 0 else "槓龜(手填)"
     else:  # single / multi 二合組:每中一顆 = 車數 × 每車中獎(不除以 4)
         payout = k * cars * odds["win_payout"]
         result = f"中 {k} 顆(手填)" if k > 0 else "槓龜(手填)"
@@ -157,6 +164,16 @@ def settle(record: dict, draw: list[int] | None, g: GameConfig,
             payout = cars * ph * odds["bet_prize"]
             result = pillar.result_text(ph) if ph else "槓龜(斷柱)"
             out["pillarDist"] = " + ".join(str(c) for c in counts)
+
+    elif mode == "combo9000":
+        # 四段(0/1/2/3 頭)都至少開 1 顆 → 過關固定中 2 碰;任一段缺 → 0 碰。
+        # 一碰 = 一注四星,派彩沿用四星「中一碰可得」(combo_prize4)。
+        counts = combo9000.seg_counts(draw)
+        ch = combo9000.hits_from_counts(counts)          # 2 / 0
+        prize4 = float(odds.get("combo_prize4", g.default_bet_prize) or 0.0)
+        payout = cars * ch * prize4
+        result = combo9000.result_text(ch) if ch else "槓龜(缺頭)"
+        out["pillarDist"] = " + ".join(str(c) for c in counts)
 
     elif mode == "combo":
         play_type = str(record.get("playType", "") or "")

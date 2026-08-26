@@ -78,6 +78,45 @@ export const INITIAL_PILLAR_RECORDS: BetRecord[] = [
   }
 ];
 
+export const INITIAL_COMBO9000_RECORDS: BetRecord[] = [
+  {
+    id: 'n-1',
+    index: 1,
+    date: '2026-08-12',
+    issue: '115000196',
+    game: '今彩539',
+    mode: 'combo9000',
+    units: 1,
+    betsCount: 9000,
+    selectedBalls: [],
+    drawBalls: [5, 11, 12, 22, 34],
+    pillarDist: '1 + 2 + 1 + 1',
+    result: '中 2 碰',
+    cost: 450000,
+    payout: 1500000,
+    pnl: 1050000,
+    cumPnl: 1050000
+  },
+  {
+    id: 'n-2',
+    index: 2,
+    date: '2026-08-12',
+    issue: '115000197',
+    game: '今彩539',
+    mode: 'combo9000',
+    units: 1,
+    betsCount: 9000,
+    selectedBalls: [],
+    drawBalls: [7, 19, 21, 25, 34],
+    pillarDist: '1 + 1 + 2 + 1',
+    result: '中 2 碰',
+    cost: 450000,
+    payout: 1500000,
+    pnl: 1050000,
+    cumPnl: 2100000
+  }
+];
+
 export const INITIAL_COMBO_RECORDS: BetRecord[] = [
   {
     id: 'c-1',
