@@ -406,7 +406,13 @@ export interface PredictReviewRowDTO {
   date: string | null;
   label: string;
   drawn: number[];
-  picks: Record<string, {numbers: number[]; matched: number[]; hits: number}>;
+  draw_odd: number; // 開獎的單(奇)數個數
+  draw_lean: string; // 開獎單雙偏向:單多 / 雙多 / 平
+  oe_wins: number; // 這期有幾個策略「單雙比中」
+  picks: Record<string, {
+    numbers: number[]; matched: number[]; hits: number;
+    odd: number; lean: string; oe_win: boolean; // 單雙:奇數個數 / 偏向 / 是否比中
+  }>;
 }
 
 export interface PredictRankDTO {
@@ -417,6 +423,8 @@ export interface PredictRankDTO {
   best: number;
   avg: number;
   hit_rate: number;
+  oe_wins: number; // 單雙比中期數
+  oe_rate: number; // 單雙命中率 = oe_wins / periods
 }
 
 export interface PredictReviewDTO {

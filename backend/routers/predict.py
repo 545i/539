@@ -55,6 +55,16 @@ def _row_nums(row, cols: list[str]) -> list[int]:
     return sorted(int(row[c]) for c in cols)
 
 
+def _oe_lean(odd: int, total: int) -> str:
+    """一組號碼的單雙偏向:單(奇)數多→單多、雙(偶)數多→雙多、一樣→平。"""
+    even = total - odd
+    if odd > even:
+        return "單多"
+    if even > odd:
+        return "雙多"
+    return "平"
+
+
 def _top_by_count(cnt: dict[int, int], pick: int, most: bool = True) -> list[int]:
     """依出現次數取前 pick 名:most=True 取最多(熱),False 取最少(冷)。
     平手以號碼小者優先。回排序後的號碼清單(確定性)。"""
@@ -172,6 +182,7 @@ def review(game: str = Query(...), periods: int = Query(20, ge=1, le=100)):
 
     rows = []
     evaluated = []
+    oe_tally: dict[str, dict] = {}      # 各策略單雙命中統計 {strategy:{wins,periods}}
     for _, r in tail.iterrows():
         ts = pd.to_datetime(r["date"], errors="coerce")
         date = None if pd.isna(ts) else ts.date()
@@ -182,29 +193,48 @@ def review(game: str = Query(...), periods: int = Query(20, ge=1, le=100)):
                 issue = None
         key = issue or (date.isoformat() if date else "")
         drawn = _row_nums(r, cols)
+        draw_odd = sum(1 for n in drawn if n % 2 == 1)
+        draw_lean = _oe_lean(draw_odd, len(drawn))
         preds = predictor.generate_for(df, g.key, key, target_date=date)
         if not preds:
             continue                    # 最早幾期前面沒資料可算,跳過
         picks = {}
+        row_oe_wins = 0
         for s, nums in preds.items():
             matched = sorted(set(nums) & set(drawn))
-            picks[s] = {"numbers": nums, "matched": matched, "hits": len(matched)}
+            odd = sum(1 for n in nums if n % 2 == 1)
+            lean = _oe_lean(odd, len(nums))
+            oe_win = lean == draw_lean          # 中獎判定:單雙偏向與開獎一致
+            row_oe_wins += 1 if oe_win else 0
+            picks[s] = {"numbers": nums, "matched": matched, "hits": len(matched),
+                        "odd": odd, "lean": lean, "oe_win": oe_win}
             evaluated.append({"strategy": s, "pending": False,
                               "hits": len(matched)})
+            ot = oe_tally.setdefault(s, {"wins": 0, "periods": 0})
+            ot["wins"] += 1 if oe_win else 0
+            ot["periods"] += 1
         rows.append({
             "issue": issue,
             "date": date.isoformat() if date else None,
             "label": predictor.period_label(key, date),
             "drawn": drawn,
+            "draw_odd": draw_odd,
+            "draw_lean": draw_lean,
+            "oe_wins": row_oe_wins,          # 這期有幾個策略單雙比中
             "picks": picks,
         })
 
     rows.reverse()                      # 新的期排前面
-    ranking = [
-        {**a, "hit_rate": (a["total_hits"] / (a["periods"] * g.pick))
-         if a["periods"] else 0.0}
-        for a in predictor.ranking(evaluated)
-    ]
+    ranking = []
+    for a in predictor.ranking(evaluated):
+        ot = oe_tally.get(a["strategy"], {"wins": 0, "periods": 0})
+        ranking.append({
+            **a,
+            "hit_rate": (a["total_hits"] / (a["periods"] * g.pick))
+            if a["periods"] else 0.0,
+            "oe_wins": ot["wins"],
+            "oe_rate": (ot["wins"] / ot["periods"]) if ot["periods"] else 0.0,
+        })
     return {
         "game": g.key,
         "pick": g.pick,
