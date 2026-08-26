@@ -408,10 +408,11 @@ export interface PredictReviewRowDTO {
   drawn: number[];
   draw_odd: number; // 開獎的單(奇)數個數
   draw_lean: string; // 開獎單雙偏向:單多 / 雙多 / 平
-  oe_wins: number; // 這期有幾個策略「單雙比中」
+  oe_win: boolean | null; // 均衡(唯一壓單雙者)這期單雙有沒有中;null=不適用
   picks: Record<string, {
     numbers: number[]; matched: number[]; hits: number;
-    odd: number; lean: string; oe_win: boolean; // 單雙:奇數個數 / 偏向 / 是否比中
+    odd: number; lean: string;
+    oe_win: boolean | null; // 只有均衡是 true/false;其餘策略為 null(不壓單雙)
   }>;
 }
 

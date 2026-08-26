@@ -55,6 +55,10 @@ def _row_nums(row, cols: list[str]) -> list[int]:
     return sorted(int(row[c]) for c in cols)
 
 
+# 只有「均衡」策略是在壓單雙(奇偶);其餘四個是選號策略,不做單雙中獎判定。
+OE_STRATEGY = "balanced"
+
+
 def _oe_lean(odd: int, total: int) -> str:
     """一組號碼的單雙偏向:單(奇)數多→單多、雙(偶)數多→雙多、一樣→平。"""
     even = total - odd
@@ -199,20 +203,22 @@ def review(game: str = Query(...), periods: int = Query(20, ge=1, le=100)):
         if not preds:
             continue                    # 最早幾期前面沒資料可算,跳過
         picks = {}
-        row_oe_wins = 0
         for s, nums in preds.items():
             matched = sorted(set(nums) & set(drawn))
             odd = sum(1 for n in nums if n % 2 == 1)
             lean = _oe_lean(odd, len(nums))
-            oe_win = lean == draw_lean          # 中獎判定:單雙偏向與開獎一致
-            row_oe_wins += 1 if oe_win else 0
+            # 只有「均衡」壓單雙才判中獎;其餘策略 oe_win = None(不適用)
+            is_oe = s == OE_STRATEGY
+            oe_win = (lean == draw_lean) if is_oe else None
             picks[s] = {"numbers": nums, "matched": matched, "hits": len(matched),
                         "odd": odd, "lean": lean, "oe_win": oe_win}
             evaluated.append({"strategy": s, "pending": False,
                               "hits": len(matched)})
-            ot = oe_tally.setdefault(s, {"wins": 0, "periods": 0})
-            ot["wins"] += 1 if oe_win else 0
-            ot["periods"] += 1
+            if is_oe:
+                ot = oe_tally.setdefault(s, {"wins": 0, "periods": 0})
+                ot["wins"] += 1 if oe_win else 0
+                ot["periods"] += 1
+        bal = picks.get(OE_STRATEGY)
         rows.append({
             "issue": issue,
             "date": date.isoformat() if date else None,
@@ -220,7 +226,8 @@ def review(game: str = Query(...), periods: int = Query(20, ge=1, le=100)):
             "drawn": drawn,
             "draw_odd": draw_odd,
             "draw_lean": draw_lean,
-            "oe_wins": row_oe_wins,          # 這期有幾個策略單雙比中
+            # 這期單雙結果 = 均衡有沒有中(只有均衡壓單雙);None = 均衡沒出號
+            "oe_win": (bal["oe_win"] if bal else None),
             "picks": picks,
         })
 

@@ -56,19 +56,22 @@ def test_days_mode_ok():
     assert r.json()["mode"] == "days"
 
 
-def test_review_odd_even_win_defined_by_lean():
-    """回測「中獎=單雙比中」:預測的單雙偏向與開獎一致才算中。"""
+def test_review_odd_even_win_only_for_balanced():
+    """回測「單雙比中」只適用『均衡』:其餘策略 oe_win=None,不判單雙中獎。"""
     d = client.get(f"{BASE}/review", params={"game": "lotto539", "periods": 8}).json()
     assert d["rows"], "應有回測資料"
     for row in d["rows"]:
         assert row["draw_lean"] in ("單多", "雙多", "平")
-        wins = 0
-        for p in row["picks"].values():
-            # oe_win 必須等於「預測偏向 == 開獎偏向」
-            assert p["oe_win"] == (p["lean"] == row["draw_lean"])
+        for key, p in row["picks"].items():
             assert p["lean"] in ("單多", "雙多", "平")
-            wins += 1 if p["oe_win"] else 0
-        assert row["oe_wins"] == wins       # 父列統計 = 子列比中數加總
+            if key == "balanced":
+                assert p["oe_win"] == (p["lean"] == row["draw_lean"])
+            else:
+                assert p["oe_win"] is None       # 其他四個不壓單雙
+        bal = row["picks"].get("balanced")
+        assert row["oe_win"] == (bal["oe_win"] if bal else None)
     for a in d["ranking"]:
         assert 0 <= a["oe_wins"] <= a["periods"]
         assert 0.0 <= a["oe_rate"] <= 1.0
+        if a["strategy"] != "balanced":
+            assert a["oe_wins"] == 0            # 只有均衡累積單雙中

@@ -435,7 +435,7 @@ export const PredictionView: React.FC = () => {
                 </thead>
                 <tbody>
                   {[...review.data.ranking]
-                    .sort((a, b) => b.oe_rate - a.oe_rate || b.avg - a.avg)
+                    .sort((a, b) => b.avg - a.avg)
                     .map((r, i) => (
                       <tr
                         key={r.strategy}
@@ -454,11 +454,17 @@ export const PredictionView: React.FC = () => {
                         <td className="py-2 text-right font-mono text-neutral-500">
                           {r.periods}
                         </td>
-                        <td className="py-2 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400">
-                          {r.oe_wins}/{r.periods}
-                          <span className="text-neutral-400 font-normal ml-1">
-                            ({(r.oe_rate * 100).toFixed(0)}%)
-                          </span>
+                        <td className="py-2 text-right font-mono">
+                          {r.strategy === 'balanced' ? (
+                            <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                              {r.oe_wins}/{r.periods}
+                              <span className="text-neutral-400 font-normal ml-1">
+                                ({(r.oe_rate * 100).toFixed(0)}%)
+                              </span>
+                            </span>
+                          ) : (
+                            <span className="text-neutral-300 dark:text-neutral-600">—</span>
+                          )}
                         </td>
                         <td className="py-2 text-right font-mono text-neutral-500">
                           {r.total_hits} 顆
@@ -491,8 +497,9 @@ export const PredictionView: React.FC = () => {
         </h3>
         <p className="text-[11px] text-neutral-400">
           點開某一期,看各策略押了哪些號碼(綠底=押中的號)。
-          <b>「中/未中」看的是單雙比</b> —— 該策略押的 5 顆單雙偏向(單多/雙多)與當期開獎
-          一致就算中,即使號碼沒對到。每期只用「該期之前」的資料重新出號,不偷看答案。
+          <b>只有「均衡」策略在壓單雙</b> —— 它押的 5 顆單雙偏向(單多/雙多)與當期開獎
+          一致就算「中」,即使號碼沒對到;其餘四個是選號策略,不判單雙中獎。每期只用
+          「該期之前」的資料重新出號,不偷看答案。
         </p>
 
         {review.data?.rows.length === 0 && (
@@ -534,13 +541,15 @@ export const PredictionView: React.FC = () => {
                     <span className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold bg-black/[0.04] dark:bg-white/[0.06] text-neutral-600 dark:text-neutral-300">
                       開獎 {row.draw_lean}
                     </span>
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${
-                      row.oe_wins > 0
-                        ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
-                        : 'bg-neutral-500/15 text-neutral-500'
-                    }`}>
-                      單雙中 {row.oe_wins}/{picks.length}
-                    </span>
+                    {row.oe_win !== null && (
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${
+                        row.oe_win
+                          ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                          : 'bg-neutral-500/15 text-neutral-500'
+                      }`}>
+                        均衡單雙 {row.oe_win ? '中' : '未中'}
+                      </span>
+                    )}
                     <span className="text-[10px] font-mono uppercase tracking-wider text-neutral-400">
                       最佳 {best} 顆
                     </span>
@@ -568,16 +577,20 @@ export const PredictionView: React.FC = () => {
                             ))}
                           </div>
                           <div className="ml-auto flex items-center gap-2 shrink-0">
-                            <span className="text-[10px] text-neutral-400">
-                              {p.odd}單{p.numbers.length - p.odd}雙·{p.lean}
-                            </span>
-                            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${
-                              p.oe_win
-                                ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
-                                : 'bg-neutral-500/15 text-neutral-500'
-                            }`}>
-                              {p.oe_win ? '中' : '未中'}
-                            </span>
+                            {p.oe_win !== null && (
+                              <>
+                                <span className="text-[10px] text-neutral-400">
+                                  {p.odd}單{p.numbers.length - p.odd}雙·{p.lean}
+                                </span>
+                                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${
+                                  p.oe_win
+                                    ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                                    : 'bg-neutral-500/15 text-neutral-500'
+                                }`}>
+                                  {p.oe_win ? '中' : '未中'}
+                                </span>
+                              </>
+                            )}
                             <span className={`text-[10px] font-mono ${
                               p.hits > 0 ? 'text-neutral-500' : 'text-neutral-400'
                             }`}>
