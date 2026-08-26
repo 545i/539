@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Sparkles, RefreshCw, Info, ChevronRight, Trophy, ListOrdered } from 'lucide-react';
+import { Sparkles, Info, ChevronRight, Trophy, ListOrdered } from 'lucide-react';
 import { api, PredictReviewDTO, PredictStrategyDTO } from '../../api/client';
 import { useAsync } from '../../api/useAsync';
 import { useGame } from '../../api/useGame';
@@ -86,13 +86,12 @@ const StrategyRow: React.FC<{ s: PredictStrategyDTO }> = ({ s }) => (
 export const PredictionView: React.FC = () => {
   const { gameKey, game } = useGame();
   const [sets, setSets] = useState<number>(1);
-  // seed 為 undefined 時後端依「下一期期號」出號(同一期可重現);
-  // 按「重新抽一組」才換 seed。
-  const [seed, setSeed] = useState<number | undefined>(undefined);
   const [reviewN, setReviewN] = useState<number>(20);
   const [open, setOpen] = useState<string | null>(null);
 
-  const pred = useAsync(() => api.predict(gameKey, sets, seed), [gameKey, sets, seed]);
+  // 本期預測固定用「期號推導的確定性種子」(後端在 seed 省略時採用),同一期永遠同一組。
+  // 不再提供「重新抽一組」—— 預測結果不該隨手動抽組變動(切回同一期要答案一致)。
+  const pred = useAsync(() => api.predict(gameKey, sets), [gameKey, sets]);
   const review = useAsync<PredictReviewDTO | null>(
     () => api.predictReview(gameKey, reviewN),
     [gameKey, reviewN],
@@ -102,7 +101,6 @@ export const PredictionView: React.FC = () => {
   // 期號一變,重抓就會拿到新號碼。這裡定時(每 3 分鐘)+ 回到視窗時重抓;
   // 只有「用預設 seed(沒手動抽)」時才自動刷新,免得蓋掉使用者剛按的那組。
   useEffect(() => {
-    if (seed !== undefined) return;
     const tick = () => {
       pred.reload();
       review.reload();
@@ -113,7 +111,7 @@ export const PredictionView: React.FC = () => {
       window.clearInterval(timer);
       window.removeEventListener('focus', tick);
     };
-  }, [seed, pred.reload, review.reload]);
+  }, [pred.reload, review.reload]);
 
   const numMax = pred.data?.num_max ?? game?.num_max ?? 39;
   const pick = pred.data?.pick ?? game?.pick ?? 5;
@@ -182,15 +180,6 @@ export const PredictionView: React.FC = () => {
                 </button>
               ))}
             </div>
-            <button
-              type="button"
-              id="predict-reroll-btn"
-              onClick={() => setSeed(Date.now() % 1_000_000_007)}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-[11px] uppercase tracking-wider font-semibold rounded-full border border-black/10 dark:border-white/10 bg-white dark:bg-[#161616] text-neutral-700 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5 transition-colors active:scale-95"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${pred.loading ? 'animate-spin' : ''}`} />
-              重新抽一組
-            </button>
           </div>
         </div>
 
@@ -205,8 +194,8 @@ export const PredictionView: React.FC = () => {
 
         {pred.data && (
           <p className="text-[11px] text-neutral-400 dark:text-neutral-500">
-            同一期重整頁面會拿到同一組號碼(seed 由期號推導,目前 seed {pred.data.seed});
-            按「重新抽一組」才會換號。
+            本期預測依期號推導的固定種子出號(seed {pred.data.seed}),同一期永遠同一組 ——
+            重整、切走再切回都不變。
           </p>
         )}
       </div>
