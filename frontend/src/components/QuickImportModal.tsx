@@ -214,6 +214,8 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
         count: res.saved,
         totalCost,
         items: detail,
+        // 記下這批建立的 ledger id → 作廢時精準刪這些(見 UploadHistoryModal 作廢鈕)
+        entryIds: res.items.map(it => it.id).filter((x): x is number => x != null),
       };
       // 寫進後端上傳歷史(獨立彈窗 UploadHistoryModal 讀取);未登入靜默略過
       await saveEntry(entry);

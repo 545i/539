@@ -855,6 +855,9 @@ export const api = {
   uploadHistoryUpdate: <T>(ts: number, patchData: Record<string, unknown>) =>
     patch<T>(`upload-history/${ts}`, {patch: patchData}),
   uploadHistoryClear: () => del<{deleted: number}>('upload-history'),
+  // 作廢一批上傳:連同它建立的 ledger 下注一起刪(見 backend/routers/upload_history.py)
+  uploadHistoryDelete: (ts: number) =>
+    del<{deleted_bets: number; deleted_upload: number}>(`upload-history/${ts}`),
 
   // 快速上傳:貼一段下注文字,dryRun 先預覽、再確認寫入(需登入)
   quickImport: (

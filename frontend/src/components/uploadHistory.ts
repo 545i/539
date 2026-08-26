@@ -28,6 +28,7 @@ export interface UploadHistoryEntry {
   count: number;                // 實際寫入筆數
   totalCost: number;            // 這批的總下注成本(每筆 cost 加總)
   items: UploadHistoryItem[];   // 下注明細(每筆玩法/號碼/成本)
+  entryIds?: number[];          // 這批建立的 ledger 下注 id(作廢時精準刪這些)
   bill?: string;                // 已保存的對帳帳單原文
   recon?: ReconcileDTO;         // 已保存的對帳結果(重開就看得到)
   reconAt?: number;             // 保存對帳的時間
@@ -66,13 +67,10 @@ export async function updateEntry(
   return loadHistory();
 }
 
-/** 清空自己的上傳歷史。 */
-export async function clearHistory(): Promise<void> {
-  try {
-    await api.uploadHistoryClear();
-  } catch {
-    // 略過
-  }
+/** 作廢某一批上傳(以 ts 為鍵):後端連同這批建立的 ledger 下注一起刪。回傳更新後清單。 */
+export async function voidEntry(ts: number): Promise<UploadHistoryEntry[]> {
+  await api.uploadHistoryDelete(ts);   // 失敗往上拋,讓 UI 顯示錯誤
+  return loadHistory();
 }
 
 export function fmtTime(ts: number): string {

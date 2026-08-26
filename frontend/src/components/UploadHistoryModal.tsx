@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { X, History, Trash2, CornerDownLeft, ClipboardCheck, AlertTriangle } from 'lucide-react';
+import { X, History, Ban, CornerDownLeft, ClipboardCheck, AlertTriangle } from 'lucide-react';
 import {
-  UploadHistoryEntry, MODE_LABEL, loadHistory, updateEntry, clearHistory as apiClearHistory, fmtTime, money,
+  UploadHistoryEntry, MODE_LABEL, loadHistory, updateEntry, voidEntry, fmtTime, money,
 } from './uploadHistory';
 import { api, ReconcileDTO } from '../api/client';
 
@@ -149,6 +149,20 @@ export const UploadHistoryModal: React.FC<Props> = ({ isOpen, onClose, onRefill 
   };
 
   const [winMap, setWinMap] = useState<Record<number, number>>({}); // ts → 已結算派彩(獲利)
+  const [voidTs, setVoidTs] = useState<number | null>(null);   // 哪一批按了作廢(等二次確認)
+  const [voidBusy, setVoidBusy] = useState(false);
+  const [voidErr, setVoidErr] = useState<string | null>(null);
+  const doVoid = async (ts: number) => {
+    setVoidBusy(true); setVoidErr(null);
+    try {
+      setHistory(await voidEntry(ts));   // 後端連同 ledger 下注一起刪,回傳更新後清單
+      setVoidTs(null);
+    } catch (e) {
+      setVoidErr((e as Error).message);
+    } finally {
+      setVoidBusy(false);
+    }
+  };
 
   // 每次開啟重讀一次(可能剛在快速上傳新增了一批);後端讀取,用 alive 防 race
   useEffect(() => {
@@ -184,7 +198,6 @@ export const UploadHistoryModal: React.FC<Props> = ({ isOpen, onClose, onRefill 
     ? history
     : history.filter(h => h.editionName === filterEdition);
   const historyTotal = shown.reduce((s, h) => s + h.totalCost, 0);
-  const clearHistory = async () => { await apiClearHistory(); setHistory([]); };
 
   return (
     <div className="fixed inset-0 z-50 flex items-stretch sm:items-center justify-center p-0 sm:p-4 bg-black/70 backdrop-blur-xs animate-in fade-in duration-200">
@@ -201,16 +214,6 @@ export const UploadHistoryModal: React.FC<Props> = ({ isOpen, onClose, onRefill 
             )}
           </div>
           <div className="flex items-center gap-1">
-            {history.length > 0 && (
-              <button
-                type="button"
-                onClick={clearHistory}
-                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold text-neutral-500 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
-              >
-                <Trash2 className="w-3 h-3" />
-                清除歷史
-              </button>
-            )}
             <button
               type="button"
               onClick={onClose}
@@ -308,8 +311,48 @@ export const UploadHistoryModal: React.FC<Props> = ({ isOpen, onClose, onRefill 
                       填回
                     </button>
                   )}
+                  <button
+                    type="button"
+                    onClick={() => { setVoidErr(null); setVoidTs(voidTs === h.ts ? null : h.ts); }}
+                    title="作廢這批上傳:連同它建立的下注紀錄一起刪除"
+                    className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold transition-colors ${
+                      voidTs === h.ts
+                        ? 'bg-rose-600 text-white'
+                        : 'text-neutral-500 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-black/5 dark:hover:bg-white/5'
+                    }`}
+                  >
+                    <Ban className="w-3 h-3" />
+                    作廢
+                  </button>
                 </div>
               </div>
+
+              {/* 作廢二次確認:連同這批建立的 ledger 下注一起刪 */}
+              {voidTs === h.ts && (
+                <div className="px-3 py-2.5 border-b border-black/[0.06] dark:border-white/[0.06] bg-rose-500/[0.06] flex flex-wrap items-center gap-2">
+                  <span className="text-[11px] text-rose-700 dark:text-rose-300 flex items-center gap-1.5">
+                    <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                    作廢後,這批 <strong>{h.count}</strong> 筆下注(成本 {money(h.totalCost)})會從流水中移除,無法從這裡復原。確定?
+                  </span>
+                  <button
+                    type="button"
+                    disabled={voidBusy}
+                    onClick={() => doVoid(h.ts)}
+                    className="px-3 py-1 rounded-lg text-[11px] font-semibold bg-rose-600 text-white hover:bg-rose-700 disabled:opacity-40 transition-colors"
+                  >
+                    {voidBusy ? '作廢中…' : '確定作廢'}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={voidBusy}
+                    onClick={() => setVoidTs(null)}
+                    className="px-3 py-1 rounded-lg text-[11px] font-semibold border border-black/10 dark:border-white/10 text-neutral-700 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+                  >
+                    取消
+                  </button>
+                  {voidErr && <span className="text-[11px] text-rose-600 dark:text-rose-400">{voidErr}</span>}
+                </div>
+              )}
 
               {/* 對帳面板:貼帳單 → 比對這一版該日期的流水 */}
               {reconTs === h.ts && (
