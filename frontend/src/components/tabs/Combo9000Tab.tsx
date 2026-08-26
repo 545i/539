@@ -95,7 +95,7 @@ export const Combo9000Tab: React.FC = () => {
   const game = gameCfg.name as LotteryGame;
   // 每碰成本 / 中一碰可得取「這個版」的四星盤口;讀不到先給常見預設
   const betCost = odds?.combo_cost4?.value ?? 50;
-  const betPrize = odds?.combo_prize4?.value ?? 750000;
+  const betPrize = odds?.combo9000_prize?.value ?? 800000;
 
   // 全包固定 9000 碰;支數倍投;過關固定中 2 碰
   const betsWithUnits = TOTAL_BETS * units;

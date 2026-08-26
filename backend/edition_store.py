@@ -22,7 +22,7 @@ import sqlite3
 import sys
 from pathlib import Path
 
-from core import combo
+from core import combo, combo9000
 from core.games import get as game_by_key
 
 # 連碰星數(與 core.combo 一致)
@@ -33,6 +33,7 @@ FIELDS: tuple[str, ...] = (
     "cost_per_car", "win_payout", "bet_cost", "bet_prize",
     *(f"combo_cost{k}" for k in STARS),
     *(f"combo_prize{k}" for k in STARS),
+    "combo9000_prize",   # 9000碰專屬派彩(每碰),跟星碰四星分開
 )
 
 
@@ -128,6 +129,7 @@ def _defaults(game_key: str) -> dict:
         # market_cost/prize 會吃到後台 star-cost 改過的值 —— 第一版沿用現況
         out[f"combo_cost{k}"] = float(combo.market_cost(k, combo.MARKET_COST[k]))
         out[f"combo_prize{k}"] = float(combo.market_prize(k, combo.MARKET_PRIZE[k]))
+    out["combo9000_prize"] = float(combo9000.PRIZE_PER_BET)   # 9000碰專屬派彩(預設 800,000)
     return out
 
 

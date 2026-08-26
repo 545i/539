@@ -83,10 +83,12 @@ def test_all_pass_distributions_are_2111():
 def test_round_cost_and_payout():
     # 每碰成本 50、每碰派彩 750,000(四星盤口)、1 支
     assert combo9000.round_cost(50.0, 1, 39) == 9000 * 50.0 == 450_000
-    assert combo9000.round_payout(2, 750_000.0, 1) == 1_500_000
-    res = combo9000.settle(2, 50.0, 750_000.0, 1, 39)
-    assert res == {"hits": 2, "cost": 450_000, "payout": 1_500_000,
-                   "net": 1_050_000}
+    # 派彩用 9000碰專屬 800,000/碰:過關中 2 碰 = 1,600,000
+    assert combo9000.PRIZE_PER_BET == 800_000.0
+    assert combo9000.round_payout(2, combo9000.PRIZE_PER_BET, 1) == 1_600_000
+    res = combo9000.settle(2, 50.0, combo9000.PRIZE_PER_BET, 1, 39)
+    assert res == {"hits": 2, "cost": 450_000, "payout": 1_600_000,
+                   "net": 1_150_000}
 
 
 # ── 適用遊戲 ─────────────────────────────────────────────
