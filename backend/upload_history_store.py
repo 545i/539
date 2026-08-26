@@ -108,6 +108,34 @@ def update_entry(username: str, ts: int, patch: dict) -> dict | None:
     return merged
 
 
+def update_issue_by_entry_id(username: str, entry_id: int, new_issue: str) -> int:
+    """把「entryIds 含 entry_id」的那批上傳歷史,期號改成 new_issue;回傳更新幾批。
+
+    ledger 明細改期數時同步呼叫,快速上傳歷史的盈虧才會抓對期(它拿 entry.issue
+    去查該期派彩)。只認有存 entryIds 的批次 —— 舊批次沒 id 無從連動(直接改資料庫)。
+    """
+    n = 0
+    with _conn() as c:
+        rows = c.execute(
+            "SELECT id, payload FROM upload_history WHERE username = ?", (username,)
+        ).fetchall()
+        for rid, payload in rows:
+            e = _entry(payload)
+            ids = e.get("entryIds")
+            if not isinstance(ids, list):
+                continue
+            has = any(isinstance(x, (int, float)) and int(x) == int(entry_id)
+                      for x in ids)
+            if has and str(e.get("issue") or "") != str(new_issue):
+                e["issue"] = str(new_issue)
+                c.execute(
+                    "UPDATE upload_history SET payload = ? WHERE id = ?",
+                    (json.dumps(e, ensure_ascii=False), int(rid)),
+                )
+                n += 1
+    return n
+
+
 def clear(username: str) -> int:
     """清空某使用者的上傳歷史,回傳刪了幾筆。"""
     with _conn() as c:

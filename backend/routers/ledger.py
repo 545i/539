@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from backend import (audit_store, autosettle, data, ledger_store, reconcile,
-                     settle, ws)
+                     settle, upload_history_store, ws)
 from backend.deps import current_user
 from core import games
 
@@ -210,6 +210,11 @@ def resettle_entry(entry_id: int, body: SettleIn, user: str = Depends(current_us
                 f"{audit_store.summarize_record(new_entry['mode'], new_entry['record'])}",
         reverse_data={"entry": old_entry},
     )
+    # 改了期數 → 連動更新「這筆屬於哪批上傳」的快速上傳歷史期號(靠 entryIds 連結)
+    new_issue = str(new_entry["record"].get("issue") or "")
+    old_issue = str(old_entry["record"].get("issue") or "")
+    if new_issue and new_issue != old_issue:
+        upload_history_store.update_issue_by_entry_id(user, entry_id, new_issue)
     return new_entry
 
 
