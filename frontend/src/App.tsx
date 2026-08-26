@@ -204,35 +204,6 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* 選遊戲(下注流程第一步):遊戲選擇從 Header 右上角搬到這裡,設的是全域
-                    遊戲(全站跟著換),下注 / 對獎 / 區間提醒都以此為準。 */}
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-[11px] font-semibold text-neutral-500 dark:text-neutral-400">下注遊戲</span>
-                  <GameSwitcher />
-                </div>
-
-                {/* 版切換:紀錄下注 / 快速上傳都記到選中的版(各版盤口、累積損益獨立) */}
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-[11px] font-semibold text-neutral-500 dark:text-neutral-400">下注版本</span>
-                  <div className="inline-flex p-1 rounded-xl bg-black/[0.03] dark:bg-white/[0.04] border border-black/[0.06] dark:border-white/[0.06] gap-1 flex-wrap">
-                    {editions.map(e => (
-                      <button
-                        key={e.eid}
-                        type="button"
-                        onClick={() => setEid(e.eid)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                          eid === e.eid
-                            ? 'bg-black text-white dark:bg-white dark:text-black shadow-xs'
-                            : 'text-neutral-600 dark:text-neutral-400 hover:text-black dark:hover:text-white'
-                        }`}
-                      >
-                        {e.name}
-                      </button>
-                    ))}
-                  </div>
-                  <span className="text-[10px] text-neutral-400">(在「設定」可新增版、改名、設各版盤口)</span>
-                </div>
-
                 {/* "這頁怎麼用" Expander */}
                 <div className="rounded-2xl border border-black/[0.08] dark:border-white/[0.08] overflow-hidden bg-white dark:bg-[#121212]">
                   <button
@@ -292,6 +263,34 @@ export default function App() {
                       </button>
                     );
                   })}
+                </div>
+              </div>
+
+              {/* 選遊戲 + 選版本(移到分頁列下方):下注遊戲設全域遊戲、下注版本是記帳目標版 */}
+              <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[11px] font-semibold text-neutral-500 dark:text-neutral-400">下注遊戲</span>
+                  <GameSwitcher />
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[11px] font-semibold text-neutral-500 dark:text-neutral-400">下注版本</span>
+                  <div className="inline-flex p-1 rounded-xl bg-black/[0.03] dark:bg-white/[0.04] border border-black/[0.06] dark:border-white/[0.06] gap-1 flex-wrap">
+                    {editions.map(e => (
+                      <button
+                        key={e.eid}
+                        type="button"
+                        onClick={() => setEid(e.eid)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                          eid === e.eid
+                            ? 'bg-black text-white dark:bg-white dark:text-black shadow-xs'
+                            : 'text-neutral-600 dark:text-neutral-400 hover:text-black dark:hover:text-white'
+                        }`}
+                      >
+                        {e.name}
+                      </button>
+                    ))}
+                  </div>
+                  <span className="text-[10px] text-neutral-400">(在「設定」可新增版、改名、設各版盤口)</span>
                 </div>
               </div>
 
