@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   TrendingDown,
   TrendingUp,
@@ -12,6 +12,7 @@ import { TOTAL_STRATEGY_PERFORMANCE } from '../../data/lotteryData';
 import { GameKey, LedgerMode } from '../../api/client';
 import { useGame } from '../../api/useGame';
 import { useAllLedger } from '../../api/useLedger';
+import { useEditions } from '../../api/useEditions';
 
 // 追平方案的「哪一款 × 哪種下法 × 幾車」沿用 v2 原本的 client-side 設定,
 // 只有每車成本 / 每車彩金改讀後端 GameDTO。
@@ -47,11 +48,44 @@ export const TotalPnLTab: React.FC = () => {
   const { games, gameKey, loading: gamesLoading } = useGame();
   // 登入時四種下法的紀錄都在後端,直接彙整;未登入退回示範數字
   const { entries, loading: ledgerLoading, error: ledgerError, loggedIn } = useAllLedger();
+  const { editions } = useEditions();
+
+  // 依「版」篩選整頁:'all' = 總版(全部版合併);否則只看選中的版(舊紀錄沒 edition 當版 1)
+  const [selEd, setSelEd] = useState<number | 'all'>('all');
+  const edOf = (e: { record: Record<string, unknown> }) =>
+    num((e.record as Record<string, unknown>).edition) || 1;
+  const edName = (ed: number) => editions.find(x => x.eid === ed)?.name ?? `版${ed}`;
+  const shownEntries = useMemo(
+    () => (selEd === 'all' ? entries : entries.filter(e => edOf(e) === selEd)),
+    [entries, selEd],
+  );
+  // 頁面出現過的版(依 eid 排序),給切換鈕用
+  const usedEds = useMemo(() => {
+    const s = new Set<number>(entries.map(edOf));
+    return Array.from(s).sort((a, b) => a - b);
+  }, [entries]);
+
+  // 各版損益:每一版一列(不受上方切換影響,永遠列全部版),最後一列是總版總計
+  const editionRows = useMemo(() => {
+    const by = new Map<number, { rounds: number; cost: number; payout: number; pnl: number }>();
+    for (const e of entries) {
+      const ed = edOf(e);
+      const acc = by.get(ed) ?? { rounds: 0, cost: 0, payout: 0, pnl: 0 };
+      acc.rounds += 1;
+      acc.cost += num(e.record.cost);
+      acc.payout += num(e.record.payout);
+      acc.pnl += num(e.record.pnl);
+      by.set(ed, acc);
+    }
+    return Array.from(by.entries())
+      .sort((a, b) => a[0] - b[0])
+      .map(([ed, v]) => ({ ed, name: edName(ed), ...v }));
+  }, [entries, editions]);
 
   const perfRows = useMemo(() => {
     if (!loggedIn) return TOTAL_STRATEGY_PERFORMANCE;
     return MODE_ROWS.map(({ mode, name }) => {
-      const rows = entries.filter(e => e.mode === mode).map(e => e.record);
+      const rows = shownEntries.filter(e => e.mode === mode).map(e => e.record);
       const cost = rows.reduce((a, r) => a + num(r.cost), 0);
       const payout = rows.reduce((a, r) => a + num(r.payout), 0);
       const pnl = rows.reduce((a, r) => a + num(r.pnl), 0);
@@ -65,7 +99,7 @@ export const TotalPnLTab: React.FC = () => {
         roi: `${cost ? ((pnl / cost) * 100).toFixed(1) : '0.0'}%`,
       };
     });
-  }, [loggedIn, entries]);
+  }, [loggedIn, shownEntries]);
 
   const totals = useMemo(() => {
     const cost = perfRows.reduce((a, r) => a + r.cost, 0);
@@ -80,11 +114,11 @@ export const TotalPnLTab: React.FC = () => {
     };
   }, [perfRows]);
 
-  // 淨值走勢:登入時依流水順序累加,未登入沒有逐筆資料就不畫
+  // 淨值走勢:登入時依流水順序累加,未登入沒有逐筆資料就不畫(跟隨上方版切換)
   const curve = useMemo(() => {
-    if (!loggedIn || entries.length === 0) return null;
+    if (!loggedIn || shownEntries.length === 0) return null;
     let running = 0;
-    const cums = [0, ...entries.map(e => (running += num(e.record.pnl)))];
+    const cums = [0, ...shownEntries.map(e => (running += num(e.record.pnl)))];
     const hi = Math.max(...cums);
     const lo = Math.min(...cums);
     const x = (i: number) => (cums.length > 1 ? 40 + (410 * i) / (cums.length - 1) : 245);
@@ -94,10 +128,10 @@ export const TotalPnLTab: React.FC = () => {
       points: cums.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' '),
       dots: cums.map((v, i) => ({ cx: x(i), cy: y(v), v })),
       last: cums[cums.length - 1],
-      firstDate: String(entries[0].record.date ?? ''),
-      lastDate: String(entries[entries.length - 1].record.date ?? ''),
+      firstDate: String(shownEntries[0].record.date ?? ''),
+      lastDate: String(shownEntries[shownEntries.length - 1].record.date ?? ''),
     };
-  }, [loggedIn, entries]);
+  }, [loggedIn, shownEntries]);
 
   // 盤口全部讀 GameDTO;清單還沒回來就整列不算,不拿別款的數字硬湊
   const recoveryRows = RECOVERY_PLANS.flatMap(p => {
@@ -140,7 +174,7 @@ export const TotalPnLTab: React.FC = () => {
               Consolidated Balance & Risk Management
             </span>
             <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-black/5 dark:bg-white/10 text-neutral-600 dark:text-neutral-300">
-              全策略總帳
+              全策略總帳{loggedIn && selEd !== 'all' ? `・${edName(selEd)}` : ''}
             </span>
           </div>
           <div className="text-base sm:text-xl font-display font-bold text-neutral-900 dark:text-white mt-0.5">
@@ -165,6 +199,29 @@ export const TotalPnLTab: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* 版切換:整頁數字依選中的版重算('全部版' = 總版合併) */}
+      {loggedIn && usedEds.length > 1 && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-[10px] uppercase tracking-wider text-neutral-400 font-semibold flex items-center gap-1">
+            <Layers className="w-3.5 h-3.5" /> 依版檢視
+          </span>
+          {(['all', ...usedEds] as (number | 'all')[]).map(ed => (
+            <button
+              key={String(ed)}
+              type="button"
+              onClick={() => setSelEd(ed)}
+              className={`px-2.5 py-1 rounded-lg text-[10px] font-semibold transition-all ${
+                selEd === ed
+                  ? 'bg-black text-white dark:bg-white dark:text-black'
+                  : 'border border-black/10 dark:border-white/10 text-neutral-600 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5'
+              }`}
+            >
+              {ed === 'all' ? '全部版(總版)' : edName(ed)}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* 5 Overall Metric Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 sm:gap-3">
@@ -221,6 +278,67 @@ export const TotalPnLTab: React.FC = () => {
       {!loggedIn && (
         <div className="text-[11px] text-neutral-400">
           未登入:以下為示範數字。登入後這裡會彙整你實際記在四個分頁的流水帳。
+        </div>
+      )}
+
+      {/* 各版損益:每一版一列 + 總版總計(永遠列全部版,不受上方切換影響)*/}
+      {loggedIn && editionRows.length > 0 && (
+        <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs sm:text-sm font-display font-bold text-neutral-900 dark:text-white uppercase tracking-wide flex items-center gap-1.5">
+              <Layers className="w-4 h-4 text-neutral-500" /> 各版損益
+            </h3>
+            <span className="text-[10px] font-mono text-neutral-400">點上方切換鈕可只看單一版</span>
+          </div>
+          <div className="lt-wrap border border-black/[0.08] dark:border-white/[0.08] rounded-xl overflow-x-auto">
+            <table className="lt w-full">
+              <thead>
+                <tr>
+                  <th>版</th>
+                  <th>局數</th>
+                  <th>總成本</th>
+                  <th>總回收</th>
+                  <th>淨損益</th>
+                  <th>ROI</th>
+                </tr>
+              </thead>
+              <tbody>
+                {editionRows.map(r => (
+                  <tr
+                    key={r.ed}
+                    className={selEd === r.ed ? 'bg-black/[0.03] dark:bg-white/[0.05]' : undefined}
+                  >
+                    <td className="font-semibold text-xs text-neutral-900 dark:text-white">{r.name}</td>
+                    <td className="font-mono text-xs">{r.rounds}</td>
+                    <td className="font-mono text-xs">{r.cost.toLocaleString()}</td>
+                    <td className="font-mono text-xs text-emerald-600 dark:text-emerald-400 font-bold">{r.payout.toLocaleString()}</td>
+                    <td className={`font-mono text-xs font-bold ${r.pnl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                      {signed(r.pnl)}
+                    </td>
+                    <td className="font-mono text-xs">{r.cost ? ((r.pnl / r.cost) * 100).toFixed(1) : '0.0'}%</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="border-t border-black/10 dark:border-white/10 bg-black/[0.03] dark:bg-white/[0.05]">
+                  <td className="font-sans font-bold text-xs text-neutral-900 dark:text-white">總版總計</td>
+                  <td className="font-mono text-xs font-bold">{editionRows.reduce((a, r) => a + r.rounds, 0)}</td>
+                  <td className="font-mono text-xs font-bold">{editionRows.reduce((a, r) => a + r.cost, 0).toLocaleString()}</td>
+                  <td className="font-mono text-xs font-bold text-emerald-600 dark:text-emerald-400">{editionRows.reduce((a, r) => a + r.payout, 0).toLocaleString()}</td>
+                  {(() => {
+                    const tPnl = editionRows.reduce((a, r) => a + r.pnl, 0);
+                    const tCost = editionRows.reduce((a, r) => a + r.cost, 0);
+                    return (
+                      <>
+                        <td className={`font-mono text-xs font-bold ${tPnl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>{signed(tPnl)}</td>
+                        <td className="font-mono text-xs font-bold">{tCost ? ((tPnl / tCost) * 100).toFixed(1) : '0.0'}%</td>
+                      </>
+                    );
+                  })()}
+                </tr>
+              </tfoot>
+            </table>
+          </div>
         </div>
       )}
 
@@ -350,7 +468,7 @@ export const TotalPnLTab: React.FC = () => {
 
               <div className="flex justify-between px-2 sm:px-4 text-[10px] font-mono text-neutral-400 pt-1 border-t border-black/[0.06] dark:border-white/[0.06]">
                 <span>{curve ? `${curve.firstDate} 起始` : '起始'}</span>
-                <span>{curve ? `${entries.length} 筆紀錄` : '—'}</span>
+                <span>{curve ? `${shownEntries.length} 筆紀錄` : '—'}</span>
                 <span>{curve ? curve.lastDate : '最新'}</span>
               </div>
             </div>
