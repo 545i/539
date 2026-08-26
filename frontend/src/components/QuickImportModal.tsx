@@ -335,11 +335,36 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
                   inputMode="numeric"
                   value={issue}
                   placeholder={nextIssue || '期別'}
-                  onChange={e => { setIssue(e.target.value); reset(); }}
+                  onChange={e => {
+                    const v = e.target.value;
+                    setIssue(v);
+                    // 手打期號時把日期一起帶上:先查已開的 draws、再對下一期;
+                    // 都查不到(更遠的未開期)就維持現有日期,別讓它變空 → 下游才不會「找不到日期」
+                    const d = draws.find(x => x.issue === v)?.date
+                      ?? (v === nextIssue ? nextDate : '');
+                    if (d) setBetDate(d);
+                    reset();
+                  }}
                   title="下一期(還沒開)可直接打期號"
                   className="h-8 w-28 px-2.5 rounded-lg border border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.03] text-xs font-mono text-neutral-900 dark:text-white outline-hidden focus:border-black/40 dark:focus:border-white/40"
                 />
+                {/* 日期永遠看得到、可手改 —— 手打更遠未開期或日期沒帶到時,自己補 */}
+                <input
+                  id="quick-import-date"
+                  type="date"
+                  value={betDate}
+                  onChange={e => { setBetDate(e.target.value); reset(); }}
+                  title="這一期的開獎日期(選期號時自動帶入,可手動修正)"
+                  className={`h-8 px-2 rounded-lg border bg-black/[0.02] dark:bg-white/[0.03] text-xs font-mono text-neutral-900 dark:text-white outline-hidden focus:border-black/40 dark:focus:border-white/40 ${
+                    betDate ? 'border-black/10 dark:border-white/10' : 'border-amber-500/60'
+                  }`}
+                />
               </div>
+              {!betDate && (
+                <div className="mt-1 text-[10px] text-amber-600 dark:text-amber-400">
+                  這一期沒有日期,請補上日期再上傳(否則對帳會找不到日期)。
+                </div>
+              )}
             </div>
             <div className="text-[11px] text-neutral-500 dark:text-neutral-400 pb-2.5">
               記到 <strong>{game?.name ?? gameKey}</strong>(由上方遊戲切換器決定),
