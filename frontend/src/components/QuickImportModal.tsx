@@ -1,7 +1,6 @@
-import React, {useEffect, useMemo, useState} from 'react';
+import React, {useEffect, useState} from 'react';
 import {X, ClipboardPaste, ListChecks, Upload, AlertTriangle, CheckCircle2} from 'lucide-react';
-import {api, QuickImportDTO, LedgerMode, TensPairDTO} from '../api/client';
-import {IssuePicker} from './IssuePicker';
+import {api, QuickImportDTO, LedgerMode, TensPairDTO, GameKey} from '../api/client';
 import {useAsync} from '../api/useAsync';
 import {useAuth} from '../api/useAuth';
 import {useGame} from '../api/useGame';
@@ -55,8 +54,8 @@ const SAMPLE = `02x50車
 
 export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, initialText}) => {
   const {loggedIn} = useAuth();
-  const {gameKey, game, games, setGameKey} = useGame();
-  const {editions, eid, setEid} = useEditions();
+  const {games} = useGame();
+  const {editions} = useEditions();
   const [text, setText] = useState('');
   const [issue, setIssue] = useState('');
   const [preview, setPreview] = useState<QuickImportDTO | null>(null);
@@ -68,32 +67,60 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
   const [costs, setCosts] = useState<({cost: number; expr: string} | null)[]>([]);
   const [costBusy, setCostBusy] = useState(false);
 
-  // 下注期數 / 日期:預設帶「最新一期 +1」(下一期),可用下拉改到別期(補記)
-  const [betDate, setBetDate] = useState('');
-  const hist = useAsync(() => (isOpen ? api.history(gameKey, 30) : Promise.resolve(null)), [gameKey, isOpen]);
-  const draws = hist.data?.draws ?? [];
-  // 下一期期號優先用後端算好的 next.issue(最新期 +1);後端算不出來才自己退回 +1。
-  const nextIssue = useMemo(() => {
-    const fromApi = hist.data?.next?.issue;
-    if (fromApi) return fromApi;
-    const last = hist.data?.latest?.issue;
-    if (!last) return '';
-    const m = last.match(/^(\d+)$/);
-    return m ? String(Number(m[1]) + 1) : last;
-  }, [hist.data]);
-  // 下一期日期用後端 next.date(真正的下一次開獎台灣日期);沒有才退回最新一期日期。
-  const nextDate = hist.data?.next?.date ?? hist.data?.latest?.date ?? '';
-  useEffect(() => { setIssue(nextIssue); setBetDate(nextDate); }, [nextIssue, nextDate]);
-  // 每次開啟清掉上次的成功/錯誤橫幅(歷史保留)
-  useEffect(() => { if (isOpen) { setDone(null); setError(null); } }, [isOpen]);
-  // 從上傳歷史「填回」帶回來的文本:開啟時預填文字框
+  // 上傳目標的三要件:全部改成 modal 內部狀態,不再沿用全域 gameKey / 預設 eid。
+  // 每次開啟、每次上傳成功後都回到「尚未選擇」,強迫重新確認,避免連續上傳傳錯地方。
+  const [selDate, setSelDate] = useState('');            // 日期(YYYY-MM-DD)
+  const [selGame, setSelGame] = useState<GameKey | null>(null); // 遊戲
+  const [selEid, setSelEid] = useState<number | null>(null);    // 版
+  // 期號由「日期 + 遊戲」自動反查,反查不到時的提示訊息
+  const [issueHint, setIssueHint] = useState('');
+
+  // 每次開啟:三要件回到「尚未選擇」,並清掉上次殘留的預覽 / 橫幅
+  useEffect(() => {
+    if (!isOpen) return;
+    setSelDate('');
+    setSelGame(null);
+    setSelEid(null);
+    setIssue('');
+    setIssueHint('');
+    setPreview(null);
+    setDraftItems([]);
+    setText('');
+    setDone(null);
+    setError(null);
+  }, [isOpen]);
+  // 從上傳歷史「填回」帶回來的文本:開啟時預填文字框(在上面重置 effect 之後跑)
   useEffect(() => { if (isOpen && initialText) setText(initialText); }, [isOpen, initialText]);
+
+  // 反查期號:日期 + 遊戲都選好時,用日期去該遊戲的開獎紀錄反查那一天的期號並帶入。
+  // 這樣一次上傳流程只需選一次日期,切換遊戲會用同一天自動重新反查(依賴含 selGame)。
+  useEffect(() => {
+    if (!isOpen) return;
+    if (!selDate || !selGame) { setIssue(''); setIssueHint(''); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const h = await api.history(selGame, 60);
+        if (cancelled) return;
+        const hit = h.draws.find(d => d.date === selDate);
+        if (hit?.issue) { setIssue(hit.issue); setIssueHint(''); return; }
+        // 已開的裡面找不到,再看看是不是「下一期」(還沒開但期號已定)
+        if (h.next?.date === selDate && h.next?.issue) { setIssue(h.next.issue); setIssueHint(''); return; }
+        setIssue('');
+        setIssueHint('這一天沒有這個遊戲的開獎(或期號未定),請確認日期');
+      } catch {
+        if (!cancelled) { setIssue(''); setIssueHint('查詢期號失敗,請稍後再試'); }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [isOpen, selDate, selGame]);
 
   // 預覽即時試算成本:把目前(可能改過的)draft 丟後端 dry_run commit 只重算不寫入,
   // 拿回每筆 record.cost / costExpr。debounce 350ms,避免打字時一直打 API。
   // ⚠ 必須在任何 early return 之前(Hooks 規則);開啟且有 preview 才真的算。
   useEffect(() => {
-    if (!isOpen || !preview || draftItems.length === 0 || !loggedIn) {
+    if (!isOpen || !preview || draftItems.length === 0 || !loggedIn
+        || selGame == null || selEid == null || !issue) {
       setCosts([]);
       return;
     }
@@ -108,7 +135,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
           stars: d.stars,
           hit_count: d.hit.trim() === '' ? null : Math.max(0, Math.floor(Number(d.hit) || 0)),
         }));
-        const res = await api.quickImportCommit(gameKey, items, {issue, edition: eid, date: betDate, dryRun: true});
+        const res = await api.quickImportCommit(selGame, items, {issue, edition: selEid, date: selDate, dryRun: true});
         if (cancelled) return;
         // 後端把算不出來的收進 errors(line_no = 1-based draft 序),其餘依序在 items
         const errLines = new Set(res.errors.map(e => e.line_no));
@@ -131,12 +158,12 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
       }
     }, 350);
     return () => { cancelled = true; window.clearTimeout(t); };
-  }, [isOpen, draftItems, issue, eid, gameKey, preview, loggedIn]);
+  }, [isOpen, draftItems, issue, selEid, selGame, selDate, preview, loggedIn]);
 
   // 區間斷檔提醒(參考用):依目前選的遊戲,只顯示未開(streak>=1)的配對
   const pairs = useAsync<TensPairDTO[]>(
-    () => (isOpen ? api.tensPairs(gameKey, 3) : Promise.resolve([])),
-    [gameKey, isOpen],
+    () => (isOpen && selGame ? api.tensPairs(selGame, 3) : Promise.resolve([])),
+    [selGame, isOpen],
   );
   const brokenPairs = (pairs.data ?? []).filter(p => p.streak >= 1);
 
@@ -153,10 +180,11 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
 
   // 解析預覽:把文字丟後端 dry_run,回來的每筆變成一列可編輯的 draft
   const runPreview = async () => {
+    if (!selGame || selEid == null || !selDate || !issue) return; // 三要件 + 反查到期號才給預覽
     setBusy(true);
     setError(null);
     try {
-      const res = await api.quickImport(gameKey, text, true, {issue, edition: eid, date: betDate});
+      const res = await api.quickImport(selGame, text, true, {issue, edition: selEid, date: selDate});
       setPreview(res);
       setDraftItems(
         res.items.map(it => ({
@@ -180,11 +208,12 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
 
   // 確認上傳:送(可能被編輯過的)draft 給 commit 端點,成本後端重算
   const confirm = async () => {
+    if (!selGame || selEid == null || !selDate || !issue) return; // 三要件 + 反查到期號才給上傳
     setBusy(true);
     setError(null);
     try {
       const res = await api.quickImportCommit(
-        gameKey,
+        selGame,
         draftItems.map(d => ({
           mode: d.mode,
           selectedBalls: parseBalls(d.balls),
@@ -192,7 +221,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
           stars: d.stars,
           hit_count: d.hit.trim() === '' ? null : Math.max(0, Math.floor(Number(d.hit) || 0)),
         })),
-        {issue, edition: eid, date: betDate},
+        {issue, edition: selEid, date: selDate},
       );
       // 下注明細 + 總成本:全用後端重算後的 record(前端不重算金額)
       const detail: UploadHistoryItem[] = res.items.map(it => ({
@@ -206,11 +235,11 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
       const totalCost = detail.reduce((s, d) => s + d.cost, 0);
       const entry: UploadHistoryEntry = {
         ts: Date.now(),
-        gameName: game?.name ?? gameKey,
-        editionName: editions.find(e => e.eid === eid)?.name ?? String(eid),
-        eid,
+        gameName: games.find(x => x.key === selGame)?.name ?? selGame,
+        editionName: editions.find(e => e.eid === selEid)?.name ?? String(selEid),
+        eid: selEid,
         issue,
-        date: betDate,     // 存這一期日期,上傳歷史列表顯示「第 X 期(日期)」對帳好認
+        date: selDate,     // 存這一期日期,上傳歷史列表顯示「第 X 期(日期)」對帳好認
         text,
         count: res.saved,
         totalCost,
@@ -226,6 +255,12 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
       setText('');
       setPreview(null);
       setDraftItems([]);
+      // 三要件回到「尚未選擇」,強迫下一批重新確認日期 / 遊戲 / 版,避免沿用傳錯地方
+      setSelDate('');
+      setSelGame(null);
+      setSelEid(null);
+      setIssue('');
+      setIssueHint('');
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -240,6 +275,16 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
 
   const errors = preview?.errors ?? [];
   const anyIncomplete = draftItems.some(d => d.incomplete);
+
+  // 三要件就緒判斷:日期 / 遊戲 / 版 任一未選,或期號還沒反查到,就不給預覽 / 上傳
+  const missingSel: string[] = [];
+  if (!selDate) missingSel.push('日期');
+  if (!selGame) missingSel.push('遊戲');
+  if (selEid == null) missingSel.push('版');
+  const targetReady = missingSel.length === 0 && !!issue;
+  const selGameName = games.find(x => x.key === selGame)?.name ?? '';
+  const selGameShort = games.find(x => x.key === selGame)?.short_name ?? '';
+  const selEditionName = selEid == null ? '' : (editions.find(e => e.eid === selEid)?.name ?? String(selEid));
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-in fade-in duration-200">
@@ -281,12 +326,9 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
                   <button
                     key={g.key}
                     type="button"
-                    onClick={() => {
-                      setGameKey(g.key); // 全域切換:上傳目標 + 區間紀錄等全站一起換
-                      reset();
-                    }}
+                    onClick={() => { setSelGame(g.key); reset(); }} // modal 內自己選,不再全域切換
                     className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                      gameKey === g.key
+                      selGame === g.key
                         ? 'bg-black text-white dark:bg-white dark:text-black shadow-xs'
                         : 'text-neutral-600 dark:text-neutral-400 hover:text-black dark:hover:text-white'
                     }`}
@@ -305,9 +347,9 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
                   <button
                     key={e.eid}
                     type="button"
-                    onClick={() => { setEid(e.eid); reset(); }}
+                    onClick={() => { setSelEid(e.eid); reset(); }} // 本地選版,初始無任何版高亮
                     className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                      eid === e.eid
+                      selEid === e.eid
                         ? 'bg-black text-white dark:bg-white dark:text-black shadow-xs'
                         : 'text-neutral-600 dark:text-neutral-400 hover:text-black dark:hover:text-white'
                     }`}
@@ -319,32 +361,35 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
             </div>
             <div>
               <label className="block text-[10px] uppercase tracking-[0.2em] font-semibold text-neutral-400 mb-1.5">
-                下注期數(可下拉選日期)
+                下注日期(整批只選一次)
               </label>
               <div className="flex items-center gap-2 flex-wrap">
-                <IssuePicker
-                  issue={issue}
-                  date={betDate}
-                  draws={draws}
-                  gameLabel={game?.short_name}
-                  extraOption={nextIssue ? {issue: nextIssue, date: nextDate} : undefined}
-                  onSelect={(iss, d) => { setIssue(iss); setBetDate(d); reset(); }}
-                />
                 <input
-                  id="quick-import-issue"
-                  type="text"
-                  inputMode="numeric"
-                  value={issue}
-                  placeholder={nextIssue || '期別'}
-                  onChange={e => { setIssue(e.target.value); reset(); }}
-                  title="下一期(還沒開)可直接打期號"
-                  className="h-8 w-28 px-2.5 rounded-lg border border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.03] text-xs font-mono text-neutral-900 dark:text-white outline-hidden focus:border-black/40 dark:focus:border-white/40"
+                  id="quick-import-date"
+                  type="date"
+                  value={selDate}
+                  onChange={e => { setSelDate(e.target.value); reset(); }}
+                  title="先選日期,切換遊戲時會用這一天自動反查期號"
+                  className="h-8 px-2.5 rounded-lg border border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.03] text-xs font-mono text-neutral-900 dark:text-white outline-hidden focus:border-black/40 dark:focus:border-white/40"
                 />
+                {/* 反查到的期號(唯讀顯示);由日期 + 遊戲決定 */}
+                <span
+                  id="quick-import-issue"
+                  className="h-8 min-w-24 inline-flex items-center px-2.5 rounded-lg border border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.03] text-xs font-mono text-neutral-900 dark:text-white"
+                >
+                  {issue ? `第 ${issue} 期` : (selDate && selGame ? '查無期號' : '待選日期/遊戲')}
+                </span>
               </div>
+              {issueHint && (
+                <div className="mt-1 text-[10px] text-amber-700 dark:text-amber-400">{issueHint}</div>
+              )}
             </div>
             <div className="text-[11px] text-neutral-500 dark:text-neutral-400 pb-2.5">
-              記到 <strong>{game?.name ?? gameKey}</strong>(由上方遊戲切換器決定),
-              結果一律先記「待開獎」,開獎後再結算。
+              {targetReady ? (
+                <>記到 <strong>{selGameName}・{selEditionName}・第 {issue} 期{selDate ? `(${selDate})` : ''}</strong>,結果一律先記「待開獎」,開獎後再結算。</>
+              ) : (
+                <>尚未選好上傳目標:請先選擇 <strong>{missingSel.length ? missingSel.join(' / ') : '期號(依日期反查)'}</strong>。</>
+              )}
             </div>
           </div>
 
@@ -352,10 +397,13 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
           <div className="rounded-xl border border-black/[0.08] dark:border-white/[0.08] bg-black/[0.02] dark:bg-white/[0.03] p-3 space-y-2">
             <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.2em] font-semibold text-neutral-400">
               <AlertTriangle className="w-3.5 h-3.5" />
-              <span>1800碰斷檔提醒（{game?.short_name ?? gameKey}・參考）</span>
+              <span>1800碰斷檔提醒（{selGameShort || '尚未選遊戲'}・參考）</span>
             </div>
-            {pairs.loading && <div className="text-[11px] text-neutral-400">載入中…</div>}
-            {!pairs.loading && brokenPairs.length === 0 && (
+            {!selGame && (
+              <div className="text-[11px] text-neutral-400">先在上方選一款遊戲才顯示斷檔提醒。</div>
+            )}
+            {selGame && pairs.loading && <div className="text-[11px] text-neutral-400">載入中…</div>}
+            {selGame && !pairs.loading && brokenPairs.length === 0 && (
               <div className="text-[11px] text-neutral-400">
                 各十位區段近期都有開出，目前沒有連續未開的組合。
               </div>
@@ -538,10 +586,15 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
 
         {/* Modal Footer */}
         <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-black/[0.08] dark:border-white/[0.08] shrink-0">
+          {!targetReady && (
+            <span className="mr-auto text-[11px] text-amber-700 dark:text-amber-400">
+              請先選擇 {missingSel.length ? missingSel.join(' / ') : '期號(依日期反查)'}
+            </span>
+          )}
           <button
             type="button"
             id="quick-import-preview-btn"
-            disabled={busy || !text.trim() || !loggedIn}
+            disabled={busy || !text.trim() || !loggedIn || !targetReady}
             onClick={runPreview}
             className="py-2.5 px-4 rounded-xl text-xs uppercase tracking-wider font-semibold bg-white dark:bg-[#161616] border border-black/[0.08] dark:border-white/[0.08] text-neutral-700 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5 disabled:opacity-30 transition-colors flex items-center gap-2"
           >
@@ -551,8 +604,8 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
           <button
             type="button"
             id="quick-import-submit-btn"
-            // 一定要先預覽過、而且真的有解析出東西才給上傳
-            disabled={busy || !loggedIn || draftItems.length === 0 || done !== null}
+            // 一定要先預覽過、而且真的有解析出東西才給上傳;三要件未齊也不給
+            disabled={busy || !loggedIn || draftItems.length === 0 || done !== null || !targetReady}
             onClick={confirm}
             title={anyIncomplete ? '仍有顆數不足的列,建議先補齊再上傳' : ''}
             className="py-2.5 px-4 rounded-xl text-xs uppercase tracking-wider font-semibold bg-black text-white dark:bg-white dark:text-black hover:opacity-90 disabled:opacity-30 transition-opacity flex items-center gap-2 shadow-xs active:scale-98"
