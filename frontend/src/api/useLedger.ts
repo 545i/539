@@ -112,6 +112,24 @@ export function useLedger(
     }
   }, [loggedIn, remote]);
 
+  /** 撤銷指定的那一筆(核對列表每列各自撤銷用)。 */
+  const deleteById = useCallback(
+    async (id: string | number) => {
+      if (!loggedIn) {
+        setLocal(prev => prev.filter(r => String(r.id) !== String(id)));
+        return;
+      }
+      setError(null);
+      try {
+        await api.ledgerDelete(Number(id));
+        setRemote(prev => (prev ?? []).filter(r => String(r.id) !== String(id)));
+      } catch (e) {
+        setError((e as Error).message);
+      }
+    },
+    [loggedIn],
+  );
+
   /** 改某一筆的期數並重新對獎;hitCount 有值 = 手填中獎顆數(忘記期數但記得中幾顆)。 */
   const resettle = useCallback(
     async (id: string, issue: string, hitCount?: number | null) => {
@@ -182,7 +200,7 @@ export function useLedger(
     return withRunning(sorted);
   }, [loggedIn, remote, local, edition, combine]);
 
-  return {records, add, undo, clear, resettle, reload, loading, error, loggedIn};
+  return {records, add, undo, deleteById, clear, resettle, reload, loading, error, loggedIn};
 }
 
 /** 總損益頁用:一次撈四種下法的紀錄(未登入回空陣列)。 */

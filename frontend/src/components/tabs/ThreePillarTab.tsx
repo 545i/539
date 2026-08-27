@@ -7,7 +7,7 @@ import {
   CheckCircle2,
   XCircle,
   Layers,
-  RotateCcw,
+  Trash2,
   RefreshCw,
   Minus,
   Plus
@@ -71,6 +71,7 @@ export const ThreePillarTab: React.FC = () => {
   // 備援「一鍵對獎」狀態
   const [settleBusy, setSettleBusy] = useState(false);
   const [settleMsg, setSettleMsg] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const supported = !!gameCfg?.supports_pillar;
 
@@ -582,15 +583,6 @@ export const ThreePillarTab: React.FC = () => {
                   <RefreshCw className={`w-3 h-3 ${settleBusy ? 'animate-spin' : ''}`} />
                   {settleBusy ? '對獎中…' : '一鍵對獎'}
                 </button>
-                <button
-                  type="button"
-                  onClick={ledger.undo}
-                  disabled={records.length === 0}
-                  className="text-[11px] font-semibold text-neutral-500 hover:text-neutral-900 dark:hover:text-white disabled:opacity-30 transition-colors flex items-center gap-1 active:scale-95"
-                >
-                  <RotateCcw className="w-3 h-3" />
-                  撤銷上一筆
-                </button>
               </div>
             </div>
             {settleMsg && (
@@ -663,8 +655,28 @@ export const ThreePillarTab: React.FC = () => {
                     <div className="text-neutral-400 text-[10px]">
                       開獎號: <span className="font-mono text-neutral-600 dark:text-neutral-400">{rec.drawBalls.map(b => b.toString().padStart(2, '0')).join(' ')}</span>
                     </div>
-                    <div className="text-[10px] font-mono text-neutral-400">
-                      {rec.betsCount.toLocaleString()} 注
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-mono text-neutral-400">
+                        {rec.betsCount.toLocaleString()} 注
+                      </span>
+                      {confirmDeleteId === rec.id ? (
+                        <button
+                          type="button"
+                          onClick={() => { ledger.deleteById(rec.id); setConfirmDeleteId(null); }}
+                          className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-rose-600 text-white hover:bg-rose-700 transition-colors"
+                        >
+                          確認?
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDeleteId(rec.id)}
+                          title="撤銷這一筆"
+                          className="inline-flex items-center p-1 rounded-md text-neutral-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-black/5 dark:hover:bg-white/5 transition-colors active:scale-95"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -687,6 +699,7 @@ export const ThreePillarTab: React.FC = () => {
                     <th>本局損益</th>
                     <th>累積損益</th>
                     <th>開獎號碼</th>
+                    <th>撤銷</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -731,6 +744,26 @@ export const ThreePillarTab: React.FC = () => {
                       </td>
                       <td className="font-mono text-xs">
                         {rec.drawBalls.map(b => b.toString().padStart(2, '0')).join(' ')}
+                      </td>
+                      <td>
+                        {confirmDeleteId === rec.id ? (
+                          <button
+                            type="button"
+                            onClick={() => { ledger.deleteById(rec.id); setConfirmDeleteId(null); }}
+                            className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-rose-600 text-white hover:bg-rose-700 transition-colors"
+                          >
+                            確認?
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeleteId(rec.id)}
+                            title="撤銷這一筆"
+                            className="inline-flex items-center p-1 rounded-md text-neutral-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-black/5 dark:hover:bg-white/5 transition-colors active:scale-95"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))}

@@ -3,7 +3,7 @@ import {
   FileText,
   CheckCircle2,
   XCircle,
-  RotateCcw,
+  Trash2,
   RefreshCw,
 } from 'lucide-react';
 import { LotteryBallPad } from '../LotteryBallPad';
@@ -62,6 +62,7 @@ export const GroupBetTab: React.FC<Props> = ({ group }) => {
   const allRecords = ledger.records;
   // 遊戲篩選:全部 / 各款;篩選後重算累積損益(從舊到新),上方儀表板與核對列表都跟著變。
   const [gameFilter, setGameFilter] = React.useState<'all' | 'lotto539' | 'fantasy5' | 'marksix'>('all');
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const gameKeyOf = (g: string) =>
     g.startsWith('今彩539') ? 'lotto539'
       : g.startsWith('天天樂') ? 'fantasy5'
@@ -520,15 +521,6 @@ export const GroupBetTab: React.FC<Props> = ({ group }) => {
                   <RefreshCw className={`w-3 h-3 ${ledger.loading ? 'animate-spin' : ''}`} />
                   重新整理
                 </button>
-                <button
-                  type="button"
-                  onClick={ledger.undo}
-                  disabled={records.length === 0}
-                  className="text-[11px] font-semibold text-neutral-500 hover:text-neutral-900 dark:hover:text-white disabled:opacity-30 transition-colors flex items-center gap-1 active:scale-95"
-                >
-                  <RotateCcw className="w-3 h-3" />
-                  撤銷上一筆
-                </button>
               </div>
             </div>
 
@@ -556,6 +548,7 @@ export const GroupBetTab: React.FC<Props> = ({ group }) => {
                     <th>累積損益</th>
                     <th>下注號碼</th>
                     <th>開獎號碼</th>
+                    <th>撤銷</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -606,6 +599,26 @@ export const GroupBetTab: React.FC<Props> = ({ group }) => {
                       </td>
                       <td className="font-mono text-xs">
                         {rec.drawBalls.map(b => b.toString().padStart(2, '0')).join(' ')}
+                      </td>
+                      <td>
+                        {confirmDeleteId === rec.id ? (
+                          <button
+                            type="button"
+                            onClick={() => { ledger.deleteById(rec.id); setConfirmDeleteId(null); }}
+                            className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-rose-600 text-white hover:bg-rose-700 transition-colors"
+                          >
+                            確認?
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeleteId(rec.id)}
+                            title="撤銷這一筆"
+                            className="inline-flex items-center p-1 rounded-md text-neutral-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-black/5 dark:hover:bg-white/5 transition-colors active:scale-95"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))}

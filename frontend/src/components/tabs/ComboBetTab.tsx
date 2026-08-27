@@ -3,7 +3,7 @@ import {
   FileText,
   CheckCircle2,
   TrendingUp,
-  RotateCcw,
+  Trash2,
   Minus,
   Plus
 } from 'lucide-react';
@@ -51,6 +51,7 @@ export const ComboBetTab: React.FC = () => {
   const [curIssue, setCurIssue] = useState<string>('');
   const [issueTouched, setIssueTouched] = useState(false);
   const [betDate, setBetDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   React.useEffect(() => {
     if (issueTouched) return;
     if (latest?.issue) setCurIssue(latest.issue);
@@ -407,15 +408,6 @@ export const ComboBetTab: React.FC = () => {
               <h3 className="text-xs sm:text-sm font-display font-bold text-neutral-900 dark:text-white uppercase tracking-wide">
                 02 / 連碰流水帳與開獎核對
               </h3>
-              <button
-                type="button"
-                onClick={ledger.undo}
-                disabled={records.length === 0}
-                className="text-[11px] font-semibold text-neutral-500 hover:text-neutral-900 dark:hover:text-white disabled:opacity-30 transition-colors flex items-center gap-1 active:scale-95"
-              >
-                <RotateCcw className="w-3 h-3" />
-                撤銷上一筆
-              </button>
             </div>
 
             {ledger.loading && <div className="text-xs text-neutral-400">載入流水帳中…</div>}
@@ -479,13 +471,33 @@ export const ComboBetTab: React.FC = () => {
                   </div>
 
                   <div className="space-y-1 text-[11px] pt-1 border-t border-black/[0.04] dark:border-white/[0.04]">
-                    <div className="flex items-center gap-1 flex-wrap">
-                      <span className="text-neutral-400 text-[10px]">下注:</span>
-                      {rec.selectedBalls.map(b => (
-                        <span key={b} className={`px-1 py-0.2 rounded font-mono text-[10px] ${rec.drawBalls.includes(b) ? 'bg-emerald-600 text-white font-bold' : 'bg-black/5 dark:bg-white/10'}`}>
-                          {b.toString().padStart(2, '0')}
-                        </span>
-                      ))}
+                    <div className="flex items-center justify-between gap-1">
+                      <div className="flex items-center gap-1 flex-wrap">
+                        <span className="text-neutral-400 text-[10px]">下注:</span>
+                        {rec.selectedBalls.map(b => (
+                          <span key={b} className={`px-1 py-0.2 rounded font-mono text-[10px] ${rec.drawBalls.includes(b) ? 'bg-emerald-600 text-white font-bold' : 'bg-black/5 dark:bg-white/10'}`}>
+                            {b.toString().padStart(2, '0')}
+                          </span>
+                        ))}
+                      </div>
+                      {confirmDeleteId === rec.id ? (
+                        <button
+                          type="button"
+                          onClick={() => { ledger.deleteById(rec.id); setConfirmDeleteId(null); }}
+                          className="shrink-0 inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-rose-600 text-white hover:bg-rose-700 transition-colors"
+                        >
+                          確認?
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDeleteId(rec.id)}
+                          title="撤銷這一筆"
+                          className="shrink-0 inline-flex items-center p-1 rounded-md text-neutral-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-black/5 dark:hover:bg-white/5 transition-colors active:scale-95"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -506,6 +518,7 @@ export const ComboBetTab: React.FC = () => {
                     <th>回收</th>
                     <th>損益</th>
                     <th>開獎對號</th>
+                    <th>撤銷</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -550,6 +563,26 @@ export const ComboBetTab: React.FC = () => {
                             </span>
                           ))}
                         </div>
+                      </td>
+                      <td>
+                        {confirmDeleteId === rec.id ? (
+                          <button
+                            type="button"
+                            onClick={() => { ledger.deleteById(rec.id); setConfirmDeleteId(null); }}
+                            className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-rose-600 text-white hover:bg-rose-700 transition-colors"
+                          >
+                            確認?
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeleteId(rec.id)}
+                            title="撤銷這一筆"
+                            className="inline-flex items-center p-1 rounded-md text-neutral-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-black/5 dark:hover:bg-white/5 transition-colors active:scale-95"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))}
