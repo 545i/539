@@ -29,7 +29,7 @@ from pathlib import Path
 import pandas as pd
 
 from core import (drawtime, games, loader, scraper, scraper_fantasy5,
-                  scraper_marksix, scraper_tof)
+                  scraper_marksix, scraper_sc888, scraper_tof)
 
 MIN_DRAWS = 7        # 每次補抓至少涵蓋的期數(去重合併,不會重複寫入)
 _MIN_SPAN_DAYS = 9   # 今彩539 週一~六開獎:9 個日曆天必含 >=7 個開獎日
@@ -89,7 +89,11 @@ def _official_latest(game_key: str, today: dt.date) -> list[dict]:
     """
     try:
         if game_key == "fantasy5":
-            return scraper_fantasy5.fetch_history(pages=1)
+            # 天天樂:優先 sc888(較快、有最新期),抓不到才退回官方彙整站。
+            try:
+                return scraper_sc888.fetch_fantasy5()
+            except scraper_sc888.ScrapeError:
+                return scraper_fantasy5.fetch_history(pages=1)
         if game_key == "marksix":
             return scraper_marksix.fetch_history(pages=1)
         # lotto539:官方台彩「月」API。月初幾天把上個月也抓一次,免得漏掉月底那期。
@@ -132,10 +136,14 @@ def catch_up(game_key: str, data_path: str | Path) -> dict:
         # 用了彩世界(它慢官方約一期)→ 最新一期再用官方來源 top-up,保證不缺最新期。
         new_rows = new_rows + _official_latest(game_key, today)
     elif game_key == "fantasy5":
-        # 天天樂每日開獎:每頁約 50 期,依落差天數換算頁數
-        gap_days = (today - start).days
-        pages = min(60, max(1, -(-(gap_days + MIN_DRAWS) // 50)))
-        new_rows = scraper_fantasy5.fetch_history(pages=pages)
+        # 天天樂:優先 sc888(較快、有最新期,涵蓋最近約 100 期);
+        # 抓不到才退回官方彙整站(每頁約 50 期,依落差天數換算頁數)。
+        try:
+            new_rows = scraper_sc888.fetch_fantasy5()
+        except scraper_sc888.ScrapeError:
+            gap_days = (today - start).days
+            pages = min(60, max(1, -(-(gap_days + MIN_DRAWS) // 50)))
+            new_rows = scraper_fantasy5.fetch_history(pages=pages)
     elif game_key == "marksix":
         # 六合彩每週開三次:把落差天數換算成期數,再換算頁數
         gap_draws = (today - start).days * _MARKSIX_PER_WEEK / 7

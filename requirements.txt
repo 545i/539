@@ -4,6 +4,7 @@ questionary>=2.0
 plotext>=5.2
 rich>=13.0
 requests>=2.31
+curl_cffi>=0.7          # sc888 天天樂來源:純 HTTP + impersonate chrome
 beautifulsoup4>=4.12
 pytest>=7.4
 openpyxl>=3.1
