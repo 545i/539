@@ -108,12 +108,16 @@ export const TotalPnLTab: React.FC = () => {
     const pnl = perfRows.reduce((a, r) => a + r.pnl, 0);
     const rounds = perfRows.reduce((a, r) => a + r.rounds, 0);
     const hits = perfRows.reduce((a, r) => a + r.hits, 0);
+    // 下注累積總車數:1組/2組用車數,三柱/連碰/9000碰用支數(cars 缺就取 units)
+    const cars = loggedIn
+      ? shownEntries.reduce((a, e) => a + num(e.record.cars ?? e.record.units), 0)
+      : 0;
     return {
-      cost, payout, pnl, rounds, hits,
+      cost, payout, pnl, rounds, hits, cars,
       roi: cost ? (pnl / cost) * 100 : 0,
       winRate: rounds ? (hits / rounds) * 100 : 0,
     };
-  }, [perfRows]);
+  }, [perfRows, loggedIn, shownEntries]);
 
   // 淨值走勢:登入時依流水順序累加,未登入沒有逐筆資料就不畫(跟隨上方版切換)
   const curve = useMemo(() => {
@@ -224,8 +228,8 @@ export const TotalPnLTab: React.FC = () => {
         </div>
       )}
 
-      {/* 5 Overall Metric Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 sm:gap-3">
+      {/* 6 Overall Metric Cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-6 gap-2.5 sm:gap-3">
         <div className="p-3.5 sm:p-4 rounded-xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] col-span-2 sm:col-span-1">
           <div className="text-[10px] uppercase tracking-wider text-neutral-400">累積淨損益</div>
           <div className={`text-lg sm:text-xl font-bold font-mono mt-0.5 ${
@@ -270,6 +274,16 @@ export const TotalPnLTab: React.FC = () => {
           </div>
           <div className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-0.5">
             中 {totals.hits} / {totals.rounds} 局
+          </div>
+        </div>
+
+        <div className="p-3.5 sm:p-4 rounded-xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08]">
+          <div className="text-[10px] uppercase tracking-wider text-neutral-400">累積總車數</div>
+          <div className="text-base sm:text-lg font-bold font-mono text-neutral-900 dark:text-white mt-0.5">
+            {totals.cars.toLocaleString()} <span className="text-[10px] font-normal text-neutral-400">車/支</span>
+          </div>
+          <div className="text-[10px] text-neutral-400 mt-0.5">
+            共 {totals.rounds} 局
           </div>
         </div>
       </div>
