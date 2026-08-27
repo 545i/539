@@ -112,6 +112,11 @@ export const UploadHistoryModal: React.FC<Props> = ({ isOpen, onClose, onRefill 
   const toggle = (ts: number) => setExpanded(prev => {
     const n = new Set(prev); n.has(ts) ? n.delete(ts) : n.add(ts); return n;
   });
+  // 日期父列收合:記「被收起」的日期(預設全展開,收起就藏掉那天所有批次)
+  const [collapsedDates, setCollapsedDates] = useState<Set<string>>(new Set());
+  const toggleDate = (d: string) => setCollapsedDates(prev => {
+    const n = new Set(prev); n.has(d) ? n.delete(d) : n.add(d); return n;
+  });
   // 對帳:哪一批正在對、貼上的帳單文字、比對結果
   const [reconTs, setReconTs] = useState<number | null>(null);
   const [billText, setBillText] = useState('');
@@ -167,7 +172,7 @@ export const UploadHistoryModal: React.FC<Props> = ({ isOpen, onClose, onRefill 
   // 每次開啟重讀一次(可能剛在快速上傳新增了一批);後端讀取,用 alive 防 race
   useEffect(() => {
     if (!isOpen) return;
-    setFilterEdition('all'); setExpanded(new Set());
+    setFilterEdition('all'); setExpanded(new Set()); setCollapsedDates(new Set());
     let alive = true;
     loadHistory().then(list => { if (alive) setHistory(list); });
     return () => { alive = false; };
@@ -218,6 +223,20 @@ export const UploadHistoryModal: React.FC<Props> = ({ isOpen, onClose, onRefill 
     const k = dupKey(h);
     return k != null && (dupCounts[k] ?? 0) >= 2;
   };
+
+  // 依開獎日期分組(shown 已按日期新→舊排序):每組一條可收合的日期父列,
+  // 附該日期的批數與成本小計。
+  const dateGroups: { date: string; entries: UploadHistoryEntry[]; subtotal: number }[] = [];
+  for (const h of shown) {
+    const d = h.date ?? '';
+    const last = dateGroups[dateGroups.length - 1];
+    if (last && last.date === d) {
+      last.entries.push(h);
+      last.subtotal += h.totalCost;
+    } else {
+      dateGroups.push({ date: d, entries: [h], subtotal: h.totalCost });
+    }
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-stretch sm:items-center justify-center p-0 sm:p-4 bg-black/70 backdrop-blur-xs animate-in fade-in duration-200">
@@ -274,7 +293,36 @@ export const UploadHistoryModal: React.FC<Props> = ({ isOpen, onClose, onRefill 
             </div>
           )}
 
-          {shown.map(h => {
+          {dateGroups.map(grp => {
+            const collapsed = collapsedDates.has(grp.date);
+            return (
+            <React.Fragment key={grp.date}>
+              {/* 日期父列:● ──── 日期 ──── (幾批・小計);點擊收合這一天 */}
+              <button
+                type="button"
+                onClick={() => toggleDate(grp.date)}
+                className="w-full flex items-center gap-2 py-1 text-neutral-500 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-100 transition-colors group"
+              >
+                <span className="text-[11px] w-3 shrink-0 text-center">{collapsed ? '▸' : '▾'}</span>
+                <span className="h-px flex-1 bg-black/10 dark:bg-white/10" />
+                <span className="text-[11px] font-mono font-semibold whitespace-nowrap">
+                  {grp.date || '(無日期)'}
+                </span>
+                <span className="text-[10px] font-mono text-neutral-400 whitespace-nowrap">
+                  {grp.entries.length} 批・{money(grp.subtotal)}
+                </span>
+                <span className="h-px flex-1 bg-black/10 dark:bg-white/10" />
+              </button>
+              {!collapsed && grp.entries.map(renderCard)}
+            </React.Fragment>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+
+  function renderCard(h: UploadHistoryEntry) {
             const isOpen = expanded.has(h.ts);
             // 獲利:優先用已結算派彩(自動),沒有再用對帳的我方中獎金額
             const win = winMap[h.ts] ?? h.recon?.report?.payout_ours;
@@ -488,9 +536,5 @@ export const UploadHistoryModal: React.FC<Props> = ({ isOpen, onClose, onRefill 
               )}
             </div>
             );
-          })}
-        </div>
-      </div>
-    </div>
-  );
+  }
 };
