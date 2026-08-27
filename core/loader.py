@@ -104,6 +104,42 @@ def merge(df: pd.DataFrame, new_rows: list[dict]) -> pd.DataFrame:
     return combined
 
 
+_ISSUE_SEQ_RE = re.compile(r"^(\d+)/(\d+)$")
+
+
+def fill_sequential_issues(df: pd.DataFrame) -> pd.DataFrame:
+    """依日期順序,把缺期號的列用「前一期期號 +1」補上(格式 YYYY/NNN)。
+
+    六合彩來源(sc888/pilio)只給日期+號碼、**不給期號**,所以新開的期一進來就
+    缺期號 —— 但六合彩期號是逐期 +1 的連號,可從最近一期有期號的列往後推。
+    跨年(該列日期的年份與上一期期號年份不同)重置為該年的 001。開頭若完全沒有
+    任何期號可依,補不了就留空(不亂編)。號碼寬度沿用最近一期(如 093 → 3 位)。
+
+    只對「期號本身是連號」的款有意義(六合彩)——539 / 天天樂期號由來源直接提供,
+    不要套這個。冪等:已經有期號的列不動,重複呼叫結果相同。
+    """
+    if "issue" not in df.columns or df.empty:
+        return df
+    df = df.sort_values("date").reset_index(drop=True)
+    issues = df["issue"].fillna("").astype(str).str.strip().tolist()
+    years = pd.to_datetime(df["date"]).dt.year.tolist()
+    last_year = last_num = None
+    width = 3
+    for i, iss in enumerate(issues):
+        m = _ISSUE_SEQ_RE.match(iss)
+        if m:
+            last_year, last_num = int(m.group(1)), int(m.group(2))
+            width = len(m.group(2))
+        elif not iss and last_year is not None:
+            if years[i] == last_year:
+                last_num += 1
+            else:                       # 跨年 → 該年重新從 001 起算
+                last_year, last_num = years[i], 1
+            issues[i] = f"{last_year}/{last_num:0{width}d}"
+    df["issue"] = issues
+    return df
+
+
 def detect_num_cols(df: pd.DataFrame) -> list[str]:
     """從 DataFrame 推斷號碼欄位(n1、n2、…),依編號排序。
 

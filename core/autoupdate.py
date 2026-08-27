@@ -187,6 +187,10 @@ def catch_up(game_key: str, data_path: str | Path) -> dict:
             raise scraper.ScrapeError("; ".join(failures) or "區間內無資料")
 
     merged = loader.merge(df, new_rows)
+    if game_key == "marksix":
+        # 六合彩來源不給期號,新期一律缺 → 依前一期 +1 自動補(見 loader）,
+        # 否則對獎/上傳歷史獲利/顯示都會因為期號空而壞掉。
+        merged = loader.fill_sequential_issues(merged)
     added = len(merged) - len(df)
     if added > 0:
         loader.save(merged, data_path)
