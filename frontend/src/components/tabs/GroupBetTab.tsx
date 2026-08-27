@@ -83,7 +83,12 @@ export const GroupBetTab: React.FC<Props> = ({ group }) => {
   }, [refreshLedger]);
 
   // 不固定顆數:依「這一組最新一筆下注紀錄」建議顆數 / 車數。沒有紀錄就退回設定的預設顆數。
-  const lastRecord = records.length > 0 ? records[records.length - 1] : null;
+  // 建議顆數/車數依「最近開獎日期」那筆,而非最後寫入的一筆 —— 重新上傳時
+  // 寫入順序 ≠ 日期順序,取日期最新的才是真正「上次」。日期相同取較後寫入者。
+  const lastRecord = records.length > 0
+    ? records.reduce((best, r) =>
+        (String(r.date ?? '') >= String(best.date ?? '') ? r : best))
+    : null;
   const lastCount = lastRecord?.selectedBalls?.length ?? 0;
   const lastCars = lastRecord?.cars ?? lastRecord?.units ?? 0;
   const suggestBalls = lastCount || group.ball_count; // 建議顆數:上次幾顆,沒紀錄用預設
