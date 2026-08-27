@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -26,27 +27,52 @@ from backend.routers import (audit, auth, combo, editions, erhe, export, games,
                              groups, history, importer, ledger, leaderboard,
                              pillar, predict, settings, star_cost, stats,
                              upload_history)
-from core import autoupdate
+from core import autoupdate, notify
 
 PREFIX = os.environ.get("APP_PREFIX", "").rstrip("/")
 DIST_DIR = PROJECT_ROOT / "frontend" / "dist"
 
+# 開獎/推播事件寫進 journal(uvicorn 的 stdout → systemd),供事後稽核
+# 「某期到底有沒有推成 Telegram」。以前這條路徑完全沒 log,查不到。
+# uvicorn 預設不給 root logger 掛 handler,自訂 logger 的 INFO 不會輸出 —— 這裡
+# 自己掛一個 stdout handler(INFO 也印),避免只看得到 WARNING 以上。
+log = logging.getLogger("lotto")
+if not log.handlers:
+    _h = logging.StreamHandler()
+    _h.setFormatter(logging.Formatter("%(levelname)s: %(name)s: %(message)s"))
+    log.addHandler(_h)
+    log.setLevel(logging.INFO)
+    log.propagate = False
+
 
 def _on_new_draw(game_key: str) -> None:
-    """排程抓到新開獎時:先自動對獎(結算待開獎),廣播給前端,再推 Telegram。"""
+    """排程抓到新開獎時:先自動對獎(結算待開獎),廣播給前端,再推 Telegram。
+
+    每一步在 journal 留痕(draw 偵測 → 對獎筆數 → 推播 ok/fail),方便事後查
+    「這期到底有沒有推成」。推播失敗會連 notify.last_error() 一起印出來。
+    """
+    log.info("[draw] 偵測到新開獎:game=%s", game_key)
     settled = 0
     try:
         settled = autosettle.settle_pending(game_key)   # 開獎時自動對獎(跨所有人 / 版)
     except Exception:       # noqa: BLE001 — 對獎失敗不影響提醒與排程
-        pass
+        log.exception("[draw] 自動對獎失敗:game=%s", game_key)
     try:
         ws.hub.publish({"type": "draw", "game": game_key, "settled": settled})
     except Exception:       # noqa: BLE001
-        pass
+        log.exception("[draw] WebSocket 廣播失敗:game=%s", game_key)
     try:
-        reminders.on_new_draw(game_key)
+        pushed = reminders.on_new_draw(game_key)
+        if pushed:
+            log.info("[draw] Telegram 推播成功:game=%s settled=%d", game_key, settled)
+        elif not notify.enabled():
+            log.warning("[draw] 未推播:未設定 TELEGRAM_BOT_TOKEN/CHAT_ID game=%s",
+                        game_key)
+        else:
+            log.error("[draw] Telegram 推播失敗:game=%s reason=%s",
+                      game_key, notify.last_error() or "(無資料或空提醒)")
     except Exception:       # noqa: BLE001
-        pass
+        log.exception("[draw] 推播流程例外:game=%s", game_key)
 
 
 @asynccontextmanager

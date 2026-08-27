@@ -78,9 +78,13 @@ def push_game_update(game_key: str) -> bool:
     return notify.send(block)
 
 
-def on_new_draw(game_key: str) -> None:
-    """排程偵測到新開獎時的掛鉤(見 core.autoupdate 的 on_added)。"""
-    push_game_update(game_key)
+def on_new_draw(game_key: str) -> bool:
+    """排程偵測到新開獎時的掛鉤(見 core.autoupdate 的 on_added)。
+
+    回傳是否真的推出 Telegram(沒設定 / 讀不到資料 / 送失敗都是 False),
+    給呼叫端記 log 用。
+    """
+    return push_game_update(game_key)
 
 
 # ── /提醒 指令:開獎狀況 + 區間組合斷檔 + 大區間斷檔(唯讀) ──────────
