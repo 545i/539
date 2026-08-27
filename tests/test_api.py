@@ -45,6 +45,26 @@ def test_history_latest_has_pillar_summary():
     assert "pillar_dist" in body["latest"]
 
 
+def test_history_next_always_has_at_with_offset():
+    # 三款都要帶下一期開獎時刻(next.at,ISO 含台灣 +08:00 偏移);數字期號還要有 issue。
+    for game in ("lotto539", "fantasy5", "marksix"):
+        body = client.get(f"{P}/history?game={game}&limit=1").json()
+        nxt = body["next"]
+        assert nxt is not None, game
+        assert nxt["at"].endswith("+08:00"), (game, nxt["at"])
+        assert len(nxt["date"]) == 10
+        # at 的日期部分要與 date 一致
+        assert nxt["at"][:10] == nxt["date"], (game, nxt)
+
+
+def test_history_next_marksix_has_at_but_no_issue():
+    # 六合彩期號非純數字(2026/093),下一期只給 at/date、不給 issue。
+    nxt = client.get(f"{P}/history?game=marksix&limit=1").json()["next"]
+    assert nxt is not None
+    assert "at" in nxt
+    assert "issue" not in nxt
+
+
 def test_stats_missing_and_hotcold():
     assert len(client.get(f"{P}/stats/missing?game=lotto539").json()) == 39
     hc = client.get(f"{P}/stats/hotcold?game=lotto539&window=830&top=6").json()

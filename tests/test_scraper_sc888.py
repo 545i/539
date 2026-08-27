@@ -331,3 +331,57 @@ def test_fetch_539_and_marksix_raise_on_empty(monkeypatch):
         scraper_sc888.fetch_539()
     with pytest.raises(scraper_sc888.ScrapeError):
         scraper_sc888.fetch_marksix()
+
+
+# ---------------------------------------------------------------------------
+# fetch_next_time:從 index 頁 JS 內嵌的 thisBetTime unix 秒時間戳解析下一期開獎時刻。
+# best-effort 備援:抓不到/解析不到一律回 None,不丟例外。
+# ---------------------------------------------------------------------------
+
+def test_fetch_next_time_parses_this_bet_time(monkeypatch):
+    import datetime as dt
+    from zoneinfo import ZoneInfo
+    from curl_cffi import requests as creq
+
+    calls = {}
+
+    class _Resp:
+        # 2026-08-27 20:30:00 +08:00 == 1787833800
+        text = '<script>var thisBetTime = "1787833800";</script>'
+
+        def raise_for_status(self):
+            pass
+
+    def fake_get(url, **kwargs):
+        calls["url"] = url
+        return _Resp()
+
+    monkeypatch.setattr(creq, "get", fake_get)
+    got = scraper_sc888.fetch_next_time("lotto539")
+    assert calls["url"] == scraper_sc888.URL_539
+    assert got == dt.datetime(2026, 8, 27, 20, 30, tzinfo=ZoneInfo("Asia/Taipei"))
+
+
+def test_fetch_next_time_unknown_game_returns_none():
+    assert scraper_sc888.fetch_next_time("nope") is None
+
+
+def test_fetch_next_time_swallows_errors(monkeypatch):
+    from curl_cffi import requests as creq
+
+    monkeypatch.setattr(creq, "get",
+                        lambda url, **kw: (_ for _ in ()).throw(RuntimeError("boom")))
+    assert scraper_sc888.fetch_next_time("marksix") is None
+
+
+def test_fetch_next_time_none_when_no_timestamp(monkeypatch):
+    from curl_cffi import requests as creq
+
+    class _Resp:
+        text = "<html>no timestamp here</html>"
+
+        def raise_for_status(self):
+            pass
+
+    monkeypatch.setattr(creq, "get", lambda url, **kw: _Resp())
+    assert scraper_sc888.fetch_next_time("fantasy5") is None

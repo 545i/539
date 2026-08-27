@@ -17,8 +17,9 @@ interface IssuePickerProps {
   draws: DrawDTO[]; // 舊→新(history API 的順序)
   // 一個永遠出現在最上面的額外選項(通常是「下一期(還沒開)」)。它不在 draws 裡,
   // 帶著自己的正確日期;不管目前選到哪期都選得回來 —— 解決「切到別期後就選不回
-  // 最新未開一期」。與 draws 重號時自動略過。
-  extraOption?: {issue: string; date: string};
+  // 最新未開一期」。與 draws 重號時自動略過。issue 可能缺(六合彩下一期無期號),
+  // 缺 issue 就不當成可選項(沒東西可選回)。at 只是給側欄倒數用,這裡忽略。
+  extraOption?: {issue?: string; date: string; at?: string};
   onSelect: (issue: string, date: string) => void;
   // 給了就在下拉旁多一顆「對獎」鈕:對同一期重抓開獎號重算(核對列表用)。
   // 需要它是因為 <select> 選同一個值不會觸發 onChange —— 記帳當下就是最新期,
@@ -56,8 +57,8 @@ export const IssuePicker: React.FC<IssuePickerProps> = ({
   // 兩者都不在 draws 裡、都沒有開獎號,合起來去重後排在真正的開獎期別之前。
   const extras = React.useMemo(() => {
     const list: {issue: string; date: string}[] = [];
-    if (extraOption && !options.some(o => o.issue === extraOption.issue)) {
-      list.push(extraOption);
+    if (extraOption?.issue && !options.some(o => o.issue === extraOption.issue)) {
+      list.push({issue: extraOption.issue, date: extraOption.date});
     }
     if (issue && !options.some(o => o.issue === issue) &&
         !list.some(e => e.issue === issue)) {

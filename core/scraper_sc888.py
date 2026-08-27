@@ -29,13 +29,27 @@ CSV 一致、日期已是台灣日期,因此拿來當**優先**來源;抓不到�
 """
 from __future__ import annotations
 
+import datetime as dt
 import re
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 
 URL = "https://sc888.net/index.php?s=/LotteryFan/index"          # 天天樂
 URL_539 = "https://sc888.net/index.php?s=/LotteryFtn/index"      # 今彩539
 URL_MARKSIX = "https://sc888.net/index.php?s=/LotterySix/index"  # 六合彩
+
+# 各款 index 頁對應的本專案 game_key(給 fetch_next_time 用)
+_URL_BY_GAME = {
+    "fantasy5": URL,
+    "lotto539": URL_539,
+    "marksix": URL_MARKSIX,
+}
+_TAIPEI = ZoneInfo("Asia/Taipei")
+# index 頁 JS 內嵌的「下一期開獎」unix 秒時間戳,頁面倒數就是靠它跑的。
+# 例:var thisBetTime = "1787833800";  → 換算台灣時間即下一期開獎時刻。
+# (頁面 hour/min/sec 的 span 靜態全是 0、由 JS 每秒依這個時間戳填,故不解析 span。)
+_NEXT_TIME_RE = re.compile(r'thisBetTime\s*=\s*"(\d+)"')
 
 # 玩法與今彩539 相同:39 選 5
 _NUM_MIN, _NUM_MAX, _PICK = 1, 39, 5
@@ -204,3 +218,25 @@ def fetch_marksix(timeout: int = 25) -> list[dict]:
     if not rows:
         raise ScrapeError("解析不到 sc888 六合彩開獎號(來源可能改版)。")
     return rows
+
+
+def fetch_next_time(game_key: str, timeout: int = 15) -> dt.datetime | None:
+    """從 sc888 index 頁抓「下一期開獎時刻」(台灣時間 datetime)。
+
+    純備援用:drawtime.next_draw 才是主來源,只有它算不出(理論上不會)時才呼叫。
+    解析頁面 JS 內嵌的 `thisBetTime` unix 秒時間戳(頁面倒數就是靠它);
+    抓取或解析失敗一律回 None,不丟例外、不影響主流程。
+    """
+    url = _URL_BY_GAME.get(game_key)
+    if url is None:
+        return None
+    try:
+        html = _get_html(url, timeout)
+        m = _NEXT_TIME_RE.search(html)
+        if not m:
+            return None
+        return dt.datetime.fromtimestamp(int(m.group(1)), _TAIPEI)
+    except (ScrapeError, ValueError, OSError):
+        return None
+    except Exception:  # noqa: BLE001 — 備援路徑,任何意外都吞掉回 None
+        return None

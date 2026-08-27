@@ -119,9 +119,10 @@ export interface HistoryDTO {
   count: number;
   draws: DrawDTO[];
   latest: (DrawDTO & {pillar_dist?: string; hits_summary?: string}) | null;
-  // 下一期(還沒開):期號 = 最新期 +1,date = 下一次開獎的台灣日期。
-  // 後端算不出來(期號非純數字/時刻表未登記)時為 null。
-  next?: {issue: string; date: string} | null;
+  // 下一期(還沒開):date = 下一次開獎的台灣日期,at = 完整開獎時刻(ISO,給倒數用)。
+  // issue 只有在最新期號是純數字時才有(= 最新期 +1);六合彩期號非數字 → 只有 date/at。
+  // 後端時刻表未登記(不該發生)時整個為 null。
+  next?: {issue?: string; date: string; at: string} | null;
 }
 
 export interface MissingDTO {

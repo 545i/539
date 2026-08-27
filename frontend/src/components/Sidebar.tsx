@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   BarChart3, 
   Calculator, 
@@ -24,17 +24,50 @@ import { useAsync } from '../api/useAsync';
 import { useAuth } from '../api/useAuth';
 import { LoginModal } from './LoginModal';
 
-// 側欄「Live Draw Database」:三款遊戲的即時最新開獎(接真 API,取代 mock)
+// 每 30 分鐘重抓一次開獎資料:跨日/跨期/夏令時後 next.at 會變,定時重抓自動校正跟上。
+const LIVE_REFRESH_MS = 30 * 60 * 1000;
+
+// 從 ISO(含 +08:00 台灣偏移)取台灣牆鐘 MM/DD HH:MM —— 直接切字串,不經瀏覽器時區換算。
+const fmtDrawAt = (iso: string): string =>
+  `${iso.slice(5, 7)}/${iso.slice(8, 10)} ${iso.slice(11, 13)}:${iso.slice(14, 16)}`;
+
+// 距離開獎剩餘;>=1 小時顯示「Xh Ym」,否則「Ym Zs」。已過(<=0)回 null → 顯示「開獎中」。
+// iso 帶時區偏移,new Date 解析後與 now(epoch ms)相減不受瀏覽器時區影響。
+const fmtCountdown = (iso: string, now: number): string | null => {
+  const diff = new Date(iso).getTime() - now;
+  if (diff <= 0) return null;
+  const totalMin = Math.floor(diff / 60000);
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  if (h > 0) return `${h}h ${m}m`;
+  const s = Math.floor((diff % 60000) / 1000);
+  return `${m}m ${s}s`;
+};
+
+// 側欄「Live Draw Database」:三款遊戲的即時最新開獎 + 下一期開獎時刻/倒數(接真 API)
 const LiveDrawList: React.FC = () => {
-  const { data } = useAsync(async () => {
+  const { data, reload } = useAsync(async () => {
     const gs = await api.games();
     return Promise.all(
       gs.map(async g => {
         const h = await api.history(g.key, 1);
-        return { key: g.key, name: g.name, count: h.count, latest: h.latest };
+        return { key: g.key, name: g.name, count: h.count, latest: h.latest, next: h.next };
       }),
     );
   }, []);
+
+  // 每秒更新 now 讓倒數走動
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(t);
+  }, []);
+
+  // 每 30 分鐘重抓(校正)
+  useEffect(() => {
+    const t = window.setInterval(() => reload(), LIVE_REFRESH_MS);
+    return () => window.clearInterval(t);
+  }, [reload]);
 
   if (!data) {
     return <div className="px-2 text-[10px] text-neutral-400">載入開獎資料…</div>;
@@ -42,35 +75,48 @@ const LiveDrawList: React.FC = () => {
 
   return (
     <div className="space-y-2.5 text-xs">
-      {data.map(row => (
-        <div
-          key={row.key}
-          className="p-3 rounded-xl bg-black/[0.02] dark:bg-white/[0.03] border border-black/[0.06] dark:border-white/[0.06]"
-        >
-          <div className="font-semibold text-neutral-900 dark:text-neutral-100 flex items-center justify-between">
-            <span className="tracking-tight">{row.name}</span>
-            <span className="text-[10px] font-mono text-neutral-500 dark:text-neutral-400">
-              {row.count} 期
-            </span>
-          </div>
-          <div className="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1 flex items-center justify-between">
-            <span className="text-[10px] font-mono">{row.latest?.date ?? '—'}</span>
-            {row.latest?.issue && (
-              <span className="font-mono text-[10px]">#{row.latest.issue}</span>
+      {data.map(row => {
+        const countdown = row.next?.at ? fmtCountdown(row.next.at, now) : null;
+        return (
+          <div
+            key={row.key}
+            className="p-3 rounded-xl bg-black/[0.02] dark:bg-white/[0.03] border border-black/[0.06] dark:border-white/[0.06]"
+          >
+            <div className="font-semibold text-neutral-900 dark:text-neutral-100 flex items-center justify-between">
+              <span className="tracking-tight">{row.name}</span>
+              <span className="text-[10px] font-mono text-neutral-500 dark:text-neutral-400">
+                {row.count} 期
+              </span>
+            </div>
+            <div className="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1 flex items-center justify-between">
+              <span className="text-[10px] font-mono">{row.latest?.date ?? '—'}</span>
+              {row.latest?.issue && (
+                <span className="font-mono text-[10px]">#{row.latest.issue}</span>
+              )}
+            </div>
+            <div className="mt-2 flex items-center gap-1 font-mono text-[11px] flex-wrap">
+              {(row.latest?.nums ?? []).map((b, i) => (
+                <span
+                  key={i}
+                  className="px-1.5 py-0.5 rounded bg-black/5 dark:bg-white/10 text-neutral-900 dark:text-neutral-100 font-bold"
+                >
+                  {b.toString().padStart(2, '0')}
+                </span>
+              ))}
+            </div>
+            {row.next?.at && (
+              <div className="mt-2 pt-2 border-t border-black/[0.05] dark:border-white/[0.05] flex items-center justify-between gap-2 font-mono text-[10px] text-neutral-500 dark:text-neutral-400">
+                <span className="truncate">
+                  下一期{row.next.issue ? ` #${row.next.issue}` : ''} · {fmtDrawAt(row.next.at)} 開獎
+                </span>
+                <span className="shrink-0 tabular-nums font-semibold text-neutral-700 dark:text-neutral-300">
+                  {countdown ? `剩 ${countdown}` : '開獎中'}
+                </span>
+              </div>
             )}
           </div>
-          <div className="mt-2 flex items-center gap-1 font-mono text-[11px] flex-wrap">
-            {(row.latest?.nums ?? []).map((b, i) => (
-              <span
-                key={i}
-                className="px-1.5 py-0.5 rounded bg-black/5 dark:bg-white/10 text-neutral-900 dark:text-neutral-100 font-bold"
-              >
-                {b.toString().padStart(2, '0')}
-              </span>
-            ))}
-          </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 };

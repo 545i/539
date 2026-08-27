@@ -40,18 +40,26 @@ def history(game: str = Query(...), limit: int = Query(0, ge=0)):
             latest["hits_summary"] = pillar.result_text(
                 pillar.hits_from_counts(counts))
 
-    # 下一期(還沒開):期號 = 最新期 +1,日期 = 下一次開獎的**台灣日期**。
-    # 之前前端誤把下一期的日期沿用「已開最新一期」的日期(例如 206 顯示成 205
-    # 的 08-24),這裡用 drawtime 算出真正的下一期開獎日,前端直接拿去用。
-    # 期號非純數字(如六合彩 2026/092)或時刻表未登記則回 None,前端自行退回舊行為。
+    # 下一期(還沒開):不論期號格式都帶「下一次開獎時刻」——
+    #   date  下一次開獎的**台灣日期**(YYYY-MM-DD)
+    #   at    下一次開獎的完整時刻(ISO,含 +08:00),給前端跑倒數用
+    #   issue 只有在最新期號是純數字時才附(= 最新期 +1);六合彩期號 2026/093
+    #         非純數字,故只有 date/at、沒有 issue。
+    # 主來源是 drawtime.next_draw(依各款時刻表算,不依賴期號);理論上三款都算得出,
+    # 只有時刻表未登記(不該發生)才會是 None,此時退回 sc888 index 頁的下一期時刻備援。
+    # sc888 只在 drawtime 缺時才呼叫,不會拖慢 history 主流程。
     nxt = None
-    if latest and re.fullmatch(r"\d+", str(latest.get("issue", ""))):
-        moment = drawtime.next_draw(game)
-        if moment is not None:
-            nxt = {
-                "issue": str(int(latest["issue"]) + 1),
-                "date": moment.date().strftime("%Y-%m-%d"),
-            }
+    moment = drawtime.next_draw(game)
+    if moment is None:
+        from core import scraper_sc888
+        moment = scraper_sc888.fetch_next_time(game)
+    if moment is not None:
+        nxt = {
+            "date": moment.date().strftime("%Y-%m-%d"),
+            "at": moment.isoformat(),
+        }
+        if latest and re.fullmatch(r"\d+", str(latest.get("issue", ""))):
+            nxt["issue"] = str(int(latest["issue"]) + 1)
 
     return {"game": game, "count": total, "draws": draws,
             "latest": latest, "next": nxt}
