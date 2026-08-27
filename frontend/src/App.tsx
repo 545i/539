@@ -14,6 +14,7 @@ import { FormulaModal } from './components/FormulaModal';
 import { LoginModal } from './components/LoginModal';
 import { QuickImportModal } from './components/QuickImportModal';
 import { UploadHistoryModal } from './components/UploadHistoryModal';
+import { UploadHistoryEntry } from './components/uploadHistory';
 import { useAuth } from './api/useAuth';
 import { useGroups } from './api/useGroups';
 import { GroupBetTab } from './components/tabs/GroupBetTab';
@@ -54,7 +55,7 @@ export default function App() {
   const [isQuickImportOpen, setIsQuickImportOpen] = useState(false);
   const [isUploadHistoryOpen, setIsUploadHistoryOpen] = useState(false);
   // 從上傳歷史「填回」帶回快速上傳的文本
-  const [importInitialText, setImportInitialText] = useState<string>('');
+  const [importRefill, setImportRefill] = useState<UploadHistoryEntry | null>(null);
   // 快速上傳寫進去的紀錄要讓各分頁重抓 —— useLedger 只在 loggedIn / mode 變才撈,
   // 所以拿這個計數器當分頁容器的 key,一變就重掛,流水自然重新載入。
   const [ledgerVersion, setLedgerVersion] = useState(0);
@@ -331,17 +332,17 @@ export default function App() {
       {/* 快速上傳下注紀錄 */}
       <QuickImportModal
         isOpen={isQuickImportOpen}
-        onClose={() => { setIsQuickImportOpen(false); setImportInitialText(''); }}
+        onClose={() => { setIsQuickImportOpen(false); setImportRefill(null); }}
         onImported={() => setLedgerVersion(v => v + 1)}
-        initialText={importInitialText}
+        refill={importRefill}
       />
 
       {/* 上傳歷史(獨立彈窗):查看文本 + 明細 + 總成本;「填回」帶回快速上傳 */}
       <UploadHistoryModal
         isOpen={isUploadHistoryOpen}
         onClose={() => setIsUploadHistoryOpen(false)}
-        onRefill={(t) => {
-          setImportInitialText(t);
+        onRefill={(entry) => {
+          setImportRefill(entry);
           setIsUploadHistoryOpen(false);
           setIsQuickImportOpen(true);
         }}

@@ -24,7 +24,7 @@ interface Props {
   isOpen: boolean;
   onClose: () => void;
   onImported?: () => void; // 上傳成功後通知外面重抓流水
-  initialText?: string;    // 從上傳歷史「填回」帶回來的文本(開啟時預填文字框)
+  refill?: UploadHistoryEntry | null;  // 從上傳歷史「填回」:帶回整批預填,上傳時作廢原批次(編輯取代)
 }
 
 // 預覽裡一列可編輯的解析結果(號碼與支/車可改;連碰另記 stars 供後端重算成本)
@@ -52,7 +52,7 @@ const SAMPLE = `02x50車
 其他400`;
 
 
-export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, initialText}) => {
+export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, refill}) => {
   const {loggedIn} = useAuth();
   const {games} = useGame();
   const {editions} = useEditions();
@@ -74,6 +74,8 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
   const [selEid, setSelEid] = useState<number | null>(null);    // 版
   // 期號由「日期 + 遊戲」自動反查,反查不到時的提示訊息
   const [issueHint, setIssueHint] = useState('');
+  // 填回=編輯取代:記住要取代的原批次 ts,上傳成功後作廢它(刪舊 ledger + 上傳紀錄)
+  const [replaceTs, setReplaceTs] = useState<number | null>(null);
 
   // 每次開啟:三要件回到「尚未選擇」,並清掉上次殘留的預覽 / 橫幅
   useEffect(() => {
@@ -88,9 +90,18 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
     setText('');
     setDone(null);
     setError(null);
+    setReplaceTs(null);
   }, [isOpen]);
-  // 從上傳歷史「填回」帶回來的文本:開啟時預填文字框(在上面重置 effect 之後跑)
-  useEffect(() => { if (isOpen && initialText) setText(initialText); }, [isOpen, initialText]);
+  // 從上傳歷史「填回」:預填整批(日期/遊戲/版/文本)並記住原批次 ts。在重置 effect
+  // 之後跑,覆蓋「尚未選擇」;上傳成功時作廢原批次 = 編輯取代,不會留下舊的重複批。
+  useEffect(() => {
+    if (!isOpen || !refill) return;
+    setText(refill.text ?? '');
+    setSelDate(refill.date ?? '');
+    setSelGame(games.find(g => g.name === refill.gameName)?.key ?? null);
+    setSelEid(refill.eid ?? null);
+    setReplaceTs(refill.ts);
+  }, [isOpen, refill, games]);
 
   // 反查期號:日期 + 遊戲都選好時,用日期去該遊戲的開獎紀錄反查那一天的期號並帶入。
   // 這樣一次上傳流程只需選一次日期,切換遊戲會用同一天自動重新反查(依賴含 selGame)。
@@ -249,6 +260,11 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
       };
       // 寫進後端上傳歷史(獨立彈窗 UploadHistoryModal 讀取);未登入靜默略過
       await saveEntry(entry);
+      // 填回=編輯取代:新批次上傳成功後,作廢原批次(精準刪舊 ledger + 上傳紀錄)
+      if (replaceTs != null) {
+        try { await api.uploadHistoryDelete(replaceTs); } catch { /* 舊批次刪不掉不擋新批次 */ }
+        setReplaceTs(null);
+      }
       onImported?.();
       // 不自動關閉:讓使用者看到成功訊息;歷史到「上傳歷史」彈窗查看
       setDone(res.saved);

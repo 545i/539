@@ -8,7 +8,7 @@ import { api, ReconcileDTO } from '../api/client';
 interface Props {
   isOpen: boolean;
   onClose: () => void;
-  onRefill?: (text: string) => void; // 「填回快速上傳」:把某批文本帶回上傳文字框
+  onRefill?: (entry: UploadHistoryEntry) => void; // 「填回=編輯」:帶回整批,上傳時作廢原批次取代
 }
 
 const diffCls = (d: number) =>
@@ -334,8 +334,8 @@ export const UploadHistoryModal: React.FC<Props> = ({ isOpen, onClose, onRefill 
                   {onRefill && (
                     <button
                       type="button"
-                      onClick={() => onRefill(h.text)}
-                      title="把這批文本帶回快速上傳文字框"
+                      onClick={() => onRefill(h)}
+                      title="填回編輯:帶回這批的日期/遊戲/版/文本,改完上傳會取代(作廢)原批次"
                       className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold text-neutral-500 hover:text-black dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
                     >
                       <CornerDownLeft className="w-3 h-3" />
