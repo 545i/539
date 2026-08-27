@@ -310,6 +310,10 @@ def parse(text: str, g: GameConfig, odds: dict) -> tuple[list[_Item], list[dict]
             # 不是選號,所以這裡把 pending 清掉不讓它被後面的星碰行撿去用。
             whole = " / ".join(st.pending[-2:] + [line])   # 只取緊鄰的兩行柱別
             st.pending, st.picks, st.pick_line = [], [], ""
+            rej = _reject_game_mode(g, "pillar1800")
+            if rej:                       # 六合彩不支援三柱 → 🔴 拒絕這筆
+                st.fail(line_no, whole, rej)
+                continue
             try:
                 st.items.append(_pillar_item(odds, g, _units(int(m.group(1))), whole))
             except ValueError as e:
@@ -318,6 +322,10 @@ def parse(text: str, g: GameConfig, odds: dict) -> tuple[list[_Item], list[dict]
 
         m = _STAR_RE.match(line)
         if m:
+            rej = _reject_game_mode(g, "combo")
+            if rej:                       # 六合彩不支援星碰 → 🔴 拒絕這筆
+                st.fail(line_no, line, rej)
+                continue
             if not st.picks:
                 st.fail(line_no, line, "這行星碰前面找不到選號(要先有一行 02_09_… 的號碼)")
                 continue
@@ -388,6 +396,9 @@ def _recost(g: GameConfig, odds: dict, mode: str, balls: list[int], units: float
 
     money 一律後端算 —— 前端只送使用者改完的號碼與支/車,金額不讓前端決定。
     """
+    rej = _reject_game_mode(g, mode)
+    if rej:                               # 六合彩×星碰/三柱/9000碰 → 🔴 拒絕這筆
+        raise ValueError(rej)
     balls = [int(b) for b in balls]
     bad = [n for n in balls if not 1 <= n <= g.num_max]
     if bad:
@@ -421,6 +432,129 @@ def _recost(g: GameConfig, odds: dict, mode: str, balls: list[int], units: float
     raise ValueError(f"未知的下注模式:{mode}")
 
 
+# ── 防呆邊界檢查 ────────────────────────────────────────────
+# 兩種嚴重度:errors(🔴 拒絕、那一筆不寫)與 warnings(🟡 提示但仍可上傳)。
+# 下面這幾條依 0923 真實數據歸納:六合彩×特殊下法一律拒絕(結構綁 39 選 5);
+# 期號格式 / 大車支 / 舊日期 / 重複只提醒,不阻斷。
+#
+# 各下法「車/支數」的上限(依 0923 實際用量取 2 倍餘裕);超過只提醒不擋。
+_UNIT_LIMIT = {"single": 150, "multi": 150, "combo": 30,
+               "pillar1800": 16, "combo9000": 10}
+# 六合彩(49 選 6)不支援的下法 → 顯示名(星碰 / 三柱 / 9000碰 綁定 39 選 5)。
+_MARKSIX_REJECT = {"combo": "星碰", "pillar1800": "三柱", "combo9000": "9000碰"}
+
+
+def _reject_game_mode(g: GameConfig, mode: str) -> str | None:
+    """遊戲×下法不合 → 回傳拒絕訊息(🔴 error);相容就回 None。
+
+    六合彩(49 選 6)不支援星碰 / 三柱 / 9000碰:這些下法的段數 / 命中結構綁定
+    「39 選 5」(見 core.pillar / core.combo9000 的 supports),換到 49 選 6 整套
+    機率要重推,所以在解析 / 重算階段直接擋掉。
+    """
+    if getattr(g, "key", "") == "marksix" and mode in _MARKSIX_REJECT:
+        return f"六合彩不支援{_MARKSIX_REJECT[mode]}"
+    return None
+
+
+def _issue_format_warning(g: GameConfig, issue: str) -> dict | None:
+    """期號格式 × 遊戲不符 → 🟡 警告(踩過真實 bug:天天樂存成 539 期號)。
+
+    天天樂(fantasy5)純數字(11981);今彩539(lotto539)9 碼(115000207);
+    六合彩(marksix)YYYY/NNN(2026/093)。明顯不像就提醒確認沒選錯遊戲/期號。
+    """
+    issue = (issue or "").strip()
+    if not issue:
+        return None
+    key = getattr(g, "key", "")
+    ok = True
+    if key == "fantasy5":
+        ok = issue.isdigit() and len(issue) <= 6
+    elif key == "lotto539":
+        ok = issue.isdigit() and 8 <= len(issue) <= 10
+    elif key == "marksix":
+        ok = bool(re.match(r"^\d{4}/\d{2,3}$", issue))
+    if ok:
+        return None
+    return {"message": f"期號「{issue}」格式看起來不像{g.name},確認沒選錯遊戲/期號"}
+
+
+def _units_warning(record: dict) -> dict | None:
+    """車/支數異常大 → 🟡 警告(是不是多打一位)。依 0923 上限取 2 倍餘裕。"""
+    mode = record.get("mode")
+    units = record.get("units") or 0
+    limit = _UNIT_LIMIT.get(mode)
+    if limit and isinstance(units, (int, float)) and not isinstance(units, bool) \
+            and units > limit:
+        return {"message": f"車/支數 {units:g} 偏大,是不是多打一位?"}
+    return None
+
+
+def _latest_draw_date(g: GameConfig) -> _date | None:
+    """該款遊戲 CSV 裡的最新開獎日;讀不到(無檔 / 空 / 格式錯)一律回 None。"""
+    from backend.data import load_df
+    try:
+        df = load_df(g.key)
+        if df is None or df.empty or "date" not in df.columns:
+            return None
+        return df["date"].max().date()
+    except Exception:
+        return None
+
+
+def _date_warning(g: GameConfig, bet_date: str) -> dict | None:
+    """上傳日期比最新開獎早超過 14 天 → 🟡 警告(確認沒補錯期)。"""
+    latest = _latest_draw_date(g)
+    if latest is None:
+        return None
+    try:
+        d = _date.fromisoformat((bet_date or "").strip())
+    except ValueError:
+        return None
+    if (latest - d).days > 14:
+        return {"message": f"日期 {bet_date} 比最新開獎日 {latest.isoformat()} "
+                           f"早很多,確認沒補錯期"}
+    return None
+
+
+def _sig(record: dict) -> tuple:
+    """重複判定簽章:版(edition)+ 期(issue)+ 下法(mode)+ 號碼 + 車支數(units)。"""
+    balls = tuple(int(b) for b in (record.get("selectedBalls") or []))
+    return (
+        int(record.get("edition") or 0),
+        str(record.get("issue") or ""),
+        str(record.get("mode") or ""),
+        balls,
+        float(record.get("units") or 0),
+    )
+
+
+def _collect_warnings(g: GameConfig, bet_date: str, issue: str,
+                      indexed_records: list[tuple[int, dict]],
+                      existing: list[dict]) -> list[dict]:
+    """組出這批的所有 🟡 警告(不阻斷上傳):期號格式 / 大車支 / 舊日期 / 重複。
+
+    indexed_records 是 [(line_no, record), …];line_no 對齊使用者看到的第幾筆。
+    existing 是「寫入前」的 ledger 快照 —— 重複判定要拿現有紀錄比,才不會跟自己
+    這批對到。形狀比照 errors:{line_no?, message}(批次層級的沒有 line_no)。
+    """
+    warnings: list[dict] = []
+    w = _issue_format_warning(g, issue)
+    if w:
+        warnings.append(w)
+    w = _date_warning(g, bet_date)
+    if w:
+        warnings.append(w)
+    exist_sigs = {_sig(e.get("record", {}) or {}) for e in existing}
+    for line_no, rec in indexed_records:
+        w = _units_warning(rec)
+        if w:
+            warnings.append({"line_no": line_no, **w})
+        if _sig(rec) in exist_sigs:
+            warnings.append({"line_no": line_no,
+                             "message": "這批和已存在的紀錄重複,確認不是重複上傳"})
+    return warnings
+
+
 class QuickImportIn(BaseModel):
     game: str
     text: str = ""
@@ -441,6 +575,13 @@ def quick_import(body: QuickImportIn, user: str = Depends(current_user)):
     bet_date = body.date or _date.today().isoformat()
     odds = edition_store.get_odds(body.edition, g.key)   # 依上傳的版取盤口
     items, errors = parse(body.text, g, odds)
+
+    # 🟡 警告(期號格式 / 大車支 / 舊日期 / 重複):dry_run 也算,讓預覽就看到。
+    # 重複比對用「寫入前」的 ledger 快照,才不會跟自己這批對到。
+    existing = ledger_store.list_entries(user)
+    base_records = [(i, to_record(it, g, bet_date, body.issue, edition=body.edition))
+                    for i, it in enumerate(items, start=1)]
+    warnings = _collect_warnings(g, bet_date, body.issue, base_records, existing)
 
     out = []
     saved: list[dict] = []
@@ -473,6 +614,7 @@ def quick_import(body: QuickImportIn, user: str = Depends(current_user)):
         "saved": 0 if body.dry_run else len(out),
         "items": out,
         "errors": errors,
+        "warnings": warnings,
     }
 
 
@@ -505,6 +647,10 @@ def quick_import_commit(body: QuickImportCommitIn, user: str = Depends(current_u
     bet_date = body.date or _date.today().isoformat()
     odds = edition_store.get_odds(body.edition, g.key)
 
+    # 重複判定要拿「寫入前」的 ledger 快照比(dry_run 也算,讓預覽就看到重複警告)。
+    existing = ledger_store.list_entries(user)
+    warn_records: list[tuple[int, dict]] = []
+
     out, saved, errors = [], [], []
     for i, it in enumerate(body.items, start=1):
         try:
@@ -513,6 +659,7 @@ def quick_import_commit(body: QuickImportCommitIn, user: str = Depends(current_u
             errors.append({"line_no": i, "line": "", "message": str(e)})
             continue
         record = to_record(item, g, bet_date, body.issue, edition=body.edition)
+        warn_records.append((i, record))
         # 有填中獎顆數就直接手填結算(不必期數);settle 依 record 的版取盤口算派彩
         if it.hit_count is not None:
             record = settle.settle(record, None, g, hit_count=it.hit_count)
@@ -524,6 +671,8 @@ def quick_import_commit(body: QuickImportCommitIn, user: str = Depends(current_u
         entry = ledger_store.add_entry(user, item.mode, record)
         saved.append(entry)
         out.append({"id": entry["id"], "mode": item.mode, "record": record})
+
+    warnings = _collect_warnings(g, bet_date, body.issue, warn_records, existing)
 
     if saved:
         audit_store.log(
@@ -539,4 +688,5 @@ def quick_import_commit(body: QuickImportCommitIn, user: str = Depends(current_u
         "saved": len(saved),
         "items": out,
         "errors": errors,
+        "warnings": warnings,
     }

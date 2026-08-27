@@ -549,6 +549,14 @@ export interface QuickImportErrorDTO {
   message: string;
 }
 
+// 🟡 防呆提醒(不阻斷上傳):期號格式 / 大車支 / 舊日期 / 重複。
+// 與 errors 不同 —— errors 那筆不寫,warning 只是黃色提示,使用者仍可上傳。
+// 批次層級的提醒(期號格式 / 舊日期)沒有 line_no。
+export interface QuickImportWarningDTO {
+  line_no?: number;
+  message: string;
+}
+
 export interface QuickImportDTO {
   game: GameKey;
   game_name: string;
@@ -557,6 +565,7 @@ export interface QuickImportDTO {
   saved: number;
   items: QuickImportItemDTO[];
   errors: QuickImportErrorDTO[];
+  warnings: QuickImportWarningDTO[];
 }
 
 // 快速上傳確認提交(需登入):把預覽裡(可能被編輯過的)結構化 items 送回後端,

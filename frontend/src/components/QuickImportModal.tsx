@@ -1,6 +1,6 @@
 import React, {useEffect, useState} from 'react';
 import {X, ClipboardPaste, ListChecks, Upload, AlertTriangle, CheckCircle2} from 'lucide-react';
-import {api, QuickImportDTO, LedgerMode, TensPairDTO, GameKey} from '../api/client';
+import {api, QuickImportDTO, QuickImportWarningDTO, LedgerMode, TensPairDTO, GameKey} from '../api/client';
 import {useAsync} from '../api/useAsync';
 import {useAuth} from '../api/useAuth';
 import {useGame} from '../api/useGame';
@@ -66,6 +66,8 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
   // 每筆試算成本 + 計算式(對齊 draftItems;算不出來的 null)
   const [costs, setCosts] = useState<({cost: number; expr: string} | null)[]>([]);
   const [costBusy, setCostBusy] = useState(false);
+  // 🟡 防呆提醒(期號格式 / 大車支 / 舊日期 / 重複):黃色列出、不阻斷上傳
+  const [warnings, setWarnings] = useState<QuickImportWarningDTO[]>([]);
 
   // 上傳目標的三要件:全部改成 modal 內部狀態,不再沿用全域 gameKey / 預設 eid。
   // 每次開啟、每次上傳成功後都回到「尚未選擇」,強迫重新確認,避免連續上傳傳錯地方。
@@ -91,6 +93,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
     setDone(null);
     setError(null);
     setReplaceTs(null);
+    setWarnings([]);
   }, [isOpen]);
   // 從上傳歷史「填回」:預填整批(日期/遊戲/版/文本)並記住原批次 ts。在重置 effect
   // 之後跑,覆蓋「尚未選擇」;上傳成功時作廢原批次 = 編輯取代,不會留下舊的重複批。
@@ -148,6 +151,8 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
         }));
         const res = await api.quickImportCommit(selGame, items, {issue, edition: selEid, date: selDate, dryRun: true});
         if (cancelled) return;
+        // 🟡 提醒依「編輯後」的 draft 重算(重複 / 大車支會隨改動即時更新)
+        setWarnings(res.warnings ?? []);
         // 後端把算不出來的收進 errors(line_no = 1-based draft 序),其餘依序在 items
         const errLines = new Set(res.errors.map(e => e.line_no));
         const arr: ({cost: number; expr: string} | null)[] = [];
@@ -185,6 +190,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
     setDraftItems([]);
     setError(null);
     setDone(null);
+    setWarnings([]);
   };
 
   const num = (v: unknown) => (typeof v === 'number' ? v : 0);
@@ -197,6 +203,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
     try {
       const res = await api.quickImport(selGame, text, true, {issue, edition: selEid, date: selDate});
       setPreview(res);
+      setWarnings(res.warnings ?? []);
       setDraftItems(
         res.items.map(it => ({
           mode: it.mode,
@@ -582,14 +589,29 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
               )}
 
               {errors.length > 0 && (
-                <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-800 dark:text-amber-300 space-y-1">
+                <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-[11px] text-rose-700 dark:text-rose-400 space-y-1">
                   <div className="flex items-center gap-2 font-semibold">
                     <AlertTriangle className="w-3.5 h-3.5" />
-                    <span>{errors.length} 行看不懂,這些行不會被記進去</span>
+                    <span>{errors.length} 行不會被記進去(看不懂 / 遊戲不支援的下法)</span>
                   </div>
                   {errors.map((e, i) => (
                     <div key={i} className="font-mono">
-                      第 {e.line_no} 行「{e.line}」—— {e.message}
+                      第 {e.line_no} 行{e.line ? `「${e.line}」` : ''}—— {e.message}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* 🟡 防呆提醒:黃色列出、不阻斷上傳(期號格式 / 大車支 / 舊日期 / 重複) */}
+              {warnings.length > 0 && (
+                <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-800 dark:text-amber-300 space-y-1">
+                  <div className="flex items-center gap-2 font-semibold">
+                    <AlertTriangle className="w-3.5 h-3.5" />
+                    <span>{warnings.length} 項提醒(可照樣上傳,但請先確認)</span>
+                  </div>
+                  {warnings.map((w, i) => (
+                    <div key={i} className="font-mono">
+                      {w.line_no ? `第 ${w.line_no} 筆:` : ''}{w.message}
                     </div>
                   ))}
                 </div>
