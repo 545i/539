@@ -95,8 +95,17 @@ def _official_latest(game_key: str, today: dt.date) -> list[dict]:
             except scraper_sc888.ScrapeError:
                 return scraper_fantasy5.fetch_history(pages=1)
         if game_key == "marksix":
-            return scraper_marksix.fetch_history(pages=1)
-        # lotto539:官方台彩「月」API。月初幾天把上個月也抓一次,免得漏掉月底那期。
+            # 六合彩:優先 sc888(較快、有最新期),抓不到才退回彙整站。
+            try:
+                return scraper_sc888.fetch_marksix()
+            except scraper_sc888.ScrapeError:
+                return scraper_marksix.fetch_history(pages=1)
+        # lotto539:優先 sc888(較快、有最新期,附完整期號),抓不到才退回官方台彩
+        # 「月」API。月初幾天把上個月也抓一次,免得漏掉月底那期。
+        try:
+            return scraper_sc888.fetch_539()
+        except scraper_sc888.ScrapeError:
+            pass
         rows = list(scraper.fetch_month(today.year, today.month))
         if today.day <= 3:
             py, pm = ((today.year - 1, 12) if today.month == 1
@@ -145,10 +154,28 @@ def catch_up(game_key: str, data_path: str | Path) -> dict:
             pages = min(60, max(1, -(-(gap_days + MIN_DRAWS) // 50)))
             new_rows = scraper_fantasy5.fetch_history(pages=pages)
     elif game_key == "marksix":
-        # 六合彩每週開三次:把落差天數換算成期數,再換算頁數
-        gap_draws = (today - start).days * _MARKSIX_PER_WEEK / 7
-        pages = min(20, max(1, -(-int(gap_draws + MIN_DRAWS) // _MARKSIX_PER_PAGE)))
-        new_rows = scraper_marksix.fetch_history(pages=pages)
+        # 六合彩:優先 sc888(較快、有最新期,涵蓋最近約 100 期);抓不到才退回彙整站
+        # (每頁約 23 期,依落差天數換算頁數;每週開三次)。
+        try:
+            new_rows = scraper_sc888.fetch_marksix()
+        except scraper_sc888.ScrapeError:
+            gap_draws = (today - start).days * _MARKSIX_PER_WEEK / 7
+            pages = min(20, max(1, -(-int(gap_draws + MIN_DRAWS) // _MARKSIX_PER_PAGE)))
+            new_rows = scraper_marksix.fetch_history(pages=pages)
+    elif game_key == "lotto539":
+        # 今彩539:優先 sc888(較快、有最新期,附完整期號,涵蓋最近約 100 期);
+        # 抓不到才退回官方台彩「月」API(逐月抓,涵蓋落差區間)。
+        try:
+            new_rows = scraper_sc888.fetch_539()
+        except scraper_sc888.ScrapeError:
+            new_rows, failures = [], []
+            for y, m in _months_between(start, today):
+                try:
+                    new_rows.extend(scraper.fetch_month(y, m))
+                except scraper.ScrapeError as e:
+                    failures.append(f"{y}-{m:02d}: {e}")
+            if not new_rows:
+                raise scraper.ScrapeError("; ".join(failures) or "區間內無資料")
     else:
         new_rows, failures = [], []
         for y, m in _months_between(start, today):

@@ -30,7 +30,18 @@ def csv_to_25(tmp_path):
     return p
 
 
+def _sc888_down(monkeypatch):
+    """讓 sc888 今彩539 來源「掛掉」,強制走官方台彩月 API 的 top-up 路徑。
+
+    lotto539 現在優先 sc888、失敗才退回官方;這兩個測試驗的是官方 top-up 行為,
+    故把 sc888 擋掉(同時避免測試打真網路)。"""
+    def _boom(*a, **k):
+        raise autoupdate.scraper_sc888.ScrapeError("sc888 unavailable in test")
+    monkeypatch.setattr(autoupdate.scraper_sc888, "fetch_539", _boom)
+
+
 def test_official_topup_adds_latest_when_tof_lags(csv_to_25, monkeypatch):
+    _sc888_down(monkeypatch)
     # 彩世界:涵蓋落差區間但**只到 8/25**(慢一期)
     tof_rows = [
         _row("2026-06-01", "115000150", [1, 2, 3, 4, 5]),   # 夠舊,oldest<=start
@@ -57,6 +68,7 @@ def test_official_topup_adds_latest_when_tof_lags(csv_to_25, monkeypatch):
 
 def test_topup_failure_does_not_break(csv_to_25, monkeypatch):
     """官方 top-up 掛掉不能拖垮整個更新 —— 至少保住彩世界那份。"""
+    _sc888_down(monkeypatch)
     tof_rows = [
         _row("2026-06-01", "115000150", [1, 2, 3, 4, 5]),
         _row("2026-08-25", "115000206", [8, 21, 23, 30, 35]),
