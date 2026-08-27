@@ -210,6 +210,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
         editionName: editions.find(e => e.eid === eid)?.name ?? String(eid),
         eid,
         issue,
+        date: betDate,     // 存這一期日期,上傳歷史列表顯示「第 X 期(日期)」對帳好認
         text,
         count: res.saved,
         totalCost,

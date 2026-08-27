@@ -25,6 +25,7 @@ export interface UploadHistoryEntry {
   editionName: string;
   eid?: number;       // 上傳到哪個版(對帳要用)
   issue: string;
+  date?: string;      // 這一期的開獎日期(YYYY-MM-DD);列表顯示「第 X 期(日期)」,對帳好認
   text: string;                 // 原始文本(可填回文字框重用)
   count: number;                // 實際寫入筆數
   totalCost: number;            // 這批的總下注成本(每筆 cost 加總)

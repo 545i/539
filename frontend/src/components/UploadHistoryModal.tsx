@@ -292,7 +292,7 @@ export const UploadHistoryModal: React.FC<Props> = ({ isOpen, onClose, onRefill 
                   <div className={`text-[11px] font-semibold truncate ${isDup ? 'text-rose-600 dark:text-rose-400' : 'text-neutral-700 dark:text-neutral-300'}`}>
                     <span className="text-neutral-400 mr-0.5">{isOpen ? '▾' : '▸'}</span>
                     {h.gameName}・{h.editionName}
-                    {h.issue ? `・第 ${h.issue} 期` : ''}
+                    {h.issue ? `・第 ${h.issue} 期${h.date ? `(${h.date})` : ''}` : ''}
                     <span className="ml-1.5 font-normal text-neutral-400">{h.count} 筆</span>
                     {h.reconAt && (
                       <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[9px] font-semibold">已對帳</span>
