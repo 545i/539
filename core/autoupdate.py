@@ -80,6 +80,29 @@ def latest_date(data_path: str | Path, game_key: str) -> dt.date | None:
         return None
 
 
+def _official_latest(game_key: str, today: dt.date) -> list[dict]:
+    """該款**官方**來源的最新一批開獎,給「彩世界落後」時 top-up 用。
+
+    彩世界(tof)一站三款很省請求,但常**慢官方約一期** —— 用它回補後,最新一期
+    一律再向各款官方來源抓一次,保證不缺最新期(2026-08 因此漏過 539 的 8/26)。
+    best-effort:任何抓取失敗都回空清單,不影響已經拿到的彩世界資料。
+    """
+    try:
+        if game_key == "fantasy5":
+            return scraper_fantasy5.fetch_history(pages=1)
+        if game_key == "marksix":
+            return scraper_marksix.fetch_history(pages=1)
+        # lotto539:官方台彩「月」API。月初幾天把上個月也抓一次,免得漏掉月底那期。
+        rows = list(scraper.fetch_month(today.year, today.month))
+        if today.day <= 3:
+            py, pm = ((today.year - 1, 12) if today.month == 1
+                      else (today.year, today.month - 1))
+            rows.extend(scraper.fetch_month(py, pm))
+        return rows
+    except Exception:
+        return []
+
+
 def catch_up(game_key: str, data_path: str | Path) -> dict:
     """把這一款的開獎資料補到最新;回傳 {fetched, added, latest}。
 
@@ -106,7 +129,8 @@ def catch_up(game_key: str, data_path: str | Path) -> dict:
         new_rows = []
 
     if new_rows:
-        pass
+        # 用了彩世界(它慢官方約一期)→ 最新一期再用官方來源 top-up,保證不缺最新期。
+        new_rows = new_rows + _official_latest(game_key, today)
     elif game_key == "fantasy5":
         # 天天樂每日開獎:每頁約 50 期,依落差天數換算頁數
         gap_days = (today - start).days
