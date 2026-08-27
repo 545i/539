@@ -172,7 +172,14 @@ export function useLedger(
       combine || edition == null
         ? all
         : all.filter(r => ((r as BetRecord).edition ?? 1) === edition);
-    return withRunning(filtered);
+    // 依開獎日期舊→新排(重新上傳時寫入順序≠日期順序);同日期保持原寫入順序。
+    // 排序後才算累積損益,列表順序與累積累加方向才一致。
+    const sorted = filtered
+      .map((r, i) => [r, i] as const)
+      .sort((a, b) =>
+        String(a[0].date ?? '').localeCompare(String(b[0].date ?? '')) || a[1] - b[1])
+      .map(([r]) => r);
+    return withRunning(sorted);
   }, [loggedIn, remote, local, edition, combine]);
 
   return {records, add, undo, clear, resettle, reload, loading, error, loggedIn};
