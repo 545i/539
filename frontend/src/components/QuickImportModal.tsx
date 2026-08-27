@@ -176,9 +176,10 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
     return () => { cancelled = true; window.clearTimeout(t); };
   }, [isOpen, draftItems, issue, selEid, selGame, selDate, preview, loggedIn]);
 
-  // 區間斷檔提醒(參考用):依目前選的遊戲,只顯示未開(streak>=1)的配對
+  // 區間斷檔提醒(參考用):依目前選的遊戲,只顯示未開(streak>=1)的配對。
+  // 門檻用 1(每期+1):只要一期沒開就算斷檔並高亮,不等到 3 期。
   const pairs = useAsync<TensPairDTO[]>(
-    () => (isOpen && selGame ? api.tensPairs(selGame, 3) : Promise.resolve([])),
+    () => (isOpen && selGame ? api.tensPairs(selGame, 1) : Promise.resolve([])),
     [selGame, isOpen],
   );
   const brokenPairs = (pairs.data ?? []).filter(p => p.streak >= 1);

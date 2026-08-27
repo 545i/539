@@ -11,7 +11,8 @@ import { useGame } from '../../api/useGame';
 
 const WINDOW = 830; // 冷熱號取樣上限(資料不足時以實際期數為準)
 const HIST_OPTIONS = [20, 30, 50, 100] as const;
-const THRESHOLD_OPTIONS = [2, 3, 4, 5, 6] as const;
+const THRESHOLD_OPTIONS = [2, 3, 4, 5, 6] as const;        // 9000碰(全段同開)門檻
+const TENS_THRESHOLD_OPTIONS = [1, 2, 3, 4, 5, 6] as const; // 1800碰:含「每期+1」(1 期)
 
 // 區間組合提醒的使用者設定(存 localStorage,重整後保留)
 const INTERVALS_KEY = 'lotto539_intervals';             // { [gameKey]: [{label, nums}, ...] }
@@ -221,8 +222,8 @@ export const AnalysisView: React.FC = () => {
   const [histN, setHistN] = useState<number>(30);
   const [showWatchSetup, setShowWatchSetup] = useState(false);
   const [threshold, setThreshold] = useState<number>(() => {
-    const v = readStore<number>(WATCH_THRESHOLD_KEY, 3);
-    return (THRESHOLD_OPTIONS as readonly number[]).includes(v) ? v : 3;
+    const v = readStore<number>(WATCH_THRESHOLD_KEY, 1);   // 1800碰預設每期+1(1 期)
+    return (TENS_THRESHOLD_OPTIONS as readonly number[]).includes(v) ? v : 1;
   });
   // 每款彩券各自記一份自訂區間(號碼上限不同,不能共用);沒存過就用預設十位分段
   const [intervalMap, setIntervalMap] = useState<Record<string, IntervalGroupIn[]>>(() =>
@@ -550,7 +551,7 @@ export const AnalysisView: React.FC = () => {
             </div>
             <div className="flex items-center gap-2 flex-wrap">
               <div className="inline-flex p-1 rounded-xl bg-black/[0.03] dark:bg-white/[0.04] border border-black/[0.06] dark:border-white/[0.06] gap-1">
-                {THRESHOLD_OPTIONS.map(n => (
+                {TENS_THRESHOLD_OPTIONS.map(n => (
                   <button
                     key={n}
                     type="button"
