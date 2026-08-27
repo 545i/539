@@ -16,6 +16,7 @@ import { useLedger } from '../../api/useLedger';
 import { useHistoriesByGame } from '../../api/useHistories';
 import { useEditions } from '../../api/useEditions';
 import { IssuePicker } from '../IssuePicker';
+import { BetTargetSelector } from '../BetTargetSelector';
 
 // 四段的十位頭切法(與後端 core.combo9000 一致):0頭 9 顆、其餘各 10 顆。
 const SEGMENTS: { name: string; range: string; size: number }[] = [
@@ -176,6 +177,8 @@ export const Combo9000Tab: React.FC = () => {
 
         {/* Left Column (5/12) - Configuration & Execution Panel */}
         <div className="lg:col-span-5 flex flex-col gap-4">
+
+          <BetTargetSelector />
 
           <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] space-y-3">
             <div className="flex items-center justify-between">

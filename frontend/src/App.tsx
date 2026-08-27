@@ -9,14 +9,13 @@ import {
 } from 'lucide-react';
 import { NavItem, DuoBetTab, ThemeMode } from './types';
 import { Sidebar } from './components/Sidebar';
-import { Header, GameSwitcher } from './components/Header';
+import { Header } from './components/Header';
 import { FormulaModal } from './components/FormulaModal';
 import { LoginModal } from './components/LoginModal';
 import { QuickImportModal } from './components/QuickImportModal';
 import { UploadHistoryModal } from './components/UploadHistoryModal';
 import { useAuth } from './api/useAuth';
 import { useGroups } from './api/useGroups';
-import { useEditions } from './api/useEditions';
 import { GroupBetTab } from './components/tabs/GroupBetTab';
 import { ThreePillarTab } from './components/tabs/ThreePillarTab';
 import { Combo9000Tab } from './components/tabs/Combo9000Tab';
@@ -41,8 +40,6 @@ export default function App() {
   const { loggedIn } = useAuth();
   // 二合下注「組」設定(全站共用):決定有幾個組分頁、各組固定幾顆
   const { enabled: enabledGroups } = useGroups();
-  // 下注「版」:記錄下注 / 快速上傳都記到選中的版
-  const { editions, eid, setEid } = useEditions();
 
   // Navigation state
   const [activeNav, setActiveNav] = useState<NavItem>('duo_bet');
@@ -267,36 +264,6 @@ export default function App() {
                   })}
                 </div>
               </div>
-
-              {/* 選遊戲 + 選版本:總損益是彙總頁、不下注,不顯示下注目標選擇器 */}
-              {duoTab !== 'totals' && (
-              <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-[11px] font-semibold text-neutral-500 dark:text-neutral-400">下注遊戲</span>
-                  <GameSwitcher />
-                </div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-[11px] font-semibold text-neutral-500 dark:text-neutral-400">下注版本</span>
-                  <div className="inline-flex p-1 rounded-xl bg-black/[0.03] dark:bg-white/[0.04] border border-black/[0.06] dark:border-white/[0.06] gap-1 flex-wrap">
-                    {editions.map(e => (
-                      <button
-                        key={e.eid}
-                        type="button"
-                        onClick={() => setEid(e.eid)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                          eid === e.eid
-                            ? 'bg-black text-white dark:bg-white dark:text-black shadow-xs'
-                            : 'text-neutral-600 dark:text-neutral-400 hover:text-black dark:hover:text-white'
-                        }`}
-                      >
-                        {e.name}
-                      </button>
-                    ))}
-                  </div>
-                  <span className="text-[10px] text-neutral-400">(在「設定」可新增版、改名、設各版盤口)</span>
-                </div>
-              </div>
-              )}
 
               {/* Tab Contents */}
               <div key={ledgerVersion}>

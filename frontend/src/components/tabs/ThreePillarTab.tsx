@@ -22,6 +22,7 @@ import { useHistoriesByGame } from '../../api/useHistories';
 import { useEditions } from '../../api/useEditions';
 import { LotteryBallPad } from '../LotteryBallPad';
 import { IssuePicker } from '../IssuePicker';
+import { BetTargetSelector } from '../BetTargetSelector';
 
 const pad = (n: number) => n.toString().padStart(2, '0');
 
@@ -257,6 +258,8 @@ export const ThreePillarTab: React.FC = () => {
         
         {/* Left Column (5/12) - Configuration & Execution Panel */}
         <div className="lg:col-span-5 flex flex-col gap-4">
+
+          <BetTargetSelector />
 
           {/* 三柱 1800 碰下注:逐柱組牌 / 一鍵全包(同一功能) */}
           <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] space-y-3">

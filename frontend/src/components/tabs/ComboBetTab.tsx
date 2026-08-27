@@ -10,6 +10,7 @@ import {
 import { INITIAL_COMBO_RECORDS } from '../../data/lotteryData';
 import { LotteryBallPad } from '../LotteryBallPad';
 import { IssuePicker } from '../IssuePicker';
+import { BetTargetSelector } from '../BetTargetSelector';
 import { LotteryGame } from '../../types';
 import { api } from '../../api/client';
 import { useAsync } from '../../api/useAsync';
@@ -181,7 +182,9 @@ export const ComboBetTab: React.FC = () => {
         
         {/* Left Column (5/12) - Configuration & Execution Panel */}
         <div className="lg:col-span-5 space-y-4">
-          
+
+          <BetTargetSelector />
+
           <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] space-y-4">
             <div className="flex items-center justify-between">
               <span className="text-xs font-display font-bold uppercase tracking-wider text-neutral-900 dark:text-white">
