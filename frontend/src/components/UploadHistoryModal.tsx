@@ -194,9 +194,15 @@ export const UploadHistoryModal: React.FC<Props> = ({ isOpen, onClose, onRefill 
 
   // 版篩選:歷史裡出現過的版別
   const editions = Array.from(new Set(history.map(h => h.editionName).filter(Boolean)));
-  const shown = filterEdition === 'all'
+  const shown = (filterEdition === 'all'
     ? history
-    : history.filter(h => h.editionName === filterEdition);
+    : history.filter(h => h.editionName === filterEdition)
+  ).slice().sort((a, b) =>
+    // 開獎日期新→舊;同一天相同遊戲排一起;再以上傳時間新→舊
+    (b.date ?? '').localeCompare(a.date ?? '')
+    || a.gameName.localeCompare(b.gameName)
+    || b.ts - a.ts
+  );
   const historyTotal = shown.reduce((s, h) => s + h.totalCost, 0);
 
   // 重複批次偵測:同 遊戲 + 同 版(eid)+ 同 期(issue)出現 ≥2 次 → 都標紅提示。
