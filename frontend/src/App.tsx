@@ -268,7 +268,8 @@ export default function App() {
                 </div>
               </div>
 
-              {/* 選遊戲 + 選版本(移到分頁列下方):下注遊戲設全域遊戲、下注版本是記帳目標版 */}
+              {/* 選遊戲 + 選版本:總損益是彙總頁、不下注,不顯示下注目標選擇器 */}
+              {duoTab !== 'totals' && (
               <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-[11px] font-semibold text-neutral-500 dark:text-neutral-400">下注遊戲</span>
@@ -295,6 +296,7 @@ export default function App() {
                   <span className="text-[10px] text-neutral-400">(在「設定」可新增版、改名、設各版盤口)</span>
                 </div>
               </div>
+              )}
 
               {/* Tab Contents */}
               <div key={ledgerVersion}>

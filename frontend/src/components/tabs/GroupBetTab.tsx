@@ -58,7 +58,18 @@ export const GroupBetTab: React.FC<Props> = ({ group }) => {
 
   // 登入時流水存後端;未登入沿用前端 state。依「版」篩選(本版 / 全部版合併由滑塊決定)
   const ledger = useLedger(group.mode, [], {edition: eid, combine: combineEditions});
-  const records = ledger.records;
+  const allRecords = ledger.records;
+  // 遊戲篩選:全部 / 各款;篩選後重算累積損益(從舊到新),上方儀表板與核對列表都跟著變。
+  const [gameFilter, setGameFilter] = React.useState<'all' | 'lotto539' | 'fantasy5' | 'marksix'>('all');
+  const gameKeyOf = (g: string) =>
+    g.startsWith('今彩539') ? 'lotto539'
+      : g.startsWith('天天樂') ? 'fantasy5'
+        : g.startsWith('六合彩') ? 'marksix' : 'other';
+  const records = React.useMemo(() => {
+    const f = gameFilter === 'all' ? allRecords : allRecords.filter(r => gameKeyOf(r.game) === gameFilter);
+    let running = 0;
+    return f.map((r, i) => ({ ...r, index: i + 1, cumPnl: (running += r.pnl) }));
+  }, [allRecords, gameFilter]);
 
   // 重新整理:補了最新一期開獎後,後端會自動把「待開獎」結算掉(見 backend/autosettle.py),
   // 但這頁的流水是掛載時抓一次就不動,不會反映後端已結算的 pnl。這裡重抓流水 + 開獎歷史,
@@ -438,6 +449,24 @@ export const GroupBetTab: React.FC<Props> = ({ group }) => {
 
         {/* Right Column - Metrics & Ledger */}
         <div className="lg:col-span-7 space-y-4">
+          {/* 遊戲篩選:全部 / 各款 —— 上方儀表板與下方核對列表都依此變動 */}
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-[10px] uppercase tracking-wider text-neutral-400 font-semibold">遊戲</span>
+            {([['all', '全部'], ['lotto539', '今彩539'], ['fantasy5', '天天樂'], ['marksix', '六合彩']] as const).map(([k, label]) => (
+              <button
+                key={k}
+                type="button"
+                onClick={() => setGameFilter(k)}
+                className={`px-2.5 py-1 rounded-lg text-[10px] font-semibold transition-all ${
+                  gameFilter === k
+                    ? 'bg-black text-white dark:bg-white dark:text-black'
+                    : 'border border-black/10 dark:border-white/10 text-neutral-600 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 sm:gap-3">
             <div className="p-3.5 sm:p-4 rounded-xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08]">
               <div className="text-[10px] uppercase tracking-wider text-neutral-400">總投入成本</div>
