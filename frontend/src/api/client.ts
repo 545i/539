@@ -125,6 +125,14 @@ export interface HistoryDTO {
   next?: {issue?: string; date: string; at: string} | null;
 }
 
+// 某日期的期號狀態(快速上傳沒期號時能否預先記錄)
+export interface ResolveIssueDTO {
+  status: 'drawn' | 'pending' | 'closed';
+  issue: string;      // drawn 時為真實期號;pending/closed 為空(pending 用日期校正)
+  predicted: string;  // pending 且純數字款的預估期號(僅顯示,不參與對獎);否則空
+  date: string;
+}
+
 export interface MissingDTO {
   num: number;
   current: number;
@@ -961,6 +969,10 @@ export const api = {
   // history
   history: (game: GameKey, limit = 0) =>
     get<HistoryDTO>(`history?game=${game}${limit ? `&limit=${limit}` : ''}`),
+  // 判斷某日期該款期號狀態(快速上傳沒期號時能否預先記錄):
+  //   drawn=已開有真期號 / pending=合法開獎日未開(可預先記錄,依日期校正)/ closed=非開獎日
+  resolveIssue: (game: GameKey, date: string) =>
+    get<ResolveIssueDTO>(`history/resolve-issue?game=${game}&date=${date}`),
 
   // stats
   missing: (game: GameKey) => get<MissingDTO[]>(`stats/missing?game=${game}`),

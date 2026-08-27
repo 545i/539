@@ -20,18 +20,33 @@ def settle_record_if_drawn(record: dict, g) -> dict:
     """單筆:若『待開獎』且期數已開 → 回傳結算後的新 record;否則原樣回傳。
 
     money / 中碰數全由 settle 依該筆的版盤口算;查不到該期(未開)就維持待開獎。
+
+    兩條對獎路徑:
+      1. 有期號 → 依期號反查開獎(核對頁改期號重對、上傳時已開即對都走這條)。
+      2. 期號留空(預先記錄的注:那天還沒開時上傳的)→ 依**下注日期**反查;那天
+         真的開了就回填真實期號 + 開獎號結算(見 backend.data.draw_by_date)。
     """
     if str(record.get("result", "")) != PENDING:
         return record
     issue = str(record.get("issue", "") or "").strip()
-    if not issue:
+    if issue:
+        found = data.draw_by_issue(g.key, issue)
+        if not found:
+            return record
+        out = settle.settle(record, found[0], g)
+        out["issue"] = issue
+        out["date"] = found[1]
+        return out
+    # 期號未定 → 依日期校正:這一天開了就回填真實期號並結算
+    date = str(record.get("date", "") or "").strip()[:10]
+    if not date:
         return record
-    found = data.draw_by_issue(g.key, issue)
+    found = data.draw_by_date(g.key, date)
     if not found:
         return record
     out = settle.settle(record, found[0], g)
-    out["issue"] = issue
-    out["date"] = found[1]
+    out["issue"] = found[1]        # 回填真實期號
+    out["date"] = date
     return out
 
 

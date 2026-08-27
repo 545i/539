@@ -1,6 +1,7 @@
 """開獎歷史:回傳每期號碼(舊→新),最新一期附三柱分佈與碰數摘要。"""
 from __future__ import annotations
 
+import datetime as dt
 import re
 
 import pandas as pd
@@ -63,3 +64,60 @@ def history(game: str = Query(...), limit: int = Query(0, ge=0)):
 
     return {"game": game, "count": total, "draws": draws,
             "latest": latest, "next": nxt}
+
+
+def _draw_days_between(sched, after: dt.date, upto: dt.date) -> int:
+    """after < d <= upto 之間有幾個開獎日(依時刻表的星期)。"""
+    cnt, d = 0, after + dt.timedelta(days=1)
+    while d <= upto:
+        if sched.draws_on(d):
+            cnt += 1
+        d += dt.timedelta(days=1)
+    return cnt
+
+
+@router.get("/resolve-issue")
+def resolve_issue(game: str = Query(...), date: str = Query(...)):
+    """判斷某台灣日期該款的期號狀態,給「快速上傳沒期號時能否預先記錄」用。
+
+    回傳 {status, issue, predicted, date}:
+      - status="drawn"    這天已開:issue 為真實期號(可直接對獎)。
+      - status="pending"  這天是合法開獎日但還沒開(或已開未抓回):可預先記錄,
+                          issue 留空(開獎後依日期校正回填),predicted 為純數字款的
+                          預估期號(latest+期距)僅供顯示,不寫進紀錄、不參與對獎。
+      - status="closed"   這天不是這款的開獎日:不給記錄。
+    predicted 對六合彩(期號非純數字)一律空字串 —— 無法可靠預估。
+    """
+    g = get_game(game)
+    df = load_df(game)
+    target = str(date).strip()[:10]
+    try:
+        tdate = dt.date.fromisoformat(target)
+    except ValueError:
+        return {"status": "closed", "issue": "", "predicted": "", "date": target}
+
+    # 1) 這天已經開了 → 回真實期號
+    hit = df[df["date"].dt.strftime("%Y-%m-%d") == target]
+    if not hit.empty:
+        row = hit.iloc[-1]
+        issue = str(row["issue"]).strip() if "issue" in df.columns and pd.notna(
+            row.get("issue")) else ""
+        return {"status": "drawn", "issue": issue, "predicted": "", "date": target}
+
+    # 2) 合法開獎日但還沒開(含「開了但還沒抓回」)→ 可預先記錄
+    sched = drawtime.get(game)
+    if sched is not None and sched.draws_on(tdate):
+        predicted = ""
+        if len(df):
+            latest_issue = str(df.iloc[-1].get("issue", "")).strip()
+            latest_date = df.iloc[-1]["date"].date()
+            # 純數字期號 + 目標在最新期之後 → 預估 = 最新期 + 期距(僅顯示)
+            if re.fullmatch(r"\d+", latest_issue) and tdate > latest_date:
+                gap = _draw_days_between(sched, latest_date, tdate)
+                if 1 <= gap <= 60:
+                    predicted = str(int(latest_issue) + gap)
+        return {"status": "pending", "issue": "", "predicted": predicted,
+                "date": target}
+
+    # 3) 不是開獎日
+    return {"status": "closed", "issue": "", "predicted": "", "date": target}

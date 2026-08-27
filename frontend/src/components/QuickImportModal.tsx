@@ -76,6 +76,11 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
   const [selEid, setSelEid] = useState<number | null>(null);    // 版
   // 期號由「日期 + 遊戲」自動反查,反查不到時的提示訊息
   const [issueHint, setIssueHint] = useState('');
+  // 期號狀態:''=尚未查 / 'drawn'=已開有真期號 / 'pending'=合法開獎日未開(可預先記錄,
+  // 期號留空、開獎後依日期校正)/ 'closed'=非開獎日(擋)。predictedIssue 為 pending
+  // 時純數字款的預估期號,僅顯示提示、不寫進紀錄。
+  const [drawStatus, setDrawStatus] = useState<'' | 'drawn' | 'pending' | 'closed'>('');
+  const [predictedIssue, setPredictedIssue] = useState('');
   // 填回=編輯取代:記住要取代的原批次 ts,上傳成功後作廢它(刪舊 ledger + 上傳紀錄)
   const [replaceTs, setReplaceTs] = useState<number | null>(null);
 
@@ -87,6 +92,8 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
     setSelEid(null);
     setIssue('');
     setIssueHint('');
+    setDrawStatus('');
+    setPredictedIssue('');
     setPreview(null);
     setDraftItems([]);
     setText('');
@@ -110,31 +117,60 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
   // 這樣一次上傳流程只需選一次日期,切換遊戲會用同一天自動重新反查(依賴含 selGame)。
   useEffect(() => {
     if (!isOpen) return;
-    if (!selDate || !selGame) { setIssue(''); setIssueHint(''); return; }
+    if (!selDate || !selGame) {
+      setIssue(''); setIssueHint(''); setDrawStatus(''); setPredictedIssue('');
+      return;
+    }
     let cancelled = false;
     (async () => {
       try {
         const h = await api.history(selGame, 60);
         if (cancelled) return;
         const hit = h.draws.find(d => d.date === selDate);
-        if (hit?.issue) { setIssue(hit.issue); setIssueHint(''); return; }
+        if (hit?.issue) {
+          setIssue(hit.issue); setIssueHint(''); setDrawStatus('drawn'); setPredictedIssue('');
+          return;
+        }
         // 已開的裡面找不到,再看看是不是「下一期」(還沒開但期號已定)
-        if (h.next?.date === selDate && h.next?.issue) { setIssue(h.next.issue); setIssueHint(''); return; }
-        setIssue('');
-        setIssueHint('這一天沒有這個遊戲的開獎(或期號未定),請確認日期');
+        if (h.next?.date === selDate && h.next?.issue) {
+          setIssue(h.next.issue); setIssueHint(''); setDrawStatus('drawn'); setPredictedIssue('');
+          return;
+        }
+        // 反查不到期號 → 問後端這天是不是合法開獎日:是的話可預先記錄(期號留空,
+        // 開獎後依日期校正回填),不是才擋。
+        const r = await api.resolveIssue(selGame, selDate);
+        if (cancelled) return;
+        if (r.status === 'drawn' && r.issue) {
+          setIssue(r.issue); setIssueHint(''); setDrawStatus('drawn'); setPredictedIssue('');
+        } else if (r.status === 'pending') {
+          setIssue(''); setDrawStatus('pending'); setPredictedIssue(r.predicted || '');
+          setIssueHint(r.predicted
+            ? `期號未定,開獎後自動校正(預估第 ${r.predicted} 期)`
+            : '期號未定,開獎後自動校正');
+        } else {
+          setIssue(''); setDrawStatus('closed'); setPredictedIssue('');
+          setIssueHint('這一天不是這個遊戲的開獎日,請確認日期');
+        }
       } catch {
-        if (!cancelled) { setIssue(''); setIssueHint('查詢期號失敗,請稍後再試'); }
+        if (!cancelled) {
+          setIssue(''); setDrawStatus(''); setPredictedIssue('');
+          setIssueHint('查詢期號失敗,請稍後再試');
+        }
       }
     })();
     return () => { cancelled = true; };
   }, [isOpen, selDate, selGame]);
+
+  // 上傳目標就緒:有真期號,或這天是合法開獎日但還沒開(pending,期號留空、
+  // 開獎後依日期校正)。pending 也能預覽 / 上傳,期號欄送空字串。
+  const canTarget = !!issue || drawStatus === 'pending';
 
   // 預覽即時試算成本:把目前(可能改過的)draft 丟後端 dry_run commit 只重算不寫入,
   // 拿回每筆 record.cost / costExpr。debounce 350ms,避免打字時一直打 API。
   // ⚠ 必須在任何 early return 之前(Hooks 規則);開啟且有 preview 才真的算。
   useEffect(() => {
     if (!isOpen || !preview || draftItems.length === 0 || !loggedIn
-        || selGame == null || selEid == null || !issue) {
+        || selGame == null || selEid == null || !canTarget) {
       setCosts([]);
       return;
     }
@@ -174,7 +210,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
       }
     }, 350);
     return () => { cancelled = true; window.clearTimeout(t); };
-  }, [isOpen, draftItems, issue, selEid, selGame, selDate, preview, loggedIn]);
+  }, [isOpen, draftItems, issue, canTarget, selEid, selGame, selDate, preview, loggedIn]);
 
   // 區間斷檔提醒(參考用):依目前選的遊戲,只顯示未開(streak>=1)的配對。
   // 門檻用 1(每期+1):只要一期沒開就算斷檔並高亮,不等到 3 期。
@@ -198,7 +234,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
 
   // 解析預覽:把文字丟後端 dry_run,回來的每筆變成一列可編輯的 draft
   const runPreview = async () => {
-    if (!selGame || selEid == null || !selDate || !issue) return; // 三要件 + 反查到期號才給預覽
+    if (!selGame || selEid == null || !selDate || !canTarget) return; // 三要件 + 期號就緒(或合法開獎日待開)才給預覽
     setBusy(true);
     setError(null);
     try {
@@ -227,7 +263,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
 
   // 確認上傳:送(可能被編輯過的)draft 給 commit 端點,成本後端重算
   const confirm = async () => {
-    if (!selGame || selEid == null || !selDate || !issue) return; // 三要件 + 反查到期號才給上傳
+    if (!selGame || selEid == null || !selDate || !canTarget) return; // 三要件 + 期號就緒(或合法開獎日待開)才給上傳
     setBusy(true);
     setError(null);
     try {
@@ -300,12 +336,13 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
   const errors = preview?.errors ?? [];
   const anyIncomplete = draftItems.some(d => d.incomplete);
 
-  // 三要件就緒判斷:日期 / 遊戲 / 版 任一未選,或期號還沒反查到,就不給預覽 / 上傳
+  // 三要件就緒判斷:日期 / 遊戲 / 版 任一未選,或期號未就緒(反查不到又非合法開獎日),
+  // 就不給預覽 / 上傳。pending(合法開獎日待開,期號留空、開獎後校正)也算就緒。
   const missingSel: string[] = [];
   if (!selDate) missingSel.push('日期');
   if (!selGame) missingSel.push('遊戲');
   if (selEid == null) missingSel.push('版');
-  const targetReady = missingSel.length === 0 && !!issue;
+  const targetReady = missingSel.length === 0 && canTarget;
   const selGameName = games.find(x => x.key === selGame)?.name ?? '';
   const selGameShort = games.find(x => x.key === selGame)?.short_name ?? '';
   const selEditionName = selEid == null ? '' : (editions.find(e => e.eid === selEid)?.name ?? String(selEid));
@@ -401,16 +438,27 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
                   id="quick-import-issue"
                   className="h-8 min-w-24 inline-flex items-center px-2.5 rounded-lg border border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.03] text-xs font-mono text-neutral-900 dark:text-white"
                 >
-                  {issue ? `第 ${issue} 期` : (selDate && selGame ? '查無期號' : '待選日期/遊戲')}
+                  {issue
+                    ? `第 ${issue} 期`
+                    : drawStatus === 'pending'
+                      ? (predictedIssue ? `第 ${predictedIssue} 期(預估)` : '期號未定')
+                      : (selDate && selGame ? '查無期號' : '待選日期/遊戲')}
                 </span>
               </div>
               {issueHint && (
-                <div className="mt-1 text-[10px] text-amber-700 dark:text-amber-400">{issueHint}</div>
+                <div className={`mt-1 text-[10px] ${
+                  drawStatus === 'pending'
+                    ? 'text-sky-700 dark:text-sky-400'
+                    : 'text-amber-700 dark:text-amber-400'
+                }`}>{issueHint}</div>
               )}
             </div>
             <div className="text-[11px] text-neutral-500 dark:text-neutral-400 pb-2.5">
               {targetReady ? (
-                <>記到 <strong>{selGameName}・{selEditionName}・第 {issue} 期{selDate ? `(${selDate})` : ''}</strong>,結果一律先記「待開獎」,開獎後再結算。</>
+                <>記到 <strong>{selGameName}・{selEditionName}・{
+                  issue ? `第 ${issue} 期` : (predictedIssue ? `第 ${predictedIssue} 期(預估)` : '期號未定')
+                }{selDate ? `(${selDate})` : ''}</strong>,結果一律先記「待開獎」,{
+                  issue ? '開獎後再結算' : '開獎後依日期自動校正期號並結算'}。</>
               ) : (
                 <>尚未選好上傳目標:請先選擇 <strong>{missingSel.length ? missingSel.join(' / ') : '期號(依日期反查)'}</strong>。</>
               )}

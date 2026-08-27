@@ -63,6 +63,29 @@ def draw_by_issue(key: str, issue: str) -> tuple[list[int], str] | None:
     return nums, row["date"].strftime("%Y-%m-%d")
 
 
+def draw_by_date(key: str, date_str: str) -> tuple[list[int], str] | None:
+    """某款遊戲某一台灣日期的開獎號與期號;未開 / 無此日回 None。
+
+    給「預先記錄、開獎後依日期校正」用:上傳時期號未定(留空)的待開獎注,
+    等這一天真的開了,就用日期反查到真實開獎號 + 期號回填結算。
+    回傳 (號碼清單, 期號字串);該日沒有期號欄時期號回空字串。
+    """
+    from core.loader import detect_num_cols
+
+    date_str = str(date_str).strip()[:10]
+    if not date_str:
+        return None
+    df = load_df(key)
+    hit = df[df["date"].dt.strftime("%Y-%m-%d") == date_str]
+    if hit.empty:
+        return None
+    row = hit.iloc[-1]
+    nums = [int(row[c]) for c in detect_num_cols(df)]
+    issue = str(row["issue"]).strip() if "issue" in df.columns and pd.notna(
+        row.get("issue")) else ""
+    return nums, issue
+
+
 @lru_cache(maxsize=1)
 def all_games() -> list[GameConfig]:
     return list(games_mod.GAMES.values())
