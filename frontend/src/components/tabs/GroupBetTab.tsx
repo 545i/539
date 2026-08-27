@@ -4,6 +4,7 @@ import {
   CheckCircle2,
   XCircle,
   RotateCcw,
+  RefreshCw,
 } from 'lucide-react';
 import { LotteryBallPad } from '../LotteryBallPad';
 import { IssuePicker } from '../IssuePicker';
@@ -58,6 +59,28 @@ export const GroupBetTab: React.FC<Props> = ({ group }) => {
   // 登入時流水存後端;未登入沿用前端 state。依「版」篩選(本版 / 全部版合併由滑塊決定)
   const ledger = useLedger(group.mode, [], {edition: eid, combine: combineEditions});
   const records = ledger.records;
+
+  // 重新整理:補了最新一期開獎後,後端會自動把「待開獎」結算掉(見 backend/autosettle.py),
+  // 但這頁的流水是掛載時抓一次就不動,不會反映後端已結算的 pnl。這裡重抓流水 + 開獎歷史,
+  // 讓核對明細立刻跟上最新期。純前端重抓,不碰後端結算。
+  const ledgerReload = ledger.reload;
+  const histReload = histReq.reload;
+  const refreshLedger = React.useCallback(() => {
+    ledgerReload();
+    histReload();
+  }, [ledgerReload, histReload]);
+  // 視窗重新取得焦點 / 分頁切回可見時自動重抓(常見情境:去「設定」抓完最新開獎再切回來)
+  React.useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') refreshLedger();
+    };
+    window.addEventListener('focus', refreshLedger);
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      window.removeEventListener('focus', refreshLedger);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [refreshLedger]);
 
   // 不固定顆數:依「這一組最新一筆下注紀錄」建議顆數 / 車數。沒有紀錄就退回設定的預設顆數。
   const lastRecord = records.length > 0 ? records[records.length - 1] : null;
@@ -441,15 +464,27 @@ export const GroupBetTab: React.FC<Props> = ({ group }) => {
               <h3 className="text-xs sm:text-sm font-display font-bold text-neutral-900 dark:text-white uppercase tracking-wide">
                 02 / {group.name}流水帳與開獎核對
               </h3>
-              <button
-                type="button"
-                onClick={ledger.undo}
-                disabled={records.length === 0}
-                className="text-[11px] font-semibold text-neutral-500 hover:text-neutral-900 dark:hover:text-white disabled:opacity-30 transition-colors flex items-center gap-1 active:scale-95"
-              >
-                <RotateCcw className="w-3 h-3" />
-                撤銷上一筆
-              </button>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={refreshLedger}
+                  disabled={ledger.loading}
+                  title="補了最新開獎後,重抓流水讓核對明細跟上(後端已自動結算)"
+                  className="text-[11px] font-semibold text-neutral-500 hover:text-neutral-900 dark:hover:text-white disabled:opacity-30 transition-colors flex items-center gap-1 active:scale-95"
+                >
+                  <RefreshCw className={`w-3 h-3 ${ledger.loading ? 'animate-spin' : ''}`} />
+                  重新整理
+                </button>
+                <button
+                  type="button"
+                  onClick={ledger.undo}
+                  disabled={records.length === 0}
+                  className="text-[11px] font-semibold text-neutral-500 hover:text-neutral-900 dark:hover:text-white disabled:opacity-30 transition-colors flex items-center gap-1 active:scale-95"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  撤銷上一筆
+                </button>
+              </div>
             </div>
 
             {ledger.loading && <div className="text-xs text-neutral-400">載入流水帳中…</div>}

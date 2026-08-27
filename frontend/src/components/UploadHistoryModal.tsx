@@ -199,6 +199,20 @@ export const UploadHistoryModal: React.FC<Props> = ({ isOpen, onClose, onRefill 
     : history.filter(h => h.editionName === filterEdition);
   const historyTotal = shown.reduce((s, h) => s + h.totalCost, 0);
 
+  // 重複批次偵測:同 遊戲 + 同 版(eid)+ 同 期(issue)出現 ≥2 次 → 都標紅提示。
+  // 只有帶期號的才判(沒期號會把不同批綁在同一個空 key,誤判)。真實案例:同一期被上傳兩批一樣的。
+  const dupKey = (h: UploadHistoryEntry) =>
+    h.issue ? `${h.gameName}|${h.eid ?? 1}|${h.issue}` : null;
+  const dupCounts: Record<string, number> = {};
+  for (const h of shown) {
+    const k = dupKey(h);
+    if (k) dupCounts[k] = (dupCounts[k] ?? 0) + 1;
+  }
+  const isDupEntry = (h: UploadHistoryEntry) => {
+    const k = dupKey(h);
+    return k != null && (dupCounts[k] ?? 0) >= 2;
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-stretch sm:items-center justify-center p-0 sm:p-4 bg-black/70 backdrop-blur-xs animate-in fade-in duration-200">
       <div className="w-full h-full sm:h-auto max-w-full sm:max-w-2xl sm:max-h-[90vh] bg-white dark:bg-[#121212] border-0 sm:border border-black/10 dark:border-white/10 rounded-none sm:rounded-2xl shadow-2xl flex flex-col text-neutral-800 dark:text-neutral-200">
@@ -224,7 +238,7 @@ export const UploadHistoryModal: React.FC<Props> = ({ isOpen, onClose, onRefill 
           </div>
         </div>
 
-        <div className="flex-1 min-h-0 p-4 sm:p-6 space-y-3 overflow-y-auto">
+        <div className="flex-1 min-h-0 p-4 sm:p-6 space-y-4 overflow-y-auto">
           {history.length === 0 && (
             <div className="text-[11px] text-neutral-400 dark:text-neutral-500 leading-relaxed p-3 rounded-xl bg-black/[0.02] dark:bg-white/[0.03]">
               目前沒有上傳紀錄。到「快速上傳」貼下注文字、按<strong>「確認上傳」</strong>後,
@@ -259,10 +273,15 @@ export const UploadHistoryModal: React.FC<Props> = ({ isOpen, onClose, onRefill 
             // 獲利:優先用已結算派彩(自動),沒有再用對帳的我方中獎金額
             const win = winMap[h.ts] ?? h.recon?.report?.payout_ours;
             const pnl = win != null ? win - h.totalCost : undefined; // 盈虧 = 獲利 − 成本
+            const isDup = isDupEntry(h);
             return (
             <div
               key={h.ts}
-              className="rounded-xl border border-black/[0.08] dark:border-white/[0.08] bg-black/[0.02] dark:bg-white/[0.03] overflow-hidden"
+              className={`rounded-xl border overflow-hidden shadow-sm ${
+                isDup
+                  ? 'border-rose-400/70 dark:border-rose-500/50 border-l-4 border-l-rose-500 bg-rose-500/[0.05]'
+                  : 'border-black/15 dark:border-white/15 bg-black/[0.02] dark:bg-white/[0.03]'
+              }`}
             >
               <div className="flex items-center justify-between px-3 py-2 border-b border-black/[0.06] dark:border-white/[0.06] gap-2">
                 <button
@@ -270,7 +289,7 @@ export const UploadHistoryModal: React.FC<Props> = ({ isOpen, onClose, onRefill 
                   onClick={() => toggle(h.ts)}
                   className="min-w-0 flex-1 text-left"
                 >
-                  <div className="text-[11px] font-semibold text-neutral-700 dark:text-neutral-300 truncate">
+                  <div className={`text-[11px] font-semibold truncate ${isDup ? 'text-rose-600 dark:text-rose-400' : 'text-neutral-700 dark:text-neutral-300'}`}>
                     <span className="text-neutral-400 mr-0.5">{isOpen ? '▾' : '▸'}</span>
                     {h.gameName}・{h.editionName}
                     {h.issue ? `・第 ${h.issue} 期` : ''}
@@ -279,6 +298,12 @@ export const UploadHistoryModal: React.FC<Props> = ({ isOpen, onClose, onRefill 
                       <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[9px] font-semibold">已對帳</span>
                     )}
                   </div>
+                  {isDup && (
+                    <div className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-rose-500/15 text-rose-600 dark:text-rose-400 text-[9px] font-bold">
+                      <AlertTriangle className="w-2.5 h-2.5 shrink-0" />
+                      可能重複上傳
+                    </div>
+                  )}
                   <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] font-mono">
                     <span className="text-neutral-500">成本 <span className="text-neutral-800 dark:text-neutral-200 font-bold">{money(h.totalCost)}</span></span>
                     <span className="text-neutral-500">獲利 <span className="text-emerald-600 dark:text-emerald-400 font-bold">{win != null ? money(win) : '—'}</span></span>
