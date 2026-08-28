@@ -18,78 +18,133 @@
   body { display: inline-block; padding: 24px; }
 
   #card {
-    width: 720px;
-    font-family: "Noto Sans CJK TC", "WenQuanYi Zen Hei", "PingFang TC",
-      "Microsoft JhengHei", "Noto Color Emoji", sans-serif;
-    background: #0f1115; color: #e8eaed; border-radius: 28px; overflow: hidden;
-    box-shadow: 0 24px 60px rgba(0, 0, 0, .5);
+    width: 760px;
+    font-family: "Noto Sans CJK TC", "PingFang TC", "Microsoft JhengHei",
+      "WenQuanYi Zen Hei", "Noto Color Emoji", sans-serif;
+    background: #0e1016; color: #e8eaed; border-radius: 30px; overflow: hidden;
+    box-shadow: 0 24px 70px rgba(0, 0, 0, .55);
   }
 
+  /* ── 標題 ── */
   .head {
-    padding: 26px 30px 22px;
+    position: relative; padding: 28px 32px 24px;
     background: linear-gradient(135deg, #1f6feb 0%, #7b3ff2 55%, #d6409f 100%);
     color: #fff;
   }
-  .head .kick { font-size: 14px; letter-spacing: 3px; opacity: .85; font-weight: 700; }
-  .head .title { font-size: 30px; font-weight: 800; margin-top: 4px; }
-  .head .meta { font-size: 15px; opacity: .92; margin-top: 6px; font-variant-numeric: tabular-nums; }
+  .head .kick { font-size: 14px; letter-spacing: 4px; opacity: .9; font-weight: 800; }
+  .head .title { font-size: 32px; font-weight: 900; margin-top: 4px; letter-spacing: .5px; }
+  .head .meta { font-size: 15px; opacity: .95; margin-top: 6px; font-variant-numeric: tabular-nums; }
 
-  .balls { padding: 20px 30px 6px; display: flex; gap: 10px; flex-wrap: wrap; }
+  /* ── 開獎球 ── */
+  .balls { padding: 22px 32px 8px; display: flex; gap: 11px; flex-wrap: wrap; }
   .ball {
-    width: 52px; height: 52px; border-radius: 50%;
-    background: radial-gradient(circle at 32% 28%, #ffe9a8, #f7b733 70%, #e08a00);
-    color: #3a2500; font-size: 22px; font-weight: 800;
+    width: 56px; height: 56px; border-radius: 50%;
+    background: radial-gradient(circle at 32% 26%, #fff0bd, #f7b733 68%, #db8400);
+    color: #3a2500; font-size: 24px; font-weight: 900;
     display: flex; align-items: center; justify-content: center;
-    font-variant-numeric: tabular-nums; box-shadow: 0 3px 8px rgba(0, 0, 0, .35);
-  }
-
-  .body { padding: 14px 30px 26px; display: flex; flex-direction: column; gap: 16px; }
-
-  .block {
-    background: #171a21; border: 1px solid rgba(255, 255, 255, .06);
-    border-radius: 18px; padding: 16px 18px;
-  }
-  .btitle { font-size: 14px; font-weight: 800; letter-spacing: 1px; color: #aab2c0; margin-bottom: 10px; }
-
-  .chips { display: flex; gap: 8px; flex-wrap: wrap; }
-  .chip {
-    background: #222733; border: 1px solid rgba(255, 255, 255, .08);
-    border-radius: 12px; padding: 7px 12px; font-size: 16px; color: #d6dbe4;
     font-variant-numeric: tabular-nums;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, .4), inset 0 -3px 6px rgba(180, 110, 0, .35);
   }
-  .chip b { color: #fff; margin: 0 3px; font-size: 18px; }
-  .chip.warn { background: rgba(245, 158, 11, .14); border-color: rgba(245, 158, 11, .4); color: #f7c65b; }
-  .chip.warn b { color: #ffd77a; }
-  .ok { color: #6ee7a8; font-size: 16px; }
 
-  .nine {
-    display: flex; align-items: center; justify-content: space-between; gap: 12px;
-    border-radius: 14px; padding: 12px 16px; font-size: 18px; font-weight: 700;
-  }
-  .nine .gap { font-size: 13px; font-weight: 600; opacity: .8; }
-  .nine.ok9 { background: rgba(16, 185, 129, .14); color: #6ee7a8; }
-  .nine.mid9 { background: #222733; color: #d6dbe4; }
-  .nine.warn9 { background: rgba(245, 158, 11, .16); color: #ffd77a; }
+  .body { padding: 16px 32px 28px; display: flex; flex-direction: column; gap: 18px; }
 
-  .thirds { display: flex; gap: 12px; }
-  .third {
-    flex: 1; background: #171a21; border: 1px solid rgba(255, 255, 255, .06);
-    border-radius: 18px; padding: 14px 14px 16px;
-  }
-  .tname { font-size: 14px; font-weight: 800; color: #aab2c0; margin-bottom: 10px; }
-  .badges { display: flex; gap: 6px; flex-wrap: wrap; }
-  .miss {
-    background: #222733; border-radius: 10px; padding: 5px 8px; font-size: 14px;
-    color: #9aa3b2; font-variant-numeric: tabular-nums;
-  }
-  .miss b { color: #e8eaed; margin-right: 5px; font-size: 15px; }
-  .miss.ok { color: #6ee7a8; }
+  /* ── 區塊通用 ── */
+  .section { }
+  .shead { display: flex; align-items: baseline; gap: 10px; margin-bottom: 12px; }
+  .shead .dot { width: 8px; height: 8px; border-radius: 50%; background: #7b8aff; align-self: center; }
+  .shead .stitle { font-size: 17px; font-weight: 900; letter-spacing: .5px; color: #f2f4f8; }
+  .shead .shint { font-size: 12px; color: #7f8798; margin-left: auto; letter-spacing: .3px; }
 
-  .foot {
-    padding: 0 30px 20px; display: flex; justify-content: space-between;
-    align-items: center; font-size: 14px; color: #8b93a1;
+  /* ── 上排大 tile:單雙比 + 9000碰 ── */
+  .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .tile {
+    border-radius: 20px; padding: 18px 20px; background: #171a22;
+    border: 1px solid rgba(255, 255, 255, .07);
   }
-  .oe b { color: #e8eaed; }
+  .tile .tlab { font-size: 13px; font-weight: 800; letter-spacing: 1.5px; color: #8b93a3; }
+  .tile .tbig { font-size: 34px; font-weight: 900; margin-top: 6px; line-height: 1.05;
+    font-variant-numeric: tabular-nums; }
+  .tile .tsub { font-size: 14px; margin-top: 6px; color: #aab2c0; font-weight: 600; }
+  .tile.oe { background: linear-gradient(150deg, #1a2440, #171a22); }
+  .tile.oe .tbig { color: #8ab4ff; }
+  .tile.nine9.ok { background: linear-gradient(150deg, #10331f, #171a22); }
+  .tile.nine9.ok .tbig { color: #59e0a0; }
+  .tile.nine9.mid .tbig { color: #e8eaed; }
+  .tile.nine9.warn { background: linear-gradient(150deg, #3a2a0c, #171a22);
+    border-color: rgba(245, 158, 11, .35); }
+  .tile.nine9.warn .tbig { color: #ffca5c; }
+
+  /* ── 1800碰 chips ── */
+  .panel {
+    background: #14161d; border: 1px solid rgba(255, 255, 255, .06);
+    border-radius: 20px; padding: 16px 18px;
+  }
+  .chips { display: flex; gap: 9px; flex-wrap: wrap; }
+  .chip {
+    background: #20242f; border: 1px solid rgba(255, 255, 255, .09);
+    border-radius: 13px; padding: 9px 14px; font-size: 17px; color: #dbe0ea;
+    font-weight: 700; font-variant-numeric: tabular-nums;
+  }
+  .chip b { color: #fff; margin: 0 3px; font-size: 19px; }
+  .chip.warn { background: rgba(245, 158, 11, .16); border-color: rgba(245, 158, 11, .45); color: #ffd77a; }
+  .chip.warn b { color: #ffe08a; }
+  .ok-line { color: #59e0a0; font-size: 16px; font-weight: 700; }
+
+  /* ── 冷熱號(圓球牌卡:號碼 + 類型 + 次數)── */
+  .hcpanel { background: #14161d; border: 1px solid rgba(255, 255, 255, .06);
+    border-radius: 20px; padding: 15px 16px 17px; }
+  .hcpanel + .hcpanel { margin-top: 12px; }
+  .hcpanel.hot { border-color: rgba(255, 100, 60, .22);
+    background: linear-gradient(160deg, rgba(255,90,50,.06), #14161d 60%); }
+  .hcpanel.cold { border-color: rgba(70, 140, 255, .22);
+    background: linear-gradient(160deg, rgba(60,130,255,.06), #14161d 60%); }
+  .hchead { display: flex; align-items: baseline; gap: 8px; margin-bottom: 13px; }
+  .hchead .h1 { font-size: 15px; font-weight: 900; letter-spacing: .5px; }
+  .hchead .h2 { font-size: 12px; color: #808896; margin-left: auto; }
+  .hot .hchead .h1 { color: #ff8a5c; }
+  .cold .hchead .h1 { color: #6db8ff; }
+  .pills { display: flex; gap: 9px; flex-wrap: wrap; }
+  .pill { flex: 1 1 0; min-width: 72px; max-width: 92px;
+    display: flex; flex-direction: column; align-items: center; gap: 7px;
+    border-radius: 15px; padding: 12px 6px 11px;
+    background: rgba(255, 255, 255, .03); border: 1px solid rgba(255, 255, 255, .06); }
+  .pball { width: 44px; height: 44px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; font-weight: 900; color: #fff; font-variant-numeric: tabular-nums;
+    box-shadow: 0 3px 8px rgba(0, 0, 0, .4); }
+  .hot .pball { background: radial-gradient(circle at 34% 28%, #ff8a5c, #f4402a 72%, #c81f16); }
+  .cold .pball { background: radial-gradient(circle at 34% 28%, #6db8ff, #2f7ff0 72%, #1a5fd0); }
+  .pl1 { font-size: 11px; color: #8b93a3; line-height: 1; }
+  .pl2 { font-size: 12px; color: #cfd5e0; line-height: 1; font-variant-numeric: tabular-nums; }
+  .pl2 b { font-size: 16px; font-weight: 900; margin: 0 1px; }
+  .hot .pl2 b { color: #ff9c74; }
+  .cold .pl2 b { color: #7db6ff; }
+
+  /* ── 前中後段遺漏 ── */
+  .thirds { display: flex; gap: 13px; }
+  .third { flex: 1; background: #14161d; border: 1px solid rgba(255, 255, 255, .06);
+    border-radius: 18px; padding: 14px 14px 16px; }
+  .tname { font-size: 14px; font-weight: 900; color: #aab2c0; margin-bottom: 11px;
+    display: flex; align-items: center; gap: 7px; }
+  .tname .tbar { width: 20px; height: 4px; border-radius: 3px; background: #4a5670; }
+  .badges { display: flex; gap: 7px; flex-wrap: wrap; }
+  .miss { display: inline-flex; align-items: center; gap: 6px;
+    background: rgba(255, 255, 255, .03); border: 1px solid rgba(255, 255, 255, .06);
+    border-radius: 13px; padding: 4px 11px 4px 4px; }
+  .miss .mb { width: 28px; height: 28px; border-radius: 50%; color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 900; font-variant-numeric: tabular-nums;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, .35); }
+  .miss .mc { font-size: 13px; color: #9aa3b2; font-variant-numeric: tabular-nums; }
+  .miss .mc b { color: #e2e6ee; font-size: 15px; font-weight: 900; margin-right: 1px; }
+  .miss.hi { background: rgba(245, 158, 11, .12); border-color: rgba(245, 158, 11, .32); }
+  .miss.hi .mb { background: radial-gradient(circle at 34% 28%, #ffdf9a, #f5a623 72%, #d98500) !important;
+    color: #3a2500; }
+  .miss.hi .mc b { color: #ffd77a; }
+  .miss.none { padding: 7px 12px; color: #59e0a0; font-size: 14px; font-weight: 700; }
+
+  .foot { padding: 2px 32px 22px; display: flex; justify-content: flex-end;
+    align-items: center; font-size: 13px; color: #6b7383; letter-spacing: .5px; }
 </style>
 </head>
 <body>
@@ -106,22 +161,23 @@
         { a: "0頭", b: "2頭", streak: 4, alert: true },
         { a: "1頭", b: "3頭", streak: 2, alert: false }
       ],
-      nine: { streak: 0, max_gap: 21, alert: false },
+      nine: { streak: 4, max_gap: 21, alert: true },
       thirds: [
-        { name: "前段", items: [{ n: 5, miss: 9 }, { n: 8, miss: 4 }] },
+        { name: "前段", items: [{ n: 5, miss: 9 }, { n: 8, miss: 4 }, { n: 2, miss: 1 }] },
         { name: "中段", items: [{ n: 17, miss: 6 }] },
         { name: "後段", items: [{ n: 33, miss: 7 }, { n: 39, miss: 3 }] }
       ],
-      odd_even: { side: "單多", streak: 2 }
+      odd_even: { side: "單多", streak: 2 },
+      hotcold: {
+        window: 30,
+        hot: [{ n: 7, c: 8 }, { n: 12, c: 8 }, { n: 19, c: 8 }, { n: 23, c: 7 },
+              { n: 32, c: 7 }, { n: 5, c: 6 }, { n: 35, c: 6 }, { n: 9, c: 5 }],
+        cold: [{ n: 15, miss: 36 }, { n: 33, miss: 23 }, { n: 36, miss: 23 }, { n: 3, miss: 16 },
+               { n: 13, miss: 15 }, { n: 24, miss: 14 }, { n: 31, miss: 14 }, { n: 1, miss: 13 }]
+      }
     };
 
     function pad2(n) { return String(n).padStart(2, "0"); }
-    function el(tag, cls, html) {
-      const e = document.createElement(tag);
-      if (cls) e.className = cls;
-      if (html != null) e.innerHTML = html;
-      return e;
-    }
 
     function readData() {
       const raw = (document.getElementById("card-data").textContent || "").trim();
@@ -133,43 +189,100 @@
       return (nums || []).map(n => `<span class="ball">${pad2(n)}</span>`).join("");
     }
 
-    function pairsHtml(pairs) {
-      if (!pairs || !pairs.length)
-        return `<div class="ok">各配對近期都有一起開 ✓</div>`;
-      const chips = pairs.map(p =>
-        `<span class="chip ${p.alert ? "warn" : ""}">${p.a}+${p.b}<b>${p.streak}</b>期</span>`
-      ).join("");
-      return `<div class="chips">${chips}</div>`;
+    // 上排大 tile:單雙比 + 9000碰 全段同開
+    function tilesHtml(d) {
+      const oe = d.odd_even
+        ? `<div class="tile oe"><div class="tlab">單雙比</div>
+             <div class="tbig">${d.odd_even.side}</div>
+             <div class="tsub">已連續 ${d.odd_even.streak} 期</div></div>`
+        : `<div class="tile oe"><div class="tlab">單雙比</div>
+             <div class="tbig">—</div><div class="tsub">最新一期單雙相同</div></div>`;
+
+      let nine = "";
+      if (d.nine) {
+        const n = d.nine;
+        let cls, big, sub;
+        if (n.streak === 0) {
+          cls = "ok"; big = "本期過關"; sub = `四段全開 · 最長槓 ${n.max_gap} 期`;
+        } else {
+          cls = n.alert ? "warn" : "mid";
+          big = `${n.streak} 期未過`; sub = `四段沒到齊 · 最長槓 ${n.max_gap} 期`;
+        }
+        nine = `<div class="tile nine9 ${cls}"><div class="tlab">9000碰 · 過關間隔</div>
+                  <div class="tbig">${big}</div><div class="tsub">${sub}</div></div>`;
+      } else {
+        nine = `<div class="tile nine9 mid"><div class="tlab">9000碰</div>
+                  <div class="tbig">—</div><div class="tsub">本款不適用(非39選5)</div></div>`;
+      }
+      return `<div class="tiles">${oe}${nine}</div>`;
     }
 
-    function nineHtml(nine) {
-      if (!nine) return "";
-      let tone, msg;
-      if (nine.streak === 0) { tone = "ok9"; msg = "最新一期剛全段同開 ●"; }
-      else if (nine.alert) { tone = "warn9"; msg = `已 ${nine.streak} 期沒一起開 ▲`; }
-      else { tone = "mid9"; msg = `已 ${nine.streak} 期沒一起開`; }
-      return `<div class="block">
-        <div class="btitle">9000碰 · 全段同開</div>
-        <div class="nine ${tone}"><span>${msg}</span>
-          <span class="gap">歷史最長空窗 ${nine.max_gap} 期</span></div>
+    // 1800碰:十位段配對斷檔
+    function pairsSection(pairs) {
+      let inner;
+      if (!pairs || !pairs.length) {
+        inner = `<div class="ok-line">各十位段配對近期都有一起開 ✓</div>`;
+      } else {
+        const chips = pairs.map(p =>
+          `<span class="chip ${p.alert ? "warn" : ""}">${p.a}·${p.b}<b>${p.streak}</b>期</span>`
+        ).join("");
+        inner = `<div class="chips">${chips}</div>`;
+      }
+      const warnN = (pairs || []).filter(p => p.alert).length;
+      const hint = warnN ? `${warnN} 組達 3 期示警` : "連 3 期沒一起開就示警";
+      return `<div class="section">
+        <div class="shead"><span class="dot"></span><span class="stitle">1800碰 · 十位段配對斷檔</span>
+          <span class="shint">${hint}</span></div>
+        <div class="panel">${inner}</div>
       </div>`;
     }
 
-    function thirdsHtml(thirds) {
+    // 冷熱號排名(圓球牌卡:號碼 + 類型 + 次數)
+    function hotColdSection(hc) {
+      if (!hc) return "";
+      const hotPills = (hc.hot || []).map(x =>
+        `<div class="pill"><div class="pball">${pad2(x.n)}</div>
+           <div class="pl1">近${hc.window}期</div><div class="pl2">開<b>${x.c}</b>次</div></div>`).join("");
+      const coldPills = (hc.cold || []).map(x =>
+        `<div class="pill"><div class="pball">${pad2(x.n)}</div>
+           <div class="pl1">未開</div><div class="pl2"><b>${x.miss}</b>期</div></div>`).join("");
+      return `<div class="section">
+        <div class="shead"><span class="dot"></span><span class="stitle">冷熱號排名</span>
+          <span class="shint">近 ${hc.window} 期</span></div>
+        <div class="hcpanel hot">
+          <div class="hchead"><span class="h1">🔥 追熱 · 最常開前 8</span>
+            <span class="h2">發燙熱牌,適合連莊/主支</span></div>
+          <div class="pills">${hotPills}</div>
+        </div>
+        <div class="hcpanel cold">
+          <div class="hchead"><span class="h1">❄️ 養牌 · 最久沒開前 8</span>
+            <span class="h2">潛水最久,極冷門拖牌</span></div>
+          <div class="pills">${coldPills}</div>
+        </div>
+      </div>`;
+    }
+
+    // 前中後段目前遺漏
+    function thirdsSection(thirds) {
+      const bars = { "前段": "#5c8cff", "中段": "#b06dff", "後段": "#ff6db0" };
       const cols = (thirds || []).map(t => {
+        const bar = bars[t.name] || "#4a5670";
         const badges = (t.items && t.items.length)
-          ? t.items.map(it => `<span class="miss"><b>${pad2(it.n)}</b>${it.miss}</span>`).join("")
-          : `<span class="miss ok">近期都有開</span>`;
-        return `<div class="third"><div class="tname">${t.name}</div>
+          ? t.items.map(it =>
+              `<span class="miss ${it.miss >= 8 ? "hi" : ""}"><span class="mb" style="background:${bar}">${pad2(it.n)}</span><span class="mc"><b>${it.miss}</b>期</span></span>`).join("")
+          : `<span class="miss none">近期都有開 ✓</span>`;
+        return `<div class="third">
+          <div class="tname"><span class="tbar" style="background:${bar}"></span>${t.name}</div>
           <div class="badges">${badges}</div></div>`;
       }).join("");
-      return `<div class="thirds">${cols}</div>`;
+      return `<div class="section">
+        <div class="shead"><span class="dot"></span><span class="stitle">前中後段 · 目前遺漏</span>
+          <span class="shint">球號／已幾期沒開(≥8 標黃)</span></div>
+        <div class="thirds">${cols}</div>
+      </div>`;
     }
 
     function render(d) {
-      const oe = d.odd_even
-        ? `<span class="oe">單雙比 <b>${d.odd_even.side}</b> 連 ${d.odd_even.streak} 期</span>`
-        : "";
       const metaTime = d.time ? ` · ${d.time}` : "";
       document.getElementById("card").innerHTML = `
         <div class="head">
@@ -179,20 +292,12 @@
         </div>
         <div class="balls">${ballsHtml(d.nums)}</div>
         <div class="body">
-          <div class="block">
-            <div class="btitle">1800碰 · 十位段配對(幾期沒一起開)</div>
-            ${pairsHtml(d.pairs)}
-          </div>
-          ${nineHtml(d.nine)}
-          <div class="block">
-            <div class="btitle">前中後段 · 目前遺漏(球號／遺漏期)</div>
-            ${thirdsHtml(d.thirds)}
-          </div>
+          ${tilesHtml(d)}
+          ${pairsSection(d.pairs)}
+          ${hotColdSection(d.hotcold)}
+          ${thirdsSection(d.thirds)}
         </div>
-        <div class="foot">
-          <span>${oe}</span>
-          <span>539 / 天天樂 損益儀表板</span>
-        </div>`;
+        <div class="foot">539 / 天天樂 損益儀表板</div>`;
       document.documentElement.setAttribute("data-ready", "1");
     }
 

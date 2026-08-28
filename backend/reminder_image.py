@@ -85,6 +85,20 @@ def _thirds_missing(df, num_max: int) -> list[dict]:
     return out
 
 
+def _hotcold(df, num_max: int, window: int = 30, top: int = 8) -> dict:
+    """冷熱號排名(各取 top 名):
+      hot  近 window 期最常開 —— [{n, c}](c=開出次數)
+      cold 目前最久沒開(遺漏拖牌)—— [{n, miss}](miss=已幾期沒開)
+    冷號改用「目前遺漏」而非低頻,語意才是「養牌/拖牌」(參考用戶提供的樣式)。
+    """
+    hot, _ = stats.hot_cold(df, window=window, top=top, num_max=num_max)
+    miss = stats.missing(df, num_max)
+    cold = sorted(miss.items(), key=lambda kv: (-kv[1]["current"], kv[0]))[:top]
+    return {"window": window,
+            "hot": [{"n": n, "c": c} for n, c in hot],
+            "cold": [{"n": n, "miss": v["current"]} for n, v in cold]}
+
+
 def build_card_data(g, df) -> dict:
     """一張提醒卡片的完整資料包(JSON-safe);餵給 reminder_card.html 的 window.__CARD__。
 
@@ -98,6 +112,7 @@ def build_card_data(g, df) -> dict:
       nine   {streak,max_gap,alert}|null  9000碰 全段同開(不支援的款為 null)
       thirds list[{name, items:[{n,miss}]}]  前中後段目前遺漏
       odd_even {side,streak}|null       單雙比(平手 / 無資料為 null)
+      hotcold {window, hot:[{n,c}], cold:[{n,c}]}  近 window 期冷熱號排名
     """
     latest = _latest(df)
     return {
@@ -110,4 +125,5 @@ def build_card_data(g, df) -> dict:
         "nine": _nine(df, g),
         "thirds": _thirds_missing(df, g.num_max),
         "odd_even": _odd_even(df),
+        "hotcold": _hotcold(df, g.num_max),
     }
