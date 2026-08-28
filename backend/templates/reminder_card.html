@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<!--
+  539 / 天天樂 開獎提醒卡片 —— 版面模板(資料驅動)。
+
+  這個檔是「設計好的版面」:CSS 定樣式、JS 從 #card-data 這包 JSON 渲染 DOM。
+  後端(core.render)把 <script id="card-data"> 的內容換成 backend.reminder_image
+  .build_card_data() 產出的 JSON,再用 Chromium 截 #card 這個元素。
+
+  想改版面 → 只動這個檔;想改內容 → 只換 JSON(schema 見 build_card_data 的 docstring)。
+  本機預覽:直接用瀏覽器開,會吃下面 DEMO 那包假資料。
+-->
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { background: transparent; }
+  body { display: inline-block; padding: 24px; }
+
+  #card {
+    width: 720px;
+    font-family: "Noto Sans CJK TC", "WenQuanYi Zen Hei", "PingFang TC",
+      "Microsoft JhengHei", "Noto Color Emoji", sans-serif;
+    background: #0f1115; color: #e8eaed; border-radius: 28px; overflow: hidden;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, .5);
+  }
+
+  .head {
+    padding: 26px 30px 22px;
+    background: linear-gradient(135deg, #1f6feb 0%, #7b3ff2 55%, #d6409f 100%);
+    color: #fff;
+  }
+  .head .kick { font-size: 14px; letter-spacing: 3px; opacity: .85; font-weight: 700; }
+  .head .title { font-size: 30px; font-weight: 800; margin-top: 4px; }
+  .head .meta { font-size: 15px; opacity: .92; margin-top: 6px; font-variant-numeric: tabular-nums; }
+
+  .balls { padding: 20px 30px 6px; display: flex; gap: 10px; flex-wrap: wrap; }
+  .ball {
+    width: 52px; height: 52px; border-radius: 50%;
+    background: radial-gradient(circle at 32% 28%, #ffe9a8, #f7b733 70%, #e08a00);
+    color: #3a2500; font-size: 22px; font-weight: 800;
+    display: flex; align-items: center; justify-content: center;
+    font-variant-numeric: tabular-nums; box-shadow: 0 3px 8px rgba(0, 0, 0, .35);
+  }
+
+  .body { padding: 14px 30px 26px; display: flex; flex-direction: column; gap: 16px; }
+
+  .block {
+    background: #171a21; border: 1px solid rgba(255, 255, 255, .06);
+    border-radius: 18px; padding: 16px 18px;
+  }
+  .btitle { font-size: 14px; font-weight: 800; letter-spacing: 1px; color: #aab2c0; margin-bottom: 10px; }
+
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; }
+  .chip {
+    background: #222733; border: 1px solid rgba(255, 255, 255, .08);
+    border-radius: 12px; padding: 7px 12px; font-size: 16px; color: #d6dbe4;
+    font-variant-numeric: tabular-nums;
+  }
+  .chip b { color: #fff; margin: 0 3px; font-size: 18px; }
+  .chip.warn { background: rgba(245, 158, 11, .14); border-color: rgba(245, 158, 11, .4); color: #f7c65b; }
+  .chip.warn b { color: #ffd77a; }
+  .ok { color: #6ee7a8; font-size: 16px; }
+
+  .nine {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    border-radius: 14px; padding: 12px 16px; font-size: 18px; font-weight: 700;
+  }
+  .nine .gap { font-size: 13px; font-weight: 600; opacity: .8; }
+  .nine.ok9 { background: rgba(16, 185, 129, .14); color: #6ee7a8; }
+  .nine.mid9 { background: #222733; color: #d6dbe4; }
+  .nine.warn9 { background: rgba(245, 158, 11, .16); color: #ffd77a; }
+
+  .thirds { display: flex; gap: 12px; }
+  .third {
+    flex: 1; background: #171a21; border: 1px solid rgba(255, 255, 255, .06);
+    border-radius: 18px; padding: 14px 14px 16px;
+  }
+  .tname { font-size: 14px; font-weight: 800; color: #aab2c0; margin-bottom: 10px; }
+  .badges { display: flex; gap: 6px; flex-wrap: wrap; }
+  .miss {
+    background: #222733; border-radius: 10px; padding: 5px 8px; font-size: 14px;
+    color: #9aa3b2; font-variant-numeric: tabular-nums;
+  }
+  .miss b { color: #e8eaed; margin-right: 5px; font-size: 15px; }
+  .miss.ok { color: #6ee7a8; }
+
+  .foot {
+    padding: 0 30px 20px; display: flex; justify-content: space-between;
+    align-items: center; font-size: 14px; color: #8b93a1;
+  }
+  .oe b { color: #e8eaed; }
+</style>
+</head>
+<body>
+  <div id="card"></div>
+
+  <!-- 後端把這段換成真資料;直接開檔預覽時吃下面的 DEMO。 -->
+  <script id="card-data" type="application/json">__CARD_JSON__</script>
+
+  <script>
+    const DEMO = {
+      game: "今彩539", issue: "114000221", date: "2026-08-28", time: "20:30",
+      nums: [3, 12, 20, 25, 31],
+      pairs: [
+        { a: "0頭", b: "2頭", streak: 4, alert: true },
+        { a: "1頭", b: "3頭", streak: 2, alert: false }
+      ],
+      nine: { streak: 0, max_gap: 21, alert: false },
+      thirds: [
+        { name: "前段", items: [{ n: 5, miss: 9 }, { n: 8, miss: 4 }] },
+        { name: "中段", items: [{ n: 17, miss: 6 }] },
+        { name: "後段", items: [{ n: 33, miss: 7 }, { n: 39, miss: 3 }] }
+      ],
+      odd_even: { side: "單多", streak: 2 }
+    };
+
+    function pad2(n) { return String(n).padStart(2, "0"); }
+    function el(tag, cls, html) {
+      const e = document.createElement(tag);
+      if (cls) e.className = cls;
+      if (html != null) e.innerHTML = html;
+      return e;
+    }
+
+    function readData() {
+      const raw = (document.getElementById("card-data").textContent || "").trim();
+      if (!raw || raw === "__CARD_JSON__") return DEMO;   // 預覽 / 未注入 → 假資料
+      try { return JSON.parse(raw); } catch (_) { return DEMO; }
+    }
+
+    function ballsHtml(nums) {
+      return (nums || []).map(n => `<span class="ball">${pad2(n)}</span>`).join("");
+    }
+
+    function pairsHtml(pairs) {
+      if (!pairs || !pairs.length)
+        return `<div class="ok">各配對近期都有一起開 ✓</div>`;
+      const chips = pairs.map(p =>
+        `<span class="chip ${p.alert ? "warn" : ""}">${p.a}+${p.b}<b>${p.streak}</b>期</span>`
+      ).join("");
+      return `<div class="chips">${chips}</div>`;
+    }
+
+    function nineHtml(nine) {
+      if (!nine) return "";
+      let tone, msg;
+      if (nine.streak === 0) { tone = "ok9"; msg = "最新一期剛全段同開 ●"; }
+      else if (nine.alert) { tone = "warn9"; msg = `已 ${nine.streak} 期沒一起開 ▲`; }
+      else { tone = "mid9"; msg = `已 ${nine.streak} 期沒一起開`; }
+      return `<div class="block">
+        <div class="btitle">9000碰 · 全段同開</div>
+        <div class="nine ${tone}"><span>${msg}</span>
+          <span class="gap">歷史最長空窗 ${nine.max_gap} 期</span></div>
+      </div>`;
+    }
+
+    function thirdsHtml(thirds) {
+      const cols = (thirds || []).map(t => {
+        const badges = (t.items && t.items.length)
+          ? t.items.map(it => `<span class="miss"><b>${pad2(it.n)}</b>${it.miss}</span>`).join("")
+          : `<span class="miss ok">近期都有開</span>`;
+        return `<div class="third"><div class="tname">${t.name}</div>
+          <div class="badges">${badges}</div></div>`;
+      }).join("");
+      return `<div class="thirds">${cols}</div>`;
+    }
+
+    function render(d) {
+      const oe = d.odd_even
+        ? `<span class="oe">單雙比 <b>${d.odd_even.side}</b> 連 ${d.odd_even.streak} 期</span>`
+        : "";
+      const metaTime = d.time ? ` · ${d.time}` : "";
+      document.getElementById("card").innerHTML = `
+        <div class="head">
+          <div class="kick">🎯 開獎提醒</div>
+          <div class="title">${d.game}</div>
+          <div class="meta">期 ${d.issue} · ${d.date}${metaTime}</div>
+        </div>
+        <div class="balls">${ballsHtml(d.nums)}</div>
+        <div class="body">
+          <div class="block">
+            <div class="btitle">1800碰 · 十位段配對(幾期沒一起開)</div>
+            ${pairsHtml(d.pairs)}
+          </div>
+          ${nineHtml(d.nine)}
+          <div class="block">
+            <div class="btitle">前中後段 · 目前遺漏(球號／遺漏期)</div>
+            ${thirdsHtml(d.thirds)}
+          </div>
+        </div>
+        <div class="foot">
+          <span>${oe}</span>
+          <span>539 / 天天樂 損益儀表板</span>
+        </div>`;
+      document.documentElement.setAttribute("data-ready", "1");
+    }
+
+    render(readData());
+  </script>
+</body>
+</html>

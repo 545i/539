@@ -8,9 +8,9 @@
 """
 from __future__ import annotations
 
-from backend import watch_store
+from backend import reminder_image, watch_store
 from backend.data import all_games, get_game, load_df
-from core import notify, stats
+from core import notify, render, stats
 
 
 def _pairs_hot(df, num_max: int) -> list[dict]:
@@ -63,18 +63,33 @@ def notify_combo_watch(game_key: str) -> bool:
 def push_game_update(game_key: str) -> bool:
     """新開獎自動推播:只發「這一款」的完整提醒(格式同 /提醒,0 期不顯示)。
 
+    優先發**圖卡**(版面 backend/templates/reminder_card.html,資料
+    backend.reminder_image,渲染 core.render);圖渲不出來 / 發圖失敗就**退回純文字**
+    (block),提醒不會因為圖掛掉而發不出去。
+
     開獎時刻各款不同(見 core.drawtime),排程的 on_added 會帶入剛更新的
     game_key,所以這裡只推該款,不會把三款全發一遍。沒設定 / 讀不到資料回 False。
     """
     if not notify.enabled():
         return False
     try:
+        g = get_game(game_key)
         df = load_df(game_key)
-        block = _game_block(get_game(game_key), df)
+        block = _game_block(g, df)
     except Exception:       # noqa: BLE001 — 推播失敗不能影響排程
         return False
     if not block:
         return False
+    # 先試圖卡:渲得出來且發成功就結束;否則退回純文字。
+    try:
+        data = reminder_image.build_card_data(g, df)
+        png = render.render_card(data)
+    except Exception:       # noqa: BLE001 — 圖失敗不影響純文字退路
+        png = None
+    if png:
+        caption = f"{g.name} 開獎提醒 · 期 {data.get('issue', '')}({data.get('date', '')})"
+        if notify.send_photo(png, caption=caption):
+            return True
     return notify.send(block)
 
 

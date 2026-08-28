@@ -152,6 +152,64 @@ def send(text: str, chat_id: str | None = None, parse_mode: str = "HTML",
     return ok
 
 
+def _multipart(fields: dict, photo: bytes, filename: str = "card.png") -> tuple[bytes, str]:
+    """組 multipart/form-data body(sendPhoto 用);回 (body, content_type)。"""
+    boundary = "----lotto539" + os.urandom(8).hex()
+    crlf = b"\r\n"
+    parts: list[bytes] = []
+    for k, v in fields.items():
+        if v is None:
+            continue
+        parts += [
+            f"--{boundary}".encode(),
+            f'Content-Disposition: form-data; name="{k}"'.encode(),
+            b"", str(v).encode(),
+        ]
+    parts += [
+        f"--{boundary}".encode(),
+        f'Content-Disposition: form-data; name="photo"; filename="{filename}"'.encode(),
+        b"Content-Type: image/png", b"", photo,
+        f"--{boundary}--".encode(), b"",
+    ]
+    body = crlf.join(parts)
+    return body, f"multipart/form-data; boundary={boundary}"
+
+
+def send_photo(photo: bytes, caption: str = "", chat_id: str | None = None,
+               parse_mode: str = "HTML") -> bool:
+    """發一張圖(sendPhoto);回傳是否成功。沒設定 / 沒圖 / 失敗都回 False(不丟例外)。
+
+    caption 是圖說(Telegram 上限 1024 字,超過自動截),失敗原因記在 last_error()。
+    圖發不出去時**不**自動退純文字 —— 那一層退回交給呼叫端(reminders)決定。
+    """
+    global _last_error
+    cid = (chat_id or _chat_id()).strip()
+    token = _token()
+    if not (token and cid and photo):
+        _last_error = "未設定 token/chat_id 或無圖"
+        return False
+    fields = {"chat_id": cid, "caption": (caption or "")[:1024]}
+    if parse_mode:
+        fields["parse_mode"] = parse_mode
+    body, ctype = _multipart(fields, photo)
+    url = API.format(token=token, method="sendPhoto")
+    req = urllib.request.Request(url, data=body, headers={"Content-Type": ctype})
+    try:
+        with urllib.request.urlopen(req, timeout=20) as r:
+            res = json.loads(r.read().decode())
+    except urllib.error.HTTPError as e:
+        try:
+            res = json.loads(e.read().decode())
+        except Exception:       # noqa: BLE001
+            _last_error = f"HTTP {e.code}"
+            return False
+    except Exception as e:      # noqa: BLE001 — 推播失敗不能拖垮呼叫端
+        _last_error = str(e) or e.__class__.__name__
+        return False
+    _last_error = "" if res.get("ok") else str(res.get("description", "not ok"))
+    return bool(res.get("ok"))
+
+
 def delete_message(chat_id, message_id) -> bool:
     """刪掉某則訊息(「清除」按鈕用)。"""
     res = _call("deleteMessage", {"chat_id": str(chat_id), "message_id": int(message_id)})
