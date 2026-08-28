@@ -1,7 +1,11 @@
 import {useCallback, useEffect, useMemo, useState} from 'react';
-import {api, LedgerEntryDTO, LedgerMode} from './client';
+import {api, ConflictBet, LedgerEntryDTO, LedgerMode} from './client';
 import {useAuth} from './useAuth';
 import {BetRecord} from '../types';
+
+// 記帳去重:偵測到同槽衝突時,把「要記的那筆」與「將被覆蓋的既有紀錄」暫存,
+// 讓分頁跳出覆蓋確認;使用者按確認 → 帶 overwrite 重送。
+export type PendingConflict = {rec: NewBetRecord; conflicts: ConflictBet[]};
 
 // 各下注分頁的流水帳。
 //
@@ -74,9 +78,13 @@ export function useLedger(
     };
   }, [loggedIn, mode, reloadKey]);
 
+  // 同槽衝突暫存(null = 無);分頁讀它決定要不要跳覆蓋確認
+  const [pendingConflict, setPendingConflict] = useState<PendingConflict | null>(null);
+
   const add = useCallback(
-    async (rec: NewBetRecord) => {
+    async (rec: NewBetRecord, overwrite = false) => {
       if (!loggedIn) {
+        // 未登入的本地流水不做去重(只留在這個瀏覽器分頁)
         setLocal(prev => [
           ...prev,
           {...rec, id: `local-${Date.now()}-${prev.length}`, index: 0, cumPnl: 0},
@@ -85,14 +93,30 @@ export function useLedger(
       }
       setError(null);
       try {
-        const entry = await api.ledgerAdd(mode, rec as unknown as Record<string, unknown>);
-        setRemote(prev => [...(prev ?? []), toRecord(entry)]);
+        const res = await api.ledgerAdd(
+          mode, rec as unknown as Record<string, unknown>, overwrite);
+        if (res.status === 'conflict') {
+          setPendingConflict({rec, conflicts: res.conflicts});   // 跳確認,先不寫入
+          return;
+        }
+        setRemote(prev => [...(prev ?? []), toRecord(res)]);
+        setPendingConflict(null);
       } catch (e) {
         setError((e as Error).message);
       }
     },
     [loggedIn, mode],
   );
+
+  /** 覆蓋確認:把暫存那筆帶 overwrite 重送(刪同槽舊紀錄 + 寫新的)。 */
+  const confirmOverwrite = useCallback(async () => {
+    if (!pendingConflict) return;
+    await add(pendingConflict.rec, true);
+    // 覆蓋刪掉了舊 ledger 紀錄 → 重讀一次,列表才不會留著已被刪的那筆
+    reload();
+  }, [pendingConflict, add, reload]);
+
+  const cancelOverwrite = useCallback(() => setPendingConflict(null), []);
 
   /** 撤銷最後輸入的那一筆。 */
   const undo = useCallback(async () => {
@@ -200,7 +224,8 @@ export function useLedger(
     return withRunning(sorted);
   }, [loggedIn, remote, local, edition, combine]);
 
-  return {records, add, undo, deleteById, clear, resettle, reload, loading, error, loggedIn};
+  return {records, add, undo, deleteById, clear, resettle, reload, loading, error,
+    loggedIn, pendingConflict, confirmOverwrite, cancelOverwrite};
 }
 
 /** 總損益頁用:一次撈四種下法的紀錄(未登入回空陣列)。 */

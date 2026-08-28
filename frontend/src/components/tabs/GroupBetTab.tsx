@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { LotteryBallPad } from '../LotteryBallPad';
 import { IssuePicker } from '../IssuePicker';
+import { OverwriteConfirm } from '../OverwriteConfirm';
 import { BetTargetSelector } from '../BetTargetSelector';
 import { BetRecord, LotteryGame } from '../../types';
 import { api, ErhePlanDTO, GroupDTO } from '../../api/client';
@@ -196,6 +197,13 @@ export const GroupBetTab: React.FC<Props> = ({ group }) => {
 
   return (
     <div className="space-y-4 sm:space-y-5 animate-in fade-in duration-200 w-full overflow-hidden">
+      {ledger.pendingConflict && (
+        <OverwriteConfirm
+          conflicts={ledger.pendingConflict.conflicts}
+          onConfirm={ledger.confirmOverwrite}
+          onCancel={ledger.cancelOverwrite}
+        />
+      )}
       {/* Top Banner Bar */}
       <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] space-y-3 sm:space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-4">

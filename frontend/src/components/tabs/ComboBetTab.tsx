@@ -11,6 +11,7 @@ import { INITIAL_COMBO_RECORDS } from '../../data/lotteryData';
 import { LotteryBallPad } from '../LotteryBallPad';
 import { IssuePicker } from '../IssuePicker';
 import { BetTargetSelector } from '../BetTargetSelector';
+import { OverwriteConfirm } from '../OverwriteConfirm';
 import { LotteryGame, BetRecord } from '../../types';
 import { api } from '../../api/client';
 import { useAsync } from '../../api/useAsync';
@@ -188,6 +189,13 @@ export const ComboBetTab: React.FC = () => {
 
   return (
     <div className="space-y-4 sm:space-y-5 animate-in fade-in duration-200 w-full overflow-hidden">
+      {ledger.pendingConflict && (
+        <OverwriteConfirm
+          conflicts={ledger.pendingConflict.conflicts}
+          onConfirm={ledger.confirmOverwrite}
+          onCancel={ledger.cancelOverwrite}
+        />
+      )}
       {/* Top Banner Bar */}
       <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-4">
         <div>

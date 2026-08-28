@@ -504,6 +504,25 @@ export interface LedgerEntryDTO {
   created: string;
 }
 
+// 記帳去重:同 遊戲+日期+版+玩法+星數 已有紀錄時,後端回這批「將被覆蓋」的摘要
+export interface ConflictBet {
+  id: number;
+  game: string;
+  date: string;
+  edition: number;
+  mode: LedgerMode;
+  stars: number;
+  playType?: string;
+  cost: number;
+  result: string;
+  payout: number;
+  selectedBalls: number[];
+}
+// 新增下注的結果:成功(含 entry)或偵測到同槽衝突(附衝突清單,尚未寫入)
+export type LedgerAddResult =
+  | ({status: 'ok'} & LedgerEntryDTO)
+  | {status: 'conflict'; conflicts: ConflictBet[]};
+
 // 快速上傳下注紀錄(需登入):貼一段文字 → 後端解析成多筆流水。
 // dry_run = true 只解析回傳預覽,不寫入;確認後再打一次 dry_run = false。
 // 認不出來的行進 errors,不影響其他筆 —— 所以 items 與 errors 可能同時有東西。
@@ -843,8 +862,8 @@ export const api = {
   // ledger 記帳流水帳(需登入;未登入時前端自己用 state 撐著)
   ledgerList: (mode?: LedgerMode) =>
     get<LedgerEntryDTO[]>(`ledger${mode ? `?mode=${mode}` : ''}`),
-  ledgerAdd: (mode: LedgerMode, record: Record<string, unknown>) =>
-    post<LedgerEntryDTO>('ledger', {mode, record}),
+  ledgerAdd: (mode: LedgerMode, record: Record<string, unknown>, overwrite = false) =>
+    post<LedgerAddResult>('ledger', {mode, record, overwrite}),
   ledgerDelete: (id: number) =>
     del<{ok: boolean; deleted: number}>(`ledger/${id}`),
   // 改期數重新對獎:登入時存後端(回傳更新後那筆);未登入用 preview 不寫 DB。

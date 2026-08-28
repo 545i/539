@@ -131,8 +131,11 @@ def test_dry_run_import_leaves_no_trace(client, alice):
 
 
 def test_clear_is_reversible(client, alice):
-    for mode in ("single", "single", "combo"):
-        client.post(f"{P}/ledger", json={"mode": mode, "record": RECORD},
+    # 兩筆 single 用不同日期(去重:同 遊戲+日期+版+玩法+星數 只能一筆)
+    for mode, rec in (("single", {**RECORD, "date": "2026-08-01"}),
+                      ("single", {**RECORD, "date": "2026-08-02"}),
+                      ("combo", RECORD)):
+        client.post(f"{P}/ledger", json={"mode": mode, "record": rec},
                     headers=alice)
     assert client.delete(f"{P}/ledger?mode=single",
                          headers=alice).json()["deleted"] == 2

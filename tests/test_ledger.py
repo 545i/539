@@ -92,8 +92,11 @@ def test_accounts_are_isolated(client, alice, bob):
 
 
 def test_clear_by_mode_and_all(client, alice):
-    for mode in ("single", "single", "combo"):
-        client.post(f"{P}/ledger", json={"mode": mode, "record": {"pnl": -1}}, headers=alice)
+    # 兩筆 single 用不同日期(去重以 遊戲+日期+版+玩法+星數 為槽,同槽只能一筆)
+    for mode, rec in (("single", {"pnl": -1, "date": "2026-08-01"}),
+                      ("single", {"pnl": -1, "date": "2026-08-02"}),
+                      ("combo", {"pnl": -1})):
+        client.post(f"{P}/ledger", json={"mode": mode, "record": rec}, headers=alice)
     assert client.delete(f"{P}/ledger?mode=single", headers=alice).json()["deleted"] == 2
     assert [r["mode"] for r in client.get(f"{P}/ledger", headers=alice).json()] == ["combo"]
     assert client.delete(f"{P}/ledger", headers=alice).json()["deleted"] == 1

@@ -50,9 +50,45 @@ def _resettle(record: dict, issue: str, hit_count: int | None = None) -> dict:
     return out
 
 
+def _rec_stars(r: dict) -> int:
+    """連碰星數:優先讀 stars 欄位,舊 combo 紀錄沒有就從 playType 退回解析。"""
+    s = r.get("stars")
+    if s is not None:
+        return int(s or 0)
+    pt = str(r.get("playType") or "")
+    return 4 if "四星" in pt else 3 if "三星" in pt else 2 if "二星" in pt else 0
+
+
+def _slot(record: dict, mode: str) -> tuple:
+    """下注去重槽:同一日期、同版、同遊戲、同玩法、同星數 只能一筆。
+
+    **一定要含 game** —— 流水混合各遊戲,天天樂/539 同版同天會有同 mode+stars。
+    mode 用 entry 的 mode(權威),不讀 record.mode(有些紀錄沒存這欄)。"""
+    return (
+        str(record.get("game") or ""),
+        str(record.get("date") or "")[:10],
+        int(record.get("edition") or 1),
+        str(mode or ""),
+        _rec_stars(record),
+    )
+
+
+def _conflict_view(e: dict) -> dict:
+    """回給前端的「將被覆蓋」紀錄摘要。"""
+    r = e.get("record") or {}
+    return {
+        "id": e["id"], "game": r.get("game"), "date": str(r.get("date"))[:10],
+        "edition": r.get("edition"), "mode": r.get("mode"), "stars": _rec_stars(r),
+        "playType": r.get("playType"), "cost": round(float(r.get("cost") or 0)),
+        "result": r.get("result"), "payout": round(float(r.get("payout") or 0)),
+        "selectedBalls": r.get("selectedBalls") or [],
+    }
+
+
 class EntryIn(BaseModel):
     mode: str
     record: dict = Field(default_factory=dict)
+    overwrite: bool = False   # True = 覆蓋同槽既有紀錄(先刪舊再寫新)
 
 
 class SettleIn(BaseModel):
@@ -83,6 +119,22 @@ def add_entry(body: EntryIn, user: str = Depends(current_user)):
     """
     _check_mode(body.mode)
     record = body.record
+    # 去重:同槽(遊戲+日期+版+玩法+星數)已有紀錄 → 沒帶 overwrite 就回衝突清單,
+    # 不寫入;帶 overwrite 就先刪同槽舊紀錄(進 audit 可還原)再寫新的。
+    slot = _slot(record, body.mode)
+    conflicts = [e for e in ledger_store.list_entries(user)
+                 if _slot(e.get("record") or {}, e.get("mode")) == slot]
+    if conflicts and not body.overwrite:
+        return {"status": "conflict",
+                "conflicts": [_conflict_view(e) for e in conflicts]}
+    for e in conflicts:
+        row = ledger_store.delete_entry(user, e["id"])
+        if row:
+            audit_store.log(
+                user, "bet_clear",
+                summary="覆蓋下注:" + audit_store.summarize_record(
+                    row.get("mode", body.mode), row.get("record", {})),
+                reverse_data={"entries": [row]})
     try:
         g = games.by_name(str(record.get("game", "")))
         record = autosettle.settle_record_if_drawn(record, g)
@@ -94,7 +146,7 @@ def add_entry(body: EntryIn, user: str = Depends(current_user)):
         summary=audit_store.summarize_record(body.mode, entry["record"]),
         reverse_data={"entry_id": entry["id"]},
     )
-    return entry
+    return {"status": "ok", **entry}
 
 
 class DateSummaryIn(BaseModel):
