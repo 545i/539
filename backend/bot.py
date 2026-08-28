@@ -27,13 +27,19 @@ _ERR_SLEEP = 5
 
 
 def _handle_update(u: dict) -> None:
-    # 一般訊息:對到指令才回(帶清除按鈕)
+    # 一般訊息:對到指令才回
     msg = u.get("message") or u.get("channel_post")
     if msg:
         text = msg.get("text", "")
+        chat_id = (msg.get("chat") or {}).get("id")
+        # /提醒 → 每款各發一張圖卡(渲不出來的款退回該款純文字);全發不成才退整段文字
+        if reminders.is_reminder_command(text):
+            if reminders.push_all_cards(chat_id=str(chat_id)) == 0:
+                notify.send(reminders.reminder_text(),
+                            chat_id=str(chat_id), reply_markup=_CLEAR_KB)
+            return
         reply = reminders.handle_command(text)
         if reply:
-            chat_id = (msg.get("chat") or {}).get("id")
             notify.send(reply, chat_id=str(chat_id), reply_markup=_CLEAR_KB)
         return
 

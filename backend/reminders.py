@@ -60,12 +60,29 @@ def notify_combo_watch(game_key: str) -> bool:
     return notify.send("\n".join(lines))
 
 
-def push_game_update(game_key: str) -> bool:
-    """新開獎自動推播:只發「這一款」的完整提醒(格式同 /提醒,0 期不顯示)。
+def _push_card_or_text(g, df, chat_id: str | None = None) -> bool:
+    """發「這一款」的提醒:先試圖卡,渲不出來 / 發圖失敗就退回純文字 block。
 
-    優先發**圖卡**(版面 backend/templates/reminder_card.html,資料
-    backend.reminder_image,渲染 core.render);圖渲不出來 / 發圖失敗就**退回純文字**
-    (block),提醒不會因為圖掛掉而發不出去。
+    版面 backend/templates/reminder_card.html、資料 backend.reminder_image、渲染
+    core.render 都 best-effort;圖掛掉不會讓提醒發不出去。chat_id 不給就發預設群。
+    """
+    block = _game_block(g, df)
+    if not block:
+        return False
+    try:
+        data = reminder_image.build_card_data(g, df)
+        png = render.render_card(data)
+    except Exception:       # noqa: BLE001 — 圖失敗不影響純文字退路
+        png = None
+    if png:
+        caption = f"{g.name} 開獎提醒 · 期 {data.get('issue', '')}({data.get('date', '')})"
+        if notify.send_photo(png, caption=caption, chat_id=chat_id):
+            return True
+    return notify.send(block, chat_id=chat_id)
+
+
+def push_game_update(game_key: str) -> bool:
+    """新開獎自動推播:只發「這一款」的完整提醒(圖卡優先,退純文字)。
 
     開獎時刻各款不同(見 core.drawtime),排程的 on_added 會帶入剛更新的
     game_key,所以這裡只推該款,不會把三款全發一遍。沒設定 / 讀不到資料回 False。
@@ -75,22 +92,36 @@ def push_game_update(game_key: str) -> bool:
     try:
         g = get_game(game_key)
         df = load_df(game_key)
-        block = _game_block(g, df)
     except Exception:       # noqa: BLE001 — 推播失敗不能影響排程
         return False
-    if not block:
-        return False
-    # 先試圖卡:渲得出來且發成功就結束;否則退回純文字。
-    try:
-        data = reminder_image.build_card_data(g, df)
-        png = render.render_card(data)
-    except Exception:       # noqa: BLE001 — 圖失敗不影響純文字退路
-        png = None
-    if png:
-        caption = f"{g.name} 開獎提醒 · 期 {data.get('issue', '')}({data.get('date', '')})"
-        if notify.send_photo(png, caption=caption):
-            return True
-    return notify.send(block)
+    return _push_card_or_text(g, df)
+
+
+def push_all_cards(chat_id: str | None = None) -> int:
+    """把每一款的提醒圖卡各發一張(給 /提醒 用);回成功張數。
+
+    每款各自渲圖 → 發圖,渲不出來就退回該款純文字。沒設定 token/chat_id 回 0。
+    """
+    if not notify.enabled():
+        return 0
+    sent = 0
+    for g in all_games():
+        try:
+            df = load_df(g.key)
+        except Exception:       # noqa: BLE001 — 讀不到資料就跳過該款
+            continue
+        try:
+            if _push_card_or_text(g, df, chat_id=chat_id):
+                sent += 1
+        except Exception:       # noqa: BLE001 — 單款失敗不影響其他款
+            continue
+    return sent
+
+
+def is_reminder_command(text: str) -> bool:
+    """這則訊息是不是 /提醒 指令(認 /提醒、/remind、/reminder,含 @botname)。"""
+    cmd = (text or "").strip().split()[0] if text and text.strip() else ""
+    return cmd.split("@", 1)[0] in ("/提醒", "/remind", "/reminder")
 
 
 def on_new_draw(game_key: str) -> bool:
