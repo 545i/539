@@ -42,6 +42,7 @@ export interface BetRecord {
   mode: DuoBetTab;
   edition?: number; // 屬於哪個版(eid);舊紀錄沒有就當第一版
   playType?: string;
+  stars?: number; // 連碰星數(2/3/4);非連碰為 0。舊 combo 紀錄可能沒有,從 playType 退回解析
   units: number; // 支數 or 車數
   cars?: number;
   betsCount: number; // 注數

@@ -11,7 +11,7 @@ import { INITIAL_COMBO_RECORDS } from '../../data/lotteryData';
 import { LotteryBallPad } from '../LotteryBallPad';
 import { IssuePicker } from '../IssuePicker';
 import { BetTargetSelector } from '../BetTargetSelector';
-import { LotteryGame } from '../../types';
+import { LotteryGame, BetRecord } from '../../types';
 import { api } from '../../api/client';
 import { useAsync } from '../../api/useAsync';
 import { useGame } from '../../api/useGame';
@@ -129,6 +129,7 @@ export const ComboBetTab: React.FC = () => {
       mode: 'combo',
       edition: eid,
       playType: `${activePlay} ${starCount} (${units} 支)`,
+      stars: k,               // 存星數:去重(date+版+mode+stars)與列表三星/四星合併都要用
       units,
       cars: units,
       betsCount: totalComb,
@@ -140,6 +141,50 @@ export const ComboBetTab: React.FC = () => {
       pnl
     });
   };
+
+  // ── 連碰列表:同一注的三星/四星(date+版+遊戲+號碼相同)合併成一列 ──────
+  // 資料層仍是各自一筆(去重鍵含 stars),只有顯示合併。星數優先讀 rec.stars,
+  // 舊 combo 紀錄沒有就從 playType 退回解析。
+  const recStars = (r: BetRecord): number =>
+    r.stars ?? (r.playType?.includes('四星') ? 4
+      : r.playType?.includes('三星') ? 3
+      : r.playType?.includes('二星') ? 2 : 0);
+  const starName = (r: BetRecord): string =>
+    ({4: '四星', 3: '三星', 2: '二星'} as Record<number, string>)[recStars(r)] ?? '連碰';
+  type ComboGroup = {
+    key: string; index: number; head: BetRecord; members: BetRecord[];
+    cost: number; payout: number; pnl: number;
+  };
+  const comboGroups: ComboGroup[] = (() => {
+    const map = new Map<string, BetRecord[]>();
+    for (const r of records) {
+      const k = `${r.date}|${r.edition ?? 1}|${r.game}|${[...r.selectedBalls].sort((a, b) => a - b).join(',')}`;
+      const arr = map.get(k);
+      if (arr) arr.push(r); else map.set(k, [r]);
+    }
+    let i = 0;
+    return [...map.values()].map(members => {
+      const sorted = [...members].sort((a, b) => recStars(a) - recStars(b));
+      return {
+        key: sorted.map(m => m.id).join('+'),
+        index: ++i,
+        head: sorted[0],
+        members: sorted,
+        cost: sorted.reduce((s, m) => s + m.cost, 0),
+        payout: sorted.reduce((s, m) => s + m.payout, 0),
+        pnl: sorted.reduce((s, m) => s + m.pnl, 0),
+      };
+    });
+  })();
+  // 對整組套用:改期號 / 重對獎 / 撤銷都要作用在該注的三星+四星兩筆
+  const resettleGroup = (grp: ComboGroup, iss: string) =>
+    grp.members.forEach(m => ledger.resettle(m.id, iss));
+  const deleteGroup = (grp: ComboGroup) =>
+    grp.members.forEach(m => ledger.deleteById(m.id));
+  const resultCls = (r: BetRecord) =>
+    r.payout > 0 ? 'text-emerald-600 dark:text-emerald-400 font-bold'
+      : r.result === '待開獎' ? 'text-neutral-500 dark:text-neutral-400'
+        : 'text-rose-600 dark:text-rose-400';
 
   return (
     <div className="space-y-4 sm:space-y-5 animate-in fade-in duration-200 w-full overflow-hidden">
@@ -418,87 +463,72 @@ export const ComboBetTab: React.FC = () => {
               </div>
             )}
 
-            {/* Mobile View: Vertical Clean Cards (No Horizontal Scrolling) */}
+            {/* Mobile View: 一注一卡(三星/四星並列) */}
             <div className="space-y-2.5 sm:hidden">
-              {records.map((rec) => (
-                <div 
-                  key={rec.id}
+              {comboGroups.map((grp) => (
+                <div
+                  key={grp.key}
                   className="p-3.5 rounded-xl border border-black/[0.08] dark:border-white/[0.08] bg-black/[0.01] dark:bg-white/[0.02] space-y-2"
                 >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5">
-                      <span className="w-5 h-5 rounded-full bg-black/5 dark:bg-white/10 text-[10px] font-mono font-bold flex items-center justify-center">
-                        {rec.index}
+                  <div className="flex items-center justify-between gap-1">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className="w-5 h-5 shrink-0 rounded-full bg-black/5 dark:bg-white/10 text-[10px] font-mono font-bold flex items-center justify-center">
+                        {grp.index}
                       </span>
                       <IssuePicker
-                        issue={rec.issue}
-                        date={rec.date}
-                        draws={histByGame[rec.game]?.draws ?? []}
-                        onSelect={(iss) => ledger.resettle(rec.id, iss)}
-                        extraOption={histByGame[rec.game]?.next ?? undefined}
+                        issue={grp.head.issue}
+                        date={grp.head.date}
+                        draws={histByGame[grp.head.game]?.draws ?? []}
+                        onSelect={(iss) => resettleGroup(grp, iss)}
+                        extraOption={histByGame[grp.head.game]?.next ?? undefined}
                         showNums={false}
-                        onRefresh={() => ledger.resettle(rec.id, rec.issue)}
-                        onManualHit={(k) => ledger.resettle(rec.id, rec.issue, k)}
+                        onRefresh={() => grp.members.forEach(m => ledger.resettle(m.id, m.issue))}
                       />
                     </div>
-
-                    <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
-                      rec.payout > 0 
-                        ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 font-bold' 
-                        : rec.result === '待開獎' 
-                        ? 'bg-black/5 dark:bg-white/10 text-neutral-600 dark:text-neutral-400' 
-                        : 'bg-rose-500/10 text-rose-600 dark:text-rose-400'
-                    }`}>
-                      {rec.result}
+                    <span className={`font-mono text-[11px] font-bold ${grp.pnl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                      {grp.pnl >= 0 ? `+${grp.pnl.toLocaleString()}` : grp.pnl.toLocaleString()}
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-3 gap-2 pt-1 border-t border-black/[0.04] dark:border-white/[0.04] text-[11px]">
-                    <div>
-                      <span className="text-neutral-400 block text-[10px]">玩法碰數</span>
-                      <span className="font-mono font-bold text-neutral-800 dark:text-neutral-200">{rec.betsCount || 70} 碰</span>
-                    </div>
-                    <div>
-                      <span className="text-neutral-400 block text-[10px]">投入成本</span>
-                      <span className="font-mono text-neutral-800 dark:text-neutral-200">{rec.cost.toLocaleString()}</span>
-                    </div>
-                    <div>
-                      <span className="text-neutral-400 block text-[10px]">本局損益</span>
-                      <span className={`font-mono font-bold ${rec.pnl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
-                        {rec.pnl >= 0 ? `+${rec.pnl.toLocaleString()}` : rec.pnl.toLocaleString()}
-                      </span>
-                    </div>
+                  {/* 三星 / 四星 並列 */}
+                  <div className="grid grid-cols-2 gap-2 pt-1 border-t border-black/[0.04] dark:border-white/[0.04] text-[11px]">
+                    {grp.members.map(m => (
+                      <div key={m.id} className="space-y-0.5">
+                        <span className="font-sans font-semibold text-neutral-700 dark:text-neutral-300">{starName(m)}</span>
+                        <span className="text-neutral-400"> · {m.betsCount || 70}碰</span>
+                        <div className="font-mono text-neutral-800 dark:text-neutral-200">${m.cost.toLocaleString()}</div>
+                        <div className={`text-[10px] ${resultCls(m)}`}>{m.result}</div>
+                      </div>
+                    ))}
                   </div>
 
-                  <div className="space-y-1 text-[11px] pt-1 border-t border-black/[0.04] dark:border-white/[0.04]">
-                    <div className="flex items-center justify-between gap-1">
-                      <div className="flex items-center gap-1 flex-wrap">
-                        <span className="text-neutral-400 text-[10px]">下注:</span>
-                        {rec.selectedBalls.map(b => (
-                          <span key={b} className={`px-1 py-0.2 rounded font-mono text-[10px] ${rec.drawBalls.includes(b) ? 'bg-emerald-600 text-white font-bold' : 'bg-black/5 dark:bg-white/10'}`}>
-                            {b.toString().padStart(2, '0')}
-                          </span>
-                        ))}
-                      </div>
-                      {confirmDeleteId === rec.id ? (
-                        <button
-                          type="button"
-                          onClick={() => { ledger.deleteById(rec.id); setConfirmDeleteId(null); }}
-                          className="shrink-0 inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-rose-600 text-white hover:bg-rose-700 transition-colors"
-                        >
-                          確認?
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => setConfirmDeleteId(rec.id)}
-                          title="撤銷這一筆"
-                          className="shrink-0 inline-flex items-center p-1 rounded-md text-neutral-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-black/5 dark:hover:bg-white/5 transition-colors active:scale-95"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      )}
+                  <div className="flex items-center justify-between gap-1 pt-1 border-t border-black/[0.04] dark:border-white/[0.04]">
+                    <div className="flex items-center gap-1 flex-wrap">
+                      <span className="text-neutral-400 text-[10px]">下注:</span>
+                      {grp.head.selectedBalls.map(b => (
+                        <span key={b} className={`px-1 py-0.2 rounded font-mono text-[10px] ${grp.head.drawBalls.includes(b) ? 'bg-emerald-600 text-white font-bold' : 'bg-black/5 dark:bg-white/10'}`}>
+                          {b.toString().padStart(2, '0')}
+                        </span>
+                      ))}
                     </div>
+                    {confirmDeleteId === grp.key ? (
+                      <button
+                        type="button"
+                        onClick={() => { deleteGroup(grp); setConfirmDeleteId(null); }}
+                        className="shrink-0 inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-rose-600 text-white hover:bg-rose-700 transition-colors"
+                      >
+                        確認?整注刪
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setConfirmDeleteId(grp.key)}
+                        title="撤銷這一注(三星+四星一起)"
+                        className="shrink-0 inline-flex items-center p-1 rounded-md text-neutral-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-black/5 dark:hover:bg-white/5 transition-colors active:scale-95"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}
@@ -511,73 +541,64 @@ export const ComboBetTab: React.FC = () => {
                   <tr>
                     <th>#</th>
                     <th>期號</th>
-                    <th>玩法</th>
-                    <th>碰數</th>
-                    <th>狀態</th>
-                    <th>成本</th>
-                    <th>回收</th>
+                    <th>連碰明細(三星 / 四星)</th>
                     <th>損益</th>
                     <th>開獎對號</th>
                     <th>撤銷</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {records.map((rec) => (
-                    <tr key={rec.id}>
-                      <td>{rec.index}</td>
+                  {comboGroups.map((grp) => (
+                    <tr key={grp.key}>
+                      <td>{grp.index}</td>
                       <td>
                         <IssuePicker
-                          issue={rec.issue}
-                          date={rec.date}
-                          draws={histByGame[rec.game]?.draws ?? []}
-                          onSelect={(iss) => ledger.resettle(rec.id, iss)}
-                          extraOption={histByGame[rec.game]?.next ?? undefined}
+                          issue={grp.head.issue}
+                          date={grp.head.date}
+                          draws={histByGame[grp.head.game]?.draws ?? []}
+                          onSelect={(iss) => resettleGroup(grp, iss)}
+                          extraOption={histByGame[grp.head.game]?.next ?? undefined}
                           showNums={false}
-                          onRefresh={() => ledger.resettle(rec.id, rec.issue)}
-                        onManualHit={(k) => ledger.resettle(rec.id, rec.issue, k)}
+                          onRefresh={() => grp.members.forEach(m => ledger.resettle(m.id, m.issue))}
                         />
                       </td>
-                      <td className="text-xs font-semibold">{rec.playType}</td>
-                      <td className="font-mono text-xs">{rec.betsCount || 70} 碰</td>
                       <td>
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${
-                          rec.payout > 0 
-                            ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 font-bold' 
-                            : rec.result === '待開獎' 
-                            ? 'bg-black/5 dark:bg-white/10 text-neutral-600 dark:text-neutral-400' 
-                            : 'bg-rose-500/10 text-rose-600 dark:text-rose-400'
-                        }`}>
-                          {rec.result}
-                        </span>
+                        <div className="flex flex-wrap gap-x-4 gap-y-1">
+                          {grp.members.map(m => (
+                            <span key={m.id} className="text-xs whitespace-nowrap">
+                              <span className="font-semibold text-neutral-800 dark:text-neutral-200">{starName(m)}</span>{' '}
+                              <span className="font-mono text-neutral-500">{m.betsCount || 70}碰 ${m.cost.toLocaleString()}</span>{' '}
+                              <span className={`text-[10px] ${resultCls(m)}`}>{m.result}</span>
+                            </span>
+                          ))}
+                        </div>
                       </td>
-                      <td className="font-mono text-xs">{rec.cost.toLocaleString()}</td>
-                      <td className="font-mono text-xs text-emerald-600 dark:text-emerald-400 font-bold">{rec.payout.toLocaleString()}</td>
-                      <td className={`font-mono text-xs font-bold ${rec.pnl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
-                        {rec.pnl >= 0 ? `+${rec.pnl.toLocaleString()}` : rec.pnl.toLocaleString()}
+                      <td className={`font-mono text-xs font-bold ${grp.pnl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                        {grp.pnl >= 0 ? `+${grp.pnl.toLocaleString()}` : grp.pnl.toLocaleString()}
                       </td>
                       <td className="font-mono text-xs">
                         <div className="flex flex-wrap gap-1">
-                          {rec.selectedBalls.map(b => (
-                            <span key={b} className={`px-1 rounded text-[10px] ${rec.drawBalls.includes(b) ? 'bg-black text-white dark:bg-white dark:text-black font-bold' : 'text-neutral-400'}`}>
+                          {grp.head.selectedBalls.map(b => (
+                            <span key={b} className={`px-1 rounded text-[10px] ${grp.head.drawBalls.includes(b) ? 'bg-black text-white dark:bg-white dark:text-black font-bold' : 'text-neutral-400'}`}>
                               {b.toString().padStart(2, '0')}
                             </span>
                           ))}
                         </div>
                       </td>
                       <td>
-                        {confirmDeleteId === rec.id ? (
+                        {confirmDeleteId === grp.key ? (
                           <button
                             type="button"
-                            onClick={() => { ledger.deleteById(rec.id); setConfirmDeleteId(null); }}
+                            onClick={() => { deleteGroup(grp); setConfirmDeleteId(null); }}
                             className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-rose-600 text-white hover:bg-rose-700 transition-colors"
                           >
-                            確認?
+                            確認?整注刪
                           </button>
                         ) : (
                           <button
                             type="button"
-                            onClick={() => setConfirmDeleteId(rec.id)}
-                            title="撤銷這一筆"
+                            onClick={() => setConfirmDeleteId(grp.key)}
+                            title="撤銷這一注(三星+四星一起)"
                             className="inline-flex items-center p-1 rounded-md text-neutral-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-black/5 dark:hover:bg-white/5 transition-colors active:scale-95"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
