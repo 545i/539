@@ -85,6 +85,8 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
   const [replaceTs, setReplaceTs] = useState<number | null>(null);
   // 去重:偵測到「這個 遊戲+版+日期 已上傳過」時,存那張既有卡片 → 跳覆蓋確認
   const [overwriteTarget, setOverwriteTarget] = useState<UploadHistoryEntry | null>(null);
+  // 未來日期防呆:選到今天以後的日期,按上傳時先跳確認(避免手滑選錯日期)
+  const [futurePrompt, setFuturePrompt] = useState(false);
 
   // 每次開啟:三要件回到「尚未選擇」,並清掉上次殘留的預覽 / 橫幅
   useEffect(() => {
@@ -103,6 +105,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
     setError(null);
     setReplaceTs(null);
     setOverwriteTarget(null);
+    setFuturePrompt(false);
     setWarnings([]);
   }, [isOpen]);
   // 從上傳歷史「填回」:預填整批(日期/遊戲/版/文本)並記住原批次 ts。在重置 effect
@@ -334,10 +337,16 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
     }
   };
 
-  // 確認上傳(閘門):送出前先查「這個 遊戲+版+日期 是不是已上傳過」——
-  // 有就跳覆蓋確認(不直接送);沒有才真的送。填回自己要取代的那張不算衝突。
-  const confirm = async () => {
+  // 今天(台灣本機日期,YYYY-MM-DD);選到今天以後就是「未來日期」
+  const todayStr = new Date().toLocaleDateString('en-CA');
+  const isFutureDate = !!selDate && selDate > todayStr;
+
+  // 確認上傳(閘門):先擋未來日期,再查是否已上傳過 —— 兩關都過才真的送。
+  // skipFutureCheck:未來日期確認過後再進來時跳過那一關。
+  const confirm = async (skipFutureCheck = false) => {
     if (!selGame || selEid == null || !selDate || !canTarget) return;
+    // 未來日期防呆:選到今天以後的日期 → 先跳確認(避免手滑把日期選錯)
+    if (!skipFutureCheck && isFutureDate) { setFuturePrompt(true); return; }
     const selGameName = games.find(x => x.key === selGame)?.name ?? selGame;
     try {
       const hist = await loadHistory();
@@ -692,6 +701,39 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
           {/* 上傳歷史已抽成獨立彈窗 UploadHistoryModal(見紀錄下注頁的「上傳歷史」鈕) */}
         </div>
 
+        {/* 未來日期確認:選到今天以後的日期 → 先確認是不是真的要記到那天 */}
+        {futurePrompt && (
+          <div className="px-6 py-3 border-t border-sky-500/30 bg-sky-500/[0.07] space-y-2 shrink-0">
+            <div className="flex items-start gap-1.5 text-[12px] text-sky-800 dark:text-sky-300">
+              <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+              <span>
+                你選的下注日期是 <strong>{selDate}(第 {Number(selDate.slice(8, 10))} 天)</strong>,
+                比今天 <strong>{todayStr}(第 {Number(todayStr.slice(8, 10))} 天)</strong> 還晚 ——
+                這是<strong>未來、還沒開獎</strong>的日期。<br />
+                確定要把這批下注記到 <strong>{selDate}</strong> 嗎?(通常是記今天或補記過去的期別)
+              </span>
+            </div>
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => setFuturePrompt(false)}
+                className="py-1.5 px-3 rounded-lg text-[11px] font-semibold border border-black/10 dark:border-white/10 text-neutral-700 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5 disabled:opacity-40 transition-colors"
+              >
+                取消,我要改日期
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => { setFuturePrompt(false); confirm(true); }}
+                className="py-1.5 px-3 rounded-lg text-[11px] font-semibold bg-sky-600 text-white hover:bg-sky-700 disabled:opacity-40 transition-colors"
+              >
+                確定,記到 {selDate}
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* 覆蓋確認:偵測到同 遊戲+版+日期 已上傳過 → 列出將被覆蓋的紀錄,確認才送 */}
         {overwriteTarget && (
           <div className="px-6 py-3 border-t border-amber-500/30 bg-amber-500/[0.06] space-y-2 shrink-0">
@@ -755,8 +797,8 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
             type="button"
             id="quick-import-submit-btn"
             // 一定要先預覽過、而且真的有解析出東西才給上傳;三要件未齊也不給
-            disabled={busy || !loggedIn || draftItems.length === 0 || done !== null || !targetReady || overwriteTarget != null}
-            onClick={confirm}
+            disabled={busy || !loggedIn || draftItems.length === 0 || done !== null || !targetReady || overwriteTarget != null || futurePrompt}
+            onClick={() => confirm()}
             title={anyIncomplete ? '仍有顆數不足的列,建議先補齊再上傳' : ''}
             className="py-2.5 px-4 rounded-xl text-xs uppercase tracking-wider font-semibold bg-black text-white dark:bg-white dark:text-black hover:opacity-90 disabled:opacity-30 transition-opacity flex items-center gap-2 shadow-xs active:scale-98"
           >
