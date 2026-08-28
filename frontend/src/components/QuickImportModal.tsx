@@ -6,7 +6,7 @@ import {useAuth} from '../api/useAuth';
 import {useGame} from '../api/useGame';
 import {useEditions} from '../api/useEditions';
 import {
-  UploadHistoryEntry, UploadHistoryItem, MODE_LABEL, saveEntry, money,
+  UploadHistoryEntry, UploadHistoryItem, MODE_LABEL, saveEntry, loadHistory, money,
 } from './uploadHistory';
 
 // 快速上傳下注紀錄:貼一段下注文字 → 預覽 → 確認寫進自己的記帳流水。
@@ -83,6 +83,8 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
   const [predictedIssue, setPredictedIssue] = useState('');
   // 填回=編輯取代:記住要取代的原批次 ts,上傳成功後作廢它(刪舊 ledger + 上傳紀錄)
   const [replaceTs, setReplaceTs] = useState<number | null>(null);
+  // 去重:偵測到「這個 遊戲+版+日期 已上傳過」時,存那張既有卡片 → 跳覆蓋確認
+  const [overwriteTarget, setOverwriteTarget] = useState<UploadHistoryEntry | null>(null);
 
   // 每次開啟:三要件回到「尚未選擇」,並清掉上次殘留的預覽 / 橫幅
   useEffect(() => {
@@ -100,6 +102,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
     setDone(null);
     setError(null);
     setReplaceTs(null);
+    setOverwriteTarget(null);
     setWarnings([]);
   }, [isOpen]);
   // 從上傳歷史「填回」:預填整批(日期/遊戲/版/文本)並記住原批次 ts。在重置 effect
@@ -261,12 +264,18 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
     }
   };
 
-  // 確認上傳:送(可能被編輯過的)draft 給 commit 端點,成本後端重算
-  const confirm = async () => {
-    if (!selGame || selEid == null || !selDate || !canTarget) return; // 三要件 + 期號就緒(或合法開獎日待開)才給上傳
+  // 實際送出:可帶 replaceOverride(要覆蓋的舊批 ts)。**先刪舊、再寫新**——
+  // 覆蓋失敗就中止、不寫新,避免新舊並存造成重複(見去重設計)。
+  const doCommit = async (replaceOverride?: number) => {
+    if (!selGame || selEid == null || !selDate || !canTarget) return;
+    const toReplace = replaceOverride ?? replaceTs ?? undefined;
     setBusy(true);
     setError(null);
     try {
+      // 覆蓋:先作廢舊批(連同它的 ledger 下注一起刪);刪不掉就中止,不寫新的
+      if (toReplace != null) {
+        await api.uploadHistoryDelete(toReplace);
+      }
       const res = await api.quickImportCommit(
         selGame,
         draftItems.map(d => ({
@@ -304,11 +313,8 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
       };
       // 寫進後端上傳歷史(獨立彈窗 UploadHistoryModal 讀取);未登入靜默略過
       await saveEntry(entry);
-      // 填回=編輯取代:新批次上傳成功後,作廢原批次(精準刪舊 ledger + 上傳紀錄)
-      if (replaceTs != null) {
-        try { await api.uploadHistoryDelete(replaceTs); } catch { /* 舊批次刪不掉不擋新批次 */ }
-        setReplaceTs(null);
-      }
+      setReplaceTs(null);
+      setOverwriteTarget(null);
       onImported?.();
       // 不自動關閉:讓使用者看到成功訊息;歷史到「上傳歷史」彈窗查看
       setDone(res.saved);
@@ -326,6 +332,21 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
     } finally {
       setBusy(false);
     }
+  };
+
+  // 確認上傳(閘門):送出前先查「這個 遊戲+版+日期 是不是已上傳過」——
+  // 有就跳覆蓋確認(不直接送);沒有才真的送。填回自己要取代的那張不算衝突。
+  const confirm = async () => {
+    if (!selGame || selEid == null || !selDate || !canTarget) return;
+    const selGameName = games.find(x => x.key === selGame)?.name ?? selGame;
+    try {
+      const hist = await loadHistory();
+      const conflict = hist.find(h =>
+        h.gameName === selGameName && h.eid === selEid && h.date === selDate
+        && h.ts !== replaceTs);
+      if (conflict) { setOverwriteTarget(conflict); return; }  // 跳確認,先不送
+    } catch { /* 讀不到歷史就當沒衝突,照常送 */ }
+    await doCommit();
   };
 
   const costTotal = costs.reduce((s, c) => s + (c ? c.cost : 0), 0);
@@ -671,6 +692,48 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
           {/* 上傳歷史已抽成獨立彈窗 UploadHistoryModal(見紀錄下注頁的「上傳歷史」鈕) */}
         </div>
 
+        {/* 覆蓋確認:偵測到同 遊戲+版+日期 已上傳過 → 列出將被覆蓋的紀錄,確認才送 */}
+        {overwriteTarget && (
+          <div className="px-6 py-3 border-t border-amber-500/30 bg-amber-500/[0.06] space-y-2 shrink-0">
+            <div className="flex items-start gap-1.5 text-[11px] text-amber-800 dark:text-amber-300">
+              <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+              <span>
+                <strong>{overwriteTarget.gameName}・{overwriteTarget.editionName}・{overwriteTarget.date}</strong> 已經上傳過
+                (<strong>{overwriteTarget.count} 筆・{money(overwriteTarget.totalCost)}</strong>)。
+                送出會<strong>覆蓋</strong>以下紀錄:
+              </span>
+            </div>
+            <div className="rounded-lg border border-amber-500/20 bg-white/60 dark:bg-black/20 divide-y divide-black/[0.04] dark:divide-white/[0.04] max-h-32 overflow-y-auto">
+              {overwriteTarget.items.map((it, i) => (
+                <div key={i} className="flex items-center justify-between gap-2 px-2.5 py-1 text-[10px]">
+                  <span className="font-sans text-neutral-600 dark:text-neutral-300 shrink-0">{MODE_LABEL[it.mode]} {it.playType}</span>
+                  <span className="font-mono text-neutral-500 truncate">{it.balls.map(b => String(b).padStart(2, '0')).join(' ') || '—'}</span>
+                  <span className="font-mono font-bold text-neutral-800 dark:text-neutral-200 shrink-0">{money(it.cost)}</span>
+                </div>
+              ))}
+            </div>
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => setOverwriteTarget(null)}
+                className="py-1.5 px-3 rounded-lg text-[11px] font-semibold border border-black/10 dark:border-white/10 text-neutral-700 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5 disabled:opacity-40 transition-colors"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => doCommit(overwriteTarget.ts)}
+                className="py-1.5 px-3 rounded-lg text-[11px] font-semibold bg-rose-600 text-white hover:bg-rose-700 disabled:opacity-40 transition-colors flex items-center gap-1.5"
+              >
+                <Upload className="w-3.5 h-3.5" />
+                {busy ? '覆蓋中…' : '確認覆蓋並送出'}
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Modal Footer */}
         <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-black/[0.08] dark:border-white/[0.08] shrink-0">
           {!targetReady && (
@@ -692,7 +755,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
             type="button"
             id="quick-import-submit-btn"
             // 一定要先預覽過、而且真的有解析出東西才給上傳;三要件未齊也不給
-            disabled={busy || !loggedIn || draftItems.length === 0 || done !== null || !targetReady}
+            disabled={busy || !loggedIn || draftItems.length === 0 || done !== null || !targetReady || overwriteTarget != null}
             onClick={confirm}
             title={anyIncomplete ? '仍有顆數不足的列,建議先補齊再上傳' : ''}
             className="py-2.5 px-4 rounded-xl text-xs uppercase tracking-wider font-semibold bg-black text-white dark:bg-white dark:text-black hover:opacity-90 disabled:opacity-30 transition-opacity flex items-center gap-2 shadow-xs active:scale-98"
