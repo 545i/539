@@ -25,15 +25,22 @@
     box-shadow: 0 24px 70px rgba(0, 0, 0, .55);
   }
 
-  /* ── 標題 ── */
+  /* ── 標題(純色、無漸層;遊戲/期號/日期皆大標題)── */
   .head {
-    position: relative; padding: 28px 32px 24px;
-    background: linear-gradient(135deg, #1f6feb 0%, #7b3ff2 55%, #d6409f 100%);
-    color: #fff;
+    position: relative; padding: 30px 32px 26px;
+    background: #15181f; color: #fff;
+    border-bottom: 1px solid rgba(255, 255, 255, .08);
   }
-  .head .kick { font-size: 14px; letter-spacing: 4px; opacity: .9; font-weight: 800; }
-  .head .title { font-size: 32px; font-weight: 900; margin-top: 4px; letter-spacing: .5px; }
-  .head .meta { font-size: 15px; opacity: .95; margin-top: 6px; font-variant-numeric: tabular-nums; }
+  .head::before {
+    content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 6px;
+    background: #1f6feb;
+  }
+  .head .kick { font-size: 13px; letter-spacing: 4px; font-weight: 800; color: #8ab4ff; }
+  .head .title { font-size: 40px; font-weight: 900; margin-top: 6px; letter-spacing: .5px; line-height: 1.05; }
+  .head .meta { margin-top: 14px; display: flex; align-items: baseline; gap: 18px;
+    flex-wrap: wrap; font-variant-numeric: tabular-nums; }
+  .head .issue { font-size: 27px; font-weight: 900; color: #fff; letter-spacing: .5px; }
+  .head .date { font-size: 21px; font-weight: 700; color: #aeb6c4; }
 
   /* ── 開獎球 ── */
   .balls { padding: 22px 32px 8px; display: flex; gap: 11px; flex-wrap: wrap; }
@@ -288,7 +295,10 @@
         <div class="head">
           <div class="kick">🎯 開獎提醒</div>
           <div class="title">${d.game}</div>
-          <div class="meta">期 ${d.issue} · ${d.date}${metaTime}</div>
+          <div class="meta">
+            <span class="issue">期 ${d.issue}</span>
+            <span class="date">${d.date}${metaTime}</span>
+          </div>
         </div>
         <div class="balls">${ballsHtml(d.nums)}</div>
         <div class="body">
