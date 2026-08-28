@@ -69,3 +69,43 @@ def test_genuinely_bad_line_still_flagged(env):
     """容錯不能矯枉過正:真的亂打的行還是要報「看不懂」。"""
     items, errors = _parse(env, "這是一行亂七八糟的字")
     assert any("看不懂" in e["message"] for e in errors)
+
+
+def test_combo9000_x_form(env):
+    """9000碰x10 → 0.1 支(數字/100=支數)、900 碰、mode=combo9000。"""
+    items, errors = _parse(env, "9000碰x10")
+    assert errors == []
+    assert len(items) == 1
+    it = items[0]
+    assert it.mode == "combo9000"
+    assert it.units == 0.1
+    assert it.bets_count == 900
+    assert it.balls == []
+
+
+def test_combo9000_full_and_fullwidth(env):
+    """9000碰X100 → 1 支(全包一支);全形 Ｘ 與空白也認。"""
+    items, _ = _parse(env, "9000碰Ｘ100")
+    assert items[0].units == 1.0 and items[0].bets_count == 9000
+    items2, _ = _parse(env, "9000碰 x 250")
+    assert items2[0].units == 2.5
+
+
+def test_combo9000_decimal_multiplier(env):
+    """乘數本身可小數:9000碰x0.5 → 0.005 支。"""
+    items, errors = _parse(env, "9000碰x0.5")
+    assert errors == [] and items[0].units == 0.005
+
+
+def test_combo9000_zero_rejected(env):
+    items, errors = _parse(env, "9000碰x0")
+    assert items == [] and errors and "大於 0" in errors[0]["message"]
+
+
+def test_combo9000_marksix_rejected(monkeypatch, tmp_path):
+    monkeypatch.setattr(group_store, "_db_path", lambda: tmp_path / "group.db")
+    monkeypatch.setattr(edition_store, "_db_path", lambda: tmp_path / "edition.db")
+    g = get_game("marksix")
+    odds = edition_store.get_odds(1, "marksix")
+    items, errors = importer.parse("9000碰x10", g, odds)
+    assert items == [] and errors and "六合彩不支援9000碰" in errors[0]["message"]

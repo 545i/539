@@ -71,6 +71,10 @@ _STAR_RE = re.compile(
     r"^(?:([一二三四五六七八九十0-9]+)\s*顆)?\s*([二三四234])\s*星\s*([0-9]+)$")
 # 其他400 —— 1800碰 那一組的收尾行,金額在這裡
 _OTHER_RE = re.compile(r"^其[他它餘余]\s*([0-9]+)$")
+# 9000碰x10 —— 9000碰(四段全包)下注;x 後面的數字 ÷ 100 = 支數(同全站慣例):
+# 9000碰x10 → 0.1 支、9000碰x100 → 1 支(全包一支)。支數可小數,不需選號。
+# 全形數字 / ×／＊／Ｘ 已由 _norm 攤平成 x。
+_COMBO9000_RE = re.compile(r"^9000\s*碰\s*x\s*([0-9]+(?:\.[0-9]+)?)$")
 # 純分隔線(___ / --- / === 之類):使用者用來隔開不同下注區塊,當空行略過、不報錯
 _SEP_RE = re.compile(r"^[_\-–—=~\s]+$")
 
@@ -266,6 +270,22 @@ def parse(text: str, g: GameConfig, odds: dict) -> tuple[list[_Item], list[dict]
             continue
         # 純分隔線(___ / --- 之類)= 使用者隔開區塊用,當空行略過不報錯
         if _SEP_RE.match(line):
+            continue
+
+        m = _COMBO9000_RE.match(line)
+        if m:
+            rej = _reject_game_mode(g, "combo9000")
+            if rej:                       # 六合彩不支援 9000碰 → 🔴 拒絕這筆
+                st.fail(line_no, line, rej)
+                continue
+            units = float(m.group(1)) / UNITS_PER_AMOUNT
+            if units <= 0:
+                st.fail(line_no, line, "支數要大於 0")
+                continue
+            try:
+                st.items.append(_combo9000_item(odds, g, units, line))
+            except ValueError as e:
+                st.fail(line_no, line, str(e))
             continue
 
         m = _CAR_RE.match(line)
