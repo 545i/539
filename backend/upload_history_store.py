@@ -5,7 +5,11 @@
 
 業務鍵用 entry 內的 ts(前端一直拿 ts 當 React key 與更新鍵),payload 原封不動存
 整個 entry 的 JSON(gameName / editionName / eid / issue / text / items / bill / recon …)。
-後端不解讀內容,只負責存 / 取 / 改 / 清,以及維持每人最多 HISTORY_CAP 筆。
+後端不解讀內容,只負責存 / 取 / 改 / 清。
+
+**不設每人筆數上限**:上傳歷史卡片是流水下注的「憑證」,以前限 30 張,超過就刪最舊
+的——但刪卡片不會刪流水的下注,結果是「明細有、上傳歷史沒有」的落差(舊卡片被擠掉、
+下注還在)。所以改成不裁切,卡片與流水一路對得上。
 
 資料庫檔放 data/upload_history.db(frozen 打包時放 exe 旁邊;*.db 已被 gitignore)。
 """
@@ -15,8 +19,6 @@ import json
 import sqlite3
 import sys
 from pathlib import Path
-
-HISTORY_CAP = 30       # 每人最多留幾批(與前端一致)
 
 
 def _db_path() -> Path:
@@ -68,25 +70,14 @@ def list_entries(username: str) -> list[dict]:
     return [_entry(r[0]) for r in rows]
 
 
-def _prune(c: sqlite3.Connection, username: str) -> None:
-    """留最新 HISTORY_CAP 筆,其餘刪掉(依 ts 由新到舊)。"""
-    c.execute(
-        "DELETE FROM upload_history WHERE username = ? AND id NOT IN ("
-        "  SELECT id FROM upload_history WHERE username = ? "
-        "  ORDER BY ts DESC, id DESC LIMIT ?)",
-        (username, username, HISTORY_CAP),
-    )
-
-
 def add_entry(username: str, entry: dict) -> dict:
-    """新增一批;回傳存入的 entry。維持每人最多 HISTORY_CAP 筆。"""
+    """新增一批;回傳存入的 entry。不裁切(卡片與流水要一路對得上,見檔頭說明)。"""
     ts = int(entry.get("ts") or 0)
     with _conn() as c:
         c.execute(
             "INSERT INTO upload_history (username, ts, payload) VALUES (?, ?, ?)",
             (username, ts, json.dumps(entry, ensure_ascii=False)),
         )
-        _prune(c, username)
     return entry
 
 

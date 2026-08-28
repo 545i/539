@@ -31,7 +31,7 @@ def list_entries(user: str = Depends(current_user)):
 
 @router.post("")
 def add_entry(body: EntryIn, user: str = Depends(current_user)):
-    """新增一批;上限由後端維持(每人最多 HISTORY_CAP 筆)。"""
+    """新增一批;不設筆數上限(卡片與流水要一路對得上,見 upload_history_store)。"""
     return upload_history_store.add_entry(user, body.entry)
 
 
