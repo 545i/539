@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 from backend import reminders, watch_store
 from backend.data import get_game, load_df
 from backend.deps import current_user
-from core import notify, stats
+from core import combo9000, notify, stats
 
 router = APIRouter(prefix="/stats", tags=["stats"])
 
@@ -50,6 +50,34 @@ def tens_pairs(game: str = Query(...), threshold: int = Query(3, ge=1)):
     g = get_game(game)
     df = load_df(game)
     return stats.tens_pair_alerts(df, threshold=threshold, num_max=g.num_max)
+
+
+@router.get("/combo9000-watch")
+def combo9000_watch(game: str = Query(...), threshold: int = Query(3, ge=1)):
+    """9000碰 全段同開提醒:四段(0/1/2/3頭)連續幾期沒有『全部一起開出』。
+
+    段切法走 core.combo9000(與過關判定同源),**不**受可編輯的 /combo-watch
+    公共設定影響 —— 這裡永遠反映 9000碰 真正的四段結構。streak = 距上次全段
+    同開幾期、max_gap = 歷史最長;streak >= threshold 時 alert。不支援 9000碰
+    的遊戲(非 39 選 5)回 None。
+    """
+    g = get_game(game)
+    if not combo9000.supports(g):
+        return None
+    df = load_df(game)
+    segs = combo9000.segments(g.num_max)
+    label = "、".join(combo9000.SEGMENT_NAMES) + " 全段同開"
+    res = stats.combo_cooccurrence_alerts(
+        df, [{"label": label, "groups": segs}], threshold=threshold)
+    r = res[0] if res else {"label": label, "streak": 0, "max_gap": 0, "alert": False}
+    return {
+        "label": r["label"],
+        "segments": combo9000.SEGMENTS,
+        "sizes": list(combo9000.sizes(g.num_max)),
+        "streak": r["streak"],
+        "max_gap": r["max_gap"],
+        "alert": r["alert"],
+    }
 
 
 class IntervalGroup(BaseModel):

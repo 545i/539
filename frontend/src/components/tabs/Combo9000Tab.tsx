@@ -5,7 +5,8 @@ import {
   Trash2,
   RefreshCw,
   Minus,
-  Plus
+  Plus,
+  AlertTriangle
 } from 'lucide-react';
 import { INITIAL_COMBO9000_RECORDS } from '../../data/lotteryData';
 import { LotteryGame } from '../../types';
@@ -59,6 +60,13 @@ export const Combo9000Tab: React.FC = () => {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const supported = !!gameCfg?.supports_combo9000;
+
+  // 全段同開提醒:四段(0/1/2/3頭)連續幾期沒一起開(距上次全段同開)。
+  // 門檻 3 期只影響 alert 上色,streak/max_gap 一律顯示。
+  const nineReq = useAsync(
+    () => (supported ? api.combo9000Watch(gameKey, 3) : Promise.resolve(null)),
+    [gameKey, supported],
+  );
 
   const totalSpent = records.reduce((acc, r) => acc + r.cost, 0);
   const totalReturn = records.reduce((acc, r) => acc + r.payout, 0);
@@ -290,6 +298,74 @@ export const Combo9000Tab: React.FC = () => {
               <FileText className="w-4 h-4" />
               送出記帳 {betsWithUnits.toLocaleString()} 碰(待開獎)
             </button>
+          </div>
+
+          {/* 全段同開提醒 */}
+          <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-display font-bold uppercase tracking-wider text-neutral-900 dark:text-white">
+                02 / 9000碰 全段同開提醒
+              </span>
+              <span className="text-[11px] font-mono text-neutral-400">
+                多久沒一起開
+              </span>
+            </div>
+
+            <div className="text-[11px] text-neutral-500 dark:text-neutral-400 leading-relaxed">
+              9000碰 過關要四段(0/1/2/3 頭)當期各開出至少 1 顆。這裡看四段已經
+              連續幾期沒有「全段同開」—— 越久沒一起開,離下次過關的空窗拉得越長。
+            </div>
+
+            {nineReq.loading && (
+              <div className="text-xs text-neutral-400">載入全段同開統計中…</div>
+            )}
+            {nineReq.error && (
+              <div className="text-xs text-rose-500">{nineReq.error}</div>
+            )}
+
+            {!nineReq.loading && !nineReq.error && nineReq.data && (() => {
+              const w = nineReq.data;
+              const on = w.alert;
+              return (
+                <div
+                  className={`p-3 rounded-xl border flex items-center justify-between gap-2 ${
+                    on
+                      ? 'bg-amber-500/10 border-amber-500/20'
+                      : w.streak === 0
+                        ? 'bg-emerald-500/10 border-emerald-500/20'
+                        : 'border-black/[0.06] dark:border-white/[0.06] bg-black/[0.02] dark:bg-white/[0.03]'
+                  }`}
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      {on && (
+                        <AlertTriangle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                      )}
+                      <span className={`text-xs font-mono font-bold ${
+                        on ? 'text-amber-900 dark:text-amber-300' : 'text-neutral-900 dark:text-white'
+                      }`}>
+                        {w.label}
+                      </span>
+                    </div>
+                    <div className="text-[10px] font-mono text-neutral-400 mt-0.5">
+                      歷史最長空窗 {w.max_gap} 期
+                    </div>
+                  </div>
+
+                  <div className={`text-[11px] font-mono shrink-0 text-right ${
+                    on
+                      ? 'text-amber-900 dark:text-amber-300 font-bold'
+                      : w.streak === 0
+                        ? 'text-emerald-700 dark:text-emerald-400 font-bold'
+                        : 'text-neutral-500 dark:text-neutral-300'
+                  }`}>
+                    {w.streak === 0
+                      ? '最新一期剛全段同開'
+                      : `已 ${w.streak} 期沒一起開`}
+                  </div>
+                </div>
+              );
+            })()}
           </div>
 
         </div>

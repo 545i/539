@@ -175,6 +175,16 @@ export interface TensPairDTO {
   alert: boolean;
 }
 
+// 9000碰 全段同開提醒:四段連續幾期沒一起開(距上次全段同開)
+export interface Combo9000WatchDTO {
+  label: string;
+  segments: number;
+  sizes: number[];
+  streak: number;
+  max_gap: number;
+  alert: boolean;
+}
+
 // 自訂區間(使用者自己定義的號碼區間)
 export interface IntervalGroupIn {
   label: string;
@@ -1000,6 +1010,9 @@ export const api = {
   frequency: (game: GameKey) => get<NumCount[]>(`stats/frequency?game=${game}`),
   tensPairs: (game: GameKey, threshold = 3) =>
     get<TensPairDTO[]>(`stats/tens-pairs?game=${game}&threshold=${threshold}`),
+  combo9000Watch: (game: GameKey, threshold = 3) =>
+    get<Combo9000WatchDTO | null>(
+      `stats/combo9000-watch?game=${game}&threshold=${threshold}`),
   intervalPairs: (
     game: GameKey,
     groups: IntervalGroupIn[],

@@ -78,6 +78,20 @@ def test_stats_tens_pairs_shape():
         assert set(row.keys()) >= {"bands", "labels", "range", "streak", "alert"}
 
 
+def test_combo9000_watch_shape():
+    d = client.get(f"{P}/stats/combo9000-watch?game=lotto539").json()
+    assert d["segments"] == 4
+    assert d["sizes"] == [9, 10, 10, 10]
+    assert "全段同開" in d["label"]
+    assert d["streak"] >= 0 and d["max_gap"] >= d["streak"]
+    assert set(d.keys()) >= {"label", "segments", "sizes", "streak", "max_gap", "alert"}
+
+
+def test_combo9000_watch_rejects_marksix():
+    # 六合彩 49 選 6,沒有四段結構 → 回 None(不適用 9000碰)
+    assert client.get(f"{P}/stats/combo9000-watch?game=marksix").json() is None
+
+
 def test_pillar_info_539():
     d = client.get(f"{P}/pillar/info?game=lotto539").json()
     assert d["sizes"] == [9, 10, 20]
