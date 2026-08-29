@@ -28,13 +28,21 @@ from core.games import get as game_by_key
 # 連碰星數(與 core.combo 一致)
 STARS = combo.STARS
 
-# 全部盤口欄位名(get/set 都以這份為準)
+# 全部盤口欄位名(get/set 都以這份為準)。
+# 二合成本以「每注基礎 pair_bet_cost」為單一真相(可存/可改);每車成本 cost_per_car
+# 一律**導出** = pair_bet_cost × (num_max-1),所以不在 FIELDS 裡(不直接存/改),但
+# get_odds / get_odds_detail 仍會回它,給下游(GroupBetTab / settle / erhe)照舊使用。
 FIELDS: tuple[str, ...] = (
-    "cost_per_car", "win_payout", "bet_cost", "bet_prize",
+    "pair_bet_cost", "win_payout", "bet_cost", "bet_prize",
     *(f"combo_cost{k}" for k in STARS),
     *(f"combo_prize{k}" for k in STARS),
     "combo9000_prize",   # 9000碰專屬派彩(每碰),跟星碰四星分開
 )
+
+
+def _notes_per_car(game_key: str) -> int:
+    """二合一車的注數 = num_max − 1(拖 1 膽配其餘號碼);539/天天樂 38、六合彩 48。"""
+    return max(1, game_by_key(game_key).num_max - 1)
 
 
 def _db_path() -> Path:
@@ -117,10 +125,14 @@ def delete_edition(eid: int) -> bool:
 
 
 def _defaults(game_key: str) -> dict:
-    """某遊戲的出廠盤口:二合 / 1800碰 讀 GameConfig,連碰讀 core.combo 現行值。"""
+    """某遊戲的出廠盤口:二合 / 1800碰 讀 GameConfig,連碰讀 core.combo 現行值。
+
+    二合的預設「每注基礎」= 出廠每車成本 ÷ 注數(2755 ÷ 38 = 72.5、六合彩 3528 ÷ 48
+    = 73.5),讓「基礎 × 注數」還原成原本的每車成本,升級後金額不變。
+    """
     g = game_by_key(game_key)
     out = {
-        "cost_per_car": float(g.default_cost_per_car),
+        "pair_bet_cost": float(g.default_cost_per_car) / _notes_per_car(game_key),
         "win_payout": float(g.default_win_payout),
         "bet_cost": float(g.default_bet_cost),
         "bet_prize": float(g.default_bet_prize),
@@ -142,25 +154,59 @@ def _stored(eid: int, game_key: str) -> dict:
     return {r[0]: float(r[1]) for r in rows}
 
 
+def _base_of(raw: dict, defaults: dict, notes: int) -> tuple[float, bool]:
+    """二合每注基礎 + 是否自訂:優先讀新欄位 pair_bet_cost,退而讀舊 cost_per_car
+    (每車 ÷ 注數換算),都沒有就吃預設。回 (base, custom)。"""
+    if "pair_bet_cost" in raw:
+        return raw["pair_bet_cost"], True
+    if "cost_per_car" in raw:            # 舊資料只存過每車成本 → 換算回每注基礎
+        return raw["cost_per_car"] / notes, True
+    return defaults["pair_bet_cost"], False
+
+
 def get_odds(eid: int, game_key: str) -> dict:
-    """某版某遊戲目前生效的整套盤口(覆寫疊在預設上,一定回滿全部欄位)。"""
+    """某版某遊戲目前生效的整套盤口(覆寫疊在預設上,一定回滿全部欄位)。
+
+    二合每車成本 cost_per_car 一律導出 = 每注基礎 × 注數,額外附在回傳裡供下游使用。
+    """
+    notes = _notes_per_car(game_key)
     out = _defaults(game_key)
-    out.update({k: v for k, v in _stored(eid, game_key).items() if k in FIELDS})
+    raw = _stored(eid, game_key)
+    out.update({k: v for k, v in raw.items() if k in FIELDS})
+    base, _ = _base_of(raw, out, notes)
+    out["pair_bet_cost"] = base
+    out["cost_per_car"] = base * notes          # 衍生:給 settle / erhe / GroupBetTab
     return out
 
 
 def get_odds_detail(eid: int, game_key: str) -> dict:
-    """設定頁用:每欄位回 {value, custom}(custom=是否有自訂,否則吃預設)。"""
+    """設定頁用:每欄位回 {value, custom}(custom=是否有自訂,否則吃預設)。
+
+    額外回衍生唯讀的 cost_per_car(= 每注基礎 × 注數),讓 GroupBetTab 等消費者照舊
+    讀得到每車成本;它不在 FIELDS(不可直接改),改基礎即連動。
+    """
+    notes = _notes_per_car(game_key)
     defaults = _defaults(game_key)
     stored = _stored(eid, game_key)
-    return {k: {"value": stored.get(k, defaults[k]), "custom": k in stored}
-            for k in FIELDS}
+    out = {k: {"value": stored.get(k, defaults[k]), "custom": k in stored}
+           for k in FIELDS}
+    base, custom = _base_of(stored, defaults, notes)
+    out["pair_bet_cost"] = {"value": base, "custom": custom}
+    out["cost_per_car"] = {"value": base * notes, "custom": custom}   # 衍生唯讀
+    return out
 
 
 def set_odds(eid: int, game_key: str, values: dict) -> dict:
-    """寫入某版某遊戲的盤口(只給的欄位才改);成本 / 派彩要 > 0。"""
+    """寫入某版某遊戲的盤口(只給的欄位才改);成本 / 派彩要 > 0。
+
+    向後相容:若傳入舊的 cost_per_car(每車成本),自動換算成 pair_bet_cost
+    (每注基礎 = 每車 ÷ 注數)—— 二合成本只存基礎這一個真相。
+    """
+    values = dict(values or {})
+    if "cost_per_car" in values and "pair_bet_cost" not in values:
+        values["pair_bet_cost"] = float(values.pop("cost_per_car")) / _notes_per_car(game_key)
     rows = []
-    for k, v in (values or {}).items():
+    for k, v in values.items():
         if k not in FIELDS:
             continue
         fv = float(v)

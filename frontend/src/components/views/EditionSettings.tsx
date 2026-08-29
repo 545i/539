@@ -9,7 +9,7 @@ import {useEditions} from '../../api/useEditions';
 // 盤口分三組:二合每車、1800碰每注、連碰各星數。第一版沒自訂時吃出廠預設。
 
 const FIELD_GROUPS: {title: string; fields: [string, string][]}[] = [
-  {title: '二合(1組/2組)', fields: [['cost_per_car', '每車成本'], ['win_payout', '中一顆可得']]},
+  {title: '二合(1組/2組)', fields: [['pair_bet_cost', '每注基礎成本'], ['win_payout', '中一顆可得']]},
   {title: '三柱1800碰', fields: [['bet_cost', '每注成本'], ['bet_prize', '中一注可得']]},
   {title: '連碰 星數', fields: [
     ['combo_cost2', '二星每碰成本'], ['combo_prize2', '二星中一碰'],
@@ -23,6 +23,8 @@ export const EditionSettings: React.FC = () => {
   const {game, gameKey} = useGame();
   const {editions, reload} = useEditions();
   const gameName = game?.short_name ?? gameKey;
+  // 二合一車的注數 = num_max − 1(拖 1 膽配其餘);每車成本 = 每注基礎 × 注數
+  const notesPerCar = Math.max(1, (game?.num_max ?? 39) - 1);
 
   const [editEid, setEditEid] = useState<number>(1);
   const [draft, setDraft] = useState<Record<string, number>>({});
@@ -129,6 +131,11 @@ export const EditionSettings: React.FC = () => {
                 <input type="number" value={draft[k] ?? 0}
                   onChange={e => setField(k, Number(e.target.value) || 0)}
                   className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.03] text-neutral-900 dark:text-white font-mono focus:outline-hidden" />
+                {k === 'pair_bet_cost' && (
+                  <div className="mt-1 text-[10px] text-neutral-400 font-mono">
+                    每車 = {(draft.pair_bet_cost ?? 0)} × {notesPerCar} = {Math.round((draft.pair_bet_cost ?? 0) * notesPerCar).toLocaleString()}
+                  </div>
+                )}
               </div>
             ))}
           </div>
