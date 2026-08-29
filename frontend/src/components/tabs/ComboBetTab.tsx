@@ -333,9 +333,13 @@ export const ComboBetTab: React.FC = () => {
                   <Minus className="w-4 h-4" />
                 </button>
                 
-                <div className="flex-1 h-10 rounded-xl border border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.03] flex items-center justify-center font-mono font-bold text-sm text-neutral-900 dark:text-white">
-                  {units} 支
-                </div>
+                <input
+                  type="number" inputMode="numeric" min="1" step="1" value={units}
+                  onChange={e => { const v = parseInt(e.target.value, 10); setUnits(Number.isFinite(v) ? v : 1); }}
+                  onBlur={() => setUnits(u => Math.max(1, Math.round(u) || 1))}
+                  aria-label="下注支數"
+                  className="flex-1 h-10 w-full rounded-xl border border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.03] text-center font-mono font-bold text-sm text-neutral-900 dark:text-white outline-none focus:border-black/30 dark:focus:border-white/30"
+                />
 
                 <button
                   type="button"

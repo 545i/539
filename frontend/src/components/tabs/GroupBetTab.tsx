@@ -361,9 +361,13 @@ export const GroupBetTab: React.FC<Props> = ({ group }) => {
                 >
                   −
                 </button>
-                <div className="flex-1 h-10 rounded-xl border border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.03] flex items-center justify-center font-mono font-bold text-sm text-neutral-900 dark:text-white">
-                  {cars} 車
-                </div>
+                <input
+                  type="number" inputMode="numeric" min="1" step="1" value={cars}
+                  onChange={e => { const v = parseInt(e.target.value, 10); setCars(Number.isFinite(v) ? v : 1); }}
+                  onBlur={() => setCars(c => Math.max(1, Math.round(c) || 1))}
+                  aria-label="下注車數"
+                  className="flex-1 h-10 w-full rounded-xl border border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.03] text-center font-mono font-bold text-sm text-neutral-900 dark:text-white outline-none focus:border-black/30 dark:focus:border-white/30"
+                />
                 <button
                   type="button"
                   onClick={() => setCars(cars + 1)}
