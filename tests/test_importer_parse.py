@@ -109,3 +109,29 @@ def test_combo9000_marksix_rejected(monkeypatch, tmp_path):
     odds = edition_store.get_odds(1, "marksix")
     items, errors = importer.parse("9000碰x10", g, odds)
     assert items == [] and errors and "六合彩不支援9000碰" in errors[0]["message"]
+
+
+def test_recost_base_override_per_record(env):
+    """逐筆基礎成本覆蓋:base 傳入就用它重算,不動版盤口。"""
+    g, odds = env
+    notes = g.num_max - 1
+    # 二合:base 是每注,cost = 顆×車×(base×38)
+    it = importer._recost(g, odds, "single", [3, 4], 380, 0, base=80)
+    assert it.base_cost == 80 and it.cost == 2 * 380 * (80 * notes)
+    # 不傳 base → 吃版預設(72.5)
+    it0 = importer._recost(g, odds, "single", [3, 4], 380, 0)
+    assert it0.base_cost == odds["pair_bet_cost"] == 72.5
+    # 1800碰:base 每注直接套
+    itp = importer._recost(g, odds, "pillar1800", [], 1, 0, base=60)
+    assert itp.base_cost == 60 and itp.cost == 1800 * 60
+    # 9000碰:base 每碰直接套(0.2支)
+    itc = importer._recost(g, odds, "combo9000", [], 0.2, 0, base=48)
+    assert itc.base_cost == 48 and abs(itc.cost - 9000 * 48 * 0.2) < 1e-6
+
+
+def test_recost_base_none_uses_edition(env):
+    """base=None(沒覆蓋)→ to_record 帶出版盤口的基礎成本供前端顯示。"""
+    g, odds = env
+    it = importer._recost(g, odds, "combo9000", [], 1, 0)
+    rec = importer.to_record(it, g, "2026-08-29", "", 1)
+    assert rec["baseCost"] == odds["combo_cost4"]

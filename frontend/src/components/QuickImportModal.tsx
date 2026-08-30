@@ -36,6 +36,7 @@ interface DraftItem {
   stars: number;
   incomplete: boolean;
   hit: string; // 中獎顆數(忘記期數時直接填);空 = 待開獎
+  base: number; // 每單位基礎成本(二合每注/連碰每碰…);預設帶版盤口,可逐筆改
 }
 
 function parseBalls(s: string): number[] {
@@ -190,6 +191,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
           units: d.units,
           stars: d.stars,
           hit_count: d.hit.trim() === '' ? null : Math.max(0, Math.floor(Number(d.hit) || 0)),
+          base_cost: d.base > 0 ? d.base : null,
         }));
         const res = await api.quickImportCommit(selGame, items, {issue, edition: selEid, date: selDate, dryRun: true});
         if (cancelled) return;
@@ -258,6 +260,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
           stars: num(it.record.stars),
           incomplete: Boolean(it.record.incomplete),
           hit: '',
+          base: num(it.record.baseCost),
         })),
       );
     } catch (e) {
@@ -287,6 +290,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
           units: d.units,
           stars: d.stars,
           hit_count: d.hit.trim() === '' ? null : Math.max(0, Math.floor(Number(d.hit) || 0)),
+          base_cost: d.base > 0 ? d.base : null,
         })),
         {issue, edition: selEid, date: selDate},
       );
@@ -578,6 +582,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
                         <th className="px-3 py-2 text-left font-semibold">玩法</th>
                         <th className="px-3 py-2 text-left font-semibold">號碼(可編輯)</th>
                         <th className="px-3 py-2 text-right font-semibold">支 / 車</th>
+                        <th className="px-3 py-2 text-right font-semibold">基礎成本<br/><span className="font-normal text-[9px]">每注/每碰·可改</span></th>
                         <th className="px-3 py-2 text-right font-semibold">中獎顆數<br/><span className="font-normal text-[9px]">忘記期數可填</span></th>
                       </tr>
                     </thead>
@@ -624,6 +629,17 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
                             <input
                               type="number"
                               min={0}
+                              step="0.1"
+                              value={d.base}
+                              onChange={e => setDraft(i, {base: Number(e.target.value)})}
+                              title="這筆的每單位基礎成本(二合每注 / 連碰每碰…);預設帶版盤口,改了只影響這一筆"
+                              className="w-20 px-2 py-1 rounded-lg border border-black/10 dark:border-white/10 bg-white dark:bg-[#161616] text-[11px] font-mono text-right text-neutral-900 dark:text-white outline-hidden focus:border-black/40 dark:focus:border-white/40"
+                            />
+                          </td>
+                          <td className="px-3 py-2 text-right align-top">
+                            <input
+                              type="number"
+                              min={0}
                               value={d.hit}
                               placeholder="待開獎"
                               onChange={e => setDraft(i, {hit: e.target.value})}
@@ -637,7 +653,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
                           key={`cost-${i}`}
                           className={`border-t-0 ${d.incomplete ? 'bg-amber-500/10' : ''}`}
                         >
-                          <td colSpan={4} className="px-3 pb-2 pt-0">
+                          <td colSpan={5} className="px-3 pb-2 pt-0">
                             <div className="flex items-baseline justify-between gap-2 text-[10px] text-neutral-500 dark:text-neutral-400">
                               <span className="font-mono">
                                 {costs[i]
