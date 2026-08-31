@@ -498,8 +498,9 @@ def _recost(g: GameConfig, odds: dict, mode: str, balls: list[int], units: float
         notes = max(1, g.num_max - 1)
         default_base = cpc / notes
         deltas = ball_deltas or {}
-        # 1組專用:個別號碼加價(每注基礎 +N)→ 逐顆算每車成本
-        use_pn = mode == "single" and any(float(deltas.get(str(n), 0) or 0) for n in balls)
+        # 二合(1組/2組)個別號碼加價(每注基礎 +N)→ 逐顆算每車成本。含 15 的注數
+        # = 車數 × (num_max−1),每注 +N,與對接人帳單「N號漲N元 X支」一致。
+        use_pn = mode in ("single", "multi") and any(float(deltas.get(str(n), 0) or 0) for n in balls)
         if use_pn:
             per_car = [(default_base + float(deltas.get(str(n), 0) or 0)) * notes for n in balls]
             erhe_cost = units * sum(per_car)
