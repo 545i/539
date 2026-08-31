@@ -98,54 +98,118 @@ const UNIT_LABEL: Record<string, string> = {
   single: '車', multi: '車', pillar1800: '支', combo9000: '支', combo: '支',
 };
 
-// 快捷帳單:某日產生可複製的帳單文字。帳單是「按版」給對接人,所以先依版分組
-// (每版一份、合計逐版各自算),版內再依遊戲:獎號 / 牌支 / 中獎碰數 / 共 / 合計。
-// 只有一個版時,輸出就與對接人帳單格式一模一樣;多版時每份前面加【版名】。
-function buildEditionBill(rows: BetRow[], md: string): string {
+// 快捷帳單:某日的結構化帳單資料(按版 → 遊戲)。同時給「卡片 UI」和「純文字複製」用。
+interface BillWin { mode: string; combos: number; payout: number; }
+interface BillGameData { label: string; draw: number[]; cost: number; net: number; running: number; wins: BillWin[]; }
+interface BillEditionData { edition: string; games: BillGameData[]; }
+
+const dayMd = (ymd: string): string =>
+  ymd ? `${Number(ymd.slice(5, 7))}/${Number(ymd.slice(8, 10))}` : '';
+
+function buildDayBill(day: DayGroup): BillEditionData[] {
   const order = ['539', '天天', '六合'];
-  const games: string[] = [];
-  const byGame = new Map<string, BetRow[]>();
-  for (const r of rows) {
-    if (!byGame.has(r.gameShort)) { byGame.set(r.gameShort, []); games.push(r.gameShort); }
-    byGame.get(r.gameShort)!.push(r);
-  }
-  games.sort((a, b) => order.indexOf(billGame(a)) - order.indexOf(billGame(b)));
-  let running = 0;
-  const blocks: string[] = [];
-  for (const g of games) {
-    const gr = byGame.get(g)!;
-    const label = billGame(g);
-    const draw = (gr.find(r => r.drawBalls.length)?.drawBalls ?? [])
-      .map(n => String(n).padStart(2, '0')).join('.');
-    const cost = gr.reduce((s, r) => s + r.cost, 0);
-    const payout = gr.reduce((s, r) => s + r.payout, 0);
-    running += payout - cost;
-    const lines = [md, `${label}獎號`];
-    if (draw) lines.push(draw);
-    lines.push(`${label}牌支${Math.round(cost)}`);
-    for (const r of gr) {
-      if (r.payout > 0) lines.push(`${billMode[r.mode] ?? r.modeLabel}中${winCombos(r)}碰+${Math.round(r.payout)}`);
-    }
-    lines.push(`共${Math.abs(Math.round(payout - cost))}`);
-    lines.push(`合計${Math.abs(Math.round(running))}`);
-    blocks.push(lines.join('\n'));
-  }
-  return blocks.join('\n\n');
-}
-function buildDayQuick(day: DayGroup): string {
-  const md = day.ymd ? `${Number(day.ymd.slice(5, 7))}/${Number(day.ymd.slice(8, 10))}` : '';
   const eds: string[] = [];
   const byEd = new Map<string, BetRow[]>();
   for (const r of day.rows) {
     if (!byEd.has(r.editionName)) { byEd.set(r.editionName, []); eds.push(r.editionName); }
     byEd.get(r.editionName)!.push(r);
   }
-  const multi = eds.length > 1;
   return eds.map(ed => {
-    const bill = buildEditionBill(byEd.get(ed)!, md);
-    return multi ? `【${ed}】\n${bill}` : bill;
+    const rows = byEd.get(ed)!;
+    const games: string[] = [];
+    const byGame = new Map<string, BetRow[]>();
+    for (const r of rows) {
+      if (!byGame.has(r.gameShort)) { byGame.set(r.gameShort, []); games.push(r.gameShort); }
+      byGame.get(r.gameShort)!.push(r);
+    }
+    games.sort((a, b) => order.indexOf(billGame(a)) - order.indexOf(billGame(b)));
+    let running = 0;
+    const gs: BillGameData[] = games.map(g => {
+      const gr = byGame.get(g)!;
+      const cost = gr.reduce((s, r) => s + r.cost, 0);
+      const payout = gr.reduce((s, r) => s + r.payout, 0);
+      running += payout - cost;
+      return {
+        label: billGame(g),
+        draw: gr.find(r => r.drawBalls.length)?.drawBalls ?? [],
+        cost: Math.round(cost),
+        net: Math.round(payout - cost),
+        running: Math.round(running),
+        wins: gr.filter(r => r.payout > 0)
+          .map(r => ({ mode: billMode[r.mode] ?? r.modeLabel, combos: winCombos(r), payout: Math.round(r.payout) })),
+      };
+    });
+    return { edition: ed, games: gs };
+  });
+}
+
+// 結構化帳單 → 對接人純文字格式(「複製帳單」用,與對接人帳單一致)
+function billToText(bill: BillEditionData[], md: string): string {
+  const multi = bill.length > 1;
+  return bill.map(e => {
+    const blocks = e.games.map(g => {
+      const lines = [md, `${g.label}獎號`];
+      if (g.draw.length) lines.push(g.draw.map(n => String(n).padStart(2, '0')).join('.'));
+      lines.push(`${g.label}牌支${g.cost}`);
+      for (const w of g.wins) lines.push(`${w.mode}中${w.combos}碰+${w.payout}`);
+      lines.push(`共${Math.abs(g.net)}`);
+      lines.push(`合計${Math.abs(g.running)}`);
+      return lines.join('\n');
+    }).join('\n\n');
+    return multi ? `【${e.edition}】\n${blocks}` : blocks;
   }).join('\n\n');
 }
+
+// 快捷帳單卡片:易讀版(獎號球 / 收付上色 / 中獎綠字);內容同純文字帳單
+const BillCards: React.FC<{ bill: BillEditionData[]; md: string }> = ({ bill, md }) => (
+  <div className="space-y-3">
+    {bill.map(e => (
+      <div key={e.edition} className="space-y-2">
+        {bill.length > 1 && (
+          <div className="inline-block px-2 py-0.5 rounded-md bg-violet-500/10 text-violet-600 dark:text-violet-400 text-[11px] font-bold">{e.edition}</div>
+        )}
+        <div className="grid gap-2 sm:grid-cols-2">
+          {e.games.map(g => (
+            <div key={g.label} className="rounded-xl border border-black/10 dark:border-white/10 bg-white dark:bg-[#161616] p-3 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5">
+                  <span className="px-1.5 py-0.5 rounded bg-sky-500/10 text-sky-600 dark:text-sky-400 text-[11px] font-bold">{g.label}</span>
+                  <span className="text-[10px] text-neutral-400 font-mono">{md}</span>
+                </div>
+                <span className={`font-mono text-sm font-bold ${g.net >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                  {g.net >= 0 ? '收 ' : '付 '}{Math.abs(g.net).toLocaleString()}
+                </span>
+              </div>
+              <div className="flex flex-wrap items-center gap-1">
+                <span className="text-[10px] text-neutral-400 mr-1">獎號</span>
+                {g.draw.length ? g.draw.map(n => (
+                  <span key={n} className="w-6 h-6 flex items-center justify-center rounded-full bg-black/[0.06] dark:bg-white/[0.08] text-[11px] font-mono font-semibold text-neutral-800 dark:text-neutral-100">
+                    {String(n).padStart(2, '0')}
+                  </span>
+                )) : <span className="text-[11px] text-neutral-400">未開</span>}
+              </div>
+              <div className="text-[11px] font-mono space-y-0.5">
+                <div className="flex justify-between"><span className="text-neutral-500">牌支(成本)</span><span className="font-semibold text-neutral-800 dark:text-neutral-100">{g.cost.toLocaleString()}</span></div>
+                {g.wins.map((w, i) => (
+                  <div key={i} className="flex justify-between text-emerald-600 dark:text-emerald-400">
+                    <span>{w.mode} 中 {w.combos.toLocaleString()} 碰</span>
+                    <span className="font-bold">+{w.payout.toLocaleString()}</span>
+                  </div>
+                ))}
+                <div className="flex justify-between border-t border-black/[0.06] dark:border-white/[0.06] pt-0.5 mt-0.5">
+                  <span className="text-neutral-500">合計(當日累計)</span>
+                  <span className={`font-bold ${g.running >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                    {g.running >= 0 ? '收 ' : '付 '}{Math.abs(g.running).toLocaleString()}
+                  </span>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    ))}
+  </div>
+);
 
 // 各遊戲拆帳:539 / 天天樂 / 六合彩 各自的成本 / 派彩 / 盈虧(常駐顯示,不用展開)
 const GameBreak: React.FC<{ byGame: Map<string, GameAgg>; className?: string }> = ({ byGame, className }) => {
@@ -472,7 +536,7 @@ export const WeeklyLedger: React.FC = () => {
                           {quickDays.has(day.ymd) && (
                             <button
                               type="button"
-                              onClick={async () => { try { await navigator.clipboard.writeText(buildDayQuick(day)); setCopiedDay(day.ymd); setTimeout(() => setCopiedDay(''), 1500); } catch { /* ignore */ } }}
+                              onClick={async () => { try { await navigator.clipboard.writeText(billToText(buildDayBill(day), dayMd(day.ymd))); setCopiedDay(day.ymd); setTimeout(() => setCopiedDay(''), 1500); } catch { /* ignore */ } }}
                               className="ml-1 px-2 py-0.5 rounded-md text-[10px] font-semibold border border-emerald-500/40 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/10 transition-colors"
                             >
                               {copiedDay === day.ymd ? '已複製' : '複製帳單'}
@@ -480,7 +544,9 @@ export const WeeklyLedger: React.FC = () => {
                           )}
                         </div>
                         {quickDays.has(day.ymd) ? (
-                          <pre className="px-3 pb-3 pl-9 text-[11px] font-mono whitespace-pre-wrap break-all text-neutral-700 dark:text-neutral-300 leading-relaxed">{buildDayQuick(day)}</pre>
+                          <div className="px-3 pb-3 pl-9">
+                            <BillCards bill={buildDayBill(day)} md={dayMd(day.ymd)} />
+                          </div>
                         ) : (
                         <div className="overflow-x-auto">
                         <table className="w-full text-[11px] whitespace-nowrap">
