@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { History, Ban, CornerDownLeft, ClipboardCheck, AlertTriangle } from 'lucide-react';
 import {
-  UploadHistoryEntry, MODE_LABEL, loadHistory, updateEntry, voidEntry, fmtTime, money,
+  UploadHistoryEntry, UploadHistoryItem, MODE_LABEL, loadHistory, updateEntry, voidEntry, fmtTime, money,
 } from '../uploadHistory';
 import { api, ReconcileDTO, LedgerEntryDTO } from '../../api/client';
 import { WeeklyLedger } from './WeeklyLedger';
@@ -225,13 +225,46 @@ export const UploadHistoryView: React.FC<Props> = ({ onRefill, onChanged }) => {
     || b.ts - a.ts
   );
 
-  // 逐筆接回 ledger 紀錄:entryIds 與 items 同序(見 QuickImportModal 送出處),
-  // 長度一致才做 index 對齊;不一致(舊資料 / 部分被刪)則只能顯示成本。
+  // 逐筆接回 ledger 紀錄:先用 entryIds 同序對齊(見 QuickImportModal);對不到就退回
+  // 「內容比對」—— 同批候選(遊戲+版+日期或期)裡,以 下法 + 號碼 找對應那筆。
+  // 這樣還原 / 重上傳讓 id 變了(entryIds 失效)也能正確顯示派彩,不會誤判待開獎。
+  const ballsSig = (b: unknown): string =>
+    (Array.isArray(b) ? b.map(Number) : []).slice().sort((x, y) => x - y).join(',');
   const itemViewsOf = (h: UploadHistoryEntry): ItemView[] => {
     const ids = h.entryIds;
     const aligned = Array.isArray(ids) && ids.length === h.items.length;
+    // 這批在現有 ledger 的候選(內容比對用;可消耗以免一筆配到兩個 item)
+    const cands = ledger
+      .filter(e => {
+        const r = e.record ?? {};
+        const sameGame = String(r.game ?? '') === h.gameName;
+        const sameEd = (num(r.edition) || 1) === (h.eid ?? 1);
+        const sameWhen = String(r.date ?? '').slice(0, 10) === (h.date ?? '')
+          || (!!h.issue && String(r.issue ?? '') === h.issue);
+        return sameGame && sameEd && sameWhen;
+      })
+      .map(e => e.record as Record<string, unknown>);
+    const used = new Set<number>();
+    // 同下法的候選裡挑最佳:號碼相符 +2、成本相符 +1(9000碰號碼空、就靠成本對上)
+    const matchBySig = (it: UploadHistoryItem): Record<string, unknown> | undefined => {
+      const want = ballsSig(it.balls);
+      const wantCost = Math.round(it.cost);
+      let best = -1, bestScore = -1;
+      for (let j = 0; j < cands.length; j++) {
+        if (used.has(j)) continue;
+        const r = cands[j];
+        if (String(r.mode ?? '') !== it.mode) continue;
+        let s = 0;
+        if (ballsSig(r.selectedBalls) === want) s += 2;
+        if (Math.round(num(r.cost)) === wantCost) s += 1;
+        if (s > bestScore) { bestScore = s; best = j; }
+      }
+      if (best >= 0) { used.add(best); return cands[best]; }
+      return undefined;
+    };
     return h.items.map((it, i) => {
-      const rec = aligned ? idToRec.get(ids![i]) : undefined;
+      let rec = aligned ? idToRec.get(ids![i]) : undefined;
+      if (!rec) rec = matchBySig(it);          // entryId 失效 → 內容比對
       if (!rec) {
         return {
           playType: it.playType, modeLabel: MODE_LABEL[it.mode], balls: it.balls,

@@ -105,8 +105,12 @@ export const WeeklyLedger: React.FC = () => {
     () => new Set(editions.filter(e => e.simulated).map(e => e.eid)),
     [editions],
   );
-  const gameShort = (key: string) =>
-    games.find(g => g.key === key)?.short_name ?? games.find(g => g.key === key)?.name ?? '';
+  // ledger 的 record.game 存的是「遊戲名稱」(今彩539/天天樂…),不是 key —— 用
+  // key / name / short_name 都比對得到;對不到就回原字串(不要變成「其他」)。
+  const gameShort = (g: string) => {
+    const f = games.find(x => x.key === g || x.name === g || x.short_name === g);
+    return f?.short_name ?? f?.name ?? g ?? '其他';
+  };
 
   const [selEd, setSelEd] = useState<number | 'all'>('all');
   const [openWeeks, setOpenWeeks] = useState<Set<string>>(new Set());
