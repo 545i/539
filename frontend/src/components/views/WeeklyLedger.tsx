@@ -46,10 +46,13 @@ const weekdayOf = (ymd: string): string => {
 interface BetRow {
   gameShort: string;
   editionName: string;
+  mode: string;        // single/multi/pillar1800/combo9000/combo(快捷帳單用)
   modeLabel: string;
   playType: string;
   balls: number[];
+  drawBalls: number[]; // 開獎號(快捷帳單「獎號」用)
   units: number;       // 車數 / 支數
+  cars: number;        // 車數(二合碰數 = 中幾顆 × 車數 × 4)
   unitLabel: string;   // 「車」或「支」
   perUnit: number;     // 每注/每車/每支成本 = cost / units
   cost: number;
@@ -58,6 +61,25 @@ interface BetRow {
   result: string;
   pending: boolean;
 }
+
+// 快捷帳單:遊戲名 → 帳單簡稱(539 / 天天 / 六合)
+const billGame = (short: string): string =>
+  short.includes('天天') || short.includes('Fantasy') ? '天天'
+    : short.includes('六合') ? '六合'
+      : short.includes('539') ? '539' : short;
+// 快捷帳單:下法 → 帳單簡稱
+const billMode: Record<string, string> = {
+  single: '1', multi: '2', pillar1800: '1800', combo9000: '9000', combo: '連碰',
+};
+// 某筆中獎的「碰數」:二合 = 中幾顆 × 車數 × 4;其餘(1800/連碰/9000)直接讀 result「中 X 碰」
+const winCombos = (r: BetRow): number => {
+  if (r.mode === 'single' || r.mode === 'multi') {
+    const m = r.result.match(/中\s*(\d+)\s*顆/);
+    return m ? Number(m[1]) * r.cars * 4 : 0;
+  }
+  const m = r.result.match(/中\s*([\d,]+)/);
+  return m ? Number(m[1].replace(/,/g, '')) : 0;
+};
 type GameAgg = { cost: number; payout: number; pnl: number; count: number };
 interface Bucket { cost: number; payout: number; pnl: number; pendingCount: number; count: number; byGame: Map<string, GameAgg>; }
 interface DayGroup extends Bucket { ymd: string; rows: BetRow[]; }
@@ -75,6 +97,55 @@ const fold = (b: Bucket, cost: number, payout: number, pending: boolean, game: s
 const UNIT_LABEL: Record<string, string> = {
   single: '車', multi: '車', pillar1800: '支', combo9000: '支', combo: '支',
 };
+
+// 快捷帳單:某日產生可複製的帳單文字。帳單是「按版」給對接人,所以先依版分組
+// (每版一份、合計逐版各自算),版內再依遊戲:獎號 / 牌支 / 中獎碰數 / 共 / 合計。
+// 只有一個版時,輸出就與對接人帳單格式一模一樣;多版時每份前面加【版名】。
+function buildEditionBill(rows: BetRow[], md: string): string {
+  const order = ['539', '天天', '六合'];
+  const games: string[] = [];
+  const byGame = new Map<string, BetRow[]>();
+  for (const r of rows) {
+    if (!byGame.has(r.gameShort)) { byGame.set(r.gameShort, []); games.push(r.gameShort); }
+    byGame.get(r.gameShort)!.push(r);
+  }
+  games.sort((a, b) => order.indexOf(billGame(a)) - order.indexOf(billGame(b)));
+  let running = 0;
+  const blocks: string[] = [];
+  for (const g of games) {
+    const gr = byGame.get(g)!;
+    const label = billGame(g);
+    const draw = (gr.find(r => r.drawBalls.length)?.drawBalls ?? [])
+      .map(n => String(n).padStart(2, '0')).join('.');
+    const cost = gr.reduce((s, r) => s + r.cost, 0);
+    const payout = gr.reduce((s, r) => s + r.payout, 0);
+    running += payout - cost;
+    const lines = [md, `${label}獎號`];
+    if (draw) lines.push(draw);
+    lines.push(`${label}牌支${Math.round(cost)}`);
+    for (const r of gr) {
+      if (r.payout > 0) lines.push(`${billMode[r.mode] ?? r.modeLabel}中${winCombos(r)}碰+${Math.round(r.payout)}`);
+    }
+    lines.push(`共${Math.abs(Math.round(payout - cost))}`);
+    lines.push(`合計${Math.abs(Math.round(running))}`);
+    blocks.push(lines.join('\n'));
+  }
+  return blocks.join('\n\n');
+}
+function buildDayQuick(day: DayGroup): string {
+  const md = day.ymd ? `${Number(day.ymd.slice(5, 7))}/${Number(day.ymd.slice(8, 10))}` : '';
+  const eds: string[] = [];
+  const byEd = new Map<string, BetRow[]>();
+  for (const r of day.rows) {
+    if (!byEd.has(r.editionName)) { byEd.set(r.editionName, []); eds.push(r.editionName); }
+    byEd.get(r.editionName)!.push(r);
+  }
+  const multi = eds.length > 1;
+  return eds.map(ed => {
+    const bill = buildEditionBill(byEd.get(ed)!, md);
+    return multi ? `【${ed}】\n${bill}` : bill;
+  }).join('\n\n');
+}
 
 // 各遊戲拆帳:539 / 天天樂 / 六合彩 各自的成本 / 派彩 / 盈虧(常駐顯示,不用展開)
 const GameBreak: React.FC<{ byGame: Map<string, GameAgg>; className?: string }> = ({ byGame, className }) => {
@@ -115,6 +186,8 @@ export const WeeklyLedger: React.FC = () => {
   const [selEd, setSelEd] = useState<number | 'all'>('all');
   const [openWeeks, setOpenWeeks] = useState<Set<string>>(new Set());
   const [openDays, setOpenDays] = useState<Set<string>>(new Set());
+  const [quickDays, setQuickDays] = useState<Set<string>>(new Set()); // 哪些日切到「快捷帳單」
+  const [copiedDay, setCopiedDay] = useState<string>('');             // 剛複製的日(顯示已複製)
   // 週導覽:預設聚焦最新一週,用 ‹上一週 / 下一週› 逐週切換;showAll=看全部週列表
   const [focusIdx, setFocusIdx] = useState(0);   // 0 = 最新一週(weeks 為新→舊)
   const [showAll, setShowAll] = useState(false);
@@ -152,10 +225,13 @@ export const WeeklyLedger: React.FC = () => {
       const row: BetRow = {
         gameShort: gShort,
         editionName: edName(num(r.edition) || 1),
+        mode,
         modeLabel: MODE_LABEL[r.mode as LedgerMode] ?? mode,
         playType: String(r.playType ?? ''),
         balls: (r.selectedBalls as number[]) ?? [],
+        drawBalls: (r.drawBalls as number[]) ?? [],
         units,
+        cars: num(r.cars) || units,
         unitLabel: UNIT_LABEL[mode] ?? '注',
         perUnit: units ? Math.round(cost / units) : cost,
         cost, payout, pnl: payout - cost, result, pending,
@@ -376,9 +452,37 @@ export const WeeklyLedger: React.FC = () => {
                       <GameBreak byGame={day.byGame} />
                     </div>
 
-                    {/* 當天逐筆 */}
+                    {/* 當天逐筆:明細 / 快捷帳單 */}
                     {dOpen && (
-                      <div className="overflow-x-auto bg-black/[0.015] dark:bg-white/[0.02]">
+                      <div className="bg-black/[0.015] dark:bg-white/[0.02]">
+                        <div className="flex items-center gap-1.5 px-3 py-1.5 pl-9">
+                          {(['detail', 'quick'] as const).map(v => {
+                            const on = quickDays.has(day.ymd) === (v === 'quick');
+                            return (
+                              <button
+                                key={v}
+                                type="button"
+                                onClick={() => setQuickDays(prev => { const n = new Set(prev); v === 'quick' ? n.add(day.ymd) : n.delete(day.ymd); return n; })}
+                                className={`px-2 py-0.5 rounded-md text-[10px] font-semibold transition-colors ${on ? 'bg-black text-white dark:bg-white dark:text-black' : 'border border-black/10 dark:border-white/10 text-neutral-600 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5'}`}
+                              >
+                                {v === 'detail' ? '明細' : '快捷'}
+                              </button>
+                            );
+                          })}
+                          {quickDays.has(day.ymd) && (
+                            <button
+                              type="button"
+                              onClick={async () => { try { await navigator.clipboard.writeText(buildDayQuick(day)); setCopiedDay(day.ymd); setTimeout(() => setCopiedDay(''), 1500); } catch { /* ignore */ } }}
+                              className="ml-1 px-2 py-0.5 rounded-md text-[10px] font-semibold border border-emerald-500/40 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/10 transition-colors"
+                            >
+                              {copiedDay === day.ymd ? '已複製' : '複製帳單'}
+                            </button>
+                          )}
+                        </div>
+                        {quickDays.has(day.ymd) ? (
+                          <pre className="px-3 pb-3 pl-9 text-[11px] font-mono whitespace-pre-wrap break-all text-neutral-700 dark:text-neutral-300 leading-relaxed">{buildDayQuick(day)}</pre>
+                        ) : (
+                        <div className="overflow-x-auto">
                         <table className="w-full text-[11px] whitespace-nowrap">
                           <thead className="text-[9px] uppercase tracking-wider text-neutral-400">
                             <tr>
@@ -432,6 +536,8 @@ export const WeeklyLedger: React.FC = () => {
                             ))}
                           </tbody>
                         </table>
+                        </div>
+                        )}
                       </div>
                     )}
                   </div>
