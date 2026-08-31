@@ -93,23 +93,6 @@ export const TotalPnLTab: React.FC = () => {
     return Array.from(s).sort((a, b) => a - b);
   }, [entries]);
 
-  // 各版損益:每一版一列(不受上方切換影響,永遠列全部版),最後一列是總版總計
-  const editionRows = useMemo(() => {
-    const by = new Map<number, { rounds: number; cost: number; payout: number; pnl: number }>();
-    for (const e of entries) {
-      const ed = edOf(e);
-      if (simEids.has(ed)) continue;     // 各版損益表 + 總計排除模擬版
-      const acc = by.get(ed) ?? { rounds: 0, cost: 0, payout: 0, pnl: 0 };
-      acc.rounds += 1;
-      acc.cost += num(e.record.cost);
-      acc.payout += num(e.record.payout);
-      acc.pnl += num(e.record.pnl);
-      by.set(ed, acc);
-    }
-    return Array.from(by.entries())
-      .sort((a, b) => a[0] - b[0])
-      .map(([ed, v]) => ({ ed, name: edName(ed), ...v }));
-  }, [entries, editions]);
 
   // 各週損益(全自動週期):依開獎日期把每筆歸到「週一~週日」那一週,彙總
   // 成本/派彩/淨損益/筆數。排除模擬版(同總版原則);沒日期的歸「未分週期」。
@@ -359,66 +342,6 @@ export const TotalPnLTab: React.FC = () => {
         </div>
       )}
 
-      {/* 各版損益:每一版一列 + 總版總計(永遠列全部版,不受上方切換影響)*/}
-      {loggedIn && editionRows.length > 0 && (
-        <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] space-y-3">
-          <div className="flex items-center justify-between">
-            <h3 className="text-xs sm:text-sm font-display font-bold text-neutral-900 dark:text-white uppercase tracking-wide flex items-center gap-1.5">
-              <Layers className="w-4 h-4 text-neutral-500" /> 各版損益
-            </h3>
-            <span className="text-[10px] font-mono text-neutral-400">點上方切換鈕可只看單一版</span>
-          </div>
-          <div className="lt-wrap border border-black/[0.08] dark:border-white/[0.08] rounded-xl overflow-x-auto">
-            <table className="lt w-full">
-              <thead>
-                <tr>
-                  <th>版</th>
-                  <th>局數</th>
-                  <th>總成本</th>
-                  <th>總回收</th>
-                  <th>淨損益</th>
-                  <th>ROI</th>
-                </tr>
-              </thead>
-              <tbody>
-                {editionRows.map(r => (
-                  <tr
-                    key={r.ed}
-                    className={selEd === r.ed ? 'bg-black/[0.03] dark:bg-white/[0.05]' : undefined}
-                  >
-                    <td className="font-semibold text-xs text-neutral-900 dark:text-white">{r.name}</td>
-                    <td className="font-mono text-xs">{r.rounds}</td>
-                    <td className="font-mono text-xs">{r.cost.toLocaleString()}</td>
-                    <td className="font-mono text-xs text-emerald-600 dark:text-emerald-400 font-bold">{r.payout.toLocaleString()}</td>
-                    <td className={`font-mono text-xs font-bold ${r.pnl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
-                      {signed(r.pnl)}
-                    </td>
-                    <td className="font-mono text-xs">{r.cost ? ((r.pnl / r.cost) * 100).toFixed(1) : '0.0'}%</td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr className="border-t border-black/10 dark:border-white/10 bg-black/[0.03] dark:bg-white/[0.05]">
-                  <td className="font-sans font-bold text-xs text-neutral-900 dark:text-white">總版總計</td>
-                  <td className="font-mono text-xs font-bold">{editionRows.reduce((a, r) => a + r.rounds, 0)}</td>
-                  <td className="font-mono text-xs font-bold">{editionRows.reduce((a, r) => a + r.cost, 0).toLocaleString()}</td>
-                  <td className="font-mono text-xs font-bold text-emerald-600 dark:text-emerald-400">{editionRows.reduce((a, r) => a + r.payout, 0).toLocaleString()}</td>
-                  {(() => {
-                    const tPnl = editionRows.reduce((a, r) => a + r.pnl, 0);
-                    const tCost = editionRows.reduce((a, r) => a + r.cost, 0);
-                    return (
-                      <>
-                        <td className={`font-mono text-xs font-bold ${tPnl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>{signed(tPnl)}</td>
-                        <td className="font-mono text-xs font-bold">{tCost ? ((tPnl / tCost) * 100).toFixed(1) : '0.0'}%</td>
-                      </>
-                    );
-                  })()}
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-        </div>
-      )}
 
       {/* 各週損益:全自動週期,每一週(週一~週日)一列(排除模擬版,同總版原則)*/}
       {loggedIn && cycleRows.length > 0 && (
