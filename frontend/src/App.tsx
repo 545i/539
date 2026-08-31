@@ -13,7 +13,7 @@ import { Header } from './components/Header';
 import { FormulaModal } from './components/FormulaModal';
 import { LoginModal } from './components/LoginModal';
 import { QuickImportModal } from './components/QuickImportModal';
-import { UploadHistoryModal } from './components/UploadHistoryModal';
+import { UploadHistoryView } from './components/views/UploadHistoryView';
 import { UploadHistoryEntry } from './components/uploadHistory';
 import { useAuth } from './api/useAuth';
 import { useGroups } from './api/useGroups';
@@ -53,7 +53,6 @@ export default function App() {
   const [formulaModalType, setFormulaModalType] = useState<'formula' | 'disclaimer'>('formula');
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [isQuickImportOpen, setIsQuickImportOpen] = useState(false);
-  const [isUploadHistoryOpen, setIsUploadHistoryOpen] = useState(false);
   // 從上傳歷史「填回」帶回快速上傳的文本
   const [importRefill, setImportRefill] = useState<UploadHistoryEntry | null>(null);
   // 快速上傳寫進去的紀錄要讓各分頁重抓 —— useLedger 只在 loggedIn / mode 變才撈,
@@ -131,6 +130,7 @@ export default function App() {
       case 'export': return '匯出中心';
       case 'leaderboard': return '績效榜單';
       case 'audit': return '操作歷史';
+      case 'upload_history': return '快速上傳歷史';
       case 'settings': return '系統設定';
       default: return '彩券統計分析';
     }
@@ -186,7 +186,7 @@ export default function App() {
                   <div className="flex items-center gap-2 shrink-0">
                     <button
                       type="button"
-                      onClick={() => setIsUploadHistoryOpen(true)}
+                      onClick={() => setActiveNav('upload_history')}
                       className="py-2 px-3.5 rounded-full text-xs font-semibold uppercase tracking-wider bg-white dark:bg-[#161616] border border-black/[0.08] dark:border-white/[0.08] text-neutral-700 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5 transition-colors flex items-center gap-1.5"
                     >
                       <History className="w-3.5 h-3.5" />
@@ -288,6 +288,18 @@ export default function App() {
           {activeNav === 'audit' && (
             <AuditView onReverted={() => setLedgerVersion(v => v + 1)} />
           )}
+          {/* 快速上傳歷史(獨立頁):每筆明細 + 逐筆派彩/盈虧;填回→切到下注頁開快速上傳;
+              作廢會動到 ledger 流水,bump ledgerVersion 讓各分頁重抓 */}
+          {activeNav === 'upload_history' && (
+            <UploadHistoryView
+              onRefill={(entry) => {
+                setImportRefill(entry);
+                setActiveNav('duo_bet');
+                setIsQuickImportOpen(true);
+              }}
+              onChanged={() => setLedgerVersion(v => v + 1)}
+            />
+          )}
           {activeNav === 'settings' && <SettingsView theme={theme} onToggleTheme={toggleTheme} />}
 
           {/* Bottom Disclaimer Expander */}
@@ -335,17 +347,6 @@ export default function App() {
         onClose={() => { setIsQuickImportOpen(false); setImportRefill(null); }}
         onImported={() => setLedgerVersion(v => v + 1)}
         refill={importRefill}
-      />
-
-      {/* 上傳歷史(獨立彈窗):查看文本 + 明細 + 總成本;「填回」帶回快速上傳 */}
-      <UploadHistoryModal
-        isOpen={isUploadHistoryOpen}
-        onClose={() => setIsUploadHistoryOpen(false)}
-        onRefill={(entry) => {
-          setImportRefill(entry);
-          setIsUploadHistoryOpen(false);
-          setIsQuickImportOpen(true);
-        }}
       />
     </div>
   );

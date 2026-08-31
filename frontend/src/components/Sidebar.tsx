@@ -14,6 +14,7 @@ import {
   ShieldAlert,
   Dices,
   History,
+  ClipboardList,
   Layers,
   LogIn,
   Sparkles
@@ -154,6 +155,7 @@ export const Sidebar: React.FC<Props> = ({
     { id: 'export', label: '匯出', icon: <Download className="w-4 h-4" /> },
     { id: 'leaderboard', label: '排行榜', icon: <Trophy className="w-4 h-4" /> },
     { id: 'audit', label: '操作歷史', icon: <History className="w-4 h-4" /> },
+    { id: 'upload_history', label: '上傳歷史', icon: <ClipboardList className="w-4 h-4" /> },
     { id: 'settings', label: '設定', icon: <Settings className="w-4 h-4" /> },
   ];
 

@@ -8,6 +8,7 @@ export type NavItem =
   | 'export'       // 匯出
   | 'leaderboard'  // 排行榜
   | 'audit'        // 操作歷史(可作廢=反轉)
+  | 'upload_history' // 快速上傳歷史(每筆明細/派彩/盈虧)
   | 'settings';    // 設定
 
 export type DuoBetTab =

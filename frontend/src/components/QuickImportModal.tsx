@@ -17,8 +17,8 @@ import {
 // 先「解析預覽」(dry_run)再「確認上傳」是刻意的兩步:文字認錯行的機率不低,
 // 直接寫進去要一筆一筆撤銷很麻煩。
 //
-// 上傳歷史(文本 + 明細 + 總成本)在獨立彈窗 UploadHistoryModal;這裡只負責
-// 在「確認上傳」成功後把該批寫進 localStorage(見 uploadHistory.ts)。
+// 上傳歷史(文本 + 明細 + 逐筆派彩/盈虧)在獨立頁 views/UploadHistoryView;這裡只負責
+// 在「確認上傳」成功後把該批寫進後端上傳歷史(見 uploadHistory.ts)。
 
 interface Props {
   isOpen: boolean;
@@ -315,10 +315,11 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
         count: res.saved,
         totalCost,
         items: detail,
-        // 記下這批建立的 ledger id → 作廢時精準刪這些(見 UploadHistoryModal 作廢鈕)
+        // 記下這批建立的 ledger id → 作廢時精準刪這些,也讓上傳歷史頁逐筆接回派彩
+        // (與 items 同序,UploadHistoryView 靠 index 對齊)
         entryIds: res.items.map(it => it.id).filter((x): x is number => x != null),
       };
-      // 寫進後端上傳歷史(獨立彈窗 UploadHistoryModal 讀取);未登入靜默略過
+      // 寫進後端上傳歷史(獨立頁 UploadHistoryView 讀取);未登入靜默略過
       await saveEntry(entry);
       setReplaceTs(null);
       setOverwriteTarget(null);
@@ -714,7 +715,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
             </div>
           )}
 
-          {/* 上傳歷史已抽成獨立彈窗 UploadHistoryModal(見紀錄下注頁的「上傳歷史」鈕) */}
+          {/* 上傳歷史已抽成獨立頁 UploadHistoryView(見側欄「上傳歷史」或下注頁的「上傳歷史」鈕) */}
         </div>
 
         {/* 未來日期確認:選到今天以後的日期 → 先確認是不是真的要記到那天 */}
