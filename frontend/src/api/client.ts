@@ -615,6 +615,7 @@ export interface QuickImportCommitItem {
   stars?: number; // 連碰重算成本要用
   hit_count?: number | null; // 忘記期數但記得中幾顆:直接手填結算
   base_cost?: number | null; // 逐筆基礎成本覆蓋(每注/每碰);null/省略=吃版盤口
+  ball_deltas?: Record<string, number>; // 1組專用:個別號碼的每注基礎加價(號→+N)
 }
 
 // 二合下注「組」設定(全站共用):固定顆數 + 是否啟用。

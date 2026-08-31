@@ -37,6 +37,20 @@ interface DraftItem {
   incomplete: boolean;
   hit: string; // 中獎顆數(忘記期數時直接填);空 = 待開獎
   base: number; // 每單位基礎成本(二合每注/連碰每碰…);預設帶版盤口,可逐筆改
+  deltas: string; // 1組專用:個別號碼加價,如「15:3.5, 22:2」(每注基礎 +N);空=無
+}
+
+// 「15:3.5, 22:2」→ {15:3.5, 22:2}(1組個別號碼每注基礎加價);認不得的略過
+function parseDeltas(s: string): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const part of (s || '').split(/[,,;\s]+/)) {
+    const m = part.match(/^(\d{1,2})[:：]([+-]?\d+(?:\.\d+)?)$/);
+    if (m) {
+      const n = Number(m[1]); const v = Number(m[2]);
+      if (n > 0 && v) out[String(n)] = v;
+    }
+  }
+  return out;
 }
 
 function parseBalls(s: string): number[] {
@@ -192,6 +206,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
           stars: d.stars,
           hit_count: d.hit.trim() === '' ? null : Math.max(0, Math.floor(Number(d.hit) || 0)),
           base_cost: d.base > 0 ? d.base : null,
+          ball_deltas: d.mode === 'single' ? parseDeltas(d.deltas) : {},
         }));
         const res = await api.quickImportCommit(selGame, items, {issue, edition: selEid, date: selDate, dryRun: true});
         if (cancelled) return;
@@ -261,6 +276,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
           incomplete: Boolean(it.record.incomplete),
           hit: '',
           base: num(it.record.baseCost),
+          deltas: '',
         })),
       );
     } catch (e) {
@@ -291,6 +307,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
           stars: d.stars,
           hit_count: d.hit.trim() === '' ? null : Math.max(0, Math.floor(Number(d.hit) || 0)),
           base_cost: d.base > 0 ? d.base : null,
+          ball_deltas: d.mode === 'single' ? parseDeltas(d.deltas) : {},
         })),
         {issue, edition: selEid, date: selDate},
       );
@@ -616,6 +633,16 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
                             <span className="text-[10px] text-neutral-400">
                               {parseBalls(d.balls).length} 顆
                             </span>
+                            {d.mode === 'single' && (
+                              <input
+                                value={d.deltas}
+                                onChange={e => setDraft(i, {deltas: e.target.value})}
+                                spellCheck={false}
+                                placeholder="號碼加價 例:15:3.5"
+                                title="1組個別號碼的每注基礎加價,格式「號:加價」,多個用逗號。例:15號每注+3.5 → 15:3.5"
+                                className="mt-1 w-full px-2 py-1 rounded-lg border border-amber-400/40 dark:border-amber-500/30 bg-amber-50/40 dark:bg-amber-500/[0.06] text-[10px] font-mono text-neutral-900 dark:text-white outline-hidden focus:border-amber-500/70"
+                              />
+                            )}
                           </td>
                           <td className="px-3 py-2 text-right align-top">
                             <input

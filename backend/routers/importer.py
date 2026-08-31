@@ -461,11 +461,15 @@ def _apply_base(g: GameConfig, odds: dict, mode: str, stars: int,
 
 
 def _recost(g: GameConfig, odds: dict, mode: str, balls: list[int], units: float,
-            stars: int, base: float | None = None) -> _Item:
+            stars: int, base: float | None = None,
+            ball_deltas: dict[str, float] | None = None) -> _Item:
     """依(可能被前端編輯過的)mode / 號碼 / 支或車 / 星數 + 該版盤口重算一筆成本。
 
     money 一律後端算 —— 前端只送使用者改完的號碼、支/車、以及**逐筆基礎成本 base**
     (可覆蓋該版盤口的每注/每碰基礎);沒給 base 就吃版盤口。金額不讓前端直接決定。
+
+    ball_deltas:1組(single)專用,個別號碼的「每注基礎」加價(號→+N)。有給時該筆
+    成本改為逐顆計:車數 × Σ(每顆每車),每顆每車 =(每注基礎 + 該號加價)×(num_max−1)。
     """
     rej = _reject_game_mode(g, mode)
     if rej:                               # 六合彩×星碰/三柱/9000碰 → 🔴 拒絕這筆
@@ -491,7 +495,21 @@ def _recost(g: GameConfig, odds: dict, mode: str, balls: list[int], units: float
         grp = group_store.get_group(group_store.MODE_TO_GID[mode])
         name = grp["name"] if grp else mode
         cpc = float(odds["cost_per_car"])
-        erhe_cost = _erhe_cost(odds, len(balls), units)
+        notes = max(1, g.num_max - 1)
+        default_base = cpc / notes
+        deltas = ball_deltas or {}
+        # 1組專用:個別號碼加價(每注基礎 +N)→ 逐顆算每車成本
+        use_pn = mode == "single" and any(float(deltas.get(str(n), 0) or 0) for n in balls)
+        if use_pn:
+            per_car = [(default_base + float(deltas.get(str(n), 0) or 0)) * notes for n in balls]
+            erhe_cost = units * sum(per_car)
+            adj = [f"{n}號+{float(deltas[str(n)]):g}"
+                   for n in balls if float(deltas.get(str(n), 0) or 0)]
+            expr = (f"{len(balls)} 顆 × {_g(units)} 車,每車合計 {_money(sum(per_car))}"
+                    f"({'、'.join(adj)}) = {_money(erhe_cost)}")
+        else:
+            erhe_cost = _erhe_cost(odds, len(balls), units)
+            expr = f"{len(balls)} 顆 × {_g(units)} 車 × {_money(cpc)}/車 = {_money(erhe_cost)}"
         return _Item(
             mode=mode,
             play_type=f"{name} {int(units)} 車({len(balls)} 顆)",
@@ -500,8 +518,8 @@ def _recost(g: GameConfig, odds: dict, mode: str, balls: list[int], units: float
             bets_count=len(balls),
             cost=erhe_cost,
             line="",
-            cost_expr=f"{len(balls)} 顆 × {_g(units)} 車 × {_money(cpc)}/車 = {_money(erhe_cost)}",
-            base_cost=cpc / max(1, g.num_max - 1),
+            cost_expr=expr,
+            base_cost=default_base,
         )
     raise ValueError(f"未知的下注模式:{mode}")
 
@@ -705,6 +723,9 @@ class CommitItemIn(BaseModel):
     hit_count: int | None = None   # 忘記期數但記得中幾顆:直接依該版盤口手填結算
     base_cost: float | None = Field(   # 逐筆基礎成本覆蓋(每注/每碰);None=吃版盤口
         default=None, description="這筆的每單位基礎成本(二合每注/連碰每碰…),覆蓋版盤口")
+    ball_deltas: dict[str, float] = Field(   # 1組專用:個別號碼的「每注基礎」加價(號→+N)
+        default_factory=dict,
+        description="1組(single)每個號碼的每注基礎加價,鍵為號碼字串。其餘下法忽略")
 
 
 class QuickImportCommitIn(BaseModel):
@@ -739,7 +760,7 @@ def quick_import_commit(body: QuickImportCommitIn, user: str = Depends(current_u
     for i, it in enumerate(body.items, start=1):
         try:
             item = _recost(g, odds, it.mode, it.selectedBalls, it.units, it.stars,
-                           base=it.base_cost)
+                           base=it.base_cost, ball_deltas=it.ball_deltas)
         except ValueError as e:
             errors.append({"line_no": i, "line": "", "message": str(e)})
             continue
