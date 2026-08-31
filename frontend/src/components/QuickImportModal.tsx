@@ -102,6 +102,8 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
   const [overwriteTarget, setOverwriteTarget] = useState<UploadHistoryEntry | null>(null);
   // 未來日期防呆:選到今天以後的日期,按上傳時先跳確認(避免手滑選錯日期)
   const [futurePrompt, setFuturePrompt] = useState(false);
+  // 選日期後偵測:這天(+選定的版)已經上傳過的遊戲 → 遊戲鈕標綠,一眼看出哪些記過了
+  const [uploadedGames, setUploadedGames] = useState<Set<string>>(new Set());
 
   // 每次開啟:三要件回到「尚未選擇」,並清掉上次殘留的預覽 / 橫幅
   useEffect(() => {
@@ -181,6 +183,24 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
     })();
     return () => { cancelled = true; };
   }, [isOpen, selDate, selGame]);
+
+  // 選日期(+版)→ 查上傳歷史,標記那天已經上傳過的遊戲(綠色)。版未選就跨版偵測。
+  useEffect(() => {
+    if (!isOpen || !selDate) { setUploadedGames(new Set()); return; }
+    let alive = true;
+    loadHistory().then(list => {
+      if (!alive) return;
+      const keys = new Set<string>();
+      for (const h of list) {
+        if ((h.date ?? '') !== selDate) continue;
+        if (selEid != null && (h.eid ?? 1) !== selEid) continue;
+        const g = games.find(x => x.name === h.gameName);
+        if (g) keys.add(g.key);
+      }
+      setUploadedGames(keys);
+    }).catch(() => { /* 未登入 / 讀不到就不標 */ });
+    return () => { alive = false; };
+  }, [isOpen, selDate, selEid, games, done]);   // done 變(剛上傳成功)也重查
 
   // 上傳目標就緒:有真期號,或這天是合法開獎日但還沒開(pending,期號留空、
   // 開獎後依日期校正)。pending 也能預覽 / 上傳,期號欄送空字串。
@@ -430,28 +450,35 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
           )}
 
           <div className="flex flex-wrap items-end gap-3">
-            <div>
+            <div className="order-3">
               <label className="block text-[10px] uppercase tracking-[0.2em] font-semibold text-neutral-400 mb-1.5">
-                上傳到哪款
+                上傳到哪款{selDate && uploadedGames.size > 0 && <span className="ml-1 normal-case tracking-normal text-emerald-600 dark:text-emerald-400 font-normal">綠=這天已上傳</span>}
               </label>
               <div className="inline-flex p-1 rounded-xl bg-black/[0.03] dark:bg-white/[0.04] border border-black/[0.06] dark:border-white/[0.06] gap-1">
-                {games.map(g => (
+                {games.map(g => {
+                  const done_ = uploadedGames.has(g.key);
+                  return (
                   <button
                     key={g.key}
                     type="button"
                     onClick={() => { setSelGame(g.key); reset(); }} // modal 內自己選,不再全域切換
-                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                    title={done_ ? '這天已上傳過(綠色)' : undefined}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all inline-flex items-center gap-1 ${
                       selGame === g.key
                         ? 'bg-black text-white dark:bg-white dark:text-black shadow-xs'
-                        : 'text-neutral-600 dark:text-neutral-400 hover:text-black dark:hover:text-white'
+                        : done_
+                          ? 'text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 ring-1 ring-emerald-500/40 hover:bg-emerald-500/20'
+                          : 'text-neutral-600 dark:text-neutral-400 hover:text-black dark:hover:text-white'
                     }`}
                   >
+                    {done_ && selGame !== g.key && <CheckCircle2 className="w-3 h-3" />}
                     {g.short_name}
                   </button>
-                ))}
+                  );
+                })}
               </div>
             </div>
-            <div>
+            <div className="order-2">
               <label className="block text-[10px] uppercase tracking-[0.2em] font-semibold text-neutral-400 mb-1.5">
                 上傳到哪版
               </label>
@@ -472,7 +499,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
                 ))}
               </div>
             </div>
-            <div>
+            <div className="order-1">
               <label className="block text-[10px] uppercase tracking-[0.2em] font-semibold text-neutral-400 mb-1.5">
                 下注日期(整批只選一次)
               </label>
@@ -505,7 +532,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
                 }`}>{issueHint}</div>
               )}
             </div>
-            <div className="text-[11px] text-neutral-500 dark:text-neutral-400 pb-2.5">
+            <div className="order-4 text-[11px] text-neutral-500 dark:text-neutral-400 pb-2.5">
               {targetReady ? (
                 <>記到 <strong>{selGameName}・{selEditionName}・{
                   issue ? `第 ${issue} 期` : (predictedIssue ? `第 ${predictedIssue} 期(預估)` : '期號未定')
