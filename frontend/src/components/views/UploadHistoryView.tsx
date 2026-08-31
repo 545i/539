@@ -4,6 +4,7 @@ import {
   UploadHistoryEntry, MODE_LABEL, loadHistory, updateEntry, voidEntry, fmtTime, money,
 } from '../uploadHistory';
 import { api, ReconcileDTO, LedgerEntryDTO } from '../../api/client';
+import { WeeklyLedger } from './WeeklyLedger';
 
 interface Props {
   // 「填回=編輯」:帶回整批到快速上傳(切到下注頁並開啟快速上傳),上傳時作廢原批次取代
@@ -129,6 +130,7 @@ const ReconReport: React.FC<{ data: ReconcileDTO }> = ({ data }) => {
 // 快速上傳歷史(獨立頁面):列出每批上傳的原始文本、每筆下注明細,細緻到「列」的
 // 派彩 / 盈虧。派彩取自這批建立的 ledger 紀錄(entryIds ↔ items 對齊),已結算才有。
 export const UploadHistoryView: React.FC<Props> = ({ onRefill, onChanged }) => {
+  const [tab, setTab] = useState<'weekly' | 'batches'>('weekly'); // 預設「每週總帳」
   const [history, setHistory] = useState<UploadHistoryEntry[]>([]);
   const [ledger, setLedger] = useState<LedgerEntryDTO[]>([]);
   const [filterEdition, setFilterEdition] = useState<string>('all');
@@ -288,19 +290,38 @@ export const UploadHistoryView: React.FC<Props> = ({ onRefill, onChanged }) => {
 
   return (
     <div className="space-y-5">
-      {/* 標題列 */}
+      {/* 標題 + 分頁切換 */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-2">
-          <h2 className="text-xl sm:text-2xl font-display font-bold text-[#141414] dark:text-white tracking-wide uppercase">
-            快速上傳歷史
-          </h2>
-          {shown.length > 0 && (
-            <span className="font-mono text-xs text-neutral-400">
-              {shown.length} 批・累計成本 {money(historyTotal)}
-            </span>
-          )}
+        <h2 className="text-xl sm:text-2xl font-display font-bold text-[#141414] dark:text-white tracking-wide uppercase">
+          {tab === 'weekly' ? '每週總帳' : '上傳批次歷史'}
+        </h2>
+        <div className="flex items-center gap-1.5">
+          {([['weekly', '每週總帳'], ['batches', '上傳批次']] as const).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setTab(id)}
+              className={`px-3 py-1.5 rounded-full text-xs font-semibold uppercase tracking-wider transition-all ${
+                tab === id
+                  ? 'bg-black text-white dark:bg-white dark:text-black'
+                  : 'bg-white dark:bg-[#161616] border border-black/[0.08] dark:border-white/[0.08] text-neutral-700 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
         </div>
       </div>
+
+      {tab === 'weekly' && <WeeklyLedger />}
+
+      {tab === 'batches' && (
+      <div className="space-y-4">
+      {shown.length > 0 && (
+        <div className="font-mono text-xs text-neutral-400">
+          {shown.length} 批・累計成本 {money(historyTotal)}
+        </div>
+      )}
 
       <p className="text-[11px] text-neutral-500 dark:text-neutral-400 leading-relaxed">
         每批上傳保留<strong>原始文本</strong>、每筆<strong>下注明細</strong>,細緻到「列」的
@@ -361,6 +382,8 @@ export const UploadHistoryView: React.FC<Props> = ({ onRefill, onChanged }) => {
           );
         })}
       </div>
+      </div>
+      )}
     </div>
   );
 
