@@ -41,6 +41,7 @@ export interface BetRecord {
   game: LotteryGame;
   mode: DuoBetTab;
   edition?: number; // 屬於哪個版(eid);舊紀錄沒有就當第一版
+  cycle_id?: number | null; // 屬於哪個週期(後端自動補目前 open 的週期);沒有就未分週期
   playType?: string;
   stars?: number; // 連碰星數(2/3/4);非連碰為 0。舊 combo 紀錄可能沒有,從 playType 退回解析
   units: number; // 支數 or 車數

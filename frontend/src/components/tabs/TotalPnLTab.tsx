@@ -1,15 +1,16 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   TrendingDown,
   TrendingUp,
   Info,
   Layers,
+  CalendarClock,
   ArrowUpRight,
   ShieldAlert
 } from 'lucide-react';
 // 未登入時沒有後端流水可彙整,沿用 v2 的示範數字
 import { TOTAL_STRATEGY_PERFORMANCE } from '../../data/lotteryData';
-import { GameKey, LedgerMode } from '../../api/client';
+import { api, CycleDTO, GameKey, LedgerMode } from '../../api/client';
 import { useGame } from '../../api/useGame';
 import { useAllLedger } from '../../api/useLedger';
 import { useEditions } from '../../api/useEditions';
@@ -90,6 +91,36 @@ export const TotalPnLTab: React.FC = () => {
       .sort((a, b) => a[0] - b[0])
       .map(([ed, v]) => ({ ed, name: edName(ed), ...v }));
   }, [entries, editions]);
+
+  // 週期名稱對照:登入才抓 /cycles(拿不到名字就退回顯示「週期 #id」)
+  const [cycles, setCycles] = useState<CycleDTO[]>([]);
+  useEffect(() => {
+    if (!loggedIn) { setCycles([]); return; }
+    api.getCycles().then(setCycles).catch(() => setCycles([]));
+  }, [loggedIn]);
+  const cycleName = (id: number | null) =>
+    id === null ? '未分週期' : cycles.find(c => c.id === id)?.name ?? `週期 #${id}`;
+
+  // 各週期損益:groupBy record.cycle_id,彙總成本/派彩/淨損益/筆數。
+  // 沿用總版原則排除模擬版(simEids);沒有 cycle_id 的紀錄歸到「未分週期」(key = null)。
+  const cycleRows = useMemo(() => {
+    const by = new Map<number | null, { rounds: number; cost: number; payout: number; pnl: number }>();
+    for (const e of entries) {
+      if (simEids.has(edOf(e))) continue;     // 模擬版不計入週期營利,與總版一致
+      const raw = e.record.cycle_id;
+      const cid = typeof raw === 'number' ? raw : null;
+      const acc = by.get(cid) ?? { rounds: 0, cost: 0, payout: 0, pnl: 0 };
+      acc.rounds += 1;
+      acc.cost += num(e.record.cost);
+      acc.payout += num(e.record.payout);
+      acc.pnl += num(e.record.pnl);
+      by.set(cid, acc);
+    }
+    return Array.from(by.entries())
+      // 有 cycle_id 的依 id 排序;「未分週期」(null)排最後
+      .sort((a, b) => (a[0] ?? Infinity) - (b[0] ?? Infinity))
+      .map(([cid, v]) => ({ cid, name: cycleName(cid), ...v }));
+  }, [entries, simEids, cycles]);
 
   const perfRows = useMemo(() => {
     if (!loggedIn) return TOTAL_STRATEGY_PERFORMANCE;
@@ -351,6 +382,64 @@ export const TotalPnLTab: React.FC = () => {
                   {(() => {
                     const tPnl = editionRows.reduce((a, r) => a + r.pnl, 0);
                     const tCost = editionRows.reduce((a, r) => a + r.cost, 0);
+                    return (
+                      <>
+                        <td className={`font-mono text-xs font-bold ${tPnl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>{signed(tPnl)}</td>
+                        <td className="font-mono text-xs font-bold">{tCost ? ((tPnl / tCost) * 100).toFixed(1) : '0.0'}%</td>
+                      </>
+                    );
+                  })()}
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* 各週期損益:每一週期一列(排除模擬版,同總版原則)*/}
+      {loggedIn && cycleRows.length > 0 && (
+        <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs sm:text-sm font-display font-bold text-neutral-900 dark:text-white uppercase tracking-wide flex items-center gap-1.5">
+              <CalendarClock className="w-4 h-4 text-neutral-500" /> 各週期損益
+            </h3>
+            <span className="text-[10px] font-mono text-neutral-400">依記帳週期彙總(不計模擬版)</span>
+          </div>
+          <div className="lt-wrap border border-black/[0.08] dark:border-white/[0.08] rounded-xl overflow-x-auto">
+            <table className="lt w-full">
+              <thead>
+                <tr>
+                  <th>週期</th>
+                  <th>筆數</th>
+                  <th>總成本</th>
+                  <th>總派彩</th>
+                  <th>淨損益</th>
+                  <th>ROI</th>
+                </tr>
+              </thead>
+              <tbody>
+                {cycleRows.map(r => (
+                  <tr key={String(r.cid)}>
+                    <td className="font-semibold text-xs text-neutral-900 dark:text-white">{r.name}</td>
+                    <td className="font-mono text-xs">{r.rounds}</td>
+                    <td className="font-mono text-xs">{r.cost.toLocaleString()}</td>
+                    <td className="font-mono text-xs text-emerald-600 dark:text-emerald-400 font-bold">{r.payout.toLocaleString()}</td>
+                    <td className={`font-mono text-xs font-bold ${r.pnl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                      {signed(r.pnl)}
+                    </td>
+                    <td className="font-mono text-xs">{r.cost ? ((r.pnl / r.cost) * 100).toFixed(1) : '0.0'}%</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="border-t border-black/10 dark:border-white/10 bg-black/[0.03] dark:bg-white/[0.05]">
+                  <td className="font-sans font-bold text-xs text-neutral-900 dark:text-white">全週期總計</td>
+                  <td className="font-mono text-xs font-bold">{cycleRows.reduce((a, r) => a + r.rounds, 0)}</td>
+                  <td className="font-mono text-xs font-bold">{cycleRows.reduce((a, r) => a + r.cost, 0).toLocaleString()}</td>
+                  <td className="font-mono text-xs font-bold text-emerald-600 dark:text-emerald-400">{cycleRows.reduce((a, r) => a + r.payout, 0).toLocaleString()}</td>
+                  {(() => {
+                    const tPnl = cycleRows.reduce((a, r) => a + r.pnl, 0);
+                    const tCost = cycleRows.reduce((a, r) => a + r.cost, 0);
                     return (
                       <>
                         <td className={`font-mono text-xs font-bold ${tPnl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>{signed(tPnl)}</td>

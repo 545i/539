@@ -7,6 +7,7 @@ import { useAuth } from '../../api/useAuth';
 import { useGame } from '../../api/useGame';
 import { useGroups } from '../../api/useGroups';
 import { EditionSettings } from './EditionSettings';
+import { CycleSettings } from './CycleSettings';
 
 interface Props {
   theme: ThemeMode;
@@ -182,6 +183,9 @@ export const SettingsView: React.FC<Props> = ({ theme, onToggleTheme }) => {
 
       {/* 下注版本與各版盤口(全站唯一的盤口設定入口) */}
       <EditionSettings />
+
+      {/* 週期性紀錄(開/結算記帳週期) */}
+      <CycleSettings />
 
       {/* 開獎資料更新狀態 */}
       <div className="p-6 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] space-y-4">

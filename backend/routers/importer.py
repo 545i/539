@@ -32,8 +32,8 @@ from datetime import date as _date
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
-from backend import (audit_store, autosettle, edition_store, group_store,
-                     ledger_store, settle)
+from backend import (audit_store, autosettle, cycle_store, edition_store,
+                     group_store, ledger_store, settle)
 from backend.data import get_game
 from backend.deps import current_user
 from core import combo as combo_mod
@@ -387,12 +387,22 @@ def parse(text: str, g: GameConfig, odds: dict) -> tuple[list[_Item], list[dict]
     return st.items, st.errors
 
 
+def _resolve_cycle_id(user: str, cycle_id: int | None) -> int | None:
+    """決定這批上傳歸到哪個週期:body 有帶就用,沒帶就補目前進行中(open)週期;
+    都沒有就 None(不歸任何週期,行為照舊)。"""
+    if cycle_id is not None:
+        return int(cycle_id)
+    cur = cycle_store.current_cycle(user)
+    return cur["id"] if cur else None
+
+
 def to_record(item: _Item, g: GameConfig, bet_date: str, issue: str,
-              edition: int = 1) -> dict:
+              edition: int = 1, cycle_id: int | None = None) -> dict:
     """_Item → 前端的 BetRecord(id / index / cumPnl 由前端依順序補)。
 
     多帶 stars / incomplete / edition:提交時後端靠 stars 重算連碰成本,incomplete
     讓前端標出「補足仍不夠」的列,edition 標記這筆屬於哪個版(對獎 / 損益要分版)。
+    cycle_id 標記這筆歸到哪個週期(沒有進行中週期就留 None,行為照舊)。
     """
     return {
         "date": bet_date,
@@ -400,6 +410,7 @@ def to_record(item: _Item, g: GameConfig, bet_date: str, issue: str,
         "game": g.name,
         "mode": item.mode,
         "edition": int(edition),
+        "cycle_id": int(cycle_id) if cycle_id is not None else None,
         "playType": item.play_type,
         "units": item.units,
         "cars": item.units,
@@ -625,6 +636,8 @@ class QuickImportIn(BaseModel):
     date: str | None = Field(default=None, description="下注日期;不給就用今天")
     issue: str = Field(default="", description="期別;不知道就留空")
     edition: int = Field(default=1, description="上傳到哪個版(eid);預設第一版")
+    cycle_id: int | None = Field(default=None,
+                                 description="歸到哪個週期;不給就自動補目前進行中週期")
 
 
 @router.post("/quick-import")
@@ -637,19 +650,22 @@ def quick_import(body: QuickImportIn, user: str = Depends(current_user)):
     g = get_game(body.game)
     bet_date = body.date or _date.today().isoformat()
     odds = edition_store.get_odds(body.edition, g.key)   # 依上傳的版取盤口
+    cid = _resolve_cycle_id(user, body.cycle_id)         # 沒帶就補目前進行中週期
     items, errors = parse(body.text, g, odds)
 
     # 🟡 警告(期號格式 / 大車支 / 舊日期 / 重複):dry_run 也算,讓預覽就看到。
     # 重複比對用「寫入前」的 ledger 快照,才不會跟自己這批對到。
     existing = ledger_store.list_entries(user)
-    base_records = [(i, to_record(it, g, bet_date, body.issue, edition=body.edition))
+    base_records = [(i, to_record(it, g, bet_date, body.issue, edition=body.edition,
+                                  cycle_id=cid))
                     for i, it in enumerate(items, start=1)]
     warnings = _collect_warnings(g, bet_date, body.issue, base_records, existing)
 
     out = []
     saved: list[dict] = []
     for it in items:
-        record = to_record(it, g, bet_date, body.issue, edition=body.edition)
+        record = to_record(it, g, bet_date, body.issue, edition=body.edition,
+                           cycle_id=cid)
         entry_id = None
         if not body.dry_run:
             record = autosettle.settle_record_if_drawn(record, g)  # 上傳時該期已開就對獎
@@ -697,6 +713,8 @@ class QuickImportCommitIn(BaseModel):
     date: str | None = None
     issue: str = ""
     edition: int = 1
+    cycle_id: int | None = Field(default=None,
+                                 description="歸到哪個週期;不給就自動補目前進行中週期")
     dry_run: bool = Field(default=False, description="只重算成本不寫入(預覽試算用)")
 
 
@@ -711,6 +729,7 @@ def quick_import_commit(body: QuickImportCommitIn, user: str = Depends(current_u
     g = get_game(body.game)
     bet_date = body.date or _date.today().isoformat()
     odds = edition_store.get_odds(body.edition, g.key)
+    cid = _resolve_cycle_id(user, body.cycle_id)   # 沒帶就補目前進行中週期
 
     # 重複判定要拿「寫入前」的 ledger 快照比(dry_run 也算,讓預覽就看到重複警告)。
     existing = ledger_store.list_entries(user)
@@ -724,7 +743,8 @@ def quick_import_commit(body: QuickImportCommitIn, user: str = Depends(current_u
         except ValueError as e:
             errors.append({"line_no": i, "line": "", "message": str(e)})
             continue
-        record = to_record(item, g, bet_date, body.issue, edition=body.edition)
+        record = to_record(item, g, bet_date, body.issue, edition=body.edition,
+                           cycle_id=cid)
         warn_records.append((i, record))
         # 有填中獎顆數就直接手填結算(不必期數);settle 依 record 的版取盤口算派彩
         if it.hit_count is not None:

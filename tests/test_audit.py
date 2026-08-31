@@ -46,6 +46,7 @@ RECORD = {
     "mode": "single", "playType": "單顆 3 車", "units": 3, "cars": 3,
     "betsCount": 1, "selectedBalls": [12], "drawBalls": [],
     "result": "待開獎", "cost": 8265, "payout": 0, "pnl": 0,
+    "cycle_id": None,   # 無進行中週期時後端補 None(週期性紀錄)
 }
 
 

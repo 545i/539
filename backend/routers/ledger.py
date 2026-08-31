@@ -13,8 +13,8 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from backend import (audit_store, autosettle, data, ledger_store, reconcile,
-                     settle, upload_history_store, ws)
+from backend import (audit_store, autosettle, cycle_store, data, ledger_store,
+                     reconcile, settle, upload_history_store, ws)
 from backend.deps import current_user
 from core import games
 
@@ -119,6 +119,11 @@ def add_entry(body: EntryIn, user: str = Depends(current_user)):
     """
     _check_mode(body.mode)
     record = body.record
+    # 週期性紀錄:record 沒帶 cycle_id 就補上目前進行中(open)的週期;沒有進行中
+    # 週期時留空(cycle_id=None),行為跟以前完全一樣。
+    if record.get("cycle_id") is None:
+        cur = cycle_store.current_cycle(user)
+        record["cycle_id"] = cur["id"] if cur else None
     # 去重:同槽(遊戲+日期+版+玩法+星數)已有紀錄 → 沒帶 overwrite 就回衝突清單,
     # 不寫入;帶 overwrite 就先刪同槽舊紀錄(進 audit 可還原)再寫新的。
     slot = _slot(record, body.mode)

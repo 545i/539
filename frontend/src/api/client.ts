@@ -634,6 +634,25 @@ export interface EditionDTO {
   simulated?: boolean; // 模擬版:可下注/上傳測試,但不計入總損益
 }
 
+// 週期性紀錄:一段自訂的記帳週期(例如「9月上半」)。同時只有一個 open 週期,
+// 新下注會自動綁到目前 open 的週期;結算後轉為 closed,可再開新週期。
+export interface CycleDTO {
+  id: number;
+  name: string;
+  status: string;        // "open" | "closed"
+  started_at?: string;   // 開始時間(ISO)
+  closed_at?: string;    // 結算時間(ISO;未結算時無)
+}
+
+// 某週期的損益彙總(後端算好:成本 / 派彩 / 淨損益 / 筆數)
+export interface CycleSummary {
+  cycle_id: number;
+  cost: number;
+  payout: number;
+  pnl: number;
+  n: number;
+}
+
 // 版×遊戲的整套盤口(每欄位 value + custom=是否有自訂,否則吃預設)
 export interface EditionOddsField {
   value: number;
@@ -964,6 +983,13 @@ export const api = {
     put<Record<string, number>>(`editions/${eid}/odds`, {game, values}),
   resetEditionOdds: (eid: number, game: GameKey) =>
     del<Record<string, number>>(`editions/${eid}/odds?game=${game}`),
+
+  // 週期性紀錄(需登入):列出 / 目前進行中 / 開新週期 / 結算 / 該週期損益彙總
+  getCycles: () => get<CycleDTO[]>('cycles'),
+  getCurrentCycle: () => get<CycleDTO | null>('cycles/current'),
+  createCycle: (name: string) => post<CycleDTO>('cycles', {name}),
+  closeCycle: (id: number) => post<CycleDTO>(`cycles/${id}/close`, {}),
+  getCycleSummary: (id: number) => get<CycleSummary>(`cycles/${id}/summary`),
 
   // audit 操作歷史(需登入):列自己的操作、作廢(反轉)某一筆
   auditList: (limit = 200) => get<AuditLogDTO[]>(`audit?limit=${limit}`),
