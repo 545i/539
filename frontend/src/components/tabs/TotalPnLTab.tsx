@@ -114,23 +114,37 @@ export const TotalPnLTab: React.FC = () => {
   // 各週損益(全自動週期):依開獎日期把每筆歸到「週一~週日」那一週,彙總
   // 成本/派彩/淨損益/筆數。排除模擬版(同總版原則);沒日期的歸「未分週期」。
   // 週期完全由日期推導 —— 跨週自動分期、過了下一週自動另立一列,無需手動開/結算。
+  type Agg = { rounds: number; cost: number; payout: number; pnl: number };
   const cycleRows = useMemo(() => {
-    const by = new Map<string, { rounds: number; cost: number; payout: number; pnl: number }>();
+    const mk = (): Agg => ({ rounds: 0, cost: 0, payout: 0, pnl: 0 });
+    const add = (a: Agg, r: Record<string, unknown>) => {
+      a.rounds += 1; a.cost += num(r.cost); a.payout += num(r.payout); a.pnl += num(r.pnl);
+    };
+    const by = new Map<string, Agg & { byEd: Map<number, Agg> }>();
     for (const e of entries) {
-      if (simEids.has(edOf(e))) continue;     // 模擬版不計入週期營利,與總版一致
+      const ed = edOf(e);
+      if (simEids.has(ed)) continue;     // 模擬版不計入週期營利,與總版一致
       const wk = weekMonday(String(e.record.date ?? ''));
-      const acc = by.get(wk) ?? { rounds: 0, cost: 0, payout: 0, pnl: 0 };
-      acc.rounds += 1;
-      acc.cost += num(e.record.cost);
-      acc.payout += num(e.record.payout);
-      acc.pnl += num(e.record.pnl);
-      by.set(wk, acc);
+      let w = by.get(wk);
+      if (!w) { w = Object.assign(mk(), { byEd: new Map<number, Agg>() }); by.set(wk, w); }
+      add(w, e.record);
+      const ea = w.byEd.get(ed) ?? mk(); add(ea, e.record); w.byEd.set(ed, ea);
     }
     return Array.from(by.entries())
       // 週:新→舊(未分週期的空字串排最後)
       .sort((a, b) => (a[0] && b[0] ? b[0].localeCompare(a[0]) : a[0] ? -1 : 1))
-      .map(([wk, v]) => ({ key: wk || 'nodate', name: weekLabel(wk), ...v }));
-  }, [entries, simEids]);
+      .map(([wk, v]) => ({
+        key: wk || 'nodate', name: weekLabel(wk),
+        rounds: v.rounds, cost: v.cost, payout: v.payout, pnl: v.pnl,
+        eds: Array.from(v.byEd.entries()).sort((a, b) => a[0] - b[0])
+          .map(([ed, a]) => ({ ed, name: edName(ed), ...a })),
+      }));
+  }, [entries, simEids, editions]);
+  // 各週損益:哪些週被展開(看各版明細)
+  const [openCycWeeks, setOpenCycWeeks] = useState<Set<string>>(new Set());
+  const toggleCycWeek = (k: string) => setOpenCycWeeks(prev => {
+    const n = new Set(prev); n.has(k) ? n.delete(k) : n.add(k); return n;
+  });
 
   const perfRows = useMemo(() => {
     if (!loggedIn) return TOTAL_STRATEGY_PERFORMANCE;
@@ -428,9 +442,15 @@ export const TotalPnLTab: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {cycleRows.map(r => (
-                  <tr key={r.key}>
-                    <td className="font-semibold text-xs text-neutral-900 dark:text-white">{r.name}</td>
+                {cycleRows.map(r => {
+                  const open = openCycWeeks.has(r.key);
+                  return (
+                  <React.Fragment key={r.key}>
+                  <tr className="cursor-pointer hover:bg-black/[0.02] dark:hover:bg-white/[0.03]" onClick={() => toggleCycWeek(r.key)}>
+                    <td className="font-semibold text-xs text-neutral-900 dark:text-white">
+                      <span className="text-neutral-400 mr-1">{open ? '▾' : '▸'}</span>{r.name}
+                      <span className="ml-1.5 font-normal text-neutral-400 text-[10px]">{r.eds.length} 版</span>
+                    </td>
                     <td className="font-mono text-xs">{r.rounds}</td>
                     <td className="font-mono text-xs">{r.cost.toLocaleString()}</td>
                     <td className="font-mono text-xs text-emerald-600 dark:text-emerald-400 font-bold">{r.payout.toLocaleString()}</td>
@@ -439,7 +459,19 @@ export const TotalPnLTab: React.FC = () => {
                     </td>
                     <td className="font-mono text-xs">{r.cost ? ((r.pnl / r.cost) * 100).toFixed(1) : '0.0'}%</td>
                   </tr>
-                ))}
+                  {open && r.eds.map(ed => (
+                    <tr key={r.key + '_' + ed.ed} className="bg-black/[0.02] dark:bg-white/[0.03]">
+                      <td className="text-xs text-neutral-500 dark:text-neutral-400 pl-6">└ {ed.name}</td>
+                      <td className="font-mono text-[11px] text-neutral-500">{ed.rounds}</td>
+                      <td className="font-mono text-[11px] text-neutral-500">{ed.cost.toLocaleString()}</td>
+                      <td className="font-mono text-[11px] text-emerald-600/80 dark:text-emerald-400/80">{ed.payout.toLocaleString()}</td>
+                      <td className={`font-mono text-[11px] font-semibold ${ed.pnl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>{signed(ed.pnl)}</td>
+                      <td className="font-mono text-[11px] text-neutral-500">{ed.cost ? ((ed.pnl / ed.cost) * 100).toFixed(1) : '0.0'}%</td>
+                    </tr>
+                  ))}
+                  </React.Fragment>
+                  );
+                })}
               </tbody>
               <tfoot>
                 <tr className="border-t border-black/10 dark:border-white/10 bg-black/[0.03] dark:bg-white/[0.05]">

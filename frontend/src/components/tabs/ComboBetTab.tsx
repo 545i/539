@@ -90,10 +90,12 @@ export const ComboBetTab: React.FC = () => {
     [gameKey, activePlay, k, n, perBet, prizeOdds],
   );
 
-  const totalSpent = records.reduce((acc, r) => acc + r.cost, 0);
-  const totalReturn = records.reduce((acc, r) => acc + r.payout, 0);
-  const cumPnl = records.length > 0 ? records[records.length - 1].cumPnl : 0;
-  const winCount = records.filter(r => r.payout > 0).length;
+  // 上方儀表板依「聚焦週」(flowRecords)計算,切週整頁一起變;全部週時=全部紀錄
+  const totalSpent = flowRecords.reduce((acc, r) => acc + r.cost, 0);
+  const totalReturn = flowRecords.reduce((acc, r) => acc + r.payout, 0);
+  const cumPnl = totalReturn - totalSpent;
+  const winCount = flowRecords.filter(r => r.payout > 0).length;
+  const roundCount = flowRecords.length;
 
   // 規格全部讀 game;還沒載到就先不畫,免得閃一次別款遊戲的數字
   if (!game) {
@@ -230,7 +232,7 @@ export const ComboBetTab: React.FC = () => {
             </div>
           </div>
           <div className="text-right text-[11px] font-mono text-neutral-400">
-            {records.length} 局・中 {winCount} 局
+            {roundCount} 局・中 {winCount} 局
           </div>
         </div>
       </div>
@@ -457,9 +459,9 @@ export const ComboBetTab: React.FC = () => {
             <div className="p-3.5 sm:p-4 rounded-xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08]">
               <div className="text-[10px] uppercase tracking-wider text-neutral-400">中獎率 / 局數</div>
               <div className="text-base sm:text-lg font-bold font-mono text-neutral-900 dark:text-white mt-0.5">
-                {records.length > 0 ? `${((winCount / records.length) * 100).toFixed(0)}%` : '0%'}
+                {roundCount > 0 ? `${((winCount / roundCount) * 100).toFixed(0)}%` : '0%'}
               </div>
-              <div className="text-[10px] text-neutral-400 font-mono">共 {records.length} 局</div>
+              <div className="text-[10px] text-neutral-400 font-mono">共 {roundCount} 局</div>
             </div>
           </div>
 
