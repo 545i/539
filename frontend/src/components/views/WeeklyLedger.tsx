@@ -45,23 +45,53 @@ const weekdayOf = (ymd: string): string => {
 
 interface BetRow {
   gameShort: string;
+  editionName: string;
   modeLabel: string;
   playType: string;
   balls: number[];
+  units: number;       // 車數 / 支數
+  unitLabel: string;   // 「車」或「支」
+  perUnit: number;     // 每注/每車/每支成本 = cost / units
   cost: number;
   payout: number;
   pnl: number;
   result: string;
   pending: boolean;
 }
-interface Bucket { cost: number; payout: number; pnl: number; pendingCount: number; count: number; }
+type GameAgg = { cost: number; payout: number; pnl: number; count: number };
+interface Bucket { cost: number; payout: number; pnl: number; pendingCount: number; count: number; byGame: Map<string, GameAgg>; }
 interface DayGroup extends Bucket { ymd: string; rows: BetRow[]; }
 interface WeekGroup extends Bucket { monday: string; sunday: string; days: DayGroup[]; }
 
-const blank = (): Bucket => ({ cost: 0, payout: 0, pnl: 0, pendingCount: 0, count: 0 });
-const fold = (b: Bucket, cost: number, payout: number, pending: boolean) => {
+const blank = (): Bucket => ({ cost: 0, payout: 0, pnl: 0, pendingCount: 0, count: 0, byGame: new Map() });
+const fold = (b: Bucket, cost: number, payout: number, pending: boolean, game: string) => {
   b.cost += cost; b.payout += payout; b.pnl += payout - cost;
   b.count += 1; if (pending) b.pendingCount += 1;
+  const a = b.byGame.get(game) ?? { cost: 0, payout: 0, pnl: 0, count: 0 };
+  a.cost += cost; a.payout += payout; a.pnl += payout - cost; a.count += 1;
+  b.byGame.set(game, a);
+};
+// 下法對應的計數單位(顯示「N車 / N支」用)
+const UNIT_LABEL: Record<string, string> = {
+  single: '車', multi: '車', pillar1800: '支', combo9000: '支', combo: '支',
+};
+
+// 各遊戲拆帳:539 / 天天樂 / 六合彩 各自的成本 / 派彩 / 盈虧(常駐顯示,不用展開)
+const GameBreak: React.FC<{ byGame: Map<string, GameAgg>; className?: string }> = ({ byGame, className }) => {
+  const items = Array.from(byGame.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+  if (items.length === 0) return null;
+  return (
+    <div className={`flex flex-col gap-0.5 ${className ?? ''}`}>
+      {items.map(([g, a]) => (
+        <div key={g} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] font-mono">
+          <span className="inline-block min-w-[3.75rem] px-1.5 py-0.5 rounded bg-sky-500/10 text-sky-600 dark:text-sky-400 font-sans font-semibold text-center">{g}</span>
+          <span className="text-neutral-500">成本 <span className="text-neutral-800 dark:text-neutral-200 font-semibold">{money(a.cost)}</span></span>
+          <span className="text-neutral-500">派彩 <span className="text-emerald-600 dark:text-emerald-400 font-semibold">{money(a.payout)}</span></span>
+          <span className="text-neutral-500">盈虧 <span className={`font-bold ${pnlCls(a.pnl)}`}>{signedMoney(a.pnl)}</span></span>
+        </div>
+      ))}
+    </div>
+  );
 };
 
 // 每週總帳:全部下注流水(排除模擬版)依開獎日期歸「週一~週日」的週,
@@ -112,11 +142,18 @@ export const WeeklyLedger: React.FC = () => {
       const pending = isPending(result);
       const cost = num(r.cost);
       const payout = pending ? 0 : num(r.payout);
+      const mode = String(r.mode ?? '');
+      const gShort = gameShort(String(r.game ?? '')) || '其他';
+      const units = num(r.units);
       const row: BetRow = {
-        gameShort: gameShort(String(r.game ?? '')),
-        modeLabel: MODE_LABEL[r.mode as LedgerMode] ?? String(r.mode ?? ''),
+        gameShort: gShort,
+        editionName: edName(num(r.edition) || 1),
+        modeLabel: MODE_LABEL[r.mode as LedgerMode] ?? mode,
         playType: String(r.playType ?? ''),
         balls: (r.selectedBalls as number[]) ?? [],
+        units,
+        unitLabel: UNIT_LABEL[mode] ?? '注',
+        perUnit: units ? Math.round(cost / units) : cost,
         cost, payout, pnl: payout - cost, result, pending,
       };
       let w = wmap.get(monday);
@@ -124,10 +161,10 @@ export const WeeklyLedger: React.FC = () => {
         w = { ...blank(), monday, sunday: monday ? addDays(monday, 6) : '', days: [] };
         wmap.set(monday, w);
       }
-      fold(w, cost, payout, pending);
+      fold(w, cost, payout, pending, gShort);
       let day = w.days.find(d => d.ymd === ymd);
       if (!day) { day = { ...blank(), ymd, rows: [] }; w.days.push(day); }
-      fold(day, cost, payout, pending);
+      fold(day, cost, payout, pending, gShort);
       day.rows.push(row);
     }
     const list = Array.from(wmap.values());
@@ -295,6 +332,14 @@ export const WeeklyLedger: React.FC = () => {
               </div>
             </button>
 
+            {/* 本週各遊戲拆帳 */}
+            {wOpen && w.byGame.size > 1 && (
+              <div className="px-3 py-2 pl-8 border-t border-black/[0.06] dark:border-white/[0.06] bg-black/[0.015] dark:bg-white/[0.02]">
+                <div className="text-[9px] uppercase tracking-wider text-neutral-400 mb-1">本週各遊戲</div>
+                <GameBreak byGame={w.byGame} />
+              </div>
+            )}
+
             {/* 每日小計 */}
             {wOpen && (
               <div className="border-t border-black/[0.06] dark:border-white/[0.06]">
@@ -322,6 +367,11 @@ export const WeeklyLedger: React.FC = () => {
                       </div>
                     </button>
 
+                    {/* 當天各遊戲拆帳(常駐,不用展開)*/}
+                    <div className="px-3 pb-2 pl-9">
+                      <GameBreak byGame={day.byGame} />
+                    </div>
+
                     {/* 當天逐筆 */}
                     {dOpen && (
                       <div className="overflow-x-auto bg-black/[0.015] dark:bg-white/[0.02]">
@@ -337,11 +387,13 @@ export const WeeklyLedger: React.FC = () => {
                           </thead>
                           <tbody className="font-mono">
                             {day.rows.map((v, i) => (
-                              <tr key={i} className="border-t border-black/[0.05] dark:border-white/[0.05]">
-                                <td className="px-3 py-1 pl-9 align-top">
+                              <React.Fragment key={i}>
+                              <tr className="border-t border-black/[0.05] dark:border-white/[0.05]">
+                                <td className="px-3 pt-1.5 pb-0 pl-9 align-top">
                                   {v.gameShort && (
                                     <span className="px-1.5 py-0.5 rounded-full bg-sky-500/10 text-sky-600 dark:text-sky-400 text-[9px] mr-1 font-sans">{v.gameShort}</span>
                                   )}
+                                  <span className="px-1.5 py-0.5 rounded-full bg-violet-500/10 text-violet-600 dark:text-violet-400 text-[9px] mr-1 font-sans">{v.editionName}</span>
                                   <span className="px-1.5 py-0.5 rounded-full bg-black/5 dark:bg-white/10 text-[10px] mr-1.5 font-sans">{v.modeLabel}</span>
                                   <span className="font-sans text-neutral-600 dark:text-neutral-400">{v.playType}</span>
                                   {v.result && (
@@ -354,17 +406,25 @@ export const WeeklyLedger: React.FC = () => {
                                     }`}>{v.result}</span>
                                   )}
                                 </td>
-                                <td className="px-3 py-1 align-top text-neutral-700 dark:text-neutral-300">
+                                <td className="px-3 pt-1.5 pb-0 align-top text-neutral-700 dark:text-neutral-300">
                                   {v.balls.length > 0 ? v.balls.map(n => String(n).padStart(2, '0')).join(' ') : '—'}
                                 </td>
-                                <td className="px-3 py-1 align-top text-right font-bold text-neutral-900 dark:text-white">{money(v.cost)}</td>
-                                <td className="px-3 py-1 align-top text-right text-emerald-600 dark:text-emerald-400">
+                                <td className="px-3 pt-1.5 pb-0 align-top text-right font-bold text-neutral-900 dark:text-white">{money(v.cost)}</td>
+                                <td className="px-3 pt-1.5 pb-0 align-top text-right text-emerald-600 dark:text-emerald-400">
                                   {v.pending ? <span className="text-neutral-400">待開獎</span> : money(v.payout)}
                                 </td>
-                                <td className={`px-3 py-1 align-top text-right font-bold ${v.pending ? 'text-neutral-400' : pnlCls(v.pnl)}`}>
+                                <td className={`px-3 pt-1.5 pb-0 align-top text-right font-bold ${v.pending ? 'text-neutral-400' : pnlCls(v.pnl)}`}>
                                   {v.pending ? '—' : signedMoney(v.pnl)}
                                 </td>
                               </tr>
+                              {v.units > 0 && (
+                                <tr>
+                                  <td colSpan={5} className="px-3 pt-0 pb-1.5 pl-9 text-[10px] text-neutral-400 dark:text-neutral-500">
+                                    {v.units.toLocaleString()} {v.unitLabel} × ${v.perUnit.toLocaleString()}/{v.unitLabel} = ${v.cost.toLocaleString()}
+                                  </td>
+                                </tr>
+                              )}
+                              </React.Fragment>
                             ))}
                           </tbody>
                         </table>
