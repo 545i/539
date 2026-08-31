@@ -544,8 +544,8 @@ export const UploadHistoryView: React.FC<Props> = ({ onRefill, onChanged }) => {
       <table className="w-full text-[11px] whitespace-nowrap">
         <thead className="text-[9px] uppercase tracking-wider text-neutral-400 bg-black/[0.02] dark:bg-white/[0.03]">
           <tr>
-            <th className="px-3 py-1 text-left font-semibold">玩法</th>
-            <th className="px-3 py-1 text-left font-semibold">號碼</th>
+            <th className="px-3 py-1 text-left font-semibold">下注方式</th>
+            <th className="px-3 py-1 text-left font-semibold">下注組合</th>
             <th className="px-3 py-1 text-right font-semibold">成本</th>
             <th className="px-3 py-1 text-right font-semibold">派彩</th>
             <th className="px-3 py-1 text-right font-semibold">盈虧</th>
@@ -619,6 +619,15 @@ export const UploadHistoryView: React.FC<Props> = ({ onRefill, onChanged }) => {
         </tfoot>
       </table>
       </div>
+      )}
+
+      {/* 計算方式 tip(展開才顯示):說明成本 / 派彩怎麼來的 */}
+      {isOpen && (
+        <div className="px-3 py-2 text-[10px] leading-relaxed text-neutral-500 dark:text-neutral-400 border-t border-black/[0.06] dark:border-white/[0.06] bg-black/[0.015] dark:bg-white/[0.02] space-y-0.5">
+          <div><span className="font-semibold text-neutral-600 dark:text-neutral-300">成本</span> = 每注基礎成本 × 支/注數(逐列算式見「下注組合」下方灰字)。</div>
+          <div><span className="font-semibold text-neutral-600 dark:text-neutral-300">派彩</span> = 開獎對獎後「中的碰/顆/注數 × 車數 × 該版每碰派彩(盤口)」;未中或未開獎為 0。</div>
+          <div><span className="font-semibold text-neutral-600 dark:text-neutral-300">盈虧</span> = 派彩 − 成本(綠賺紅賠;仍有待開獎的列不計入合計派彩)。</div>
+        </div>
       )}
     </div>
     );
