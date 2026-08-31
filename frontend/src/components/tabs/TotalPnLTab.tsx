@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 // 未登入時沒有後端流水可彙整,沿用 v2 的示範數字
 import { TOTAL_STRATEGY_PERFORMANCE } from '../../data/lotteryData';
-import { api, CycleDTO, GameKey, LedgerMode } from '../../api/client';
+import { GameKey, LedgerMode } from '../../api/client';
 import { useGame } from '../../api/useGame';
 import { useAllLedger } from '../../api/useLedger';
 import { useEditions } from '../../api/useEditions';
@@ -44,6 +44,25 @@ const MODE_ROWS: { mode: LedgerMode; name: string }[] = [
 
 const num = (v: unknown): number => (typeof v === 'number' && isFinite(v) ? v : 0);
 const signed = (v: number) => (v >= 0 ? `+${v.toLocaleString()}` : v.toLocaleString());
+
+// 週期 = 週一~週日,全自動由開獎日期推導(不靠手動 cycle,跨週自動歸期)。
+// 以 UTC 計算避開時區把日期挪錯天;週日(getUTCDay()===0)歸到前一個週一。
+const _addDays = (ymd: string, n: number): string => {
+  const [y, m, d] = ymd.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + n);
+  return dt.toISOString().slice(0, 10);
+};
+const weekMonday = (raw: string): string => {
+  const s = String(raw ?? '');
+  if (!/^\d{4}-\d{2}-\d{2}/.test(s)) return '';      // 沒日期 → 未分週期
+  const ymd = s.slice(0, 10);
+  const [y, m, d] = ymd.split('-').map(Number);
+  const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+  return _addDays(ymd, dow === 0 ? -6 : 1 - dow);
+};
+const weekLabel = (monday: string): string =>
+  monday ? `${monday.replace(/-/g, '/')} ~ ${_addDays(monday, 6).slice(5).replace('-', '/')}` : '未分週期(無日期)';
 
 export const TotalPnLTab: React.FC = () => {
   // 盤口資料共用全域遊戲 context 抓好的清單,不再自己打一次 /api/games
@@ -92,35 +111,26 @@ export const TotalPnLTab: React.FC = () => {
       .map(([ed, v]) => ({ ed, name: edName(ed), ...v }));
   }, [entries, editions]);
 
-  // 週期名稱對照:登入才抓 /cycles(拿不到名字就退回顯示「週期 #id」)
-  const [cycles, setCycles] = useState<CycleDTO[]>([]);
-  useEffect(() => {
-    if (!loggedIn) { setCycles([]); return; }
-    api.getCycles().then(setCycles).catch(() => setCycles([]));
-  }, [loggedIn]);
-  const cycleName = (id: number | null) =>
-    id === null ? '未分週期' : cycles.find(c => c.id === id)?.name ?? `週期 #${id}`;
-
-  // 各週期損益:groupBy record.cycle_id,彙總成本/派彩/淨損益/筆數。
-  // 沿用總版原則排除模擬版(simEids);沒有 cycle_id 的紀錄歸到「未分週期」(key = null)。
+  // 各週損益(全自動週期):依開獎日期把每筆歸到「週一~週日」那一週,彙總
+  // 成本/派彩/淨損益/筆數。排除模擬版(同總版原則);沒日期的歸「未分週期」。
+  // 週期完全由日期推導 —— 跨週自動分期、過了下一週自動另立一列,無需手動開/結算。
   const cycleRows = useMemo(() => {
-    const by = new Map<number | null, { rounds: number; cost: number; payout: number; pnl: number }>();
+    const by = new Map<string, { rounds: number; cost: number; payout: number; pnl: number }>();
     for (const e of entries) {
       if (simEids.has(edOf(e))) continue;     // 模擬版不計入週期營利,與總版一致
-      const raw = e.record.cycle_id;
-      const cid = typeof raw === 'number' ? raw : null;
-      const acc = by.get(cid) ?? { rounds: 0, cost: 0, payout: 0, pnl: 0 };
+      const wk = weekMonday(String(e.record.date ?? ''));
+      const acc = by.get(wk) ?? { rounds: 0, cost: 0, payout: 0, pnl: 0 };
       acc.rounds += 1;
       acc.cost += num(e.record.cost);
       acc.payout += num(e.record.payout);
       acc.pnl += num(e.record.pnl);
-      by.set(cid, acc);
+      by.set(wk, acc);
     }
     return Array.from(by.entries())
-      // 有 cycle_id 的依 id 排序;「未分週期」(null)排最後
-      .sort((a, b) => (a[0] ?? Infinity) - (b[0] ?? Infinity))
-      .map(([cid, v]) => ({ cid, name: cycleName(cid), ...v }));
-  }, [entries, simEids, cycles]);
+      // 週:新→舊(未分週期的空字串排最後)
+      .sort((a, b) => (a[0] && b[0] ? b[0].localeCompare(a[0]) : a[0] ? -1 : 1))
+      .map(([wk, v]) => ({ key: wk || 'nodate', name: weekLabel(wk), ...v }));
+  }, [entries, simEids]);
 
   const perfRows = useMemo(() => {
     if (!loggedIn) return TOTAL_STRATEGY_PERFORMANCE;
@@ -396,20 +406,20 @@ export const TotalPnLTab: React.FC = () => {
         </div>
       )}
 
-      {/* 各週期損益:每一週期一列(排除模擬版,同總版原則)*/}
+      {/* 各週損益:全自動週期,每一週(週一~週日)一列(排除模擬版,同總版原則)*/}
       {loggedIn && cycleRows.length > 0 && (
         <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="text-xs sm:text-sm font-display font-bold text-neutral-900 dark:text-white uppercase tracking-wide flex items-center gap-1.5">
-              <CalendarClock className="w-4 h-4 text-neutral-500" /> 各週期損益
+              <CalendarClock className="w-4 h-4 text-neutral-500" /> 各週損益
             </h3>
-            <span className="text-[10px] font-mono text-neutral-400">依記帳週期彙總(不計模擬版)</span>
+            <span className="text-[10px] font-mono text-neutral-400">週一~週日自動歸期(不計模擬版)</span>
           </div>
           <div className="lt-wrap border border-black/[0.08] dark:border-white/[0.08] rounded-xl overflow-x-auto">
             <table className="lt w-full">
               <thead>
                 <tr>
-                  <th>週期</th>
+                  <th>週期(週一~週日)</th>
                   <th>筆數</th>
                   <th>總成本</th>
                   <th>總派彩</th>
@@ -419,7 +429,7 @@ export const TotalPnLTab: React.FC = () => {
               </thead>
               <tbody>
                 {cycleRows.map(r => (
-                  <tr key={String(r.cid)}>
+                  <tr key={r.key}>
                     <td className="font-semibold text-xs text-neutral-900 dark:text-white">{r.name}</td>
                     <td className="font-mono text-xs">{r.rounds}</td>
                     <td className="font-mono text-xs">{r.cost.toLocaleString()}</td>
@@ -433,7 +443,7 @@ export const TotalPnLTab: React.FC = () => {
               </tbody>
               <tfoot>
                 <tr className="border-t border-black/10 dark:border-white/10 bg-black/[0.03] dark:bg-white/[0.05]">
-                  <td className="font-sans font-bold text-xs text-neutral-900 dark:text-white">全週期總計</td>
+                  <td className="font-sans font-bold text-xs text-neutral-900 dark:text-white">全部週合計</td>
                   <td className="font-mono text-xs font-bold">{cycleRows.reduce((a, r) => a + r.rounds, 0)}</td>
                   <td className="font-mono text-xs font-bold">{cycleRows.reduce((a, r) => a + r.cost, 0).toLocaleString()}</td>
                   <td className="font-mono text-xs font-bold text-emerald-600 dark:text-emerald-400">{cycleRows.reduce((a, r) => a + r.payout, 0).toLocaleString()}</td>

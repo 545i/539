@@ -81,6 +81,9 @@ export const WeeklyLedger: React.FC = () => {
   const [selEd, setSelEd] = useState<number | 'all'>('all');
   const [openWeeks, setOpenWeeks] = useState<Set<string>>(new Set());
   const [openDays, setOpenDays] = useState<Set<string>>(new Set());
+  // 週導覽:預設聚焦最新一週,用 ‹上一週 / 下一週› 逐週切換;showAll=看全部週列表
+  const [focusIdx, setFocusIdx] = useState(0);   // 0 = 最新一週(weeks 為新→舊)
+  const [showAll, setShowAll] = useState(false);
   const toggle = (set: Set<string>, k: string, setter: (s: Set<string>) => void) => {
     const n = new Set(set); n.has(k) ? n.delete(k) : n.add(k); setter(n);
   };
@@ -149,6 +152,11 @@ export const WeeklyLedger: React.FC = () => {
   const weekLabel = (w: WeekGroup) =>
     w.monday ? `${w.monday.replace(/-/g, '/')} ~ ${w.sunday.slice(5).replace('-', '/')}` : '(無日期)';
 
+  // 週導覽:聚焦模式只顯示第 clampedIdx 週(新→舊);showAll 顯示全部週
+  const clampedIdx = Math.min(Math.max(0, focusIdx), Math.max(0, weeks.length - 1));
+  const focusWeek = weeks[clampedIdx];
+  const visibleWeeks = showAll ? weeks : (focusWeek ? [focusWeek] : []);
+
   if (!loggedIn) {
     return <div className="text-[12px] text-neutral-500 p-4">登入後才有跨裝置的下注流水可彙整成週總帳。</div>;
   }
@@ -206,9 +214,60 @@ export const WeeklyLedger: React.FC = () => {
         </div>
       )}
 
+      {/* 週導覽:‹上一週 / 下一週›,或切「全部週」看完整列表 */}
+      {weeks.length > 0 && (
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => { setShowAll(false); setFocusIdx(i => Math.min(weeks.length - 1, Math.max(0, i) + 1)); }}
+              disabled={showAll ? false : clampedIdx >= weeks.length - 1}
+              title="上一週(較舊)"
+              className="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border border-black/10 dark:border-white/10 text-neutral-700 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5 disabled:opacity-30 transition-colors"
+            >
+              ‹ 上一週
+            </button>
+            <div className="px-3 py-1.5 rounded-lg bg-black/[0.03] dark:bg-white/[0.05] text-[11px] font-mono font-semibold text-neutral-800 dark:text-neutral-100 min-w-[9.5rem] text-center">
+              {showAll ? '全部週' : (focusWeek ? weekLabel(focusWeek) : '—')}
+            </div>
+            <button
+              type="button"
+              onClick={() => { setShowAll(false); setFocusIdx(i => Math.max(0, Math.min(weeks.length - 1, i) - 1)); }}
+              disabled={showAll ? false : clampedIdx <= 0}
+              title="下一週(較新)"
+              className="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border border-black/10 dark:border-white/10 text-neutral-700 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5 disabled:opacity-30 transition-colors"
+            >
+              下一週 ›
+            </button>
+          </div>
+          <div className="flex items-center gap-1.5">
+            {!showAll && clampedIdx !== 0 && (
+              <button
+                type="button"
+                onClick={() => { setShowAll(false); setFocusIdx(0); }}
+                className="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border border-black/10 dark:border-white/10 text-neutral-600 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+              >
+                回本週
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setShowAll(v => !v)}
+              className={`px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-colors ${
+                showAll
+                  ? 'bg-black text-white dark:bg-white dark:text-black'
+                  : 'border border-black/10 dark:border-white/10 text-neutral-600 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5'
+              }`}
+            >
+              {showAll ? '單週檢視' : '全部週'}
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="space-y-3">
-        {weeks.map(w => {
-          const wOpen = openWeeks.has(w.monday);
+        {visibleWeeks.map(w => {
+          const wOpen = openWeeks.has(w.monday) || (!showAll && w.monday === focusWeek?.monday);
           return (
           <div key={w.monday || 'nodate'} className="rounded-xl border border-black/15 dark:border-white/15 bg-white dark:bg-[#121212] overflow-hidden shadow-sm">
             {/* 週父列 */}
