@@ -17,6 +17,7 @@ import { api } from '../../api/client';
 import { useAsync } from '../../api/useAsync';
 import { useGame } from '../../api/useGame';
 import { useLedger } from '../../api/useLedger';
+import { useWeekNav, WeekNav, WeekSubtotal } from '../WeekNav';
 import { useHistoriesByGame } from '../../api/useHistories';
 import { useEditions } from '../../api/useEditions';
 
@@ -39,6 +40,9 @@ export const ComboBetTab: React.FC = () => {
   // 登入時流水存後端;未登入沿用 v2 的前端 state。依版篩選
   const ledger = useLedger('combo', INITIAL_COMBO_RECORDS, {edition: eid, combine: combineEditions});
   const records = ledger.records;
+  // 流水週導覽(共用):‹ › 依日曆前後移,中間切「全部週」;連碰以 flowRecords 併組
+  const wk = useWeekNav(records);
+  const flowRecords = wk.flowRecords;
   const [playMethod, setPlayMethod] = useState<PlayMethod>('星碰');
   const [starCount, setStarCount] = useState<'二星' | '三星' | '四星'>('三星');
   const [selectedBalls, setSelectedBalls] = useState<number[]>([3, 6, 12, 15, 22, 25, 32, 35]);
@@ -158,7 +162,7 @@ export const ComboBetTab: React.FC = () => {
   };
   const comboGroups: ComboGroup[] = (() => {
     const map = new Map<string, BetRecord[]>();
-    for (const r of records) {
+    for (const r of flowRecords) {
       const k = `${r.date}|${r.edition ?? 1}|${r.game}|${[...r.selectedBalls].sort((a, b) => a - b).join(',')}`;
       const arr = map.get(k);
       if (arr) arr.push(r); else map.set(k, [r]);
@@ -461,11 +465,25 @@ export const ComboBetTab: React.FC = () => {
 
           {/* Records Ledger Section */}
           <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="text-xs sm:text-sm font-display font-bold text-neutral-900 dark:text-white uppercase tracking-wide">
-                02 / 連碰流水帳與開獎核對
-              </h3>
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="text-xs sm:text-sm font-display font-bold text-neutral-900 dark:text-white uppercase tracking-wide">
+                  02 / 連碰流水帳與開獎核對
+                </h3>
+                <WeekNav
+                  focusWeek={wk.focusWeek}
+                  allWeeks={wk.allWeeks}
+                  canNext={wk.canNext}
+                  onPrev={() => wk.goWeek(-1)}
+                  onNext={() => wk.goWeek(1)}
+                  onToggleAll={() => wk.setAllWeeks(v => !v)}
+                />
+              </div>
             </div>
+            <WeekSubtotal records={comboGroups} label={wk.label} unit="注" />
+            {!wk.allWeeks && comboGroups.length === 0 && (
+              <div className="text-[11px] text-neutral-400">{wk.label} 沒有連碰紀錄。用 ‹ › 切到其他週。</div>
+            )}
 
             {ledger.loading && <div className="text-xs text-neutral-400">載入流水帳中…</div>}
             {ledger.error && <div className="text-xs text-rose-500">{ledger.error}</div>}

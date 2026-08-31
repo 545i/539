@@ -14,6 +14,7 @@ import { api } from '../../api/client';
 import { useAsync } from '../../api/useAsync';
 import { useGame } from '../../api/useGame';
 import { useLedger } from '../../api/useLedger';
+import { useWeekNav, WeekNav, WeekSubtotal } from '../WeekNav';
 import { useHistoriesByGame } from '../../api/useHistories';
 import { useEditions } from '../../api/useEditions';
 import { IssuePicker } from '../IssuePicker';
@@ -39,6 +40,9 @@ export const Combo9000Tab: React.FC = () => {
   // 登入時流水存後端;未登入沿用前端 state。依版篩選
   const ledger = useLedger('combo9000', INITIAL_COMBO9000_RECORDS, {edition: eid, combine: combineEditions});
   const records = ledger.records;
+  // 流水週導覽(共用):‹ › 依日曆前後移,中間切「全部週」
+  const wk = useWeekNav(records);
+  const flowRecords = wk.flowRecords;
   const [units, setUnits] = useState<number>(1);
 
   // 期號 / 日期:預設帶最新一期,使用者可用下拉選單改記到別期(補記 / 修期)
@@ -410,10 +414,20 @@ export const Combo9000Tab: React.FC = () => {
 
           {/* Records Ledger Section */}
           <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="text-xs sm:text-sm font-display font-bold text-neutral-900 dark:text-white uppercase tracking-wide">
-                02 / 9000碰 流水帳與過關核對
-              </h3>
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="text-xs sm:text-sm font-display font-bold text-neutral-900 dark:text-white uppercase tracking-wide">
+                  02 / 9000碰 流水帳與過關核對
+                </h3>
+                <WeekNav
+                  focusWeek={wk.focusWeek}
+                  allWeeks={wk.allWeeks}
+                  canNext={wk.canNext}
+                  onPrev={() => wk.goWeek(-1)}
+                  onNext={() => wk.goWeek(1)}
+                  onToggleAll={() => wk.setAllWeeks(v => !v)}
+                />
+              </div>
               <div className="flex items-center gap-3">
                 <button
                   type="button"
@@ -427,6 +441,10 @@ export const Combo9000Tab: React.FC = () => {
                 </button>
               </div>
             </div>
+            <WeekSubtotal records={flowRecords} label={wk.label} />
+            {!wk.allWeeks && flowRecords.length === 0 && (
+              <div className="text-[11px] text-neutral-400">{wk.label} 沒有 9000碰 紀錄。用 ‹ › 切到其他週。</div>
+            )}
             {settleMsg && (
               <div className="text-[11px] text-emerald-600 dark:text-emerald-400">{settleMsg}</div>
             )}
@@ -441,7 +459,7 @@ export const Combo9000Tab: React.FC = () => {
 
             {/* Mobile View */}
             <div className="space-y-2.5 sm:hidden">
-              {records.map((rec) => (
+              {flowRecords.map((rec) => (
                 <div
                   key={rec.id}
                   className="p-3.5 rounded-xl border border-black/[0.08] dark:border-white/[0.08] bg-black/[0.01] dark:bg-white/[0.02] space-y-2"
@@ -545,7 +563,7 @@ export const Combo9000Tab: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {records.map((rec) => (
+                  {flowRecords.map((rec) => (
                     <tr key={rec.id}>
                       <td>{rec.index}</td>
                       <td>

@@ -15,6 +15,7 @@ import { api, ErhePlanDTO, GroupDTO } from '../../api/client';
 import { useAsync } from '../../api/useAsync';
 import { useGame } from '../../api/useGame';
 import { useLedger } from '../../api/useLedger';
+import { useWeekNav, WeekNav, WeekSubtotal } from '../WeekNav';
 import { useHistoriesByGame } from '../../api/useHistories';
 import { useEditions } from '../../api/useEditions';
 
@@ -73,6 +74,9 @@ export const GroupBetTab: React.FC<Props> = ({ group }) => {
     let running = 0;
     return f.map((r, i) => ({ ...r, index: i + 1, cumPnl: (running += r.pnl) }));
   }, [allRecords, gameFilter]);
+  // 流水週導覽(共用):‹ › 依日曆前後移,中間切「全部週」
+  const wk = useWeekNav(records);
+  const flowRecords = wk.flowRecords;
 
   // 重新整理:補了最新一期開獎後,後端會自動把「待開獎」結算掉(見 backend/autosettle.py),
   // 但這頁的流水是掛載時抓一次就不動,不會反映後端已結算的 pnl。這裡重抓流水 + 開獎歷史,
@@ -518,10 +522,20 @@ export const GroupBetTab: React.FC<Props> = ({ group }) => {
           </div>
 
           <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="text-xs sm:text-sm font-display font-bold text-neutral-900 dark:text-white uppercase tracking-wide">
-                02 / {group.name}流水帳與開獎核對
-              </h3>
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="text-xs sm:text-sm font-display font-bold text-neutral-900 dark:text-white uppercase tracking-wide">
+                  02 / {group.name}流水帳與開獎核對
+                </h3>
+                <WeekNav
+                  focusWeek={wk.focusWeek}
+                  allWeeks={wk.allWeeks}
+                  canNext={wk.canNext}
+                  onPrev={() => wk.goWeek(-1)}
+                  onNext={() => wk.goWeek(1)}
+                  onToggleAll={() => wk.setAllWeeks(v => !v)}
+                />
+              </div>
               <div className="flex items-center gap-3">
                 <button
                   type="button"
@@ -535,6 +549,11 @@ export const GroupBetTab: React.FC<Props> = ({ group }) => {
                 </button>
               </div>
             </div>
+
+            <WeekSubtotal records={flowRecords} label={wk.label} />
+            {!wk.allWeeks && flowRecords.length === 0 && (
+              <div className="text-[11px] text-neutral-400">{wk.label} 沒有紀錄。用 ‹ › 切到其他週。</div>
+            )}
 
             {ledger.loading && <div className="text-xs text-neutral-400">載入流水帳中…</div>}
             {ledger.error && <div className="text-xs text-rose-500">{ledger.error}</div>}
@@ -564,7 +583,7 @@ export const GroupBetTab: React.FC<Props> = ({ group }) => {
                   </tr>
                 </thead>
                 <tbody>
-                  {records.map((rec) => (
+                  {flowRecords.map((rec) => (
                     <tr key={rec.id}>
                       <td>{rec.index}</td>
                       <td>

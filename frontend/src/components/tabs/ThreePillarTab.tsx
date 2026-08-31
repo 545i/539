@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import {
   ChevronRight,
-  ChevronLeft,
   ChevronDown,
   AlertTriangle,
   FileText,
@@ -14,7 +13,7 @@ import {
   Plus
 } from 'lucide-react';
 import { INITIAL_PILLAR_RECORDS, PILLAR_THEORY_ROWS } from '../../data/lotteryData';
-import { weekMonday, weekRangeLabel, distinctWeeks } from '../../weeks';
+import { useWeekNav, WeekNav, WeekSubtotal } from '../WeekNav';
 import { LotteryGame } from '../../types';
 import { api, PillarInfoDTO, TensPairDTO } from '../../api/client';
 import { useAsync } from '../../api/useAsync';
@@ -47,13 +46,9 @@ export const ThreePillarTab: React.FC = () => {
   // 登入時流水存後端;未登入沿用 v2 的前端 state。依版篩選
   const ledger = useLedger('pillar1800', INITIAL_PILLAR_RECORDS, {edition: eid, combine: combineEditions});
   const records = ledger.records;
-  // 流水週導覽:週一~週日為一週(依開獎日期),‹上一週 / 下一週› 切換;allWeeks=看全部
-  const [weekIdx, setWeekIdx] = useState(0);        // 0 = 最新一週(weekKeys 新→舊)
-  const [allWeeks, setAllWeeks] = useState(false);
-  const weekKeys = distinctWeeks(records.map(r => r.date));
-  const clampWeek = Math.min(Math.max(0, weekIdx), Math.max(0, weekKeys.length - 1));
-  const focusWeek = weekKeys[clampWeek] ?? '';
-  const flowRecords = allWeeks ? records : records.filter(r => weekMonday(r.date) === focusWeek);
+  // 流水週導覽(共用):‹ › 方向鍵依日曆一週一週移,中間切「全部週」
+  const wk = useWeekNav(records);
+  const flowRecords = wk.flowRecords;
   const [units, setUnits] = useState<number>(1);
   // 期號 / 日期:預設帶最新一期,使用者可用下拉選單改記到別期(補記 / 修期)
   const histReq = useAsync(() => api.history(gameKey, 30), [gameKey]);
@@ -594,41 +589,15 @@ export const ThreePillarTab: React.FC = () => {
                 <h3 className="text-xs sm:text-sm font-display font-bold text-neutral-900 dark:text-white uppercase tracking-wide">
                   02 / 三柱流水帳與過關核對
                 </h3>
-                {/* 週導覽:‹上一週 / 下一週›,或「全部週」 */}
-                {weekKeys.length > 0 && (
-                  <div className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={() => { setAllWeeks(false); setWeekIdx(i => Math.min(weekKeys.length - 1, Math.max(0, i) + 1)); }}
-                      disabled={!allWeeks && clampWeek >= weekKeys.length - 1}
-                      title="上一週(較舊)"
-                      className="w-6 h-6 flex items-center justify-center rounded-md text-neutral-500 hover:text-neutral-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 disabled:opacity-30 transition-colors"
-                    >
-                      <ChevronLeft className="w-4 h-4" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setAllWeeks(v => !v)}
-                      title={allWeeks ? '點此改看單週' : '點此看全部週'}
-                      className={`px-2 py-1 rounded-md text-[11px] font-mono font-semibold min-w-[8.5rem] text-center transition-colors ${
-                        allWeeks
-                          ? 'bg-black text-white dark:bg-white dark:text-black'
-                          : 'bg-black/[0.04] dark:bg-white/[0.06] text-neutral-800 dark:text-neutral-100 hover:bg-black/10 dark:hover:bg-white/10'
-                      }`}
-                    >
-                      {allWeeks ? '全部週' : weekRangeLabel(focusWeek)}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { setAllWeeks(false); setWeekIdx(i => Math.max(0, Math.min(weekKeys.length - 1, i) - 1)); }}
-                      disabled={!allWeeks && clampWeek <= 0}
-                      title="下一週(較新)"
-                      className="w-6 h-6 flex items-center justify-center rounded-md text-neutral-500 hover:text-neutral-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 disabled:opacity-30 transition-colors"
-                    >
-                      <ChevronRight className="w-4 h-4" />
-                    </button>
-                  </div>
-                )}
+                {/* 週導覽:‹上一週 / 第N週 / 下一週›,中間可切「全部週」 */}
+                <WeekNav
+                  focusWeek={wk.focusWeek}
+                  allWeeks={wk.allWeeks}
+                  canNext={wk.canNext}
+                  onPrev={() => wk.goWeek(-1)}
+                  onNext={() => wk.goWeek(1)}
+                  onToggleAll={() => wk.setAllWeeks(v => !v)}
+                />
               </div>
               <div className="flex items-center gap-3">
                 <button
@@ -644,23 +613,10 @@ export const ThreePillarTab: React.FC = () => {
               </div>
             </div>
             {/* 該週(或全部週)小計:局數 / 過關 / 投入 / 回收 / 損益 */}
-            {flowRecords.length > 0 && (() => {
-              const wCost = flowRecords.reduce((a, r) => a + r.cost, 0);
-              const wRet = flowRecords.reduce((a, r) => a + r.payout, 0);
-              const wWin = flowRecords.filter(r => r.payout > 0).length;
-              const wPnl = wRet - wCost;
-              return (
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] font-mono text-neutral-500 dark:text-neutral-400">
-                  <span className="font-sans font-semibold text-neutral-600 dark:text-neutral-300">
-                    {allWeeks ? '全部週' : weekRangeLabel(focusWeek)}
-                  </span>
-                  <span>{flowRecords.length} 局・過關 {wWin}</span>
-                  <span>投入 <span className="text-neutral-800 dark:text-neutral-200 font-bold">{wCost.toLocaleString()}</span></span>
-                  <span>回收 <span className="text-emerald-600 dark:text-emerald-400 font-bold">{wRet.toLocaleString()}</span></span>
-                  <span>損益 <span className={`font-bold ${wPnl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>{wPnl >= 0 ? '+' : ''}{wPnl.toLocaleString()}</span></span>
-                </div>
-              );
-            })()}
+            <WeekSubtotal records={flowRecords} label={wk.label} />
+            {!wk.allWeeks && flowRecords.length === 0 && (
+              <div className="text-[11px] text-neutral-400">{wk.label} 沒有三柱紀錄。用 ‹ › 切到其他週。</div>
+            )}
 
             {settleMsg && (
               <div className="text-[11px] text-emerald-600 dark:text-emerald-400">{settleMsg}</div>
