@@ -631,6 +631,7 @@ export interface GroupDTO {
 export interface EditionDTO {
   eid: number;
   name: string;
+  simulated?: boolean; // 模擬版:可下注/上傳測試,但不計入總損益
 }
 
 // 版×遊戲的整套盤口(每欄位 value + custom=是否有自訂,否則吃預設)

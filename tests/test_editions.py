@@ -14,16 +14,20 @@ def _isolate(tmp_path, monkeypatch):
 
 def test_default_edition():
     eds = edition_store.list_editions()
-    assert eds == [{"eid": 1, "name": "第一版"}]
+    real = [e for e in eds if not e["simulated"]]
+    assert real == [{"eid": 1, "name": "第一版", "simulated": False}]
+    # 內建「模擬」版一定存在(不計總損益)
+    assert any(e["simulated"] and e["name"] == "模擬" for e in eds)
 
 
 def test_add_rename_delete():
     e2 = edition_store.add_edition("第二版")
-    assert e2["eid"] == 2 and e2["name"] == "第二版"
-    assert edition_store.rename_edition(2, "夜間版")
-    assert edition_store.list_editions()[1]["name"] == "夜間版"
-    assert edition_store.delete_edition(2)
-    assert len(edition_store.list_editions()) == 1
+    assert e2["name"] == "第二版"
+    eid = e2["eid"]
+    assert edition_store.rename_edition(eid, "夜間版")
+    assert next(x for x in edition_store.list_editions() if x["eid"] == eid)["name"] == "夜間版"
+    assert edition_store.delete_edition(eid)
+    assert all(x["eid"] != eid for x in edition_store.list_editions())
     with pytest.raises(ValueError):
         edition_store.delete_edition(1)   # 第一版不能刪
 

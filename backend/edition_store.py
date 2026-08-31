@@ -78,20 +78,35 @@ def _conn() -> sqlite3.Connection:
         )
         """
     )
+    # 舊表補上 simulated 欄位(模擬版:可下注/上傳,但不計總損益)
+    cols = [r[1] for r in conn.execute("PRAGMA table_info(editions)")]
+    if "simulated" not in cols:
+        conn.execute("ALTER TABLE editions ADD COLUMN simulated INTEGER NOT NULL DEFAULT 0")
     # 第一版一定存在(沒有就補一筆 eid=1)
     row = conn.execute("SELECT COUNT(*) FROM editions").fetchone()
     if not row or int(row[0]) == 0:
         conn.execute("INSERT INTO editions (eid, name, sort) VALUES (1, '第一版', 0)")
-        conn.commit()
+    # 內建「模擬」版一定存在(不計總損益);sort 放很後面,永遠排最後
+    has_sim = conn.execute("SELECT COUNT(*) FROM editions WHERE simulated = 1").fetchone()
+    if not has_sim or int(has_sim[0]) == 0:
+        conn.execute("INSERT INTO editions (name, sort, simulated) VALUES ('模擬', 9999, 1)")
+    conn.commit()
     return conn
+
+
+def simulated_eids() -> list[int]:
+    """所有模擬版的 eid(下注不計總損益)。"""
+    with _conn() as c:
+        return [int(r[0]) for r in c.execute(
+            "SELECT eid FROM editions WHERE simulated = 1")]
 
 
 def list_editions() -> list[dict]:
     """全部版(依 sort, eid);至少有第一版。"""
     with _conn() as c:
         rows = c.execute(
-            "SELECT eid, name FROM editions ORDER BY sort, eid").fetchall()
-    return [{"eid": int(r[0]), "name": r[1]} for r in rows]
+            "SELECT eid, name, simulated FROM editions ORDER BY sort, eid").fetchall()
+    return [{"eid": int(r[0]), "name": r[1], "simulated": bool(r[2])} for r in rows]
 
 
 def add_edition(name: str) -> dict:
@@ -115,10 +130,13 @@ def rename_edition(eid: int, name: str) -> bool:
 
 
 def delete_edition(eid: int) -> bool:
-    """刪除一個版(第一版不給刪);連同它的盤口一起清掉。"""
+    """刪除一個版(第一版與模擬版不給刪);連同它的盤口一起清掉。"""
     if int(eid) == 1:
         raise ValueError("第一版不能刪除")
     with _conn() as c:
+        sim = c.execute("SELECT simulated FROM editions WHERE eid = ?", (int(eid),)).fetchone()
+        if sim and int(sim[0]) == 1:
+            raise ValueError("模擬版不能刪除")
         c.execute("DELETE FROM edition_odds WHERE eid = ?", (int(eid),))
         cur = c.execute("DELETE FROM editions WHERE eid = ?", (int(eid),))
     return bool(cur.rowcount)

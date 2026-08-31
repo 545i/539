@@ -50,15 +50,22 @@ export const TotalPnLTab: React.FC = () => {
   // 登入時四種下法的紀錄都在後端,直接彙整;未登入退回示範數字
   const { entries, loading: ledgerLoading, error: ledgerError, loggedIn } = useAllLedger();
   const { editions } = useEditions();
+  // 模擬版:不計入總損益。'all'(總版)與各版損益表都排除它;但可單獨選它檢視測試結果。
+  const simEids = useMemo(
+    () => new Set(editions.filter(e => e.simulated).map(e => e.eid)),
+    [editions],
+  );
 
-  // 依「版」篩選整頁:'all' = 總版(全部版合併);否則只看選中的版(舊紀錄沒 edition 當版 1)
+  // 依「版」篩選整頁:'all' = 總版(全部版合併,排除模擬版);否則只看選中的版(舊紀錄沒 edition 當版 1)
   const [selEd, setSelEd] = useState<number | 'all'>('all');
   const edOf = (e: { record: Record<string, unknown> }) =>
     num((e.record as Record<string, unknown>).edition) || 1;
   const edName = (ed: number) => editions.find(x => x.eid === ed)?.name ?? `版${ed}`;
   const shownEntries = useMemo(
-    () => (selEd === 'all' ? entries : entries.filter(e => edOf(e) === selEd)),
-    [entries, selEd],
+    () => (selEd === 'all'
+      ? entries.filter(e => !simEids.has(edOf(e)))     // 總版排除模擬版
+      : entries.filter(e => edOf(e) === selEd)),       // 選特定版(含模擬版)照顯示
+    [entries, selEd, simEids],
   );
   // 頁面出現過的版(依 eid 排序),給切換鈕用
   const usedEds = useMemo(() => {
@@ -71,6 +78,7 @@ export const TotalPnLTab: React.FC = () => {
     const by = new Map<number, { rounds: number; cost: number; payout: number; pnl: number }>();
     for (const e of entries) {
       const ed = edOf(e);
+      if (simEids.has(ed)) continue;     // 各版損益表 + 總計排除模擬版
       const acc = by.get(ed) ?? { rounds: 0, cost: 0, payout: 0, pnl: 0 };
       acc.rounds += 1;
       acc.cost += num(e.record.cost);
