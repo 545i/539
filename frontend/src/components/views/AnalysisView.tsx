@@ -4,7 +4,7 @@ import {
   Plus, Trash2, RotateCcw, Target,
 } from 'lucide-react';
 import {
-  api, ComboTogetherDTO, ComboTogetherIn, IntervalGroupIn, IntervalPairDTO, PillarInfoDTO,
+  api, ComboAbsenceDTO, ComboTogetherDTO, ComboTogetherIn, IntervalGroupIn, IntervalPairDTO, PillarInfoDTO,
 } from '../../api/client';
 import { useAsync } from '../../api/useAsync';
 import { useGame } from '../../api/useGame';
@@ -293,6 +293,23 @@ export const AnalysisView: React.FC = () => {
   // 只顯示「未開」的組合(streak >= 1);已開(0 期)的不列出
   const alertPairs = pairs.filter(p => p.alert);
   const quietPairs = pairs.filter(p => !p.alert && p.streak >= 1);
+
+  // 單一區間斷檔:每個區間自己連續幾期沒開(不是配對)。門檻同上(預設 +1)。
+  const intervalAbsence = useAsync<ComboAbsenceDTO[]>(
+    () =>
+      intervals.length >= 1
+        ? api.comboAbsence(gameKey, intervals, threshold)
+        : Promise.resolve([]),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [gameKey, threshold, intervalsKey],
+  );
+  // 只列「已經沒開」的單一區間(streak >= 1),久的排前面
+  const absentSingles = useMemo(
+    () => (intervalAbsence.data ?? [])
+      .filter(x => x.streak >= 1)
+      .sort((a, b) => b.streak - a.streak),
+    [intervalAbsence.data],
+  );
 
   // 區間管理:改動一律寫進 intervalMap[gameKey],之後就走使用者自己那份
   const updateIntervals = (fn: (cur: IntervalGroupIn[]) => IntervalGroupIn[]) =>
@@ -661,6 +678,30 @@ export const AnalysisView: React.FC = () => {
             </div>
           )}
 
+          {/* 單一區間斷檔:每個區間自己連續幾期沒開(斷一期就提醒),不是配對 */}
+          {!intervalAbsence.loading && !intervalAbsence.error && absentSingles.length > 0 && (
+            <div className="space-y-1.5">
+              <div className="text-[11px] font-semibold text-neutral-600 dark:text-neutral-300">單一區間斷檔(幾期沒開)</div>
+              <div className="flex flex-wrap gap-1.5">
+                {absentSingles.map(x => (
+                  <span
+                    key={x.label}
+                    className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-mono font-semibold ${
+                      x.alert
+                        ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
+                        : 'bg-black/[0.04] dark:bg-white/[0.06] text-neutral-600 dark:text-neutral-300'
+                    }`}
+                  >
+                    <span className="font-sans">{x.label}</span>
+                    <span className="font-bold">{x.streak} 期沒開</span>
+                    {x.max_gap > x.streak && <span className="text-neutral-400 font-normal">·最長 {x.max_gap}</span>}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="text-[11px] font-semibold text-neutral-600 dark:text-neutral-300 pt-1">區間配對斷檔(兩區間一起沒開)</div>
           {intervalPairs.loading && <div className="text-xs text-neutral-400">載入區間統計中…</div>}
           {intervalPairs.error && <div className="text-xs text-rose-500">{intervalPairs.error}</div>}
 

@@ -19,6 +19,21 @@ def _pairs_hot(df, num_max: int) -> list[dict]:
             if p["streak"] >= 1]
 
 
+def _tens_groups(num_max: int) -> list[dict]:
+    """十位分段 → [{label:'01~09', nums:[1..9]}, ...],給單一區間斷檔用。"""
+    groups = []
+    for lbl in stats.tens_bands(num_max):
+        lo, hi = lbl.split("~")
+        groups.append({"label": lbl, "nums": list(range(int(lo), int(hi) + 1))})
+    return groups
+
+
+def _singles_hot(df, num_max: int) -> list[dict]:
+    """1800碰:單一十位段自己連續幾期沒開(斷一期就算),只回 streak>=1。"""
+    return [x for x in stats.combo_absence_alerts(df, _tens_groups(num_max), threshold=1)
+            if x["streak"] >= 1]
+
+
 def _nine_hot(df, game_key: str) -> list[dict]:
     """9000碰:全段同開,只要 streak>=1(沒一起開就 +1,不設門檻)。"""
     out = []
@@ -43,14 +58,18 @@ def notify_combo_watch(game_key: str) -> bool:
         return False
     try:
         df = load_df(game_key)
+        singles = _singles_hot(df, get_game(game_key).num_max)
         pairs = _pairs_hot(df, get_game(game_key).num_max)
         nine = _nine_hot(df, game_key)
     except Exception:       # noqa: BLE001 — 提醒失敗不能影響排程
         return False
-    if not pairs and not nine:
+    if not singles and not pairs and not nine:
         return False
     g = get_game(game_key)
     lines = [f"<b>{g.name} 斷檔提醒</b>"]
+    if singles:
+        cells = [f"{x['label']} <b>{x['streak']}</b> 期" for x in singles]
+        lines.append("1800碰(單一區間沒開):" + "、".join(cells))
     if pairs:
         cells = [f"{p['labels'][0]}×{p['labels'][1]} <b>{p['streak']}</b> 期"
                  for p in pairs]
@@ -234,6 +253,14 @@ def _game_block(g, df) -> str:
     這塊同時給 `/提醒`(彙整全部)與新開獎自動推播(只發該款)共用。
     """
     lines = [f"<b>【{g.name}】</b>", _latest_line(df)]
+
+    # 1800碰(單一區間):每個十位段自己連續幾期沒開(斷一期就列;0 期不列),全 0 保留標題
+    hot_singles = _singles_hot(df, g.num_max)
+    if hot_singles:
+        cells = [f"{x['label']}·{x['streak']:02d}" for x in hot_singles]
+        lines.append("<u>1800碰</u>(單一區間·幾期沒開)\n<pre>" + "  ".join(cells) + "</pre>")
+    else:
+        lines.append("<u>1800碰</u> 單一區間目前無斷檔(每段近期都有開)")
 
     # 1800碰(雙雙):只列「連續 >=1 期沒一起開」的十位段配對(0 期不列);全 0 保留標題
     hot_pairs = sorted(
