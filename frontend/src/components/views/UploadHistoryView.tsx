@@ -5,15 +5,12 @@ import {
 } from '../uploadHistory';
 import { api, ReconcileDTO, LedgerMode } from '../../api/client';
 import { useAllLedger } from '../../api/useLedger';
-import { WeeklyLedger } from './WeeklyLedger';
 
 interface Props {
   // 「填回=編輯」:帶回整批到快速上傳(切到下注頁並開啟快速上傳),上傳時作廢原批次取代
   onRefill?: (entry: UploadHistoryEntry) => void;
   // 作廢會改到 ledger 流水,讓 App 其他分頁重抓(沿用 ledgerVersion)
   onChanged?: () => void;
-  // 策略頁「查看本週流水」連結進來:切到「每週總帳」分頁並預設該下法篩選
-  initialLedgerMode?: LedgerMode | null;
 }
 
 const num = (v: unknown): number => {
@@ -132,10 +129,7 @@ const ReconReport: React.FC<{ data: ReconcileDTO }> = ({ data }) => {
 
 // 快速上傳歷史(獨立頁面):列出每批上傳的原始文本、每筆下注明細,細緻到「列」的
 // 派彩 / 盈虧。派彩取自這批建立的 ledger 紀錄(entryIds ↔ items 對齊),已結算才有。
-export const UploadHistoryView: React.FC<Props> = ({ onRefill, onChanged, initialLedgerMode }) => {
-  const [tab, setTab] = useState<'weekly' | 'batches'>('weekly'); // 預設「每週總帳」
-  // 策略頁連結進來(帶 initialLedgerMode)→ 強制切到「每週總帳」分頁
-  React.useEffect(() => { if (initialLedgerMode) setTab('weekly'); }, [initialLedgerMode]);
+export const UploadHistoryView: React.FC<Props> = ({ onRefill, onChanged }) => {
   const [history, setHistory] = useState<UploadHistoryEntry[]>([]);
   // 逐筆派彩用的全部 ledger 紀錄:改讀全站共用 cache(不再自己撈一份)
   const { entries: ledger, reload: reloadLedger } = useAllLedger();
@@ -328,32 +322,14 @@ export const UploadHistoryView: React.FC<Props> = ({ onRefill, onChanged, initia
 
   return (
     <div className="space-y-5">
-      {/* 標題 + 分頁切換 */}
+      {/* 標題(週期帳已移到「紀錄下注」;這頁只管上傳批次:對帳/填回/作廢) */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <h2 className="text-xl sm:text-2xl font-display font-bold text-[#141414] dark:text-white tracking-wide uppercase">
-          {tab === 'weekly' ? '每週總帳' : '上傳批次歷史'}
+          上傳批次歷史
         </h2>
-        <div className="flex items-center gap-1.5">
-          {([['weekly', '每週總帳'], ['batches', '上傳批次']] as const).map(([id, label]) => (
-            <button
-              key={id}
-              type="button"
-              onClick={() => setTab(id)}
-              className={`px-3 py-1.5 rounded-full text-xs font-semibold uppercase tracking-wider transition-all ${
-                tab === id
-                  ? 'bg-black text-white dark:bg-white dark:text-black'
-                  : 'bg-white dark:bg-[#161616] border border-black/[0.08] dark:border-white/[0.08] text-neutral-700 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5'
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
       </div>
 
-      {tab === 'weekly' && <WeeklyLedger initialMode={initialLedgerMode} />}
-
-      {tab === 'batches' && (
+      {(
       <div className="space-y-4">
       {shown.length > 0 && (
         <div className="font-mono text-xs text-neutral-400">

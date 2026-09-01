@@ -11,13 +11,17 @@ export type NavItem =
   | 'upload_history' // 快速上傳歷史(每筆明細/派彩/盈虧)
   | 'settings';    // 設定
 
+// 紀錄下注分頁。現在 UI 只用 'cycle'(週期帳)與 'totals'(總損益);記帳一律走快速上傳,
+// 下注策略頁已從導覽移除。single/multi/pillar1800/combo9000/combo 仍保留為型別值,
+// 因為它們同時是流水紀錄的 mode key(見 lotteryData 的示範紀錄與各策略元件)。
 export type DuoBetTab =
-  | 'single'       // 1組(固定顆數可設定;single 是沿用的 ledger mode key)
-  | 'multi'        // 2組(同上,multi 是沿用的 mode key)
+  | 'cycle'        // 週期帳(每週總帳,可展開 + 週期切換)
+  | 'totals'       // 總損益
+  | 'single'       // 1組(ledger mode key)
+  | 'multi'        // 2組
   | 'pillar1800'   // 三柱1800碰
-  | 'combo9000'    // 9000碰(四段全包)
-  | 'combo'        // 連碰
-  | 'totals';      // 總損益
+  | 'combo9000'    // 9000碰
+  | 'combo';       // 連碰
 
 export type LotteryGame = '今彩539' | '天天樂(加州 Fantasy 5)' | '六合彩';
 

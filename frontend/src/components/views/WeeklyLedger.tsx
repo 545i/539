@@ -244,6 +244,41 @@ const GameBreak: React.FC<{ byGame: Map<string, GameAgg>; className?: string }> 
   );
 };
 
+// 建議車數卡片(1組 / 2組 各一張)。fmt1 保留 1 位小數(盤口/加價可能有小數)。
+type RecoverData = { cumPnl: number; suggestBalls: number; cars: number | null; cost: number; gain: number; after: number };
+const fmt1 = (v: number) => v.toLocaleString(undefined, { maximumFractionDigits: 1 });
+const sfmt1 = (v: number) => (v >= 0 ? '+' : '') + fmt1(v);
+const RecoverCard: React.FC<{ title: string; d: RecoverData | null }> = ({ title, d }) => (
+  <div className="rounded-xl border border-black/10 dark:border-white/10 bg-white dark:bg-[#121212] p-3">
+    <div className="text-[10px] uppercase tracking-wider text-neutral-400 font-semibold">{title}</div>
+    {!d ? (
+      <div className="mt-1 text-[12px] text-neutral-400">本週無此下法紀錄</div>
+    ) : d.cars == null ? (
+      <div className="mt-1">
+        <div className="font-mono font-bold text-sm text-emerald-600 dark:text-emerald-400">本週未虧損</div>
+        <div className="text-[10px] text-neutral-400 mt-0.5">目前損益 {sfmt1(d.cumPnl)}</div>
+      </div>
+    ) : !Number.isFinite(d.cars) ? (
+      <div className="mt-1">
+        <div className="font-mono font-bold text-sm text-rose-600 dark:text-rose-400">中 1 顆追不回</div>
+        <div className="text-[10px] text-neutral-400 mt-0.5">每車淨利 ≤ 0(顆數過多)</div>
+      </div>
+    ) : (
+      <>
+        <div className="mt-0.5 flex items-baseline gap-1">
+          <span className="font-mono font-bold text-2xl text-neutral-900 dark:text-white">{(d.cars as number).toLocaleString()}</span>
+          <span className="text-[11px] text-neutral-400">車 · {d.suggestBalls} 顆</span>
+        </div>
+        <div className="mt-1.5 space-y-0.5 text-[11px] font-mono">
+          <div className="flex justify-between"><span className="text-neutral-500">本局成本</span><span className="font-semibold text-neutral-800 dark:text-neutral-100">{fmt1(d.cost)}</span></div>
+          <div className="flex justify-between"><span className="text-neutral-500">中 1 顆可得</span><span className="font-semibold text-emerald-600 dark:text-emerald-400">{fmt1(d.gain)}</span></div>
+          <div className="flex justify-between border-t border-black/[0.06] dark:border-white/[0.06] pt-0.5 mt-0.5"><span className="text-neutral-500">中後累積</span><span className={`font-bold ${pnlCls(d.after)}`}>{sfmt1(d.after)}</span></div>
+        </div>
+      </>
+    )}
+  </div>
+);
+
 // 每週總帳:全部下注流水(排除模擬版)依開獎日期歸「週一~週日」的週,
 // 週 → 展開看每日小計 → 再展開看當天逐筆。派彩/盈虧直接取自各筆已結算紀錄。
 export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ initialMode }) => {
@@ -373,6 +408,39 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
   const focusMonday = wk.focusWeek;
   const visibleWeeks = wk.allWeeks ? weeks : weeks.filter(w => w.monday === focusMonday);
 
+  // 建議車數(回本試算)—— 1組 / 2組 各一張卡。二合盤口「遊戲共用」,取任一款(優先 539)的
+  // 每車成本 / 中一顆彩金;虧損基準用「目前聚焦週」該下法的合併損益(排除模擬版)。
+  //   中1顆每車淨利 = 中一顆彩金 − 顆數×每車成本;建議車數 = ⌈該下法虧損 ÷ 每車淨利⌉。
+  const recover = useMemo(() => {
+    const g = games.find(x => x.key === 'lotto539') ?? games[0];
+    const costPerCar = num(g?.default_cost_per_car);
+    const winPayout = num(g?.default_win_payout);
+    const calc = (mode: 'single' | 'multi') => {
+      const rows = entries
+        .map(e => e.record as Record<string, unknown>)
+        .filter(r => {
+          if (simEids.has(num(r.edition) || 1)) return false;
+          if (String(r.mode ?? '') !== mode) return false;
+          return wk.allWeeks ? true : weekMonday(String(r.date ?? '')) === focusMonday;
+        });
+      if (rows.length === 0) return null;
+      const cumPnl = rows.reduce((s, r) => s + num(r.payout) - num(r.cost), 0);
+      const last = rows.reduce((b, r) => (String(r.date ?? '') >= String(b.date ?? '') ? r : b));
+      const suggestBalls = (last.selectedBalls as number[])?.length || 5;
+      const per1HitNet = winPayout - suggestBalls * costPerCar;
+      const cars = cumPnl >= 0 ? null : per1HitNet > 0 ? Math.max(1, Math.ceil(-cumPnl / per1HitNet)) : Infinity;
+      const ok = cars != null && Number.isFinite(cars);
+      const n = ok ? (cars as number) : 0;
+      return {
+        cumPnl, suggestBalls, cars,
+        cost: ok ? suggestBalls * n * costPerCar : 0,     // 本局成本
+        gain: ok ? n * winPayout : 0,                     // 中1顆可得
+        after: ok ? cumPnl + n * winPayout - suggestBalls * n * costPerCar : 0,  // 中後累積
+      };
+    };
+    return { single: calc('single'), multi: calc('multi') };
+  }, [entries, simEids, focusMonday, wk.allWeeks, games]);
+
   if (!loggedIn) {
     return <div className="text-[12px] text-neutral-500 p-4">登入後才有跨裝置的下注流水可彙整成週總帳。</div>;
   }
@@ -383,6 +451,19 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
         全部下注流水(含快速上傳與手動記錄,排除模擬版)依開獎日期歸「週一~週日」的週。
         點<strong>週</strong>展開看每日小計,再點<strong>某日</strong>看當天逐筆的下注方式 / 組合 / 成本 / 派彩 / 盈虧。
       </p>
+
+      {/* 建議車數(回本試算):1組 / 2組 各一張卡,吃目前聚焦週的合併損益 */}
+      {(recover.single || recover.multi) && (
+        <div className="space-y-1.5">
+          <div className="text-[11px] font-semibold text-neutral-600 dark:text-neutral-300">
+            建議車數(中 1 顆回本)<span className="ml-1 font-normal font-mono text-neutral-400">{wk.allWeeks ? '全部週' : wk.label}</span>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <RecoverCard title="1組 建議車數" d={recover.single} />
+            <RecoverCard title="2組 建議車數" d={recover.multi} />
+          </div>
+        </div>
+      )}
 
       {/* 版篩選 */}
       {usedEds.length > 1 && (

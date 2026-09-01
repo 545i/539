@@ -16,13 +16,8 @@ import { QuickImportModal } from './components/QuickImportModal';
 import { UploadHistoryView } from './components/views/UploadHistoryView';
 import { UploadHistoryEntry } from './components/uploadHistory';
 import { useAuth } from './api/useAuth';
-import { useGroups } from './api/useGroups';
 import { useAllLedger } from './api/useLedger';
-import { LedgerMode } from './api/client';
-import { GroupBetTab } from './components/tabs/GroupBetTab';
-import { ThreePillarTab } from './components/tabs/ThreePillarTab';
-import { Combo9000Tab } from './components/tabs/Combo9000Tab';
-import { ComboBetTab } from './components/tabs/ComboBetTab';
+import { WeeklyLedger } from './components/views/WeeklyLedger';
 import { TotalPnLTab } from './components/tabs/TotalPnLTab';
 import { CalculatorView } from './components/views/CalculatorView';
 import { AnalysisView } from './components/views/AnalysisView';
@@ -41,8 +36,6 @@ export default function App() {
 
   // 登入閘:未登入就擋住整個 App
   const { loggedIn } = useAuth();
-  // 二合下注「組」設定(全站共用):決定有幾個組分頁、各組固定幾顆
-  const { enabled: enabledGroups } = useGroups();
 
   // Navigation state
   const [activeNav, setActiveNav] = useState<NavItem>('duo_bet');
@@ -66,15 +59,6 @@ export default function App() {
     reloadLedger();
     setLedgerVersion(v => v + 1);
   }, [reloadLedger]);
-
-  // 策略頁「查看本週流水 →」:跳到每週總帳並預設該下法(週別由共用聚焦週自動帶)。
-  const [ledgerJumpMode, setLedgerJumpMode] = useState<LedgerMode | null>(null);
-  const openLedger = React.useCallback((mode: LedgerMode) => {
-    setLedgerJumpMode(mode);
-    setActiveNav('upload_history');
-  }, []);
-  // 離開每週總帳頁就清掉預設下法,之後從側欄進來不會被舊的連結狀態綁住。
-  useEffect(() => { if (activeNav !== 'upload_history') setLedgerJumpMode(null); }, [activeNav]);
 
   // WebSocket:開獎 / 自動對獎後後端會推一則,收到就 bump ledgerVersion →
   // 各下注分頁重抓流水與開獎,不必手動刷新。斷線 3 秒自動重連。
@@ -130,11 +114,9 @@ export default function App() {
   };
 
   // 組分頁依設定動態產生(只列啟用中的組),id 就是該組的 ledger mode(single/multi)
+  // 紀錄下注只剩:週期帳(逐筆流水依週期展開/切換)+ 總損益。記帳走快速上傳。
   const duoTabList: { id: DuoBetTab; label: string; count?: number }[] = [
-    ...enabledGroups.map(g => ({ id: g.mode as DuoBetTab, label: g.name, count: 0 })),
-    { id: 'pillar1800', label: '三柱1800碰', count: 2 },
-    { id: 'combo9000', label: '9000碰', count: 2 },
-    { id: 'combo', label: '連碰', count: 2 },
+    { id: 'cycle', label: '週期帳' },
     { id: 'totals', label: '總損益' },
   ];
 
@@ -285,12 +267,7 @@ export default function App() {
 
               {/* Tab Contents */}
               <div key={ledgerVersion}>
-                {enabledGroups
-                  .filter(g => g.mode === duoTab)
-                  .map(g => <GroupBetTab key={g.gid} group={g} onOpenLedger={openLedger} />)}
-                {duoTab === 'pillar1800' && <ThreePillarTab onOpenLedger={openLedger} />}
-                {duoTab === 'combo9000' && <Combo9000Tab onOpenLedger={openLedger} />}
-                {duoTab === 'combo' && <ComboBetTab onOpenLedger={openLedger} />}
+                {duoTab === 'cycle' && <WeeklyLedger />}
                 {duoTab === 'totals' && <TotalPnLTab />}
               </div>
             </div>
@@ -315,7 +292,6 @@ export default function App() {
                 setIsQuickImportOpen(true);
               }}
               onChanged={refreshLedger}
-              initialLedgerMode={ledgerJumpMode}
             />
           )}
           {activeNav === 'settings' && <SettingsView theme={theme} onToggleTheme={toggleTheme} />}
