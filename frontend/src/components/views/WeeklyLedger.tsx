@@ -388,13 +388,6 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
     return list;
   }, [shown, games]);
 
-  // 頁頂總計(目前篩選下所有週合計)
-  const grand = useMemo(() => {
-    const g = blank();
-    for (const w of weeks) { g.cost += w.cost; g.payout += w.payout; g.pnl += w.pnl; g.count += w.count; g.pendingCount += w.pendingCount; }
-    return g;
-  }, [weeks]);
-
   const weekLabel = (w: WeekGroup) =>
     w.monday ? `${w.monday.replace(/-/g, '/')} ~ ${w.sunday.slice(5).replace('-', '/')}` : '(無日期)';
 
@@ -407,6 +400,13 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
   const wk = useWeekNav(navRecords);
   const focusMonday = wk.focusWeek;
   const visibleWeeks = wk.allWeeks ? weeks : weeks.filter(w => w.monday === focusMonday);
+
+  // 頂端總計:跟著聚焦週 —— 單週時只算該週,「全部週」時才是全部合計。
+  const grand = useMemo(() => {
+    const g = blank();
+    for (const w of visibleWeeks) { g.cost += w.cost; g.payout += w.payout; g.pnl += w.pnl; g.count += w.count; g.pendingCount += w.pendingCount; }
+    return g;
+  }, [visibleWeeks]);
 
   // 建議車數(回本試算)—— 1組 / 2組 各一張卡。二合盤口「遊戲共用」,取任一款(優先 539)的
   // 每車成本 / 中一顆彩金;虧損基準用「目前聚焦週」該下法的合併損益(排除模擬版)。
@@ -507,8 +507,12 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
         </div>
       )}
 
-      {/* 頁頂總計 */}
+      {/* 頂端總計(跟著聚焦週:單週=該週,全部週=合計) */}
       {weeks.length > 0 && (
+        <>
+        <div className="text-[11px] font-semibold text-neutral-600 dark:text-neutral-300">
+          總計<span className="ml-1 font-normal font-mono text-neutral-400">{wk.allWeeks ? '全部週' : wk.label}</span>
+        </div>
         <div className="grid grid-cols-3 gap-2">
           {([
             ['總成本', money(grand.cost), 'text-neutral-900 dark:text-white'],
@@ -521,6 +525,7 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
             </div>
           ))}
         </div>
+        </>
       )}
 
       {loading && weeks.length === 0 && (
