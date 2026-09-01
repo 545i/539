@@ -550,22 +550,6 @@ export const AnalysisView: React.FC = () => {
               )}
             </div>
             <div className="flex items-center gap-2 flex-wrap">
-              <div className="inline-flex p-1 rounded-xl bg-black/[0.03] dark:bg-white/[0.04] border border-black/[0.06] dark:border-white/[0.06] gap-1">
-                {TENS_THRESHOLD_OPTIONS.map(n => (
-                  <button
-                    key={n}
-                    type="button"
-                    onClick={() => setThreshold(n)}
-                    className={`px-3 py-1 rounded-lg text-xs font-mono font-semibold transition-all ${
-                      threshold === n
-                        ? 'bg-black text-white dark:bg-white dark:text-black shadow-xs'
-                        : 'text-neutral-600 dark:text-neutral-400 hover:text-black dark:hover:text-white'
-                    }`}
-                  >
-                    {n} 期
-                  </button>
-                ))}
-              </div>
               <button
                 type="button"
                 onClick={() => setShowWatchSetup(v => !v)}
@@ -715,23 +699,6 @@ export const AnalysisView: React.FC = () => {
               )}
             </div>
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-[10px] text-neutral-400">提醒門檻</span>
-              <div className="inline-flex p-1 rounded-xl bg-black/[0.03] dark:bg-white/[0.04] border border-black/[0.06] dark:border-white/[0.06] gap-1">
-                {THRESHOLD_OPTIONS.map(n => (
-                  <button
-                    key={n}
-                    type="button"
-                    onClick={() => saveCombos(combos, n)}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-mono font-semibold transition-all ${
-                      watchThreshold === n
-                        ? 'bg-black text-white dark:bg-white dark:text-black shadow-xs'
-                        : 'text-neutral-600 dark:text-neutral-400 hover:text-black dark:hover:text-white'
-                    }`}
-                  >
-                    {n} 期
-                  </button>
-                ))}
-              </div>
               <button
                 type="button"
                 onClick={() => api.testComboWatch(gameKey).then(r =>

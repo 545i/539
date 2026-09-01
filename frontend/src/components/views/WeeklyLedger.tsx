@@ -249,6 +249,45 @@ type RecoverData = { cumPnl: number; suggestBalls: number; cars: number | null; 
 const fmt1 = (v: number) => v.toLocaleString(undefined, { maximumFractionDigits: 1 });
 const sfmt1 = (v: number) => (v >= 0 ? '+' : '') + fmt1(v);
 
+// 建議車數卡片(1組 / 2組 各一張,並排)。點卡片彈出明細逐筆排除。
+const RecoverCard: React.FC<{ title: string; d: RecoverData | null; onClick?: () => void }> = ({ title, d, onClick }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    className="text-left w-full rounded-xl border border-black/10 dark:border-white/10 bg-white dark:bg-[#121212] p-3 hover:bg-black/[0.02] dark:hover:bg-white/[0.03] hover:border-black/20 dark:hover:border-white/20 transition-colors"
+  >
+    <div className="flex items-center justify-between">
+      <span className="text-[10px] uppercase tracking-wider text-neutral-400 font-semibold">{title}</span>
+      <span className="text-[9px] text-neutral-400">點卡排除 ›</span>
+    </div>
+    {!d ? (
+      <div className="mt-1 text-[12px] text-neutral-400">本週無此下法紀錄</div>
+    ) : d.cars == null ? (
+      <div className="mt-1">
+        <div className="font-mono font-bold text-sm text-emerald-600 dark:text-emerald-400">本週未虧損</div>
+        <div className="text-[10px] text-neutral-400 mt-0.5">目前損益 {sfmt1(d.cumPnl)}</div>
+      </div>
+    ) : !Number.isFinite(d.cars) ? (
+      <div className="mt-1">
+        <div className="font-mono font-bold text-sm text-rose-600 dark:text-rose-400">中 1 顆追不回</div>
+        <div className="text-[10px] text-neutral-400 mt-0.5">每車淨利 ≤ 0(顆數過多)</div>
+      </div>
+    ) : (
+      <>
+        <div className="mt-0.5 flex items-baseline gap-1">
+          <span className="font-mono font-bold text-2xl text-neutral-900 dark:text-white">{(d.cars as number).toLocaleString()}</span>
+          <span className="text-[11px] text-neutral-400">車 · {d.suggestBalls} 顆</span>
+        </div>
+        <div className="mt-1.5 space-y-0.5 text-[11px] font-mono">
+          <div className="flex justify-between"><span className="text-neutral-500">本局成本</span><span className="font-semibold text-neutral-800 dark:text-neutral-100">{fmt1(d.cost)}</span></div>
+          <div className="flex justify-between"><span className="text-neutral-500">中 1 顆可得</span><span className="font-semibold text-emerald-600 dark:text-emerald-400">{fmt1(d.gain)}</span></div>
+          <div className="flex justify-between border-t border-black/[0.06] dark:border-white/[0.06] pt-0.5 mt-0.5"><span className="text-neutral-500">中後累積</span><span className={`font-bold ${pnlCls(d.after)}`}>{sfmt1(d.after)}</span></div>
+        </div>
+      </>
+    )}
+  </button>
+);
+
 // 建議車數明細彈窗:逐筆點擊排除/納入(排除的不算進要追的赤字);建議車數即時重算。
 type ModalRow = { id: string; date: string; balls: number[]; cost: number; payout: number; pnl: number; result: string };
 const RecoverModal: React.FC<{
@@ -474,14 +513,9 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
     };
     // 要顯示哪些版:選特定版就只那版;'all' = 全部出現過的版(排除模擬)
     const edList = selEd === 'all' ? usedEds.filter(ed => !simEids.has(ed)) : [selEd as number];
-    const rows: { key: string; eid: number; mode: 'single' | 'multi'; edName: string; modeLabel: string; d: RecoverData }[] = [];
-    for (const eid of edList) {
-      for (const [mode, label] of [['single', '1組'], ['multi', '2組']] as const) {
-        const d = calc(eid, mode);
-        if (d) rows.push({ key: `${eid}-${mode}`, eid, mode, edName: edName(eid), modeLabel: label, d });
-      }
-    }
-    return rows;
+    return edList
+      .map(eid => ({ eid, name: edName(eid), single: calc(eid, 'single'), multi: calc(eid, 'multi') }))
+      .filter(x => x.single || x.multi);
   }, [entries, simEids, focusMonday, wk.allWeeks, games, selEd, usedEds, excludedIds]);
 
   // 彈窗要顯示的明細:該版該組在聚焦週(或全部週)的逐筆(含被排除者,給勾選用)
@@ -520,36 +554,21 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
         點<strong>週</strong>展開看每日小計,再點<strong>某日</strong>看當天逐筆的下注方式 / 組合 / 成本 / 派彩 / 盈虧。
       </p>
 
-      {/* 建議車數(回本試算):一張卡,每列「版·組:幾車 成本 可得」。點列可彈出明細逐筆排除。 */}
+      {/* 建議車數(回本試算):依版分區,每區 1組/2組 兩張卡並排。點卡片彈明細逐筆排除。 */}
       {recoverRows.length > 0 && (
-        <div className="rounded-xl border border-black/10 dark:border-white/10 bg-white dark:bg-[#121212] p-3 space-y-1">
-          <div className="text-[11px] font-semibold text-neutral-600 dark:text-neutral-300 pb-1">
+        <div className="space-y-2.5">
+          <div className="text-[11px] font-semibold text-neutral-600 dark:text-neutral-300">
             建議車數(中 1 顆回本)<span className="ml-1 font-normal font-mono text-neutral-400">{wk.allWeeks ? '全部週' : wk.label}</span>
-            <span className="ml-1 font-normal text-neutral-400">·點列可排除下注</span>
+            <span className="ml-1 font-normal text-neutral-400">·點卡片可排除下注</span>
           </div>
-          {recoverRows.map(r => (
-            <button
-              key={r.key}
-              type="button"
-              onClick={() => setRecoverModal({ eid: r.eid, mode: r.mode, label: `${r.edName} ${r.modeLabel}` })}
-              className="w-full flex items-center justify-between gap-2 text-[11px] font-mono border-t border-black/[0.05] dark:border-white/[0.05] pt-1 text-left hover:bg-black/[0.02] dark:hover:bg-white/[0.03] rounded transition-colors"
-            >
-              <span className="flex items-center gap-1 shrink-0">
-                <span className="px-1.5 py-0.5 rounded bg-violet-500/10 text-violet-600 dark:text-violet-400 text-[10px] font-bold font-sans">{r.edName}</span>
-                <span className="text-neutral-500 font-sans">{r.modeLabel}</span>
-              </span>
-              {r.d.cars == null ? (
-                <span className="text-emerald-600 dark:text-emerald-400">未虧損</span>
-              ) : !Number.isFinite(r.d.cars) ? (
-                <span className="text-rose-500">中 1 顆追不回</span>
-              ) : (
-                <span className="flex items-center gap-x-3 gap-y-0.5 flex-wrap justify-end">
-                  <span className="font-bold text-neutral-900 dark:text-white">{(r.d.cars as number).toLocaleString()} 車</span>
-                  <span className="text-neutral-500">成本 <span className="text-neutral-800 dark:text-neutral-200 font-semibold">{fmt1(r.d.cost)}</span></span>
-                  <span className="text-neutral-500">可得 <span className="text-emerald-600 dark:text-emerald-400 font-semibold">{fmt1(r.d.gain)}</span></span>
-                </span>
-              )}
-            </button>
+          {recoverRows.map(g => (
+            <div key={g.eid} className="space-y-1.5">
+              <div className="inline-block px-2 py-0.5 rounded-md bg-violet-500/10 text-violet-600 dark:text-violet-400 text-[11px] font-bold">{g.name}</div>
+              <div className="grid grid-cols-2 gap-2">
+                <RecoverCard title={`${g.name} · 1組`} d={g.single} onClick={() => setRecoverModal({ eid: g.eid, mode: 'single', label: `${g.name} 1組` })} />
+                <RecoverCard title={`${g.name} · 2組`} d={g.multi} onClick={() => setRecoverModal({ eid: g.eid, mode: 'multi', label: `${g.name} 2組` })} />
+              </div>
+            </div>
           ))}
         </div>
       )}
@@ -562,7 +581,7 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
           rows={modalRows}
           excluded={excludedIds}
           onToggle={toggleExcluded}
-          d={recoverRows.find(r => r.eid === recoverModal.eid && r.mode === recoverModal.mode)?.d ?? null}
+          d={recoverRows.find(r => r.eid === recoverModal.eid)?.[recoverModal.mode] ?? null}
           onClose={() => setRecoverModal(null)}
         />
       )}
