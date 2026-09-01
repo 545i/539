@@ -408,18 +408,19 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
     return g;
   }, [visibleWeeks]);
 
-  // 建議車數(回本試算)—— 1組 / 2組 各一張卡。二合盤口「遊戲共用」,取任一款(優先 539)的
-  // 每車成本 / 中一顆彩金;虧損基準用「目前聚焦週」該下法的合併損益(排除模擬版)。
-  //   中1顆每車淨利 = 中一顆彩金 − 顆數×每車成本;建議車數 = ⌈該下法虧損 ÷ 每車淨利⌉。
-  const recover = useMemo(() => {
+  // 建議車數(回本試算)—— 依「版」分區,每區標版名 + 1組/2組 兩張卡。各版損益分開算
+  // (不同組頭各自對帳,回本要各版各算)。盤口「遊戲共用」,取任一款(優先 539)的
+  // 每車成本 / 中一顆彩金;虧損基準用「目前聚焦週」該版該下法的損益。
+  //   中1顆每車淨利 = 中一顆彩金 − 顆數×每車成本;建議車數 = ⌈該版該下法虧損 ÷ 每車淨利⌉。
+  const recoverByEd = useMemo(() => {
     const g = games.find(x => x.key === 'lotto539') ?? games[0];
     const costPerCar = num(g?.default_cost_per_car);
     const winPayout = num(g?.default_win_payout);
-    const calc = (mode: 'single' | 'multi') => {
+    const calc = (eid: number, mode: 'single' | 'multi'): RecoverData | null => {
       const rows = entries
         .map(e => e.record as Record<string, unknown>)
         .filter(r => {
-          if (simEids.has(num(r.edition) || 1)) return false;
+          if ((num(r.edition) || 1) !== eid) return false;
           if (String(r.mode ?? '') !== mode) return false;
           return wk.allWeeks ? true : weekMonday(String(r.date ?? '')) === focusMonday;
         });
@@ -438,8 +439,12 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
         after: ok ? cumPnl + n * winPayout - suggestBalls * n * costPerCar : 0,  // 中後累積
       };
     };
-    return { single: calc('single'), multi: calc('multi') };
-  }, [entries, simEids, focusMonday, wk.allWeeks, games]);
+    // 要顯示哪些版:選特定版就只那版;'all' = 全部出現過的版(排除模擬)
+    const edList = selEd === 'all' ? usedEds.filter(ed => !simEids.has(ed)) : [selEd as number];
+    return edList
+      .map(eid => ({ eid, name: edName(eid), single: calc(eid, 'single'), multi: calc(eid, 'multi') }))
+      .filter(x => x.single || x.multi);
+  }, [entries, simEids, focusMonday, wk.allWeeks, games, selEd, usedEds]);
 
   if (!loggedIn) {
     return <div className="text-[12px] text-neutral-500 p-4">登入後才有跨裝置的下注流水可彙整成週總帳。</div>;
@@ -452,16 +457,21 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
         點<strong>週</strong>展開看每日小計,再點<strong>某日</strong>看當天逐筆的下注方式 / 組合 / 成本 / 派彩 / 盈虧。
       </p>
 
-      {/* 建議車數(回本試算):1組 / 2組 各一張卡,吃目前聚焦週的合併損益 */}
-      {(recover.single || recover.multi) && (
-        <div className="space-y-1.5">
+      {/* 建議車數(回本試算):依版分區,每區標版名 + 1組/2組 兩張卡,吃目前聚焦週該版損益 */}
+      {recoverByEd.length > 0 && (
+        <div className="space-y-2.5">
           <div className="text-[11px] font-semibold text-neutral-600 dark:text-neutral-300">
             建議車數(中 1 顆回本)<span className="ml-1 font-normal font-mono text-neutral-400">{wk.allWeeks ? '全部週' : wk.label}</span>
           </div>
-          <div className="grid grid-cols-2 gap-2">
-            <RecoverCard title="1組 建議車數" d={recover.single} />
-            <RecoverCard title="2組 建議車數" d={recover.multi} />
-          </div>
+          {recoverByEd.map(g => (
+            <div key={g.eid} className="space-y-1.5">
+              <div className="inline-block px-2 py-0.5 rounded-md bg-violet-500/10 text-violet-600 dark:text-violet-400 text-[11px] font-bold">{g.name}</div>
+              <div className="grid grid-cols-2 gap-2">
+                <RecoverCard title={`${g.name} · 1組 建議車數`} d={g.single} />
+                <RecoverCard title={`${g.name} · 2組 建議車數`} d={g.multi} />
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
