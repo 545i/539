@@ -479,6 +479,10 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
     try { localStorage.setItem('lottery_recover_excluded', JSON.stringify([...n])); } catch { /* ignore */ }
     return n;
   });
+  const clearExcluded = () => {
+    setExcludedIds(new Set());
+    try { localStorage.removeItem('lottery_recover_excluded'); } catch { /* ignore */ }
+  };
   // 點建議車數某列 → 彈出該版該組本週明細,逐筆勾選排除
   const [recoverModal, setRecoverModal] = useState<{ eid: number; mode: 'single' | 'multi'; label: string } | null>(null);
 
@@ -557,9 +561,16 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
       {/* 建議車數(回本試算):依版分區,每區 1組/2組 兩張卡並排。點卡片彈明細逐筆排除。 */}
       {recoverRows.length > 0 && (
         <div className="space-y-2.5">
-          <div className="text-[11px] font-semibold text-neutral-600 dark:text-neutral-300">
-            建議車數(中 1 顆回本)<span className="ml-1 font-normal font-mono text-neutral-400">{wk.allWeeks ? '全部週' : wk.label}</span>
-            <span className="ml-1 font-normal text-neutral-400">·點卡片可排除下注</span>
+          <div className="flex items-center flex-wrap gap-x-2 gap-y-1 text-[11px] font-semibold text-neutral-600 dark:text-neutral-300">
+            <span>建議車數(中 1 顆回本)<span className="ml-1 font-normal font-mono text-neutral-400">{wk.allWeeks ? '全部週' : wk.label}</span></span>
+            {excludedIds.size > 0 ? (
+              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-300 font-normal">
+                已排除 {excludedIds.size} 筆
+                <button type="button" onClick={clearExcluded} className="underline decoration-dotted hover:text-amber-900 dark:hover:text-amber-100">全部納回</button>
+              </span>
+            ) : (
+              <span className="font-normal text-neutral-400">·點卡片可排除下注</span>
+            )}
           </div>
           {recoverRows.map(g => (
             <div key={g.eid} className="space-y-1.5">
