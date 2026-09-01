@@ -164,6 +164,10 @@
     const DEMO = {
       game: "今彩539", issue: "114000221", date: "2026-08-28", time: "20:30",
       nums: [3, 12, 20, 25, 31],
+      singles: [
+        { label: "2頭", streak: 3, alert: true },
+        { label: "0頭", streak: 1, alert: true }
+      ],
       pairs: [
         { a: "0頭", b: "2頭", streak: 4, alert: true },
         { a: "1頭", b: "3頭", streak: 2, alert: false }
@@ -222,6 +226,24 @@
                   <div class="tbig">—</div><div class="tsub">本款不適用(非39選5)</div></div>`;
       }
       return `<div class="tiles">${oe}${nine}</div>`;
+    }
+
+    // 1800碰:單一十位段斷檔(自己連續幾期沒開,斷 1 期就示警)
+    function singlesSection(singles) {
+      let inner;
+      if (!singles || !singles.length) {
+        inner = `<div class="ok-line">各十位段近期都有開 ✓</div>`;
+      } else {
+        const chips = singles.map(s =>
+          `<span class="chip ${s.alert ? "warn" : ""}">${s.label}<b>${s.streak}</b>期沒開</span>`
+        ).join("");
+        inner = `<div class="chips">${chips}</div>`;
+      }
+      return `<div class="section">
+        <div class="shead"><span class="dot"></span><span class="stitle">1800碰 · 單一區間斷檔</span>
+          <span class="shint">斷 1 期就示警</span></div>
+        <div class="panel">${inner}</div>
+      </div>`;
     }
 
     // 1800碰:十位段配對斷檔
@@ -303,6 +325,7 @@
         <div class="balls">${ballsHtml(d.nums)}</div>
         <div class="body">
           ${tilesHtml(d)}
+          ${singlesSection(d.singles)}
           ${pairsSection(d.pairs)}
           ${hotColdSection(d.hotcold)}
           ${thirdsSection(d.thirds)}

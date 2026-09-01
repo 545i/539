@@ -35,6 +35,17 @@ def _pairs(df, num_max: int) -> list[dict]:
             if p["streak"] >= 1]
 
 
+def _singles(df, num_max: int) -> list[dict]:
+    """1800碰:單一十位段自己連續幾期沒開(streak>=1 才列;斷 1 期就示警)。"""
+    groups = []
+    for lbl in stats.tens_bands(num_max):
+        lo, hi = lbl.split("~")
+        groups.append({"label": lbl, "nums": list(range(int(lo), int(hi) + 1))})
+    return [{"label": x["label"], "streak": x["streak"], "alert": x["streak"] >= 1}
+            for x in stats.combo_absence_alerts(df, groups, threshold=1)
+            if x["streak"] >= 1]
+
+
 def _nine(df, g) -> dict | None:
     """9000碰 全段同開:四段連續幾期沒一起開(距上次全段同開)。不支援回 None。"""
     if not combo9000.supports(g):
@@ -108,6 +119,7 @@ def build_card_data(g, df) -> dict:
       date   str          最新開獎日期(YYYY-MM-DD)
       time   str          該款固定開獎時刻(顯示用,可空)
       nums   list[int]    最新開出號碼
+      singles list[{label,streak,alert}]  1800碰 單一十位段斷檔(streak>=1,斷1期就 alert)
       pairs  list[{a,b,streak,alert}]   1800碰 十位段配對斷檔(streak>=1)
       nine   {streak,max_gap,alert}|null  9000碰 全段同開(不支援的款為 null)
       thirds list[{name, items:[{n,miss}]}]  前中後段目前遺漏
@@ -121,6 +133,7 @@ def build_card_data(g, df) -> dict:
         "date": latest["date"],
         "time": _DRAW_TIME.get(getattr(g, "key", ""), ""),
         "nums": latest["nums"],
+        "singles": _singles(df, g.num_max),
         "pairs": _pairs(df, g.num_max),
         "nine": _nine(df, g),
         "thirds": _thirds_missing(df, g.num_max),
