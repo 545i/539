@@ -244,40 +244,9 @@ const GameBreak: React.FC<{ byGame: Map<string, GameAgg>; className?: string }> 
   );
 };
 
-// 建議車數卡片(1組 / 2組 各一張)。fmt1 保留 1 位小數(盤口/加價可能有小數)。
+// 建議車數:單卡多列,每列一個「版·組:幾車 成本 可得」。fmt1 保留 1 位小數(盤口可能有小數)。
 type RecoverData = { cumPnl: number; suggestBalls: number; cars: number | null; cost: number; gain: number; after: number };
 const fmt1 = (v: number) => v.toLocaleString(undefined, { maximumFractionDigits: 1 });
-const sfmt1 = (v: number) => (v >= 0 ? '+' : '') + fmt1(v);
-const RecoverCard: React.FC<{ title: string; d: RecoverData | null }> = ({ title, d }) => (
-  <div className="rounded-xl border border-black/10 dark:border-white/10 bg-white dark:bg-[#121212] p-3">
-    <div className="text-[10px] uppercase tracking-wider text-neutral-400 font-semibold">{title}</div>
-    {!d ? (
-      <div className="mt-1 text-[12px] text-neutral-400">本週無此下法紀錄</div>
-    ) : d.cars == null ? (
-      <div className="mt-1">
-        <div className="font-mono font-bold text-sm text-emerald-600 dark:text-emerald-400">本週未虧損</div>
-        <div className="text-[10px] text-neutral-400 mt-0.5">目前損益 {sfmt1(d.cumPnl)}</div>
-      </div>
-    ) : !Number.isFinite(d.cars) ? (
-      <div className="mt-1">
-        <div className="font-mono font-bold text-sm text-rose-600 dark:text-rose-400">中 1 顆追不回</div>
-        <div className="text-[10px] text-neutral-400 mt-0.5">每車淨利 ≤ 0(顆數過多)</div>
-      </div>
-    ) : (
-      <>
-        <div className="mt-0.5 flex items-baseline gap-1">
-          <span className="font-mono font-bold text-2xl text-neutral-900 dark:text-white">{(d.cars as number).toLocaleString()}</span>
-          <span className="text-[11px] text-neutral-400">車 · {d.suggestBalls} 顆</span>
-        </div>
-        <div className="mt-1.5 space-y-0.5 text-[11px] font-mono">
-          <div className="flex justify-between"><span className="text-neutral-500">本局成本</span><span className="font-semibold text-neutral-800 dark:text-neutral-100">{fmt1(d.cost)}</span></div>
-          <div className="flex justify-between"><span className="text-neutral-500">中 1 顆可得</span><span className="font-semibold text-emerald-600 dark:text-emerald-400">{fmt1(d.gain)}</span></div>
-          <div className="flex justify-between border-t border-black/[0.06] dark:border-white/[0.06] pt-0.5 mt-0.5"><span className="text-neutral-500">中後累積</span><span className={`font-bold ${pnlCls(d.after)}`}>{sfmt1(d.after)}</span></div>
-        </div>
-      </>
-    )}
-  </div>
-);
 
 // 每週總帳:全部下注流水(排除模擬版)依開獎日期歸「週一~週日」的週,
 // 週 → 展開看每日小計 → 再展開看當天逐筆。派彩/盈虧直接取自各筆已結算紀錄。
@@ -412,7 +381,7 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
   // (不同組頭各自對帳,回本要各版各算)。盤口「遊戲共用」,取任一款(優先 539)的
   // 每車成本 / 中一顆彩金;虧損基準用「目前聚焦週」該版該下法的損益。
   //   中1顆每車淨利 = 中一顆彩金 − 顆數×每車成本;建議車數 = ⌈該版該下法虧損 ÷ 每車淨利⌉。
-  const recoverByEd = useMemo(() => {
+  const recoverRows = useMemo(() => {
     const g = games.find(x => x.key === 'lotto539') ?? games[0];
     const costPerCar = num(g?.default_cost_per_car);
     const winPayout = num(g?.default_win_payout);
@@ -441,9 +410,14 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
     };
     // 要顯示哪些版:選特定版就只那版;'all' = 全部出現過的版(排除模擬)
     const edList = selEd === 'all' ? usedEds.filter(ed => !simEids.has(ed)) : [selEd as number];
-    return edList
-      .map(eid => ({ eid, name: edName(eid), single: calc(eid, 'single'), multi: calc(eid, 'multi') }))
-      .filter(x => x.single || x.multi);
+    const rows: { key: string; edName: string; modeLabel: string; d: RecoverData }[] = [];
+    for (const eid of edList) {
+      for (const [mode, label] of [['single', '1組'], ['multi', '2組']] as const) {
+        const d = calc(eid, mode);
+        if (d) rows.push({ key: `${eid}-${mode}`, edName: edName(eid), modeLabel: label, d });
+      }
+    }
+    return rows;
   }, [entries, simEids, focusMonday, wk.allWeeks, games, selEd, usedEds]);
 
   if (!loggedIn) {
@@ -457,19 +431,29 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
         點<strong>週</strong>展開看每日小計,再點<strong>某日</strong>看當天逐筆的下注方式 / 組合 / 成本 / 派彩 / 盈虧。
       </p>
 
-      {/* 建議車數(回本試算):依版分區,每區標版名 + 1組/2組 兩張卡,吃目前聚焦週該版損益 */}
-      {recoverByEd.length > 0 && (
-        <div className="space-y-2.5">
-          <div className="text-[11px] font-semibold text-neutral-600 dark:text-neutral-300">
+      {/* 建議車數(回本試算):一張卡,每列一個「版 · 組:幾車 成本 可得」,吃聚焦週該版該下法損益 */}
+      {recoverRows.length > 0 && (
+        <div className="rounded-xl border border-black/10 dark:border-white/10 bg-white dark:bg-[#121212] p-3 space-y-1">
+          <div className="text-[11px] font-semibold text-neutral-600 dark:text-neutral-300 pb-1">
             建議車數(中 1 顆回本)<span className="ml-1 font-normal font-mono text-neutral-400">{wk.allWeeks ? '全部週' : wk.label}</span>
           </div>
-          {recoverByEd.map(g => (
-            <div key={g.eid} className="space-y-1.5">
-              <div className="inline-block px-2 py-0.5 rounded-md bg-violet-500/10 text-violet-600 dark:text-violet-400 text-[11px] font-bold">{g.name}</div>
-              <div className="grid grid-cols-2 gap-2">
-                <RecoverCard title={`${g.name} · 1組 建議車數`} d={g.single} />
-                <RecoverCard title={`${g.name} · 2組 建議車數`} d={g.multi} />
-              </div>
+          {recoverRows.map(r => (
+            <div key={r.key} className="flex items-center justify-between gap-2 text-[11px] font-mono border-t border-black/[0.05] dark:border-white/[0.05] pt-1">
+              <span className="flex items-center gap-1 shrink-0">
+                <span className="px-1.5 py-0.5 rounded bg-violet-500/10 text-violet-600 dark:text-violet-400 text-[10px] font-bold font-sans">{r.edName}</span>
+                <span className="text-neutral-500 font-sans">{r.modeLabel}</span>
+              </span>
+              {r.d.cars == null ? (
+                <span className="text-emerald-600 dark:text-emerald-400">未虧損</span>
+              ) : !Number.isFinite(r.d.cars) ? (
+                <span className="text-rose-500">中 1 顆追不回</span>
+              ) : (
+                <span className="flex items-center gap-x-3 gap-y-0.5 flex-wrap justify-end">
+                  <span className="font-bold text-neutral-900 dark:text-white">{(r.d.cars as number).toLocaleString()} 車</span>
+                  <span className="text-neutral-500">成本 <span className="text-neutral-800 dark:text-neutral-200 font-semibold">{fmt1(r.d.cost)}</span></span>
+                  <span className="text-neutral-500">可得 <span className="text-emerald-600 dark:text-emerald-400 font-semibold">{fmt1(r.d.gain)}</span></span>
+                </span>
+              )}
             </div>
           ))}
         </div>
