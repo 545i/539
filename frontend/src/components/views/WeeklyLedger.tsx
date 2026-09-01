@@ -247,6 +247,55 @@ const GameBreak: React.FC<{ byGame: Map<string, GameAgg>; className?: string }> 
 // 建議車數:單卡多列,每列一個「版·組:幾車 成本 可得」。fmt1 保留 1 位小數(盤口可能有小數)。
 type RecoverData = { cumPnl: number; suggestBalls: number; cars: number | null; cost: number; gain: number; after: number };
 const fmt1 = (v: number) => v.toLocaleString(undefined, { maximumFractionDigits: 1 });
+const sfmt1 = (v: number) => (v >= 0 ? '+' : '') + fmt1(v);
+
+// 建議車數明細彈窗:逐筆點擊排除/納入(排除的不算進要追的赤字);建議車數即時重算。
+type ModalRow = { id: string; date: string; balls: number[]; cost: number; payout: number; pnl: number; result: string };
+const RecoverModal: React.FC<{
+  title: string; weekLabel: string; rows: ModalRow[];
+  excluded: Set<string>; onToggle: (id: string) => void;
+  d: RecoverData | null; onClose: () => void;
+}> = ({ title, weekLabel, rows, excluded, onToggle, d, onClose }) => (
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+    <div className="w-full max-w-md max-h-[82vh] overflow-auto rounded-2xl bg-white dark:bg-[#161616] border border-black/10 dark:border-white/10 p-4 space-y-3" onClick={e => e.stopPropagation()}>
+      <div className="flex items-center justify-between">
+        <div className="text-sm font-bold text-neutral-900 dark:text-white">{title} · {weekLabel} 明細</div>
+        <button type="button" onClick={onClose} className="w-6 h-6 flex items-center justify-center rounded-md text-neutral-400 hover:text-neutral-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/10">✕</button>
+      </div>
+      <div className="text-[11px] text-neutral-500 dark:text-neutral-400">點列 = 排除/納入該筆。排除的不算進要追的赤字(例如大贏那筆先落袋),不影響週期帳。</div>
+      {/* 建議車數摘要(即時) */}
+      <div className="rounded-lg bg-black/[0.03] dark:bg-white/[0.05] px-3 py-2 text-[11px] font-mono">
+        {d == null || d.cars == null ? (
+          <span className="text-emerald-600 dark:text-emerald-400 font-bold">未虧損{d ? `(${sfmt1(d.cumPnl)})` : ''}</span>
+        ) : !Number.isFinite(d.cars) ? (
+          <span className="text-rose-500 font-bold">中 1 顆追不回</span>
+        ) : (
+          <span>建議 <span className="font-bold text-base text-neutral-900 dark:text-white">{(d.cars as number).toLocaleString()}</span> 車 · 成本 {fmt1(d.cost)} · 中1顆可得 <span className="text-emerald-600 dark:text-emerald-400">{fmt1(d.gain)}</span> · 中後 {sfmt1(d.after)}</span>
+        )}
+      </div>
+      <div className="space-y-1">
+        {rows.length === 0 && <div className="text-[11px] text-neutral-400 py-2">這週沒有紀錄。</div>}
+        {rows.map(r => {
+          const ex = excluded.has(r.id);
+          return (
+            <button key={r.id} type="button" onClick={() => onToggle(r.id)}
+              className={`w-full flex items-center justify-between gap-2 text-[11px] font-mono px-2 py-1.5 rounded-lg border transition-colors ${ex ? 'border-black/10 dark:border-white/10 opacity-45' : 'border-black/10 dark:border-white/10 hover:bg-black/[0.03] dark:hover:bg-white/[0.05]'}`}>
+              <span className="flex items-center gap-1.5 min-w-0">
+                <span className={`w-4 h-4 shrink-0 rounded border flex items-center justify-center text-[9px] ${ex ? 'border-neutral-400 text-transparent' : 'border-emerald-500 bg-emerald-500 text-white'}`}>✓</span>
+                <span className="text-neutral-500 font-sans">{r.date.slice(5)}</span>
+                <span className={`text-neutral-500 truncate ${ex ? 'line-through' : ''}`}>{r.balls.map(b => String(b).padStart(2, '0')).join(' ') || '—'}</span>
+              </span>
+              <span className="flex items-center gap-2 shrink-0">
+                <span className={r.pnl >= 0 ? 'text-emerald-600 dark:text-emerald-400 font-bold' : 'text-rose-600 dark:text-rose-400 font-bold'}>{sfmt1(r.pnl)}</span>
+                <span className="text-neutral-400 font-sans">{r.result}</span>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  </div>
+);
 
 // 每週總帳:全部下注流水(排除模擬版)依開獎日期歸「週一~週日」的週,
 // 週 → 展開看每日小計 → 再展開看當天逐筆。派彩/盈虧直接取自各筆已結算紀錄。
@@ -381,18 +430,33 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
   // (不同組頭各自對帳,回本要各版各算)。盤口「遊戲共用」,取任一款(優先 539)的
   // 每車成本 / 中一顆彩金;虧損基準用「目前聚焦週」該版該下法的損益。
   //   中1顆每車淨利 = 中一顆彩金 − 顆數×每車成本;建議車數 = ⌈該版該下法虧損 ÷ 每車淨利⌉。
+  // 建議車數:可手動「排除」某些下注(例如大贏那筆先落袋,不算進要追的赤字)。排除清單存 localStorage。
+  const [excludedIds, setExcludedIds] = useState<Set<string>>(() => {
+    try { return new Set(JSON.parse(localStorage.getItem('lottery_recover_excluded') || '[]')); }
+    catch { return new Set(); }
+  });
+  const toggleExcluded = (id: string) => setExcludedIds(prev => {
+    const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id);
+    try { localStorage.setItem('lottery_recover_excluded', JSON.stringify([...n])); } catch { /* ignore */ }
+    return n;
+  });
+  // 點建議車數某列 → 彈出該版該組本週明細,逐筆勾選排除
+  const [recoverModal, setRecoverModal] = useState<{ eid: number; mode: 'single' | 'multi'; label: string } | null>(null);
+
   const recoverRows = useMemo(() => {
     const g = games.find(x => x.key === 'lotto539') ?? games[0];
     const costPerCar = num(g?.default_cost_per_car);
     const winPayout = num(g?.default_win_payout);
     const calc = (eid: number, mode: 'single' | 'multi'): RecoverData | null => {
       const rows = entries
-        .map(e => e.record as Record<string, unknown>)
-        .filter(r => {
+        .filter(e => {
+          const r = e.record as Record<string, unknown>;
           if ((num(r.edition) || 1) !== eid) return false;
           if (String(r.mode ?? '') !== mode) return false;
+          if (excludedIds.has(String(e.id))) return false;   // 被排除的不算進赤字
           return wk.allWeeks ? true : weekMonday(String(r.date ?? '')) === focusMonday;
-        });
+        })
+        .map(e => e.record as Record<string, unknown>);
       if (rows.length === 0) return null;
       const cumPnl = rows.reduce((s, r) => s + num(r.payout) - num(r.cost), 0);
       const last = rows.reduce((b, r) => (String(r.date ?? '') >= String(b.date ?? '') ? r : b));
@@ -410,15 +474,40 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
     };
     // 要顯示哪些版:選特定版就只那版;'all' = 全部出現過的版(排除模擬)
     const edList = selEd === 'all' ? usedEds.filter(ed => !simEids.has(ed)) : [selEd as number];
-    const rows: { key: string; edName: string; modeLabel: string; d: RecoverData }[] = [];
+    const rows: { key: string; eid: number; mode: 'single' | 'multi'; edName: string; modeLabel: string; d: RecoverData }[] = [];
     for (const eid of edList) {
       for (const [mode, label] of [['single', '1組'], ['multi', '2組']] as const) {
         const d = calc(eid, mode);
-        if (d) rows.push({ key: `${eid}-${mode}`, edName: edName(eid), modeLabel: label, d });
+        if (d) rows.push({ key: `${eid}-${mode}`, eid, mode, edName: edName(eid), modeLabel: label, d });
       }
     }
     return rows;
-  }, [entries, simEids, focusMonday, wk.allWeeks, games, selEd, usedEds]);
+  }, [entries, simEids, focusMonday, wk.allWeeks, games, selEd, usedEds, excludedIds]);
+
+  // 彈窗要顯示的明細:該版該組在聚焦週(或全部週)的逐筆(含被排除者,給勾選用)
+  const modalRows = useMemo(() => {
+    if (!recoverModal) return [];
+    return entries
+      .filter(e => {
+        const r = e.record as Record<string, unknown>;
+        if ((num(r.edition) || 1) !== recoverModal.eid) return false;
+        if (String(r.mode ?? '') !== recoverModal.mode) return false;
+        return wk.allWeeks ? true : weekMonday(String(r.date ?? '')) === focusMonday;
+      })
+      .map(e => {
+        const r = e.record as Record<string, unknown>;
+        const cost = num(r.cost);
+        const payout = isPending(String(r.result ?? '')) ? 0 : num(r.payout);
+        return {
+          id: String(e.id),
+          date: String(r.date ?? ''),
+          balls: (r.selectedBalls as number[]) ?? [],
+          cost, payout, pnl: payout - cost,
+          result: String(r.result ?? ''),
+        };
+      })
+      .sort((a, b) => a.date.localeCompare(b.date));
+  }, [recoverModal, entries, focusMonday, wk.allWeeks]);
 
   if (!loggedIn) {
     return <div className="text-[12px] text-neutral-500 p-4">登入後才有跨裝置的下注流水可彙整成週總帳。</div>;
@@ -431,14 +520,20 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
         點<strong>週</strong>展開看每日小計,再點<strong>某日</strong>看當天逐筆的下注方式 / 組合 / 成本 / 派彩 / 盈虧。
       </p>
 
-      {/* 建議車數(回本試算):一張卡,每列一個「版 · 組:幾車 成本 可得」,吃聚焦週該版該下法損益 */}
+      {/* 建議車數(回本試算):一張卡,每列「版·組:幾車 成本 可得」。點列可彈出明細逐筆排除。 */}
       {recoverRows.length > 0 && (
         <div className="rounded-xl border border-black/10 dark:border-white/10 bg-white dark:bg-[#121212] p-3 space-y-1">
           <div className="text-[11px] font-semibold text-neutral-600 dark:text-neutral-300 pb-1">
             建議車數(中 1 顆回本)<span className="ml-1 font-normal font-mono text-neutral-400">{wk.allWeeks ? '全部週' : wk.label}</span>
+            <span className="ml-1 font-normal text-neutral-400">·點列可排除下注</span>
           </div>
           {recoverRows.map(r => (
-            <div key={r.key} className="flex items-center justify-between gap-2 text-[11px] font-mono border-t border-black/[0.05] dark:border-white/[0.05] pt-1">
+            <button
+              key={r.key}
+              type="button"
+              onClick={() => setRecoverModal({ eid: r.eid, mode: r.mode, label: `${r.edName} ${r.modeLabel}` })}
+              className="w-full flex items-center justify-between gap-2 text-[11px] font-mono border-t border-black/[0.05] dark:border-white/[0.05] pt-1 text-left hover:bg-black/[0.02] dark:hover:bg-white/[0.03] rounded transition-colors"
+            >
               <span className="flex items-center gap-1 shrink-0">
                 <span className="px-1.5 py-0.5 rounded bg-violet-500/10 text-violet-600 dark:text-violet-400 text-[10px] font-bold font-sans">{r.edName}</span>
                 <span className="text-neutral-500 font-sans">{r.modeLabel}</span>
@@ -454,9 +549,22 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
                   <span className="text-neutral-500">可得 <span className="text-emerald-600 dark:text-emerald-400 font-semibold">{fmt1(r.d.gain)}</span></span>
                 </span>
               )}
-            </div>
+            </button>
           ))}
         </div>
+      )}
+
+      {/* 建議車數:點某列彈出的明細,逐筆勾選排除(不影響週期帳,只影響建議車數的赤字基準) */}
+      {recoverModal && (
+        <RecoverModal
+          title={recoverModal.label}
+          weekLabel={wk.allWeeks ? '全部週' : wk.label}
+          rows={modalRows}
+          excluded={excludedIds}
+          onToggle={toggleExcluded}
+          d={recoverRows.find(r => r.eid === recoverModal.eid && r.mode === recoverModal.mode)?.d ?? null}
+          onClose={() => setRecoverModal(null)}
+        />
       )}
 
       {/* 版篩選 */}
