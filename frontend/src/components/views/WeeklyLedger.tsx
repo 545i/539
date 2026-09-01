@@ -5,6 +5,7 @@ import { useEditions } from '../../api/useEditions';
 import { useGame } from '../../api/useGame';
 import { LedgerMode } from '../../api/client';
 import { MODE_LABEL, money } from '../uploadHistory';
+import { weekAddDays, weekMonday } from '../../weeks';
 
 const num = (v: unknown): number => {
   const n = typeof v === 'number' ? v : parseFloat(String(v ?? ''));
@@ -25,18 +26,7 @@ const ymdOf = (raw: string): string => {
   const s = String(raw ?? '');
   return /^\d{4}-\d{2}-\d{2}/.test(s) ? s.slice(0, 10) : '';
 };
-const addDays = (ymd: string, n: number): string => {
-  const [y, m, d] = ymd.split('-').map(Number);
-  const dt = new Date(Date.UTC(y, m - 1, d));
-  dt.setUTCDate(dt.getUTCDate() + n);
-  return dt.toISOString().slice(0, 10);
-};
-const mondayOf = (ymd: string): string => {
-  const [y, m, d] = ymd.split('-').map(Number);
-  const dt = new Date(Date.UTC(y, m - 1, d));
-  const dow = dt.getUTCDay();            // 0=日 … 6=六
-  return addDays(ymd, dow === 0 ? -6 : 1 - dow); // 回推到週一
-};
+// 週歸期(某日 → 該週週一)與日期加減共用 weeks.ts:weekMonday / weekAddDays。
 const WD = ['日', '一', '二', '三', '四', '五', '六'];
 const weekdayOf = (ymd: string): string => {
   const [y, m, d] = ymd.split('-').map(Number);
@@ -143,33 +133,42 @@ function buildDayBill(day: DayGroup): BillEditionData[] {
   });
 }
 
-// 結構化帳單 → 對接人純文字格式(「複製帳單」用,與對接人帳單一致)
-function billToText(bill: BillEditionData[], md: string): string {
-  const multi = bill.length > 1;
-  return bill.map(e => {
-    const blocks = e.games.map(g => {
-      const lines = [md, `${g.label}獎號`];
-      if (g.draw.length) lines.push(g.draw.map(n => String(n).padStart(2, '0')).join('.'));
-      lines.push(`${g.label}牌支${g.cost}`);
-      for (const w of g.wins) lines.push(`${w.mode}中${w.combos}碰+${w.payout}`);
-      lines.push(`共${Math.abs(g.net)}`);
-      lines.push(`合計${Math.abs(g.running)}`);
-      return lines.join('\n');
-    }).join('\n\n');
-    return multi ? `【${e.edition}】\n${blocks}` : blocks;
-  }).join('\n\n');
+// 單一遊戲卡 → 對接人純文字帳單(每張卡各自「複製帳單」用,與對接人帳單一致)。
+// editionLabel 有值(多版時)會在最上面加【版名】,組頭才知道是哪一版。
+function billGameText(g: BillGameData, md: string, editionLabel?: string): string {
+  const lines = [md, `${g.label}獎號`];
+  if (g.draw.length) lines.push(g.draw.map(n => String(n).padStart(2, '0')).join('.'));
+  lines.push(`${g.label}牌支${g.cost}`);
+  for (const w of g.wins) lines.push(`${w.mode}中${w.combos}碰+${w.payout}`);
+  lines.push(`共${Math.abs(g.net)}`);
+  lines.push(`合計${Math.abs(g.running)}`);
+  const body = lines.join('\n');
+  return editionLabel ? `【${editionLabel}】\n${body}` : body;
 }
 
-// 快捷帳單卡片:易讀版(獎號球 / 收付上色 / 中獎綠字);內容同純文字帳單
-const BillCards: React.FC<{ bill: BillEditionData[]; md: string }> = ({ bill, md }) => (
+// 快捷帳單卡片:易讀版(獎號球 / 展收付上色 / 中獎綠字);每張卡各一顆「複製帳單」,
+// 複製的是該卡對應的對接人純文字帳單。
+const BillCards: React.FC<{ bill: BillEditionData[]; md: string }> = ({ bill, md }) => {
+  const [copiedKey, setCopiedKey] = useState('');            // 剛複製的卡(edition/label)
+  const multi = bill.length > 1;
+  const copyCard = async (key: string, text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedKey(key);
+      setTimeout(() => setCopiedKey(''), 1500);
+    } catch { /* ignore */ }
+  };
+  return (
   <div className="space-y-3">
     {bill.map(e => (
       <div key={e.edition} className="space-y-2">
-        {bill.length > 1 && (
+        {multi && (
           <div className="inline-block px-2 py-0.5 rounded-md bg-violet-500/10 text-violet-600 dark:text-violet-400 text-[11px] font-bold">{e.edition}</div>
         )}
         <div className="grid gap-2 sm:grid-cols-2">
-          {e.games.map(g => (
+          {e.games.map(g => {
+            const key = `${e.edition}/${g.label}`;
+            return (
             <div key={g.label} className="rounded-xl border border-black/10 dark:border-white/10 bg-white dark:bg-[#161616] p-3 space-y-2">
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-1.5">
@@ -177,7 +176,7 @@ const BillCards: React.FC<{ bill: BillEditionData[]; md: string }> = ({ bill, md
                   <span className="text-[10px] text-neutral-400 font-mono">{md}</span>
                 </div>
                 <span className={`font-mono text-sm font-bold ${g.net >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
-                  {g.net >= 0 ? '收 ' : '付 '}{Math.abs(g.net).toLocaleString()}
+                  {g.net >= 0 ? '展收 ' : '展付 '}{Math.abs(g.net).toLocaleString()}
                 </span>
               </div>
               <div className="flex flex-wrap items-center gap-1">
@@ -199,17 +198,26 @@ const BillCards: React.FC<{ bill: BillEditionData[]; md: string }> = ({ bill, md
                 <div className="flex justify-between border-t border-black/[0.06] dark:border-white/[0.06] pt-0.5 mt-0.5">
                   <span className="text-neutral-500">合計(當日累計)</span>
                   <span className={`font-bold ${g.running >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
-                    {g.running >= 0 ? '收 ' : '付 '}{Math.abs(g.running).toLocaleString()}
+                    {g.running >= 0 ? '展收 ' : '展付 '}{Math.abs(g.running).toLocaleString()}
                   </span>
                 </div>
               </div>
+              <button
+                type="button"
+                onClick={() => copyCard(key, billGameText(g, md, multi ? e.edition : undefined))}
+                className="w-full mt-1 px-2 py-1 rounded-md text-[10px] font-semibold border border-emerald-500/40 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/10 transition-colors"
+              >
+                {copiedKey === key ? '已複製' : '複製帳單'}
+              </button>
             </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     ))}
   </div>
-);
+  );
+};
 
 // 各遊戲拆帳:539 / 天天樂 / 六合彩 各自的成本 / 派彩 / 盈虧(常駐顯示,不用展開)
 const GameBreak: React.FC<{ byGame: Map<string, GameAgg>; className?: string }> = ({ byGame, className }) => {
@@ -251,7 +259,6 @@ export const WeeklyLedger: React.FC = () => {
   const [openWeeks, setOpenWeeks] = useState<Set<string>>(new Set());
   const [openDays, setOpenDays] = useState<Set<string>>(new Set());
   const [quickDays, setQuickDays] = useState<Set<string>>(new Set()); // 哪些日切到「快捷帳單」
-  const [copiedDay, setCopiedDay] = useState<string>('');             // 剛複製的日(顯示已複製)
   // 週導覽:預設聚焦最新一週,用 ‹上一週 / 下一週› 逐週切換;showAll=看全部週列表
   const [focusIdx, setFocusIdx] = useState(0);   // 0 = 最新一週(weeks 為新→舊)
   const [showAll, setShowAll] = useState(false);
@@ -278,7 +285,7 @@ export const WeeklyLedger: React.FC = () => {
     for (const e of shown) {
       const r = e.record as Record<string, unknown>;
       const ymd = ymdOf(String(r.date ?? ''));
-      const monday = ymd ? mondayOf(ymd) : '';
+      const monday = ymd ? weekMonday(ymd) : '';
       const result = String(r.result ?? '');
       const pending = isPending(result);
       const cost = num(r.cost);
@@ -302,7 +309,7 @@ export const WeeklyLedger: React.FC = () => {
       };
       let w = wmap.get(monday);
       if (!w) {
-        w = { ...blank(), monday, sunday: monday ? addDays(monday, 6) : '', days: [] };
+        w = { ...blank(), monday, sunday: monday ? weekAddDays(monday, 6) : '', days: [] };
         wmap.set(monday, w);
       }
       fold(w, cost, payout, pending, gShort);
@@ -534,13 +541,7 @@ export const WeeklyLedger: React.FC = () => {
                             );
                           })}
                           {quickDays.has(day.ymd) && (
-                            <button
-                              type="button"
-                              onClick={async () => { try { await navigator.clipboard.writeText(billToText(buildDayBill(day), dayMd(day.ymd))); setCopiedDay(day.ymd); setTimeout(() => setCopiedDay(''), 1500); } catch { /* ignore */ } }}
-                              className="ml-1 px-2 py-0.5 rounded-md text-[10px] font-semibold border border-emerald-500/40 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/10 transition-colors"
-                            >
-                              {copiedDay === day.ymd ? '已複製' : '複製帳單'}
-                            </button>
+                            <span className="ml-1 text-[10px] text-neutral-400">每張卡各自「複製帳單」</span>
                           )}
                         </div>
                         {quickDays.has(day.ymd) ? (

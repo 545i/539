@@ -14,6 +14,7 @@ import { GameKey, LedgerMode } from '../../api/client';
 import { useGame } from '../../api/useGame';
 import { useAllLedger } from '../../api/useLedger';
 import { useEditions } from '../../api/useEditions';
+import { weekAddDays, weekMonday } from '../../weeks';
 
 // 追平方案的「哪一款 × 哪種下法 × 幾車」沿用 v2 原本的 client-side 設定,
 // 只有每車成本 / 每車彩金改讀後端 GameDTO。
@@ -46,23 +47,9 @@ const num = (v: unknown): number => (typeof v === 'number' && isFinite(v) ? v : 
 const signed = (v: number) => (v >= 0 ? `+${v.toLocaleString()}` : v.toLocaleString());
 
 // 週期 = 週一~週日,全自動由開獎日期推導(不靠手動 cycle,跨週自動歸期)。
-// 以 UTC 計算避開時區把日期挪錯天;週日(getUTCDay()===0)歸到前一個週一。
-const _addDays = (ymd: string, n: number): string => {
-  const [y, m, d] = ymd.split('-').map(Number);
-  const dt = new Date(Date.UTC(y, m - 1, d));
-  dt.setUTCDate(dt.getUTCDate() + n);
-  return dt.toISOString().slice(0, 10);
-};
-const weekMonday = (raw: string): string => {
-  const s = String(raw ?? '');
-  if (!/^\d{4}-\d{2}-\d{2}/.test(s)) return '';      // 沒日期 → 未分週期
-  const ymd = s.slice(0, 10);
-  const [y, m, d] = ymd.split('-').map(Number);
-  const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
-  return _addDays(ymd, dow === 0 ? -6 : 1 - dow);
-};
+// 歸期(weekMonday)與日期加減(weekAddDays)共用 weeks.ts,避免各處重寫。
 const weekLabel = (monday: string): string =>
-  monday ? `${monday.replace(/-/g, '/')} ~ ${_addDays(monday, 6).slice(5).replace('-', '/')}` : '未分週期(無日期)';
+  monday ? `${monday.replace(/-/g, '/')} ~ ${weekAddDays(monday, 6).slice(5).replace('-', '/')}` : '未分週期(無日期)';
 
 export const TotalPnLTab: React.FC = () => {
   // 盤口資料共用全域遊戲 context 抓好的清單,不再自己打一次 /api/games

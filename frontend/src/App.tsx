@@ -17,6 +17,7 @@ import { UploadHistoryView } from './components/views/UploadHistoryView';
 import { UploadHistoryEntry } from './components/uploadHistory';
 import { useAuth } from './api/useAuth';
 import { useGroups } from './api/useGroups';
+import { useAllLedger } from './api/useLedger';
 import { GroupBetTab } from './components/tabs/GroupBetTab';
 import { ThreePillarTab } from './components/tabs/ThreePillarTab';
 import { Combo9000Tab } from './components/tabs/Combo9000Tab';
@@ -55,9 +56,15 @@ export default function App() {
   const [isQuickImportOpen, setIsQuickImportOpen] = useState(false);
   // 從上傳歷史「填回」帶回快速上傳的文本
   const [importRefill, setImportRefill] = useState<UploadHistoryEntry | null>(null);
-  // 快速上傳寫進去的紀錄要讓各分頁重抓 —— useLedger 只在 loggedIn / mode 變才撈,
-  // 所以拿這個計數器當分頁容器的 key,一變就重掛,流水自然重新載入。
+  // 流水 cache 現由 LedgerProvider 全站共用,重抓靠 reload();
+  // ledgerVersion 仍當下注分頁容器的 key —— 一變就重掛,連帶重抓分頁內的開獎/期號資料。
+  const { reload: reloadLedger } = useAllLedger();
   const [ledgerVersion, setLedgerVersion] = useState(0);
+  // 開獎 / 作廢 / 上傳後:重抓共用流水 cache + 重掛分頁(刷新開獎)。
+  const refreshLedger = React.useCallback(() => {
+    reloadLedger();
+    setLedgerVersion(v => v + 1);
+  }, [reloadLedger]);
 
   // WebSocket:開獎 / 自動對獎後後端會推一則,收到就 bump ledgerVersion →
   // 各下注分頁重抓流水與開獎,不必手動刷新。斷線 3 秒自動重連。
@@ -72,7 +79,7 @@ export default function App() {
       if (!alive) return;
       try {
         sock = new WebSocket(url);
-        sock.onmessage = () => setLedgerVersion(v => v + 1);
+        sock.onmessage = () => refreshLedger();
         sock.onclose = () => { if (alive) retry = window.setTimeout(connect, 3000); };
         sock.onerror = () => { try { sock?.close(); } catch { /* ignore */ } };
       } catch {
@@ -286,7 +293,7 @@ export default function App() {
           {activeNav === 'leaderboard' && <LeaderboardView />}
           {/* 作廢會改到記帳流水,沿用快速上傳那套 ledgerVersion 讓各分頁重抓 */}
           {activeNav === 'audit' && (
-            <AuditView onReverted={() => setLedgerVersion(v => v + 1)} />
+            <AuditView onReverted={refreshLedger} />
           )}
           {/* 快速上傳歷史(獨立頁):每筆明細 + 逐筆派彩/盈虧;填回→切到下注頁開快速上傳;
               作廢會動到 ledger 流水,bump ledgerVersion 讓各分頁重抓 */}
@@ -297,7 +304,7 @@ export default function App() {
                 setActiveNav('duo_bet');
                 setIsQuickImportOpen(true);
               }}
-              onChanged={() => setLedgerVersion(v => v + 1)}
+              onChanged={refreshLedger}
             />
           )}
           {activeNav === 'settings' && <SettingsView theme={theme} onToggleTheme={toggleTheme} />}
@@ -345,7 +352,7 @@ export default function App() {
       <QuickImportModal
         isOpen={isQuickImportOpen}
         onClose={() => { setIsQuickImportOpen(false); setImportRefill(null); }}
-        onImported={() => setLedgerVersion(v => v + 1)}
+        onImported={refreshLedger}
         refill={importRefill}
       />
     </div>

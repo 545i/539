@@ -5,6 +5,7 @@ import {GameProvider} from './api/useGame';
 import {GroupsProvider} from './api/useGroups';
 import {EditionsProvider} from './api/useEditions';
 import {WeekFocusProvider} from './components/WeekNav';
+import {LedgerProvider} from './api/useLedger';
 import './index.css';
 
 createRoot(document.getElementById('root')!).render(
@@ -12,9 +13,11 @@ createRoot(document.getElementById('root')!).render(
     <GameProvider>
       <GroupsProvider>
         <EditionsProvider>
-          <WeekFocusProvider>
-            <App />
-          </WeekFocusProvider>
+          <LedgerProvider>
+            <WeekFocusProvider>
+              <App />
+            </WeekFocusProvider>
+          </LedgerProvider>
         </EditionsProvider>
       </GroupsProvider>
     </GameProvider>

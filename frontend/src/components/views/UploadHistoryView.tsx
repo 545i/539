@@ -3,7 +3,8 @@ import { History, Ban, CornerDownLeft, ClipboardCheck, AlertTriangle } from 'luc
 import {
   UploadHistoryEntry, UploadHistoryItem, MODE_LABEL, loadHistory, updateEntry, voidEntry, fmtTime, money,
 } from '../uploadHistory';
-import { api, ReconcileDTO, LedgerEntryDTO } from '../../api/client';
+import { api, ReconcileDTO } from '../../api/client';
+import { useAllLedger } from '../../api/useLedger';
 import { WeeklyLedger } from './WeeklyLedger';
 
 interface Props {
@@ -132,7 +133,8 @@ const ReconReport: React.FC<{ data: ReconcileDTO }> = ({ data }) => {
 export const UploadHistoryView: React.FC<Props> = ({ onRefill, onChanged }) => {
   const [tab, setTab] = useState<'weekly' | 'batches'>('weekly'); // 預設「每週總帳」
   const [history, setHistory] = useState<UploadHistoryEntry[]>([]);
-  const [ledger, setLedger] = useState<LedgerEntryDTO[]>([]);
+  // 逐筆派彩用的全部 ledger 紀錄:改讀全站共用 cache(不再自己撈一份)
+  const { entries: ledger, reload: reloadLedger } = useAllLedger();
   const [filterEdition, setFilterEdition] = useState<string>('all');
   const [expanded, setExpanded] = useState<Set<number>>(new Set()); // 預設全收疊
   const toggle = (ts: number) => setExpanded(prev => {
@@ -187,8 +189,8 @@ export const UploadHistoryView: React.FC<Props> = ({ onRefill, onChanged }) => {
     try {
       setHistory(await voidEntry(ts));   // 後端連同 ledger 下注一起刪,回傳更新後清單
       setVoidTs(null);
-      // ledger 變了 → 重抓逐筆結算 + 通知其他分頁
-      try { setLedger(await api.ledgerList()); } catch { /* ignore */ }
+      // ledger 變了 → 重抓共用 cache(逐筆結算)+ 通知 App 重掛分頁
+      reloadLedger();
       onChanged?.();
     } catch (e) {
       setVoidErr((e as Error).message);
@@ -197,12 +199,11 @@ export const UploadHistoryView: React.FC<Props> = ({ onRefill, onChanged }) => {
     }
   };
 
-  // 初次載入:上傳歷史 + 全部 ledger 紀錄(逐筆派彩要用)。用 alive 防 race。
+  // 初次載入:上傳歷史(全部 ledger 紀錄改由共用 cache 提供)。用 alive 防 race。
   useEffect(() => {
     let alive = true;
     setFilterEdition('all'); setExpanded(new Set()); setCollapsedDates(new Set());
     loadHistory().then(list => { if (alive) setHistory(list); });
-    api.ledgerList().then(list => { if (alive) setLedger(list); }).catch(() => {});
     return () => { alive = false; };
   }, []);
 
