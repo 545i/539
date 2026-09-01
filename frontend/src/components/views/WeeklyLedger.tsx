@@ -244,9 +244,29 @@ const GameBreak: React.FC<{ byGame: Map<string, GameAgg>; className?: string }> 
   );
 };
 
-// 建議車數:單卡多列,每列一個「版·組:幾車 成本 可得」。fmt1 保留 1 位小數(盤口可能有小數)。
+// 建議車數:單卡多列,每個「版·組」列出 本週 / 累計 兩條。fmt1 保留 1 位小數(盤口可能有小數)。
 type RecoverData = { cumPnl: number; suggestBalls: number; cars: number | null; cost: number; gain: number; after: number };
 const fmt1 = (v: number) => v.toLocaleString(undefined, { maximumFractionDigits: 1 });
+const sfmt1 = (v: number) => (v >= 0 ? '+' : '') + fmt1(v);
+// 一條建議車數(本週 / 累計 / 全部):幾車 · 成本 · 可得,或 未虧損 / 追不回。
+const RecoverLine: React.FC<{ label: string; d: RecoverData | null }> = ({ label, d }) => (
+  <div className="flex items-center justify-between gap-2 text-[11px] font-mono">
+    <span className="text-neutral-400 font-sans w-9 shrink-0">{label}</span>
+    {!d ? (
+      <span className="text-neutral-400">無紀錄</span>
+    ) : d.cars == null ? (
+      <span className="text-emerald-600 dark:text-emerald-400">未虧損 <span className="text-neutral-400">({sfmt1(d.cumPnl)})</span></span>
+    ) : !Number.isFinite(d.cars) ? (
+      <span className="text-rose-500">中 1 顆追不回</span>
+    ) : (
+      <span className="flex items-center gap-x-3 gap-y-0.5 flex-wrap justify-end">
+        <span className="font-bold text-neutral-900 dark:text-white">{(d.cars as number).toLocaleString()} 車</span>
+        <span className="text-neutral-500">成本 <span className="text-neutral-800 dark:text-neutral-200 font-semibold">{fmt1(d.cost)}</span></span>
+        <span className="text-neutral-500">可得 <span className="text-emerald-600 dark:text-emerald-400 font-semibold">{fmt1(d.gain)}</span></span>
+      </span>
+    )}
+  </div>
+);
 
 // 每週總帳:全部下注流水(排除模擬版)依開獎日期歸「週一~週日」的週,
 // 週 → 展開看每日小計 → 再展開看當天逐筆。派彩/盈虧直接取自各筆已結算紀錄。
@@ -385,13 +405,16 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
     const g = games.find(x => x.key === 'lotto539') ?? games[0];
     const costPerCar = num(g?.default_cost_per_car);
     const winPayout = num(g?.default_win_payout);
-    const calc = (eid: number, mode: 'single' | 'multi'): RecoverData | null => {
+    // scope='week' 只算聚焦週;'cume' 算「到聚焦週為止」的累計(含以前)。allWeeks 時兩者=全部。
+    const calc = (eid: number, mode: 'single' | 'multi', scope: 'week' | 'cume'): RecoverData | null => {
       const rows = entries
         .map(e => e.record as Record<string, unknown>)
         .filter(r => {
           if ((num(r.edition) || 1) !== eid) return false;
           if (String(r.mode ?? '') !== mode) return false;
-          return wk.allWeeks ? true : weekMonday(String(r.date ?? '')) === focusMonday;
+          if (wk.allWeeks) return true;
+          const wm = weekMonday(String(r.date ?? ''));
+          return scope === 'week' ? wm === focusMonday : (wm !== '' && wm <= focusMonday);
         });
       if (rows.length === 0) return null;
       const cumPnl = rows.reduce((s, r) => s + num(r.payout) - num(r.cost), 0);
@@ -410,11 +433,12 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
     };
     // 要顯示哪些版:選特定版就只那版;'all' = 全部出現過的版(排除模擬)
     const edList = selEd === 'all' ? usedEds.filter(ed => !simEids.has(ed)) : [selEd as number];
-    const rows: { key: string; edName: string; modeLabel: string; d: RecoverData }[] = [];
+    const rows: { key: string; edName: string; modeLabel: string; week: RecoverData | null; cume: RecoverData | null }[] = [];
     for (const eid of edList) {
       for (const [mode, label] of [['single', '1組'], ['multi', '2組']] as const) {
-        const d = calc(eid, mode);
-        if (d) rows.push({ key: `${eid}-${mode}`, edName: edName(eid), modeLabel: label, d });
+        const cume = calc(eid, mode, 'cume');
+        if (!cume) continue;                              // 該版該下法完全沒紀錄就跳過
+        rows.push({ key: `${eid}-${mode}`, edName: edName(eid), modeLabel: label, week: calc(eid, mode, 'week'), cume });
       }
     }
     return rows;
@@ -431,28 +455,28 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
         點<strong>週</strong>展開看每日小計,再點<strong>某日</strong>看當天逐筆的下注方式 / 組合 / 成本 / 派彩 / 盈虧。
       </p>
 
-      {/* 建議車數(回本試算):一張卡,每列一個「版 · 組:幾車 成本 可得」,吃聚焦週該版該下法損益 */}
+      {/* 建議車數(回本試算):一張卡;每個「版·組」列 本週 + 累計(到聚焦週為止,含以前)兩條。
+          本週會歸零、累計不歸零 —— 追跨週的赤字看累計。全部週檢視時只有一條(全部)。 */}
       {recoverRows.length > 0 && (
-        <div className="rounded-xl border border-black/10 dark:border-white/10 bg-white dark:bg-[#121212] p-3 space-y-1">
-          <div className="text-[11px] font-semibold text-neutral-600 dark:text-neutral-300 pb-1">
-            建議車數(中 1 顆回本)<span className="ml-1 font-normal font-mono text-neutral-400">{wk.allWeeks ? '全部週' : wk.label}</span>
+        <div className="rounded-xl border border-black/10 dark:border-white/10 bg-white dark:bg-[#121212] p-3 space-y-2">
+          <div className="text-[11px] font-semibold text-neutral-600 dark:text-neutral-300">
+            建議車數(中 1 顆回本)
+            <span className="ml-1 font-normal font-mono text-neutral-400">{wk.allWeeks ? '全部週' : wk.label}</span>
+            {!wk.allWeeks && <span className="ml-1 font-normal text-neutral-400">·本週歸零 / 累計不歸零</span>}
           </div>
           {recoverRows.map(r => (
-            <div key={r.key} className="flex items-center justify-between gap-2 text-[11px] font-mono border-t border-black/[0.05] dark:border-white/[0.05] pt-1">
-              <span className="flex items-center gap-1 shrink-0">
+            <div key={r.key} className="border-t border-black/[0.05] dark:border-white/[0.05] pt-1.5 space-y-0.5">
+              <div className="flex items-center gap-1">
                 <span className="px-1.5 py-0.5 rounded bg-violet-500/10 text-violet-600 dark:text-violet-400 text-[10px] font-bold font-sans">{r.edName}</span>
-                <span className="text-neutral-500 font-sans">{r.modeLabel}</span>
-              </span>
-              {r.d.cars == null ? (
-                <span className="text-emerald-600 dark:text-emerald-400">未虧損</span>
-              ) : !Number.isFinite(r.d.cars) ? (
-                <span className="text-rose-500">中 1 顆追不回</span>
+                <span className="text-neutral-500 font-sans text-[10px]">{r.modeLabel}</span>
+              </div>
+              {wk.allWeeks ? (
+                <RecoverLine label="全部" d={r.cume} />
               ) : (
-                <span className="flex items-center gap-x-3 gap-y-0.5 flex-wrap justify-end">
-                  <span className="font-bold text-neutral-900 dark:text-white">{(r.d.cars as number).toLocaleString()} 車</span>
-                  <span className="text-neutral-500">成本 <span className="text-neutral-800 dark:text-neutral-200 font-semibold">{fmt1(r.d.cost)}</span></span>
-                  <span className="text-neutral-500">可得 <span className="text-emerald-600 dark:text-emerald-400 font-semibold">{fmt1(r.d.gain)}</span></span>
-                </span>
+                <>
+                  <RecoverLine label="本週" d={r.week} />
+                  <RecoverLine label="累計" d={r.cume} />
+                </>
               )}
             </div>
           ))}
