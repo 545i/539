@@ -3,7 +3,7 @@ import { History, Ban, CornerDownLeft, ClipboardCheck, AlertTriangle } from 'luc
 import {
   UploadHistoryEntry, UploadHistoryItem, MODE_LABEL, loadHistory, updateEntry, voidEntry, fmtTime, money,
 } from '../uploadHistory';
-import { api, ReconcileDTO } from '../../api/client';
+import { api, ReconcileDTO, LedgerMode } from '../../api/client';
 import { useAllLedger } from '../../api/useLedger';
 import { WeeklyLedger } from './WeeklyLedger';
 
@@ -12,6 +12,8 @@ interface Props {
   onRefill?: (entry: UploadHistoryEntry) => void;
   // 作廢會改到 ledger 流水,讓 App 其他分頁重抓(沿用 ledgerVersion)
   onChanged?: () => void;
+  // 策略頁「查看本週流水」連結進來:切到「每週總帳」分頁並預設該下法篩選
+  initialLedgerMode?: LedgerMode | null;
 }
 
 const num = (v: unknown): number => {
@@ -130,8 +132,10 @@ const ReconReport: React.FC<{ data: ReconcileDTO }> = ({ data }) => {
 
 // 快速上傳歷史(獨立頁面):列出每批上傳的原始文本、每筆下注明細,細緻到「列」的
 // 派彩 / 盈虧。派彩取自這批建立的 ledger 紀錄(entryIds ↔ items 對齊),已結算才有。
-export const UploadHistoryView: React.FC<Props> = ({ onRefill, onChanged }) => {
+export const UploadHistoryView: React.FC<Props> = ({ onRefill, onChanged, initialLedgerMode }) => {
   const [tab, setTab] = useState<'weekly' | 'batches'>('weekly'); // 預設「每週總帳」
+  // 策略頁連結進來(帶 initialLedgerMode)→ 強制切到「每週總帳」分頁
+  React.useEffect(() => { if (initialLedgerMode) setTab('weekly'); }, [initialLedgerMode]);
   const [history, setHistory] = useState<UploadHistoryEntry[]>([]);
   // 逐筆派彩用的全部 ledger 紀錄:改讀全站共用 cache(不再自己撈一份)
   const { entries: ledger, reload: reloadLedger } = useAllLedger();
@@ -347,7 +351,7 @@ export const UploadHistoryView: React.FC<Props> = ({ onRefill, onChanged }) => {
         </div>
       </div>
 
-      {tab === 'weekly' && <WeeklyLedger />}
+      {tab === 'weekly' && <WeeklyLedger initialMode={initialLedgerMode} />}
 
       {tab === 'batches' && (
       <div className="space-y-4">

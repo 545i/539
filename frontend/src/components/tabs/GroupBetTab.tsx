@@ -5,13 +5,14 @@ import {
   XCircle,
   Trash2,
   RefreshCw,
+  ChevronRight,
 } from 'lucide-react';
 import { LotteryBallPad } from '../LotteryBallPad';
 import { IssuePicker } from '../IssuePicker';
 import { OverwriteConfirm } from '../OverwriteConfirm';
 import { BetTargetSelector } from '../BetTargetSelector';
 import { BetRecord, LotteryGame } from '../../types';
-import { api, ErhePlanDTO, GroupDTO } from '../../api/client';
+import { api, ErhePlanDTO, GroupDTO, LedgerMode } from '../../api/client';
 import { useAsync } from '../../api/useAsync';
 import { useGame } from '../../api/useGame';
 import { useLedger } from '../../api/useLedger';
@@ -28,9 +29,11 @@ import { useEditions } from '../../api/useEditions';
 
 interface Props {
   group: GroupDTO;
+  // 「查看本週流水 →」跳到每週總帳(帶本下法過濾)
+  onOpenLedger?: (mode: LedgerMode) => void;
 }
 
-export const GroupBetTab: React.FC<Props> = ({ group }) => {
+export const GroupBetTab: React.FC<Props> = ({ group, onOpenLedger }) => {
   const { game, gameKey, loading: gameLoading } = useGame();
   const { eid, edition, combineEditions, setCombineEditions } = useEditions();
   const [selectedBalls, setSelectedBalls] = useState<number[]>([]);
@@ -565,99 +568,15 @@ export const GroupBetTab: React.FC<Props> = ({ group }) => {
               </div>
             )}
 
-            {/* Desktop Table View */}
-            <div className="lt-wrap border border-black/[0.08] dark:border-white/[0.08] rounded-xl overflow-x-auto">
-              <table className="lt">
-                <thead>
-                  <tr>
-                    <th>#</th>
-                    <th>期號 / 核對</th>
-                    <th>遊戲</th>
-                    <th>車數</th>
-                    <th>狀態</th>
-                    <th>成本</th>
-                    <th>回收</th>
-                    <th>本局損益</th>
-                    <th>累積損益</th>
-                    <th>下注號碼</th>
-                    <th>開獎號碼</th>
-                    <th>撤銷</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {flowRecords.map((rec) => (
-                    <tr key={rec.id}>
-                      <td>{rec.index}</td>
-                      <td>
-                        <IssuePicker
-                          issue={rec.issue}
-                          date={rec.date}
-                          draws={histByGame[rec.game]?.draws ?? []}
-                          onSelect={(iss) => ledger.resettle(rec.id, iss)}
-                          extraOption={histByGame[rec.game]?.next ?? undefined}
-                          showNums={false}
-                          onRefresh={() => ledger.resettle(rec.id, rec.issue)}
-                          onManualHit={(k) => ledger.resettle(rec.id, rec.issue, k)}
-                        />
-                      </td>
-                      <td className="text-xs font-semibold">{rec.game.split('(')[0]}</td>
-                      <td className="font-mono text-xs font-bold">{rec.cars || rec.units} 車</td>
-                      <td>
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${
-                          rec.pnl > 0
-                            ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 font-bold'
-                            : rec.result === '待開獎'
-                            ? 'bg-black/5 dark:bg-white/10 text-neutral-600 dark:text-neutral-400'
-                            : 'bg-rose-500/10 text-rose-600 dark:text-rose-400'
-                        }`}>
-                          {rec.result}
-                        </span>
-                      </td>
-                      <td className="font-mono text-xs">{rec.cost.toLocaleString()}</td>
-                      <td className="font-mono text-xs text-emerald-600 dark:text-emerald-400 font-bold">{rec.payout.toLocaleString()}</td>
-                      <td className={`font-mono text-xs font-bold ${rec.pnl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
-                        {rec.pnl >= 0 ? `+${rec.pnl.toLocaleString()}` : rec.pnl.toLocaleString()}
-                      </td>
-                      <td className={`font-mono text-xs font-bold ${rec.cumPnl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
-                        {rec.cumPnl >= 0 ? `+${rec.cumPnl.toLocaleString()}` : rec.cumPnl.toLocaleString()}
-                      </td>
-                      <td className="font-mono text-xs">
-                        <div className="flex flex-wrap gap-1">
-                          {rec.selectedBalls.map(b => (
-                            <span key={b} className={`px-1 py-0.5 rounded ${rec.drawBalls.includes(b) ? 'bg-black text-white dark:bg-white dark:text-black font-bold' : ''}`}>
-                              {b.toString().padStart(2, '0')}
-                            </span>
-                          ))}
-                        </div>
-                      </td>
-                      <td className="font-mono text-xs">
-                        {rec.drawBalls.map(b => b.toString().padStart(2, '0')).join(' ')}
-                      </td>
-                      <td>
-                        {confirmDeleteId === rec.id ? (
-                          <button
-                            type="button"
-                            onClick={() => { ledger.deleteById(rec.id); setConfirmDeleteId(null); }}
-                            className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-rose-600 text-white hover:bg-rose-700 transition-colors"
-                          >
-                            確認?
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => setConfirmDeleteId(rec.id)}
-                            title="撤銷這一筆"
-                            className="inline-flex items-center p-1 rounded-md text-neutral-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-black/5 dark:hover:bg-white/5 transition-colors active:scale-95"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            {/* 逐筆流水與每列對獎/撤銷已整併到「每週總帳」(單一流水視圖);這裡只留本週小計 */}
+            <button
+              type="button"
+              onClick={() => onOpenLedger?.(group.mode)}
+              className="w-full flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl border border-dashed border-black/15 dark:border-white/15 text-[12px] font-semibold text-neutral-600 dark:text-neutral-300 hover:bg-black/[0.03] dark:hover:bg-white/[0.04] hover:border-black/25 dark:hover:border-white/25 transition-colors"
+            >
+              查看 / 管理本週逐筆流水(對獎・改期・撤銷)
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
           </div>
         </div>
       </div>

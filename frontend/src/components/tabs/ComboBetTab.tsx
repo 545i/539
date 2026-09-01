@@ -5,7 +5,8 @@ import {
   TrendingUp,
   Trash2,
   Minus,
-  Plus
+  Plus,
+  ChevronRight
 } from 'lucide-react';
 import { INITIAL_COMBO_RECORDS } from '../../data/lotteryData';
 import { LotteryBallPad } from '../LotteryBallPad';
@@ -13,7 +14,7 @@ import { IssuePicker } from '../IssuePicker';
 import { BetTargetSelector } from '../BetTargetSelector';
 import { OverwriteConfirm } from '../OverwriteConfirm';
 import { LotteryGame, BetRecord } from '../../types';
-import { api } from '../../api/client';
+import { api, LedgerMode } from '../../api/client';
 import { useAsync } from '../../api/useAsync';
 import { useGame } from '../../api/useGame';
 import { useLedger } from '../../api/useLedger';
@@ -30,7 +31,7 @@ const PLAY_KEYS: Record<PlayMethod, 'star' | 'combo' | 'pillar' | 'dan'> = {
   '拖膽': 'dan',
 };
 
-export const ComboBetTab: React.FC = () => {
+export const ComboBetTab: React.FC<{ onOpenLedger?: (mode: LedgerMode) => void }> = ({ onOpenLedger }) => {
   // 遊戲由 Header 的全域切換器決定,這裡不再自己記一份
   const { game, gameKey, loading: gameLoading } = useGame();
   const { eid, combineEditions } = useEditions();
@@ -495,153 +496,16 @@ export const ComboBetTab: React.FC = () => {
               </div>
             )}
 
-            {/* Mobile View: 一注一卡(三星/四星並列) */}
-            <div className="space-y-2.5 sm:hidden">
-              {comboGroups.map((grp) => (
-                <div
-                  key={grp.key}
-                  className="p-3.5 rounded-xl border border-black/[0.08] dark:border-white/[0.08] bg-black/[0.01] dark:bg-white/[0.02] space-y-2"
-                >
-                  <div className="flex items-center justify-between gap-1">
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <span className="w-5 h-5 shrink-0 rounded-full bg-black/5 dark:bg-white/10 text-[10px] font-mono font-bold flex items-center justify-center">
-                        {grp.index}
-                      </span>
-                      <IssuePicker
-                        issue={grp.head.issue}
-                        date={grp.head.date}
-                        draws={histByGame[grp.head.game]?.draws ?? []}
-                        onSelect={(iss) => resettleGroup(grp, iss)}
-                        extraOption={histByGame[grp.head.game]?.next ?? undefined}
-                        showNums={false}
-                        onRefresh={() => grp.members.forEach(m => ledger.resettle(m.id, m.issue))}
-                      />
-                    </div>
-                    <span className={`font-mono text-[11px] font-bold ${grp.pnl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
-                      {grp.pnl >= 0 ? `+${grp.pnl.toLocaleString()}` : grp.pnl.toLocaleString()}
-                    </span>
-                  </div>
-
-                  {/* 三星 / 四星 並列 */}
-                  <div className="grid grid-cols-2 gap-2 pt-1 border-t border-black/[0.04] dark:border-white/[0.04] text-[11px]">
-                    {grp.members.map(m => (
-                      <div key={m.id} className="space-y-0.5">
-                        <span className="font-sans font-semibold text-neutral-700 dark:text-neutral-300">{starName(m)}</span>
-                        <span className="text-neutral-400"> · {m.betsCount || 70}碰</span>
-                        <div className="font-mono text-neutral-800 dark:text-neutral-200">${m.cost.toLocaleString()}</div>
-                        <div className={`text-[10px] ${resultCls(m)}`}>{m.result}</div>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="flex items-center justify-between gap-1 pt-1 border-t border-black/[0.04] dark:border-white/[0.04]">
-                    <div className="flex items-center gap-1 flex-wrap">
-                      <span className="text-neutral-400 text-[10px]">下注:</span>
-                      {grp.head.selectedBalls.map(b => (
-                        <span key={b} className={`px-1 py-0.2 rounded font-mono text-[10px] ${grp.head.drawBalls.includes(b) ? 'bg-emerald-600 text-white font-bold' : 'bg-black/5 dark:bg-white/10'}`}>
-                          {b.toString().padStart(2, '0')}
-                        </span>
-                      ))}
-                    </div>
-                    {confirmDeleteId === grp.key ? (
-                      <button
-                        type="button"
-                        onClick={() => { deleteGroup(grp); setConfirmDeleteId(null); }}
-                        className="shrink-0 inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-rose-600 text-white hover:bg-rose-700 transition-colors"
-                      >
-                        確認?整注刪
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => setConfirmDeleteId(grp.key)}
-                        title="撤銷這一注(三星+四星一起)"
-                        className="shrink-0 inline-flex items-center p-1 rounded-md text-neutral-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-black/5 dark:hover:bg-white/5 transition-colors active:scale-95"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Desktop Table View */}
-            <div className="lt-wrap border border-black/[0.08] dark:border-white/[0.08] rounded-xl hidden sm:block">
-              <table className="lt">
-                <thead>
-                  <tr>
-                    <th>#</th>
-                    <th>期號</th>
-                    <th>連碰明細(三星 / 四星)</th>
-                    <th>損益</th>
-                    <th>開獎對號</th>
-                    <th>撤銷</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {comboGroups.map((grp) => (
-                    <tr key={grp.key}>
-                      <td>{grp.index}</td>
-                      <td>
-                        <IssuePicker
-                          issue={grp.head.issue}
-                          date={grp.head.date}
-                          draws={histByGame[grp.head.game]?.draws ?? []}
-                          onSelect={(iss) => resettleGroup(grp, iss)}
-                          extraOption={histByGame[grp.head.game]?.next ?? undefined}
-                          showNums={false}
-                          onRefresh={() => grp.members.forEach(m => ledger.resettle(m.id, m.issue))}
-                        />
-                      </td>
-                      <td>
-                        <div className="flex flex-wrap gap-x-4 gap-y-1">
-                          {grp.members.map(m => (
-                            <span key={m.id} className="text-xs whitespace-nowrap">
-                              <span className="font-semibold text-neutral-800 dark:text-neutral-200">{starName(m)}</span>{' '}
-                              <span className="font-mono text-neutral-500">{m.betsCount || 70}碰 ${m.cost.toLocaleString()}</span>{' '}
-                              <span className={`text-[10px] ${resultCls(m)}`}>{m.result}</span>
-                            </span>
-                          ))}
-                        </div>
-                      </td>
-                      <td className={`font-mono text-xs font-bold ${grp.pnl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
-                        {grp.pnl >= 0 ? `+${grp.pnl.toLocaleString()}` : grp.pnl.toLocaleString()}
-                      </td>
-                      <td className="font-mono text-xs">
-                        <div className="flex flex-wrap gap-1">
-                          {grp.head.selectedBalls.map(b => (
-                            <span key={b} className={`px-1 rounded text-[10px] ${grp.head.drawBalls.includes(b) ? 'bg-black text-white dark:bg-white dark:text-black font-bold' : 'text-neutral-400'}`}>
-                              {b.toString().padStart(2, '0')}
-                            </span>
-                          ))}
-                        </div>
-                      </td>
-                      <td>
-                        {confirmDeleteId === grp.key ? (
-                          <button
-                            type="button"
-                            onClick={() => { deleteGroup(grp); setConfirmDeleteId(null); }}
-                            className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-rose-600 text-white hover:bg-rose-700 transition-colors"
-                          >
-                            確認?整注刪
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => setConfirmDeleteId(grp.key)}
-                            title="撤銷這一注(三星+四星一起)"
-                            className="inline-flex items-center p-1 rounded-md text-neutral-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-black/5 dark:hover:bg-white/5 transition-colors active:scale-95"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            {/* 逐筆流水與每列對獎/撤銷已整併到「每週總帳」(單一流水視圖);這裡只留本週小計。
+                連碰的「三星+四星併注」顯示改在每週總帳逐筆呈現(各為一列)。 */}
+            <button
+              type="button"
+              onClick={() => onOpenLedger?.('combo')}
+              className="w-full flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl border border-dashed border-black/15 dark:border-white/15 text-[12px] font-semibold text-neutral-600 dark:text-neutral-300 hover:bg-black/[0.03] dark:hover:bg-white/[0.04] hover:border-black/25 dark:hover:border-white/25 transition-colors"
+            >
+              查看 / 管理本週逐筆流水(對獎・改期・撤銷)
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
           </div>
 
         </div>

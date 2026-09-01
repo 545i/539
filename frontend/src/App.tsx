@@ -18,6 +18,7 @@ import { UploadHistoryEntry } from './components/uploadHistory';
 import { useAuth } from './api/useAuth';
 import { useGroups } from './api/useGroups';
 import { useAllLedger } from './api/useLedger';
+import { LedgerMode } from './api/client';
 import { GroupBetTab } from './components/tabs/GroupBetTab';
 import { ThreePillarTab } from './components/tabs/ThreePillarTab';
 import { Combo9000Tab } from './components/tabs/Combo9000Tab';
@@ -65,6 +66,15 @@ export default function App() {
     reloadLedger();
     setLedgerVersion(v => v + 1);
   }, [reloadLedger]);
+
+  // 策略頁「查看本週流水 →」:跳到每週總帳並預設該下法(週別由共用聚焦週自動帶)。
+  const [ledgerJumpMode, setLedgerJumpMode] = useState<LedgerMode | null>(null);
+  const openLedger = React.useCallback((mode: LedgerMode) => {
+    setLedgerJumpMode(mode);
+    setActiveNav('upload_history');
+  }, []);
+  // 離開每週總帳頁就清掉預設下法,之後從側欄進來不會被舊的連結狀態綁住。
+  useEffect(() => { if (activeNav !== 'upload_history') setLedgerJumpMode(null); }, [activeNav]);
 
   // WebSocket:開獎 / 自動對獎後後端會推一則,收到就 bump ledgerVersion →
   // 各下注分頁重抓流水與開獎,不必手動刷新。斷線 3 秒自動重連。
@@ -277,10 +287,10 @@ export default function App() {
               <div key={ledgerVersion}>
                 {enabledGroups
                   .filter(g => g.mode === duoTab)
-                  .map(g => <GroupBetTab key={g.gid} group={g} />)}
-                {duoTab === 'pillar1800' && <ThreePillarTab />}
-                {duoTab === 'combo9000' && <Combo9000Tab />}
-                {duoTab === 'combo' && <ComboBetTab />}
+                  .map(g => <GroupBetTab key={g.gid} group={g} onOpenLedger={openLedger} />)}
+                {duoTab === 'pillar1800' && <ThreePillarTab onOpenLedger={openLedger} />}
+                {duoTab === 'combo9000' && <Combo9000Tab onOpenLedger={openLedger} />}
+                {duoTab === 'combo' && <ComboBetTab onOpenLedger={openLedger} />}
                 {duoTab === 'totals' && <TotalPnLTab />}
               </div>
             </div>
@@ -305,6 +315,7 @@ export default function App() {
                 setIsQuickImportOpen(true);
               }}
               onChanged={refreshLedger}
+              initialLedgerMode={ledgerJumpMode}
             />
           )}
           {activeNav === 'settings' && <SettingsView theme={theme} onToggleTheme={toggleTheme} />}

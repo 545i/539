@@ -6,11 +6,12 @@ import {
   RefreshCw,
   Minus,
   Plus,
-  AlertTriangle
+  AlertTriangle,
+  ChevronRight
 } from 'lucide-react';
 import { INITIAL_COMBO9000_RECORDS } from '../../data/lotteryData';
 import { LotteryGame } from '../../types';
-import { api } from '../../api/client';
+import { api, LedgerMode } from '../../api/client';
 import { useAsync } from '../../api/useAsync';
 import { useGame } from '../../api/useGame';
 import { useLedger } from '../../api/useLedger';
@@ -30,7 +31,7 @@ const SEGMENTS: { name: string; range: string; size: number }[] = [
 ];
 const TOTAL_BETS = 9000; // 9 × 10 × 10 × 10
 
-export const Combo9000Tab: React.FC = () => {
+export const Combo9000Tab: React.FC<{ onOpenLedger?: (mode: LedgerMode) => void }> = ({ onOpenLedger }) => {
   // 遊戲由 Header 的全域切換器決定;9000碰只有 39 選 5 的款玩得起來(supports_combo9000)
   const { game: gameCfg, gameKey, loading: gameLoading } = useGame();
   const { eid, combineEditions } = useEditions();
@@ -459,179 +460,15 @@ export const Combo9000Tab: React.FC = () => {
               </div>
             )}
 
-            {/* Mobile View */}
-            <div className="space-y-2.5 sm:hidden">
-              {flowRecords.map((rec) => (
-                <div
-                  key={rec.id}
-                  className="p-3.5 rounded-xl border border-black/[0.08] dark:border-white/[0.08] bg-black/[0.01] dark:bg-white/[0.02] space-y-2"
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5">
-                      <span className="w-5 h-5 rounded-full bg-black/5 dark:bg-white/10 text-[10px] font-mono font-bold flex items-center justify-center">
-                        {rec.index}
-                      </span>
-                      <IssuePicker
-                        issue={rec.issue}
-                        date={rec.date}
-                        draws={histByGame[rec.game]?.draws ?? []}
-                        onSelect={(iss) => ledger.resettle(rec.id, iss)}
-                        extraOption={histByGame[rec.game]?.next ?? undefined}
-                        showNums={false}
-                        onRefresh={() => ledger.resettle(rec.id, rec.issue)}
-                        onManualHit={(k) => ledger.resettle(rec.id, rec.issue, k)}
-                        manualPillars={2}
-                        gameLabel={gameCfg.short_name}
-                      />
-                    </div>
-
-                    <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
-                      rec.pnl > 0
-                        ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 font-bold'
-                        : rec.result === '待開獎'
-                        ? 'bg-black/5 dark:bg-white/10 text-neutral-600 dark:text-neutral-400'
-                        : 'bg-rose-500/10 text-rose-600 dark:text-rose-400'
-                    }`}>
-                      {rec.result}
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-2 pt-1 border-t border-black/[0.04] dark:border-white/[0.04] text-[11px]">
-                    <div>
-                      <span className="text-neutral-400 block text-[10px]">四段落點</span>
-                      <span className="font-mono font-bold text-neutral-800 dark:text-neutral-200">{rec.pillarDist || '—'}</span>
-                    </div>
-                    <div>
-                      <span className="text-neutral-400 block text-[10px]">投入成本</span>
-                      <span className="font-mono text-neutral-800 dark:text-neutral-200">{rec.cost.toLocaleString()}</span>
-                    </div>
-                    <div>
-                      <span className="text-neutral-400 block text-[10px]">本局損益</span>
-                      <span className={`font-mono font-bold ${rec.pnl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
-                        {rec.pnl >= 0 ? `+${rec.pnl.toLocaleString()}` : rec.pnl.toLocaleString()}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between text-[11px] pt-1 border-t border-black/[0.04] dark:border-white/[0.04]">
-                    <div className="text-neutral-400 text-[10px]">
-                      開獎號: <span className="font-mono text-neutral-600 dark:text-neutral-400">{rec.drawBalls.map(b => b.toString().padStart(2, '0')).join(' ')}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-mono text-neutral-400">
-                        {rec.betsCount.toLocaleString()} 碰
-                      </span>
-                      {confirmDeleteId === rec.id ? (
-                        <button
-                          type="button"
-                          onClick={() => { ledger.deleteById(rec.id); setConfirmDeleteId(null); }}
-                          className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-rose-600 text-white hover:bg-rose-700 transition-colors"
-                        >
-                          確認?
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => setConfirmDeleteId(rec.id)}
-                          title="撤銷這一筆"
-                          className="inline-flex items-center p-1 rounded-md text-neutral-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-black/5 dark:hover:bg-white/5 transition-colors active:scale-95"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Desktop Table View */}
-            <div className="lt-wrap border border-black/[0.08] dark:border-white/[0.08] rounded-xl hidden sm:block">
-              <table className="lt">
-                <thead>
-                  <tr>
-                    <th>#</th>
-                    <th>期號</th>
-                    <th>遊戲</th>
-                    <th>支數</th>
-                    <th>四段落點</th>
-                    <th>狀態</th>
-                    <th>成本</th>
-                    <th>回收</th>
-                    <th>本局損益</th>
-                    <th>累積損益</th>
-                    <th>開獎號碼</th>
-                    <th>撤銷</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {flowRecords.map((rec) => (
-                    <tr key={rec.id}>
-                      <td>{rec.index}</td>
-                      <td>
-                        <IssuePicker
-                          issue={rec.issue}
-                          date={rec.date}
-                          draws={histByGame[rec.game]?.draws ?? []}
-                          onSelect={(iss) => ledger.resettle(rec.id, iss)}
-                          extraOption={histByGame[rec.game]?.next ?? undefined}
-                          showNums={false}
-                          onRefresh={() => ledger.resettle(rec.id, rec.issue)}
-                          onManualHit={(k) => ledger.resettle(rec.id, rec.issue, k)}
-                          manualPillars={2}
-                          gameLabel={gameCfg.short_name}
-                        />
-                      </td>
-                      <td className="text-xs font-semibold">{rec.game.split('(')[0]}</td>
-                      <td className="font-mono text-xs font-bold">{rec.units} 支</td>
-                      <td className="font-mono text-xs font-semibold">{rec.pillarDist || '—'}</td>
-                      <td>
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${
-                          rec.pnl > 0
-                            ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 font-bold'
-                            : rec.result === '待開獎'
-                            ? 'bg-black/5 dark:bg-white/10 text-neutral-600 dark:text-neutral-400'
-                            : 'bg-rose-500/10 text-rose-600 dark:text-rose-400'
-                        }`}>
-                          {rec.result}
-                        </span>
-                      </td>
-                      <td className="font-mono text-xs">{rec.cost.toLocaleString()}</td>
-                      <td className="font-mono text-xs text-emerald-600 dark:text-emerald-400 font-bold">{rec.payout.toLocaleString()}</td>
-                      <td className={`font-mono text-xs font-bold ${rec.pnl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
-                        {rec.pnl >= 0 ? `+${rec.pnl.toLocaleString()}` : rec.pnl.toLocaleString()}
-                      </td>
-                      <td className={`font-mono text-xs font-bold ${rec.cumPnl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
-                        {rec.cumPnl >= 0 ? `+${rec.cumPnl.toLocaleString()}` : rec.cumPnl.toLocaleString()}
-                      </td>
-                      <td className="font-mono text-xs">
-                        {rec.drawBalls.map(b => b.toString().padStart(2, '0')).join(' ')}
-                      </td>
-                      <td>
-                        {confirmDeleteId === rec.id ? (
-                          <button
-                            type="button"
-                            onClick={() => { ledger.deleteById(rec.id); setConfirmDeleteId(null); }}
-                            className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-rose-600 text-white hover:bg-rose-700 transition-colors"
-                          >
-                            確認?
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => setConfirmDeleteId(rec.id)}
-                            title="撤銷這一筆"
-                            className="inline-flex items-center p-1 rounded-md text-neutral-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-black/5 dark:hover:bg-white/5 transition-colors active:scale-95"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            {/* 逐筆流水與每列對獎/撤銷已整併到「每週總帳」(單一流水視圖);這裡只留本週小計 */}
+            <button
+              type="button"
+              onClick={() => onOpenLedger?.('combo9000')}
+              className="w-full flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl border border-dashed border-black/15 dark:border-white/15 text-[12px] font-semibold text-neutral-600 dark:text-neutral-300 hover:bg-black/[0.03] dark:hover:bg-white/[0.04] hover:border-black/25 dark:hover:border-white/25 transition-colors"
+            >
+              查看 / 管理本週逐筆流水(對獎・改期・撤銷)
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
           </div>
 
         </div>

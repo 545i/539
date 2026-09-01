@@ -276,3 +276,43 @@ export function useAllLedger() {
   const {entries, loading, error, loggedIn, reload} = useLedgerCtx();
   return {entries, loading, error, loggedIn, reload};
 }
+
+/** 依 id 對獎 / 撤銷(不綁 mode);每週總帳逐筆操作用,直接改共用 cache。
+ *  只處理登入(後端)紀錄 —— 每週總帳未登入時本來就沒資料。 */
+export function useLedgerActions() {
+  const ctx = useLedgerCtx();
+  const {loggedIn} = ctx;
+  const [error, setError] = useState<string | null>(null);
+
+  const deleteById = useCallback(
+    async (id: string | number) => {
+      if (!loggedIn) return;
+      setError(null);
+      try {
+        await api.ledgerDelete(Number(id));
+        ctx.setEntries(prev => prev.filter(e => String(e.id) !== String(id)));
+      } catch (e) {
+        setError((e as Error).message);
+      }
+    },
+    [loggedIn, ctx],
+  );
+
+  const resettle = useCallback(
+    async (id: string | number, issue: string, hitCount?: number | null) => {
+      if (!loggedIn) return;
+      setError(null);
+      try {
+        const entry = await api.ledgerResettle(Number(id), issue, hitCount);
+        ctx.setEntries(prev =>
+          prev.map(e => (String(e.id) === String(id) ? entry : e)),
+        );
+      } catch (e) {
+        setError((e as Error).message);
+      }
+    },
+    [loggedIn, ctx],
+  );
+
+  return {resettle, deleteById, error};
+}

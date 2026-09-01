@@ -1,8 +1,11 @@
 import React, { useMemo, useState } from 'react';
-import { AlertTriangle } from 'lucide-react';
-import { useAllLedger } from '../../api/useLedger';
+import { AlertTriangle, Trash2 } from 'lucide-react';
+import { useAllLedger, useLedgerActions } from '../../api/useLedger';
 import { useEditions } from '../../api/useEditions';
 import { useGame } from '../../api/useGame';
+import { useHistoriesByGame } from '../../api/useHistories';
+import { IssuePicker } from '../IssuePicker';
+import { useWeekNav, WeekNav } from '../WeekNav';
 import { LedgerMode } from '../../api/client';
 import { MODE_LABEL, money } from '../uploadHistory';
 import { weekAddDays, weekMonday } from '../../weeks';
@@ -34,6 +37,10 @@ const weekdayOf = (ymd: string): string => {
 };
 
 interface BetRow {
+  id: string;          // ledger 紀錄 id(逐筆對獎/撤銷用)
+  issue: string;       // 期號(IssuePicker 用)
+  game: string;        // 原始遊戲名(histByGame 查該款期別用)
+  edition: number;     // 版 eid
   gameShort: string;
   editionName: string;
   mode: string;        // single/multi/pillar1800/combo9000/combo(快捷帳單用)
@@ -239,10 +246,13 @@ const GameBreak: React.FC<{ byGame: Map<string, GameAgg>; className?: string }> 
 
 // 每週總帳:全部下注流水(排除模擬版)依開獎日期歸「週一~週日」的週,
 // 週 → 展開看每日小計 → 再展開看當天逐筆。派彩/盈虧直接取自各筆已結算紀錄。
-export const WeeklyLedger: React.FC = () => {
+export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ initialMode }) => {
   const { entries, loading, loggedIn } = useAllLedger();
+  const { resettle, deleteById } = useLedgerActions();   // 逐筆對獎 / 撤銷(共用 cache)
+  const histByGame = useHistoriesByGame();               // 各款期別(IssuePicker 用)
   const { editions } = useEditions();
   const { games } = useGame();
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const simEids = useMemo(
     () => new Set(editions.filter(e => e.simulated).map(e => e.eid)),
@@ -256,12 +266,12 @@ export const WeeklyLedger: React.FC = () => {
   };
 
   const [selEd, setSelEd] = useState<number | 'all'>('all');
+  const [selMode, setSelMode] = useState<LedgerMode | 'all'>('all');   // 下法篩選(策略頁連結進來時預設)
+  // 從策略頁「查看本週流水」連結進來時,預設篩選成該下法(之後可自行改)
+  React.useEffect(() => { if (initialMode) setSelMode(initialMode); }, [initialMode]);
   const [openWeeks, setOpenWeeks] = useState<Set<string>>(new Set());
   const [openDays, setOpenDays] = useState<Set<string>>(new Set());
   const [quickDays, setQuickDays] = useState<Set<string>>(new Set()); // 哪些日切到「快捷帳單」
-  // 週導覽:預設聚焦最新一週,用 ‹上一週 / 下一週› 逐週切換;showAll=看全部週列表
-  const [focusIdx, setFocusIdx] = useState(0);   // 0 = 最新一週(weeks 為新→舊)
-  const [showAll, setShowAll] = useState(false);
   const toggle = (set: Set<string>, k: string, setter: (s: Set<string>) => void) => {
     const n = new Set(set); n.has(k) ? n.delete(k) : n.add(k); setter(n);
   };
@@ -272,12 +282,21 @@ export const WeeklyLedger: React.FC = () => {
     return Array.from(s).sort((a, b) => a - b);
   }, [entries]);
   const edName = (ed: number) => editions.find(x => x.eid === ed)?.name ?? `版${ed}`;
+  // 資料裡出現過的下法(依 MODE_ROWS 順序),給下法篩選鈕用
+  const usedModes = useMemo(() => {
+    const order: LedgerMode[] = ['single', 'multi', 'pillar1800', 'combo9000', 'combo'];
+    const s = new Set(entries.map(e => String((e.record as Record<string, unknown>).mode ?? '')));
+    return order.filter(m => s.has(m));
+  }, [entries]);
 
-  // 篩選:'all' = 全部版但排除模擬版;選特定版就只看那版(含模擬版)
+  // 篩選:版('all' = 全部版但排除模擬版;選特定版就只看那版含模擬版)+ 下法(mode)
   const shown = useMemo(() => entries.filter(e => {
-    const ed = num((e.record as Record<string, unknown>).edition) || 1;
-    return selEd === 'all' ? !simEids.has(ed) : ed === selEd;
-  }), [entries, selEd, simEids]);
+    const r = e.record as Record<string, unknown>;
+    const ed = num(r.edition) || 1;
+    const okEd = selEd === 'all' ? !simEids.has(ed) : ed === selEd;
+    const okMode = selMode === 'all' || String(r.mode ?? '') === selMode;
+    return okEd && okMode;
+  }), [entries, selEd, selMode, simEids]);
 
   // 分組:週(週一) → 日 → 逐筆
   const weeks = useMemo(() => {
@@ -294,6 +313,10 @@ export const WeeklyLedger: React.FC = () => {
       const gShort = gameShort(String(r.game ?? '')) || '其他';
       const units = num(r.units);
       const row: BetRow = {
+        id: String(e.id),
+        issue: String(r.issue ?? ''),
+        game: String(r.game ?? ''),
+        edition: num(r.edition) || 1,
         gameShort: gShort,
         editionName: edName(num(r.edition) || 1),
         mode,
@@ -340,10 +363,15 @@ export const WeeklyLedger: React.FC = () => {
   const weekLabel = (w: WeekGroup) =>
     w.monday ? `${w.monday.replace(/-/g, '/')} ~ ${w.sunday.slice(5).replace('-', '/')}` : '(無日期)';
 
-  // 週導覽:聚焦模式只顯示第 clampedIdx 週(新→舊);showAll 顯示全部週
-  const clampedIdx = Math.min(Math.max(0, focusIdx), Math.max(0, weeks.length - 1));
-  const focusWeek = weeks[clampedIdx];
-  const visibleWeeks = showAll ? weeks : (focusWeek ? [focusWeek] : []);
+  // 週導覽:接共用聚焦週(WeekFocusProvider),與五個策略頁「第 N 週」同步,切一次全部一起動。
+  // 只用它的 focusWeek(週一字串)/allWeeks/goWeek;逐筆金額由本頁自己的 weeks 分組提供。
+  const navRecords = useMemo(
+    () => shown.map(e => ({ date: String((e.record as Record<string, unknown>).date ?? ''), cost: 0, payout: 0 })),
+    [shown],
+  );
+  const wk = useWeekNav(navRecords);
+  const focusMonday = wk.focusWeek;
+  const visibleWeeks = wk.allWeeks ? weeks : weeks.filter(w => w.monday === focusMonday);
 
   if (!loggedIn) {
     return <div className="text-[12px] text-neutral-500 p-4">登入後才有跨裝置的下注流水可彙整成週總帳。</div>;
@@ -377,6 +405,27 @@ export const WeeklyLedger: React.FC = () => {
         </div>
       )}
 
+      {/* 下法篩選(策略頁「查看本週流水」連結進來時會預設某一種下法) */}
+      {usedModes.length > 1 && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-[10px] uppercase tracking-wider text-neutral-400 font-semibold">下法</span>
+          {(['all', ...usedModes] as (LedgerMode | 'all')[]).map(m => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => setSelMode(m)}
+              className={`px-2.5 py-1 rounded-lg text-[10px] font-semibold transition-all ${
+                selMode === m
+                  ? 'bg-black text-white dark:bg-white dark:text-black'
+                  : 'border border-black/10 dark:border-white/10 text-neutral-600 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5'
+              }`}
+            >
+              {m === 'all' ? '全部下法' : (MODE_LABEL[m] ?? m)}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* 頁頂總計 */}
       {weeks.length > 0 && (
         <div className="grid grid-cols-3 gap-2">
@@ -402,60 +451,29 @@ export const WeeklyLedger: React.FC = () => {
         </div>
       )}
 
-      {/* 週導覽:‹上一週 / 下一週›,或切「全部週」看完整列表 */}
+      {/* 週導覽(共用聚焦週,與策略頁同步):‹ › 依日曆前後移,中間點切「全部週」 */}
       {weeks.length > 0 && (
-        <div className="flex items-center justify-between gap-2 flex-wrap">
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => { setShowAll(false); setFocusIdx(i => Math.min(weeks.length - 1, Math.max(0, i) + 1)); }}
-              disabled={showAll ? false : clampedIdx >= weeks.length - 1}
-              title="上一週(較舊)"
-              className="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border border-black/10 dark:border-white/10 text-neutral-700 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5 disabled:opacity-30 transition-colors"
-            >
-              ‹ 上一週
-            </button>
-            <div className="px-3 py-1.5 rounded-lg bg-black/[0.03] dark:bg-white/[0.05] text-[11px] font-mono font-semibold text-neutral-800 dark:text-neutral-100 min-w-[9.5rem] text-center">
-              {showAll ? '全部週' : (focusWeek ? weekLabel(focusWeek) : '—')}
-            </div>
-            <button
-              type="button"
-              onClick={() => { setShowAll(false); setFocusIdx(i => Math.max(0, Math.min(weeks.length - 1, i) - 1)); }}
-              disabled={showAll ? false : clampedIdx <= 0}
-              title="下一週(較新)"
-              className="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border border-black/10 dark:border-white/10 text-neutral-700 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5 disabled:opacity-30 transition-colors"
-            >
-              下一週 ›
-            </button>
-          </div>
-          <div className="flex items-center gap-1.5">
-            {!showAll && clampedIdx !== 0 && (
-              <button
-                type="button"
-                onClick={() => { setShowAll(false); setFocusIdx(0); }}
-                className="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border border-black/10 dark:border-white/10 text-neutral-600 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
-              >
-                回本週
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={() => setShowAll(v => !v)}
-              className={`px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-colors ${
-                showAll
-                  ? 'bg-black text-white dark:bg-white dark:text-black'
-                  : 'border border-black/10 dark:border-white/10 text-neutral-600 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5'
-              }`}
-            >
-              {showAll ? '單週檢視' : '全部週'}
-            </button>
-          </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <WeekNav
+            focusWeek={wk.focusWeek}
+            allWeeks={wk.allWeeks}
+            canNext={wk.canNext}
+            onPrev={() => wk.goWeek(-1)}
+            onNext={() => wk.goWeek(1)}
+            onToggleAll={() => wk.setAllWeeks(v => !v)}
+          />
+        </div>
+      )}
+      {/* 聚焦週在本篩選下沒有紀錄(日曆式切週可能落在空週) */}
+      {weeks.length > 0 && !wk.allWeeks && visibleWeeks.length === 0 && (
+        <div className="text-[11px] text-neutral-400 dark:text-neutral-500 p-3 rounded-xl bg-black/[0.02] dark:bg-white/[0.03] border border-black/[0.06] dark:border-white/[0.06]">
+          {wk.label} 這個篩選下沒有紀錄。用 ‹ › 切到其他週,或點中間看「全部週」。
         </div>
       )}
 
       <div className="space-y-3">
         {visibleWeeks.map(w => {
-          const wOpen = openWeeks.has(w.monday) || (!showAll && w.monday === focusWeek?.monday);
+          const wOpen = openWeeks.has(w.monday) || (!wk.allWeeks && w.monday === focusMonday);
           return (
           <div key={w.monday || 'nodate'} className="rounded-xl border border-black/15 dark:border-white/15 bg-white dark:bg-[#121212] overflow-hidden shadow-sm">
             {/* 週父列 */}
@@ -554,15 +572,17 @@ export const WeeklyLedger: React.FC = () => {
                           <thead className="text-[9px] uppercase tracking-wider text-neutral-400">
                             <tr>
                               <th className="px-3 py-1 pl-9 text-left font-semibold">下注方式</th>
+                              <th className="px-3 py-1 text-left font-semibold">期號 / 核對</th>
                               <th className="px-3 py-1 text-left font-semibold">下注組合</th>
                               <th className="px-3 py-1 text-right font-semibold">成本</th>
                               <th className="px-3 py-1 text-right font-semibold">派彩</th>
                               <th className="px-3 py-1 text-right font-semibold">盈虧</th>
+                              <th className="px-3 py-1 text-right font-semibold">撤銷</th>
                             </tr>
                           </thead>
                           <tbody className="font-mono">
-                            {day.rows.map((v, i) => (
-                              <React.Fragment key={i}>
+                            {day.rows.map((v) => (
+                              <React.Fragment key={v.id}>
                               <tr className="border-t border-black/[0.05] dark:border-white/[0.05]">
                                 <td className="px-3 pt-1.5 pb-0 pl-9 align-top">
                                   {v.gameShort && (
@@ -581,6 +601,18 @@ export const WeeklyLedger: React.FC = () => {
                                     }`}>{v.result}</span>
                                   )}
                                 </td>
+                                <td className="px-3 pt-1.5 pb-0 align-top font-sans">
+                                  <IssuePicker
+                                    issue={v.issue}
+                                    date={day.ymd}
+                                    draws={histByGame[v.game]?.draws ?? []}
+                                    onSelect={(iss) => resettle(v.id, iss)}
+                                    extraOption={histByGame[v.game]?.next ?? undefined}
+                                    showNums={false}
+                                    onRefresh={() => resettle(v.id, v.issue)}
+                                    onManualHit={(k) => resettle(v.id, v.issue, k)}
+                                  />
+                                </td>
                                 <td className="px-3 pt-1.5 pb-0 align-top text-neutral-700 dark:text-neutral-300">
                                   {v.balls.length > 0 ? v.balls.map(n => String(n).padStart(2, '0')).join(' ') : '—'}
                                 </td>
@@ -591,10 +623,30 @@ export const WeeklyLedger: React.FC = () => {
                                 <td className={`px-3 pt-1.5 pb-0 align-top text-right font-bold ${v.pending ? 'text-neutral-400' : pnlCls(v.pnl)}`}>
                                   {v.pending ? '—' : signedMoney(v.pnl)}
                                 </td>
+                                <td className="px-3 pt-1.5 pb-0 align-top text-right font-sans">
+                                  {confirmDeleteId === v.id ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => { deleteById(v.id); setConfirmDeleteId(null); }}
+                                      className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-rose-600 text-white hover:bg-rose-700 transition-colors"
+                                    >
+                                      確認?
+                                    </button>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() => setConfirmDeleteId(v.id)}
+                                      title="撤銷這一筆"
+                                      className="inline-flex items-center p-1 rounded-md text-neutral-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-black/5 dark:hover:bg-white/5 transition-colors active:scale-95"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
+                                </td>
                               </tr>
                               {v.units > 0 && (
                                 <tr>
-                                  <td colSpan={5} className="px-3 pt-0 pb-1.5 pl-9 text-[10px] text-neutral-400 dark:text-neutral-500">
+                                  <td colSpan={7} className="px-3 pt-0 pb-1.5 pl-9 text-[10px] text-neutral-400 dark:text-neutral-500">
                                     {v.units.toLocaleString()} {v.unitLabel} × ${v.perUnit.toLocaleString()}/{v.unitLabel} = ${v.cost.toLocaleString()}
                                   </td>
                                 </tr>
