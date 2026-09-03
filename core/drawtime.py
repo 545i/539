@@ -26,9 +26,10 @@ TAIPEI = ZoneInfo("Asia/Taipei")
 # 往回/往前找開獎日時最多掃幾天(六合彩最長間隔 3 天,14 天綽綽有餘)
 _SCAN_DAYS = 14
 
-# 開獎後等多久才去抓。開完到來源站上架有時間差,太早抓只會抓到舊資料、
-# 白白耗掉「同一期最多試幾次」的額度。寧可晚半小時拿到,也不要空跑。
-READY_BUFFER_MIN = 30
+# 開獎後等多久才去抓(第一次)。開完到來源站上架有時間差;搭配較短的 idle 冷卻
+# (見 autoupdate._COOLDOWN_IDLE),就算太早抓沒中,也會每幾分鐘再試,不會空等。
+# 539 另設更短的 ready_min(見 SCHEDULES)提前抓。
+READY_BUFFER_MIN = 15
 
 SOURCES = {
     "lotto539": "台灣彩券官網開獎時間表(每週一至週六 20:30)",
@@ -81,6 +82,7 @@ SCHEDULES: dict[str, DrawSchedule] = {
     "lotto539": DrawSchedule(
         weekdays=(0, 1, 2, 3, 4, 5),          # 週一~週六
         tz="Asia/Taipei", at=dt.time(20, 30),
+        ready_min=5,                          # 台彩上架快 → 提前 5 分就開始抓(其餘用預設 15)
         note="每週一至週六 20:30 開獎",
     ),
     "marksix": DrawSchedule(

@@ -37,9 +37,9 @@ _MARKSIX_PER_PAGE = 23   # 六合彩來源站每頁期數
 _MARKSIX_PER_WEEK = 3    # 六合彩每週開獎次數(二/四/六)
 
 TICK_SECONDS = 300       # 排程多久檢查一次
-MAX_ATTEMPTS = 12        # 同一期最多自動試幾次(手動抓取不受限)
+MAX_ATTEMPTS = 24        # 同一期最多自動試幾次(idle 冷卻縮短後維持足夠涵蓋;手動抓取不受限)
 _COOLDOWN_OK = 600       # 有抓到新資料後的冷卻秒數
-_COOLDOWN_IDLE = 1800    # 抓了但沒新資料(對方還沒上架 / 那天沒開獎)
+_COOLDOWN_IDLE = 300     # 抓了但沒新資料(對方還沒上架 / 那天沒開獎)→ 每幾分鐘再試,不等 30 分
 _COOLDOWN_ERR = 300      # 抓取失敗後的冷卻秒數
 
 _lock = threading.Lock()

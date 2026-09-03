@@ -31,10 +31,12 @@ def test_unknown_game_has_no_schedule():
     assert drawtime.next_draw("nope") is None
 
 
-def test_ready_buffer_is_half_an_hour():
-    """開獎後等 30 分鐘再抓,給來源站上架的時間。"""
-    for sched in drawtime.SCHEDULES.values():
-        assert sched.ready_min == 30
+def test_ready_buffer():
+    """預設開獎後等 15 分鐘再抓;539 上架快 → 提前 5 分。"""
+    assert drawtime.READY_BUFFER_MIN == 15
+    assert drawtime.SCHEDULES["lotto539"].ready_min == 5
+    assert drawtime.SCHEDULES["marksix"].ready_min == 15
+    assert drawtime.SCHEDULES["fantasy5"].ready_min == 15
 
 
 # ── 今彩539:週一~六 20:30 台灣 ──────────────────────────
@@ -50,8 +52,8 @@ def test_lotto539_no_draw_on_sunday():
 
 @pytest.mark.parametrize("now, expect", [
     (tpe(2026, 8, 10, 20, 29), dt.date(2026, 8, 8)),   # 還沒開 → 上一期(週六)
-    (tpe(2026, 8, 10, 20, 45), dt.date(2026, 8, 8)),   # 開了但還在 30 分鐘緩衝內
-    (tpe(2026, 8, 10, 21, 0), dt.date(2026, 8, 10)),   # 21:00 才算抓得到
+    (tpe(2026, 8, 10, 20, 33), dt.date(2026, 8, 8)),   # 開了但還在 5 分鐘緩衝內(ready 20:35)
+    (tpe(2026, 8, 10, 20, 45), dt.date(2026, 8, 10)),  # 過了 5 分緩衝 → 抓得到當期
     (tpe(2026, 8, 11, 9, 0), dt.date(2026, 8, 10)),    # 隔天早上仍是週一那期
 ])
 def test_lotto539_last_ready_draw(now, expect):
@@ -80,11 +82,11 @@ def test_fantasy5_winter_is_1030_taipei():
 
 
 def test_fantasy5_last_ready_draw_crosses_the_morning():
-    # 台灣 8/10 09:59 —— 當天那期 09:30 開,還在 30 分鐘緩衝內
-    assert drawtime.last_ready_draw("fantasy5", tpe(2026, 8, 10, 9, 59)) \
+    # 台灣 8/10 09:40 —— 當天那期 09:30 開,還在 15 分鐘緩衝內(ready 09:45)
+    assert drawtime.last_ready_draw("fantasy5", tpe(2026, 8, 10, 9, 40)) \
         == dt.date(2026, 8, 9)
-    # 10:00 之後才算抓得到
-    assert drawtime.last_ready_draw("fantasy5", tpe(2026, 8, 10, 10, 0)) \
+    # 09:45 之後才算抓得到
+    assert drawtime.last_ready_draw("fantasy5", tpe(2026, 8, 10, 9, 50)) \
         == dt.date(2026, 8, 10)
 
 
