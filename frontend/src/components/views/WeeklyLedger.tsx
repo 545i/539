@@ -323,7 +323,7 @@ const Recover1800Card: React.FC<{ name: string; d: RecoverData | null; onClick?:
 );
 
 // 建議車數明細彈窗:逐筆點擊排除/納入(排除的不算進要追的赤字);建議車數即時重算。
-type ModalRow = { id: string; date: string; balls: number[]; cost: number; payout: number; pnl: number; result: string };
+type ModalRow = { id: string; date: string; tag: string; balls: number[]; cost: number; payout: number; pnl: number; result: string };
 const RecoverModal: React.FC<{
   title: string; weekLabel: string; rows: ModalRow[];
   excluded: Set<string>; onToggle: (id: string) => void;
@@ -356,7 +356,8 @@ const RecoverModal: React.FC<{
               <span className="flex items-center gap-1.5 min-w-0">
                 <span className={`w-4 h-4 shrink-0 rounded border flex items-center justify-center text-[9px] ${ex ? 'border-neutral-400 text-transparent' : 'border-emerald-500 bg-emerald-500 text-white'}`}>✓</span>
                 <span className="text-neutral-500 font-sans">{r.date.slice(5)}</span>
-                <span className={`text-neutral-500 truncate ${ex ? 'line-through' : ''}`}>{r.balls.map(b => String(b).padStart(2, '0')).join(' ') || '—'}</span>
+                <span className="px-1 py-0.5 rounded bg-black/[0.05] dark:bg-white/10 text-[9px] font-sans text-neutral-600 dark:text-neutral-300 shrink-0">{r.tag}</span>
+                <span className={`text-neutral-400 truncate ${ex ? 'line-through' : ''}`}>{r.balls.map(b => String(b).padStart(2, '0')).join(' ') || '—'}</span>
               </span>
               <span className="flex items-center gap-2 shrink-0">
                 <span className={r.pnl >= 0 ? 'text-emerald-600 dark:text-emerald-400 font-bold' : 'text-rose-600 dark:text-rose-400 font-bold'}>{sfmt1(r.pnl)}</span>
@@ -598,9 +599,11 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
         const r = e.record as Record<string, unknown>;
         const cost = num(r.cost);
         const payout = isPending(String(r.result ?? '')) ? 0 : num(r.payout);
+        const mode = String(r.mode ?? '');
         return {
           id: String(e.id),
           date: String(r.date ?? ''),
+          tag: `${MODE_LABEL[mode as LedgerMode] ?? mode}·${gameShort(String(r.game ?? ''))}`,
           balls: (r.selectedBalls as number[]) ?? [],
           cost, payout, pnl: payout - cost,
           result: String(r.result ?? ''),
