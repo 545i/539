@@ -288,6 +288,40 @@ const RecoverCard: React.FC<{ title: string; d: RecoverData | null; onClick?: ()
   </button>
 );
 
+// 1800碰建議支數卡:追「該版總損益」,假設中 4 碰(3 碰不計);點卡片彈全部下法明細排除。
+const Recover1800Card: React.FC<{ name: string; d: RecoverData | null; onClick?: () => void }> = ({ name, d, onClick }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    className="text-left w-full rounded-xl border border-amber-500/25 dark:border-amber-400/25 bg-amber-500/[0.04] dark:bg-amber-400/[0.05] p-3 hover:bg-amber-500/[0.08] transition-colors"
+  >
+    <div className="flex items-center justify-between">
+      <span className="text-[10px] uppercase tracking-wider text-amber-700 dark:text-amber-400 font-semibold">{name} · 1800碰回本(追總損益·中4碰)</span>
+      <span className="text-[9px] text-neutral-400">點卡排除 ›</span>
+    </div>
+    {!d ? (
+      <div className="mt-1 text-[12px] text-neutral-400">本週無紀錄</div>
+    ) : d.cars == null ? (
+      <div className="mt-1">
+        <div className="font-mono font-bold text-sm text-emerald-600 dark:text-emerald-400">本週總損益未虧損</div>
+        <div className="text-[10px] text-neutral-400 mt-0.5">目前總損益 {sfmt1(d.cumPnl)}</div>
+      </div>
+    ) : !Number.isFinite(d.cars) ? (
+      <div className="mt-1 font-mono font-bold text-sm text-rose-600 dark:text-rose-400">中4碰仍追不回</div>
+    ) : (
+      <div className="mt-0.5 flex items-baseline gap-3 flex-wrap">
+        <div className="flex items-baseline gap-1">
+          <span className="font-mono font-bold text-2xl text-neutral-900 dark:text-white">{(d.cars as number).toLocaleString()}</span>
+          <span className="text-[11px] text-neutral-400">支 · 中4碰</span>
+        </div>
+        <span className="text-[11px] font-mono text-neutral-500">成本 <span className="text-neutral-800 dark:text-neutral-200 font-semibold">{fmt1(d.cost)}</span></span>
+        <span className="text-[11px] font-mono text-neutral-500">中4碰可得 <span className="text-emerald-600 dark:text-emerald-400 font-semibold">{fmt1(d.gain)}</span></span>
+        <span className="text-[11px] font-mono text-neutral-500">中後累積 <span className={`font-bold ${pnlCls(d.after)}`}>{sfmt1(d.after)}</span></span>
+      </div>
+    )}
+  </button>
+);
+
 // 建議車數明細彈窗:逐筆點擊排除/納入(排除的不算進要追的赤字);建議車數即時重算。
 type ModalRow = { id: string; date: string; balls: number[]; cost: number; payout: number; pnl: number; result: string };
 const RecoverModal: React.FC<{
@@ -483,13 +517,41 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
     setExcludedIds(new Set());
     try { localStorage.removeItem('lottery_recover_excluded'); } catch { /* ignore */ }
   };
-  // 點建議車數某列 → 彈出該版該組本週明細,逐筆勾選排除
-  const [recoverModal, setRecoverModal] = useState<{ eid: number; mode: 'single' | 'multi'; label: string } | null>(null);
+  // 點建議車數某列 → 彈出該版該組本週明細,逐筆勾選排除。mode='all' = 1800碰追總損益(該版全部下法)
+  const [recoverModal, setRecoverModal] = useState<{ eid: number; mode: 'single' | 'multi' | 'all'; label: string } | null>(null);
 
   const recoverRows = useMemo(() => {
     const g = games.find(x => x.key === 'lotto539') ?? games[0];
     const costPerCar = num(g?.default_cost_per_car);
     const winPayout = num(g?.default_win_payout);
+    const betCost = num(g?.default_bet_cost);      // 1800碰每注成本(如 63)
+    const betPrize = num(g?.default_bet_prize);    // 1800碰中一碰可得(如 57,000)
+    const FULL_1800 = 1800;                        // 一支 = 全包 1800 注
+    // 1800碰:一支成本 = 1800×每注;過關固定看「中4碰」(3碰不計,依使用者規則)。
+    // 中4碰每支淨利 = 4×中一碰 − 1800×每注成本;建議支數 = ⌈該版總損益虧損 ÷ 每支淨利⌉。
+    const perUnitNet1800 = 4 * betPrize - FULL_1800 * betCost;
+    const calc1800 = (eid: number): RecoverData | null => {
+      // 回本基準 = 該版「總損益」(全部下法合計),不是只看 1800碰自己
+      const rows = entries
+        .filter(e => {
+          const r = e.record as Record<string, unknown>;
+          if ((num(r.edition) || 1) !== eid) return false;
+          if (excludedIds.has(String(e.id))) return false;
+          return wk.allWeeks ? true : weekMonday(String(r.date ?? '')) === focusMonday;
+        })
+        .map(e => e.record as Record<string, unknown>);
+      if (rows.length === 0) return null;
+      const cumPnl = rows.reduce((s, r) => s + num(r.payout) - num(r.cost), 0);
+      const units = cumPnl >= 0 ? null : perUnitNet1800 > 0 ? Math.max(1, Math.ceil(-cumPnl / perUnitNet1800)) : Infinity;
+      const ok = units != null && Number.isFinite(units);
+      const n = ok ? (units as number) : 0;
+      return {
+        cumPnl, suggestBalls: 4, cars: units,             // suggestBalls 借放「碰數」;cars=支數
+        cost: ok ? n * FULL_1800 * betCost : 0,           // 本局成本 = 支×1800×每注
+        gain: ok ? n * 4 * betPrize : 0,                  // 中4碰可得 = 支×4×中一碰
+        after: ok ? cumPnl + n * 4 * betPrize - n * FULL_1800 * betCost : 0,
+      };
+    };
     const calc = (eid: number, mode: 'single' | 'multi'): RecoverData | null => {
       const rows = entries
         .filter(e => {
@@ -518,8 +580,8 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
     // 要顯示哪些版:選特定版就只那版;'all' = 全部出現過的版(排除模擬)
     const edList = selEd === 'all' ? usedEds.filter(ed => !simEids.has(ed)) : [selEd as number];
     return edList
-      .map(eid => ({ eid, name: edName(eid), single: calc(eid, 'single'), multi: calc(eid, 'multi') }))
-      .filter(x => x.single || x.multi);
+      .map(eid => ({ eid, name: edName(eid), single: calc(eid, 'single'), multi: calc(eid, 'multi'), p1800: calc1800(eid) }))
+      .filter(x => x.single || x.multi || x.p1800);
   }, [entries, simEids, focusMonday, wk.allWeeks, games, selEd, usedEds, excludedIds]);
 
   // 彈窗要顯示的明細:該版該組在聚焦週(或全部週)的逐筆(含被排除者,給勾選用)
@@ -529,7 +591,7 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
       .filter(e => {
         const r = e.record as Record<string, unknown>;
         if ((num(r.edition) || 1) !== recoverModal.eid) return false;
-        if (String(r.mode ?? '') !== recoverModal.mode) return false;
+        if (recoverModal.mode !== 'all' && String(r.mode ?? '') !== recoverModal.mode) return false;
         return wk.allWeeks ? true : weekMonday(String(r.date ?? '')) === focusMonday;
       })
       .map(e => {
@@ -579,6 +641,7 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
                 <RecoverCard title={`${g.name} · 1組`} d={g.single} onClick={() => setRecoverModal({ eid: g.eid, mode: 'single', label: `${g.name} 1組` })} />
                 <RecoverCard title={`${g.name} · 2組`} d={g.multi} onClick={() => setRecoverModal({ eid: g.eid, mode: 'multi', label: `${g.name} 2組` })} />
               </div>
+              <Recover1800Card name={g.name} d={g.p1800} onClick={() => setRecoverModal({ eid: g.eid, mode: 'all', label: `${g.name} 1800碰回本` })} />
             </div>
           ))}
         </div>
@@ -592,7 +655,7 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
           rows={modalRows}
           excluded={excludedIds}
           onToggle={toggleExcluded}
-          d={recoverRows.find(r => r.eid === recoverModal.eid)?.[recoverModal.mode] ?? null}
+          d={(() => { const g = recoverRows.find(r => r.eid === recoverModal.eid); return g ? (recoverModal.mode === 'all' ? g.p1800 : g[recoverModal.mode]) : null; })()}
           onClose={() => setRecoverModal(null)}
         />
       )}
