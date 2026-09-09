@@ -1,0 +1,592 @@
+"""連碰 / 立柱 / 拖膽:民間組合下注的注數、成本與損益平衡。
+
+三種下法看起來是三條公式,其實是同一條 —— 差別只在「一注裡有幾顆是你
+指定死的(**膽**)」:
+
+    連碰(全碰、天碰)  選 N 顆,任意 K 顆湊一注      注數 = C(N, K)
+    立柱               1 顆膽 + 拖 M 顆              注數 = C(M, K−1)
+    拖膽               D 顆膽 + 拖 M 顆              注數 = C(M, K−D)
+
+膽是每一注都要用到的號碼,所以一注裡只剩 K−D 個位置要從拖的號碼裡挑:
+
+    注數 = C(拖幾顆, 星數 − 膽幾顆)
+
+連碰就是 D=0(全部從拖裡挑)、立柱就是 D=1。本模組只留這一條式子,
+不為三種下法各寫一份 —— 那樣改了一邊忘了另一邊就會對不起來。
+(「天二 / 天三」是二星 / 三星連碰的別名,算式完全相同,不另立一種。)
+
+一注要中,**那一注的 K 顆得全部開出**。所以膽只要有一顆沒開整張就歸零,
+膽全中時中的注數 = C(拖中幾顆, K−D)。
+
+倍率是「賠率幾倍」不是「幾元」—— 二星 1賠53 指的是每注成本 × 53
+(72.5 × 53 = 3,842.5),不是中一注只給 53 元。
+
+記帳與對獎走 core.storage 的 combo 模式(它多存 stars 與 dans 兩欄);
+本模組只管算式,不碰資料庫。
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+from itertools import combinations
+from math import ceil, comb
+
+STARS = (2, 3, 4)
+STAR_NAMES = {2: "二星", 3: "三星", 4: "四星"}
+
+# 中一碰實際可得多少錢(**直接填金額,不是倍率**)。
+# 使用者的實際盤口:三星 57,000、四星 750,000;二星沿用 72.5 × 53。
+# (八顆三星中 5 碰 = 285,000、四星中 4 碰 = 3,000,000,與實際派彩對得起來。)
+# 以前這裡存的是倍率,再乘每注成本換算 —— 多一層換算就多一個出錯的地方,
+# 而且組頭本來就是直接報「中一碰給你多少」。
+MARKET_PRIZE: dict[int, float] = {2: 80.0 * 53, 3: 57_000.0, 4: 750_000.0}
+
+# 每注成本 —— **三種星數各有各的價**,不是共用一個數字。
+# 二星 72.5、三星 63、四星 50,都是這邊實際在跑的價碼。
+# 合成一個數字算出來的成本與損益都會是錯的。
+MARKET_COST: dict[int, float] = {2: 80.0, 3: 63.0, 4: 50.0}
+
+# 對照表預設列出的顆數範圍
+TABLE_SIZES = tuple(range(4, 16))
+
+
+# ── 盤口可由後台改寫 ─────────────────────────────────────
+# 上面兩個 dict 是**出廠預設**,不是最終價 —— 組頭的價碼會變,改一次程式再部署
+# 一次太重,所以後台可以改(backend/star_cost_store.py 存進 sqlite,開站時
+# 呼叫 set_market_overrides 套進來)。這是**全域**設定,不分使用者:同一個站
+# 上大家看到的成本必須是同一份,不然排行榜的損益就沒得比。
+#
+# 所以**所有讀取點一律走 market_cost / market_prize,不要直接讀 dict** ——
+# 直接讀的地方就吃不到後台改的值,會變成「試算用新價、記帳用舊價」。
+_COST_OVERRIDE: dict[int, float] = {}
+_PRIZE_OVERRIDE: dict[int, float] = {}
+
+
+def set_market_overrides(cost: dict | None = None,
+                         prize: dict | None = None) -> None:
+    """套用後台設定的盤口;傳 None 代表那一半不動。
+
+    是**整批取代**而不是逐筆合併 —— 後台送過來的本來就是完整的一份設定,
+    合併會讓上一版才有的星數留在記憶體裡不走。
+    """
+    if cost is not None:
+        _COST_OVERRIDE.clear()
+        _COST_OVERRIDE.update({int(k): float(v) for k, v in cost.items()})
+    if prize is not None:
+        _PRIZE_OVERRIDE.clear()
+        _PRIZE_OVERRIDE.update({int(k): float(v) for k, v in prize.items()})
+
+
+def clear_market_overrides() -> None:
+    """回到出廠預設(測試與「還原預設」用)。"""
+    _COST_OVERRIDE.clear()
+    _PRIZE_OVERRIDE.clear()
+
+
+def market_cost(stars: int, default: float | None = None) -> float | None:
+    """每碰成本:後台設定 > 出廠預設 > 呼叫端給的 default。"""
+    k = int(stars)
+    return _COST_OVERRIDE[k] if k in _COST_OVERRIDE else MARKET_COST.get(k, default)
+
+
+def market_prize(stars: int, default: float | None = None) -> float | None:
+    """中一碰可得:後台設定 > 出廠預設 > 呼叫端給的 default。"""
+    k = int(stars)
+    return _PRIZE_OVERRIDE[k] if k in _PRIZE_OVERRIDE else MARKET_PRIZE.get(k, default)
+
+
+def market_table(stars=STARS) -> dict[int, dict[str, float]]:
+    """目前**生效中**的盤口:{星數: {"cost": 每碰成本, "prize": 中一碰可得}}。"""
+    return {int(k): {"cost": float(market_cost(k) or 0.0),
+                     "prize": float(market_prize(k) or 0.0)}
+            for k in stars}
+
+
+def market_defaults(stars=STARS) -> dict[int, dict[str, float]]:
+    """出廠預設的盤口(後台頁面拿來顯示「原本是多少」)。"""
+    return {int(k): {"cost": float(MARKET_COST.get(int(k), 0.0)),
+                     "prize": float(MARKET_PRIZE.get(int(k), 0.0))}
+            for k in stars}
+
+
+@dataclass(frozen=True)
+class Play:
+    """一種下法。dans 是固定的膽數;None 代表由使用者自己決定。"""
+    key: str
+    name: str
+    dans: int | None
+    desc: str
+
+
+PLAYS: tuple[Play, ...] = (
+    Play("star", "星碰", 0,
+         "重到星數就成一組星,你剩下的每一顆各配成一碰 —— 碰數 = 選幾顆 − 星數"),
+    Play("combo", "連碰(全碰)", 0,
+         "選幾顆就任意湊,每一注的號碼全部從你圈的裡面挑"),
+    Play("pillar", "立柱", 1,
+         "1 顆膽固定進每一注,其餘位置從拖的號碼挑"),
+    Play("dan", "拖膽", None,
+         "自己決定幾顆膽;膽全部進每一注,剩下的位置從拖的號碼挑"),
+)
+PLAY_BY_KEY = {p.key: p for p in PLAYS}
+
+
+def play(key: str) -> Play:
+    return PLAY_BY_KEY[key]
+
+
+def star_name(stars: int) -> str:
+    return STAR_NAMES.get(int(stars), f"{int(stars)} 星")
+
+
+# ── 注數 ─────────────────────────────────────────────────
+def bets(stars: int, drag: int, dans: int = 0) -> int:
+    """注數 = C(拖幾顆, 星數 − 膽幾顆)。
+
+    膽比星數多、或拖的顆數不夠挑時回 0 —— 那種組合湊不出任何一注。
+    膽剛好等於星數是另一回事:那就是 1 注(你買的就是那幾顆膽),
+    C(n,0)=1 在這裡是對的,不要一起擋掉。
+    """
+    need = int(stars) - int(dans)
+    if need < 0 or int(dans) < 0 or int(drag) < need:
+        return 0
+    return comb(int(drag), need)
+
+
+def bet_list(stars: int, drag_nums, dan_nums=()) -> list[tuple[int, ...]]:
+    """實際的每一注:膽 + 從拖的號碼裡挑 K−D 顆,每注由小到大。
+
+    給的是真的要拿去下的注單,不只是注數 —— 所以順序固定(注與注之間也排序),
+    同一組輸入每次跑出來都一樣。
+    """
+    dan = sorted({int(n) for n in dan_nums})
+    drag = sorted({int(n) for n in drag_nums} - set(dan))
+    need = int(stars) - len(dan)
+    if need < 0 or len(drag) < need:
+        return []
+    return sorted(tuple(sorted(dan + list(c))) for c in combinations(drag, need))
+
+
+# ── 成本與獎金 ───────────────────────────────────────────
+def total_cost(stars: int, drag: int, per_bet: float, dans: int = 0) -> float:
+    """總成本 = 注數 × 每注多少錢。"""
+    return bets(stars, drag, dans) * float(per_bet)
+
+
+def prize_per_bet(per_bet: float, odds: float) -> float:
+    """中一注可得 = 每注成本 × 倍率(二星 72.5 × 53 = 3,842.5)。"""
+    return float(per_bet) * float(odds)
+
+
+def breakeven_bets(stars: int, drag: int, odds: float, dans: int = 0) -> float:
+    """要中幾注才打平 = 總成本 ÷ 中一注可得 = **注數 ÷ 倍率**。
+
+    每注多少錢會約掉 —— 成本與獎金都線性於它,所以打平點跟下多大無關,
+    只看你買了幾注、賠率多少。
+    """
+    n = bets(stars, drag, dans)
+    return n / float(odds) if odds else float("inf")
+
+
+# ── 中獎 ─────────────────────────────────────────────────
+def hits(stars: int, matched_drag: int, dans: int = 0,
+         matched_dans: int | None = None) -> int:
+    """中的注數。膽沒全中就是 0;膽全中時 = C(拖中幾顆, 星數 − 膽幾顆)。
+
+    matched_dans 留空代表「膽全中」(連碰沒有膽,預設就成立)。
+    """
+    d = int(dans)
+    got = d if matched_dans is None else int(matched_dans)
+    if got < d:
+        return 0
+    need = int(stars) - d
+    if need < 0 or int(matched_drag) < need:
+        return 0
+    return comb(int(matched_drag), need)
+
+
+def hits_of(stars: int, drawn, drag_nums, dan_nums=()) -> int:
+    """直接由開獎號碼算中的注數。"""
+    drawn = {int(n) for n in drawn}
+    dan = {int(n) for n in dan_nums}
+    drag = {int(n) for n in drag_nums} - dan
+    return hits(stars, len(drag & drawn), len(dan), len(dan & drawn))
+
+
+def possible_hits(stars: int, drag: int, dans: int = 0, num_max: int = 39,
+                  pick: int = 5) -> list[int]:
+    """這一張可能中的注數(由大到小),供下拉選單用。
+
+    值域由列舉算出,不是 0..注數 全開 —— 例如三星拖 8 顆只可能中
+    10 / 4 / 1 / 0 注,中 2 注這種事不存在,下拉裡就不該出現。
+    """
+    return sorted(hit_probs(stars, drag, dans, num_max, pick), reverse=True)
+
+
+def result_text(hits_: int | None) -> str:
+    """把中的注數翻成中文結果;None 代表還沒開獎。"""
+    if hits_ is None:
+        return "待開獎"
+    return "槓龜" if int(hits_) <= 0 else f"中 {int(hits_):,} 注"
+
+
+# ── 一張多支(等比放大)────────────────────────────────────
+def round_cost(stars: int, drag: int, per_bet: float, dans: int = 0,
+               sheets: int = 1) -> float:
+    """本局成本 = 單支成本 × 支數(1 支 = 買滿這張的全部注數)。"""
+    return total_cost(stars, drag, per_bet, dans) * int(sheets)
+
+
+def round_payout(hits_: int, per_bet: float, odds: float, sheets: int = 1) -> float:
+    """本局回收 = 中的注數 × 中一注可得 × 支數。"""
+    return int(hits_) * prize_per_bet(per_bet, odds) * int(sheets)
+
+
+def net_per_sheet(hits_: int, stars: int, drag: int, per_bet: float, odds: float,
+                  dans: int = 0) -> float:
+    """中 hits_ 注時,每 1 支的淨利 = 注數 × 每注可得 − 單支成本。"""
+    return (round_payout(hits_, per_bet, odds)
+            - total_cost(stars, drag, per_bet, dans))
+
+
+def sheets_for_recovery(loss: float, hits_: int, stars: int, drag: int,
+                        per_bet: float, odds: float, dans: int = 0,
+                        base: int = 1) -> dict:
+    """要靠「中 hits_ 注」把 loss 一次追平,最少得下幾支。
+
+    刻意由呼叫端指定要押哪一種結果,而不是預設用最好情況 —— 全中的機率
+    通常是萬分之一等級,拿它當回本基準等於在畫大餅。
+    """
+    gain = net_per_sheet(hits_, stars, drag, per_bet, odds, dans)
+    loss = max(0.0, float(loss))
+    if gain <= 0:
+        return {"feasible": False, "sheets": None, "cost": None,
+                "gain_per_sheet": gain}
+    sheets = max(int(base), ceil(loss / gain)) if loss > 0 else int(base)
+    return {"feasible": True, "sheets": sheets,
+            "cost": round_cost(stars, drag, per_bet, dans, sheets),
+            "gain_per_sheet": gain}
+
+
+# ── 星碰(民間三星 / 四星碰)────────────────────────────────
+# 跟上面的連碰是**不同的玩法**,別搞混:
+#
+#   連碰  一注 = K 個號碼,那 K 顆全開才中,中的注數 = C(拖中幾顆, K−膽)
+#   星碰  一碰 = 一組「星」(K 顆全開)+ 一顆你的其他號碼
+#
+# 星碰的中獎顆數固定:重到 K 顆就成一組星,你剩下的 (選幾顆 − K) 顆
+# 每一顆各配成一碰 —— 所以中的碰數 = 選幾顆 − 星數,跟重了幾顆無關。
+#
+#   選 8 顆:三星中 8−3 = 5 碰、四星中 8−4 = 4 碰
+#
+# 一支買的總碰數 = C(選幾顆, 星數) × (選幾顆 − 星數) —— 每一組可能的星
+# 各配所有可能的搭配號碼。選 8 顆時三星與四星都剛好是 280 碰。
+# (用這個成本基數,63/580 與 50/7500 的返還率是 50.8% 與 41.4%;
+#  若把成本當成只有 C(8,K) 碰,返還率會變成 254% 與 165% —— 不可能存在,
+#  這也是拿來檢查基數有沒有搞錯的方法。)
+
+
+def match_probs(picked: int, num_max: int = 39,
+                pick: int = 5) -> dict[int, float]:
+    """自選 picked 顆時,重(對中)m 顆的機率 —— 超幾何分布。
+
+    C(picked,m) · C(num_max−picked, pick−m) / C(num_max,pick)。
+    星碰的中獎與否只看重幾顆,所以它是整個星碰機率的底層。
+    """
+    total = comb(int(num_max), int(pick))
+    top = min(int(picked), int(pick))
+    return {m: comb(int(picked), m)
+               * comb(int(num_max) - int(picked), int(pick) - m) / total
+            for m in range(top + 1)}
+
+
+# 星碰固定選 8 顆 —— 組頭賣的就是這個規格(三星 63 × 56、四星 50 × 70),
+# 顆數一變成本與派彩都不是這組數字了,所以 UI 上直接鎖死 8 顆。
+STAR_PICK = 8
+
+
+def star_bets(stars: int, picked: int = STAR_PICK) -> int:
+    """星碰一支買幾碰 = C(選幾顆, 星數) —— 選 8 顆時三星 56、四星 70。
+
+    這是使用者給的規格:單支成本 63 × 56 = 3,528、50 × 70 = 3,500。
+
+    **有一個對不上的地方,但不在這裡改**:拿使用者自己的 819 期開獎回測,
+    8 顆重 3 顆的機率是 4.88%(與理論 4.91% 吻合),配上中一次
+    5 × 57,000 = 285,000,返還率算出來是 394% —— 正期望,組頭不可能這樣開。
+    四星同樣是 333%。乘上碰數(× 5 / × 4)後會變成 79% / 83%,兩種同時
+    落在合理區間,所以我一度把成本改成那樣 —— 但那是推論,不是使用者說的。
+
+    成本與派彩是使用者實際在付 / 實際領到的,是事實;要嘛是中獎條件比
+    「重幾顆」更嚴(我不知道的規則),要嘛是哪個金額還沒對齊。在問清楚
+    之前,這裡照使用者給的算,矛盾則由 UI 明講,不藏起來。
+    """
+    k, n = int(stars), int(picked)
+    if n <= k or k <= 0:
+        return 0
+    return comb(n, k)
+
+
+def star_hits(stars: int, matched: int) -> int:
+    """星碰開獎中幾碰 = C(中顆, 星數);中不到星數就是 0(下注顆數不影響)。
+
+    中顆(matched)= 你選的號碼裡有幾顆開出。三星:中3→1、中4→4、中5→10;
+    四星:中4→1、中5→C(5,4)=5。
+    (四星中5顆:C(5,4)=5;已與使用者確認。)
+    """
+    k, m = int(stars), int(matched)
+    return comb(m, k) if m >= k else 0
+
+
+def star_hits_of(stars: int, drawn, nums) -> int:
+    """由開獎號碼直接算星碰中幾碰:中顆 = 選號 ∩ 開獎,碰數 = C(中顆, 星數)。"""
+    nums = {int(x) for x in nums}
+    matched = len(nums & {int(x) for x in drawn})
+    return star_hits(stars, matched)
+
+
+def star_hit_probs(stars: int, picked: int, num_max: int = 39,
+                   pick: int = 5) -> dict[int, float]:
+    """星碰:中的碰數 → 機率。"""
+    out: dict[int, float] = {}
+    for m, p in match_probs(picked, num_max, pick).items():
+        h = star_hits(stars, m)
+        out[h] = out.get(h, 0.0) + p
+    return dict(sorted(out.items()))
+
+
+def star_expected_hits(stars: int, picked: int, num_max: int = 39,
+                       pick: int = 5, bets_bought: int | None = None) -> float:
+    """星碰每期期望中幾碰 = 買的碰數 × **單碰**中獎機率。
+
+    這裡是先前算錯的地方。我本來用「至少重 K 顆的機率 × 固定碰數」
+    (三星 4.91% × 5 = 0.245),那算的是「這一期有沒有中」,不是期望中幾碰;
+    拿它算返還率會得到 394%,大得離譜。
+
+    正確的是一碰一碰算:每一碰是 K 個號碼,要那 K 顆全在開出的 pick 顆裡,
+    機率 C(pick,K)/C(num_max,K) —— 三星 10/9,139、四星 5/82,251。
+    每一碰的中獎機率都一樣,期望值可以直接相加,所以乘上買的碰數就好。
+
+    代進實際盤口:三星 56 碰 → 0.06128 碰、四星 70 碰 → 0.00426 碰,
+    返還率 99.0% 與 91.2%,兩者都剛好落在兩平點下面一點(組頭的抽成)。
+    """
+    n = star_bets(stars, picked) if bets_bought is None else int(bets_bought)
+    return n * single_bet_prob(stars, num_max, pick)
+
+
+def star_win_prob(stars: int, picked: int, num_max: int = 39,
+                  pick: int = 5) -> float:
+    """星碰至少中一碰的機率 = 重到星數以上的機率。"""
+    return sum(p for h, p in
+               star_hit_probs(stars, picked, num_max, pick).items() if h > 0)
+
+
+def star_return_rate(stars: int, picked: int, odds: float, num_max: int = 39,
+                     pick: int = 5, bets_bought: int | None = None) -> float:
+    """星碰返還率 = 期望中的碰數 × 倍率 ÷ 買的碰數。
+
+    每碰成本會約掉(成本與回收都線性於它),所以只看倍率與碰數結構。
+    """
+    n = star_bets(stars, picked) if bets_bought is None else int(bets_bought)
+    if n <= 0:
+        return 0.0
+    return (star_expected_hits(stars, picked, num_max, pick, n)
+            * float(odds) / n)
+
+
+def star_fair_odds(stars: int, picked: int, num_max: int = 39,
+                   pick: int = 5, bets_bought: int | None = None) -> float:
+    """星碰損益兩平的倍率 = 買的碰數 ÷ 期望中的碰數。"""
+    n = star_bets(stars, picked) if bets_bought is None else int(bets_bought)
+    e = star_expected_hits(stars, picked, num_max, pick, n)
+    return n / e if e else float("inf")
+
+
+def star_joint_outcomes(stars_list, picked: int, num_max: int = 39,
+                        pick: int = 5) -> list[dict]:
+    """同一組號碼同時下多種星別時,每種結果組合的機率(星碰版)。
+
+    幾星都是拿同一組號碼去對,重了幾顆同時決定每一種星別中幾碰,
+    所以要一起列舉,不能各算各的(理由同 joint_outcomes)。
+    """
+    out = []
+    for m, p in sorted(match_probs(picked, num_max, pick).items(), reverse=True):
+        out.append({
+            "matched": m,
+            "prob": p,
+            "hits": {int(k): star_hits(int(k), m) for k in stars_list},
+        })
+    return out
+
+
+# ── 多種星別共用同一張牌 ──────────────────────────────────
+def joint_outcomes(stars_list, drag: int, dans: int = 0, num_max: int = 39,
+                   pick: int = 5) -> list[dict]:
+    """同一組號碼同時下多種星別時,每種「結果組合」的機率。
+
+    幾星都是拿**同一組拖與膽**去對,所以結果完全連動 —— 拖中 4 顆時
+    「三星中 4 注」與「四星中 1 注」是同一件事發生,不是兩件獨立的事。
+    各星別各算一張機率表再把損益相加會低估變異(也算不出「同時中」那一列),
+    所以這裡把底層的 (膽中幾顆, 拖中幾顆) 列舉一次,兩邊都由它推出來。
+
+    回傳 [{"matched": 總對中顆數, "matched_dans", "matched_drag",
+           "prob", "hits": {星別: 中幾注}}],依總對中顆數由大到小。
+    """
+    d, m = int(dans), int(drag)
+    rest = int(num_max) - d - m
+    if rest < 0:
+        raise ValueError(f"膽 {d} + 拖 {m} 顆超過號碼總數 {num_max}")
+    total = comb(int(num_max), int(pick))
+    out = []
+    for a in range(min(d, pick) + 1):
+        for b in range(min(m, pick - a) + 1):
+            c = int(pick) - a - b
+            if c < 0 or c > rest:
+                continue
+            ways = comb(d, a) * comb(m, b) * comb(rest, c)
+            if not ways:
+                continue
+            out.append({
+                "matched": a + b,
+                "matched_dans": a,
+                "matched_drag": b,
+                "prob": ways / total,
+                "hits": {int(k): hits(int(k), b, d, a) for k in stars_list},
+            })
+    return sorted(out, key=lambda r: (-r["matched"], -r["matched_drag"]))
+
+
+# ── 歷史檢驗 ─────────────────────────────────────────────
+def history_stats(draws, stars: int, drag_nums, dan_nums=(),
+                  pick: int = 5) -> dict:
+    """拿**固定一張牌**(同一組拖與膽)回頭跑一串開獎紀錄(舊 → 新)。
+
+    顆數不符的期直接略過 —— 資料還沒補齊時不該被算成槓龜。
+    這張表是用來說明「換一組號碼不會比較好」的:每一張的理論返還率完全
+    相同,實際差異只是樣本雜訊。
+
+    回傳 rounds/skipped/wins/win_rate/total_hits/hit_counts/
+    streak/max_streak/last_draw/last_hits。
+    """
+    valid = [list(d) for d in draws if d and len(d) == int(pick)]
+    got = [hits_of(stars, d, drag_nums, dan_nums) for d in valid]
+
+    max_streak = streak = 0
+    for h in got:                        # 舊 → 新;連續槓龜最長的一段
+        streak = streak + 1 if h == 0 else 0
+        max_streak = max(max_streak, streak)
+    cur = 0
+    for h in reversed(got):              # 新 → 舊;目前連幾期沒中
+        if h != 0:
+            break
+        cur += 1
+
+    counts: dict[int, int] = {}
+    for h in got:
+        counts[h] = counts.get(h, 0) + 1
+    wins = sum(1 for h in got if h > 0)
+    return {
+        "rounds": len(valid),
+        "skipped": len(list(draws)) - len(valid),
+        "wins": wins,
+        "win_rate": wins / len(valid) if valid else 0.0,
+        "total_hits": sum(got),
+        "hit_counts": dict(sorted(counts.items())),
+        "streak": cur,
+        "max_streak": max_streak,
+        "last_draw": valid[-1] if valid else [],
+        "last_hits": got[-1] if got else 0,
+    }
+
+
+# ── 機率(組合數列舉,不寫死百分比)──────────────────────
+def hit_probs(stars: int, drag: int, dans: int = 0, num_max: int = 39,
+              pick: int = 5) -> dict[int, float]:
+    """中的注數 → 機率。
+
+    號碼分成三群:膽 D 顆、拖 M 顆、其餘 num_max−D−M 顆,開獎 pick 顆的
+    分佈是超幾何 —— 膽中 a 顆、拖中 b 顆的組合數 =
+    C(D,a)·C(M,b)·C(其餘, pick−a−b),再依 hits 彙總。
+    """
+    d, m = int(dans), int(drag)
+    rest = int(num_max) - d - m
+    if rest < 0:
+        raise ValueError(f"膽 {d} + 拖 {m} 顆超過號碼總數 {num_max}")
+    total = comb(int(num_max), int(pick))
+    out: dict[int, float] = {}
+    for a in range(min(d, pick) + 1):
+        for b in range(min(m, pick - a) + 1):
+            c = int(pick) - a - b
+            if c < 0 or c > rest:
+                continue
+            ways = comb(d, a) * comb(m, b) * comb(rest, c)
+            h = hits(stars, b, d, a)
+            out[h] = out.get(h, 0.0) + ways / total
+    return dict(sorted(out.items()))
+
+
+def win_prob(stars: int, drag: int, dans: int = 0, num_max: int = 39,
+             pick: int = 5) -> float:
+    """至少中一注的機率。"""
+    return sum(p for h, p in hit_probs(stars, drag, dans, num_max, pick).items()
+               if h > 0)
+
+
+def single_bet_prob(stars: int, num_max: int = 39, pick: int = 5) -> float:
+    """**一注**中獎的機率 = C(pick, K) / C(num_max, K)。
+
+    一注要中就是它的 K 顆全在開出的 pick 顆裡,跟你買了幾注、有沒有膽無關。
+    """
+    return comb(int(pick), int(stars)) / comb(int(num_max), int(stars))
+
+
+def expected_hits(stars: int, drag: int, dans: int = 0, num_max: int = 39,
+                  pick: int = 5) -> float:
+    """每期期望中幾注 = 注數 × 單注中獎機率。
+
+    每一注中獎的機率都一樣,期望值可以直接相加 —— 所以不必管注與注之間
+    重疊多少。這條路徑與列舉 hit_probs 的結果相等(見測試)。
+    """
+    return bets(stars, drag, dans) * single_bet_prob(stars, num_max, pick)
+
+
+# ── 期望值 ───────────────────────────────────────────────
+def fair_odds(stars: int, num_max: int = 39, pick: int = 5) -> float:
+    """單注的公平賠率 = 1 ÷ 單注中獎機率 = C(num_max,K) / C(pick,K)。
+
+    39 選 5 下:二星 74.1、三星 913.9、四星 16,450.2。
+    """
+    p = single_bet_prob(stars, num_max, pick)
+    return 1.0 / p if p else float("inf")
+
+
+def return_rate(stars: int, odds: float, num_max: int = 39,
+                pick: int = 5) -> float:
+    """返還率 = **倍率 ÷ 公平賠率**。
+
+    這是整個模組最該記住的一件事:返還率跟你選幾顆、幾個膽、每注下多少
+    **完全無關**。買越多注只是把成本與期望回收一起等比放大,比例不動。
+    39 選 5 的市場參考價:二星 53/74.1 = 71.5%、三星 580/913.9 = 63.5%、
+    四星 7500/16,450.2 = 45.6% —— 三者都 < 1,沒有哪一種比較划算。
+    """
+    fair = fair_odds(stars, num_max, pick)
+    return float(odds) / fair if fair else 0.0
+
+
+def expected_net(stars: int, drag: int, per_bet: float, odds: float,
+                 dans: int = 0, num_max: int = 39, pick: int = 5) -> float:
+    """每期期望損益(負值 = 長期淨輸)。"""
+    cost = total_cost(stars, drag, per_bet, dans)
+    e = expected_hits(stars, drag, dans, num_max, pick)
+    return e * prize_per_bet(per_bet, odds) - cost
+
+
+def breakeven_odds(stars: int, num_max: int = 39, pick: int = 5) -> float:
+    """損益兩平的倍率 —— 就是公平賠率本身。"""
+    return fair_odds(stars, num_max, pick)
+
+
+# ── 對照表 ───────────────────────────────────────────────
+def bets_table(dans: int = 0, sizes=TABLE_SIZES, stars=STARS) -> list[dict]:
+    """「拖幾顆 → 各星數各幾注」的對照表;注數 0 的格子留 None 由呼叫端處理。"""
+    return [{"drag": int(n),
+             **{int(k): (bets(k, n, dans) or None) for k in stars}}
+            for n in sizes]

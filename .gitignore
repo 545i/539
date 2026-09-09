@@ -1,0 +1,32 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+*.egg-info/
+.DS_Store
+
+# PyInstaller 打包產物(體積大,不入版控)
+build/
+dist/
+*.spec.bak
+
+# SQLite 執行期狀態(下注紀錄,不入版控)
+*.db
+*.db-journal
+
+# 登入 token 簽章密鑰(機密,不入版控)
+.session_secret
+
+# 部署紀錄(含連線憑證/內網資訊,不入公開版控)
+CLAUDE.md
+
+# 匯出產物(寬表 CSV 等),不進版控
+data/exports/
+
+# 資料檔的手動備份(改資料前留的),不入版控
+*.bak_*
+
+# Telegram bot / 其他機密環境變數(不入版控)
+.env
+*.env

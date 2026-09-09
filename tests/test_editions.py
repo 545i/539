@@ -1,0 +1,78 @@
+"""下注「版」設定(backend.edition_store):版清單、版×遊戲的整套盤口與回退。"""
+from __future__ import annotations
+
+import pytest
+
+from backend import edition_store
+from core.games import LOTTO539 as G
+
+
+@pytest.fixture(autouse=True)
+def _isolate(tmp_path, monkeypatch):
+    monkeypatch.setattr(edition_store, "_db_path", lambda: tmp_path / "edition.db")
+
+
+def test_default_edition():
+    eds = edition_store.list_editions()
+    real = [e for e in eds if not e["simulated"]]
+    assert real == [{"eid": 1, "name": "第一版", "simulated": False}]
+    # 內建「模擬」版一定存在(不計總損益)
+    assert any(e["simulated"] and e["name"] == "模擬" for e in eds)
+
+
+def test_add_rename_delete():
+    e2 = edition_store.add_edition("第二版")
+    assert e2["name"] == "第二版"
+    eid = e2["eid"]
+    assert edition_store.rename_edition(eid, "夜間版")
+    assert next(x for x in edition_store.list_editions() if x["eid"] == eid)["name"] == "夜間版"
+    assert edition_store.delete_edition(eid)
+    assert all(x["eid"] != eid for x in edition_store.list_editions())
+    with pytest.raises(ValueError):
+        edition_store.delete_edition(1)   # 第一版不能刪
+
+
+def test_odds_defaults_match_gameconfig():
+    o = edition_store.get_odds(1, G.key)
+    assert o["cost_per_car"] == G.default_cost_per_car   # 2755
+    assert o["win_payout"] == G.default_win_payout       # 21200
+    assert o["bet_cost"] == G.default_bet_cost
+    assert o["bet_prize"] == G.default_bet_prize
+    # 全部欄位都回滿
+    for f in edition_store.FIELDS:
+        assert f in o
+
+
+def test_set_odds_per_edition_game_independent():
+    e2 = edition_store.add_edition("第二版")["eid"]
+    edition_store.set_odds(e2, G.key, {"cost_per_car": 3000, "win_payout": 25000})
+    o2 = edition_store.get_odds(e2, G.key)
+    assert o2["cost_per_car"] == 3000 and o2["win_payout"] == 25000
+    # 第一版不受影響
+    o1 = edition_store.get_odds(1, G.key)
+    assert o1["cost_per_car"] == G.default_cost_per_car
+    # 別款遊戲不受影響(版×遊戲獨立)
+    assert edition_store.get_odds(e2, "fantasy5")["cost_per_car"] != 3000
+
+    edition_store.reset_odds(e2, G.key)
+    assert edition_store.get_odds(e2, G.key)["cost_per_car"] == G.default_cost_per_car
+
+
+def test_set_odds_rejects_nonpositive():
+    with pytest.raises(ValueError):
+        edition_store.set_odds(1, G.key, {"cost_per_car": 0})
+
+
+def test_pair_bet_cost_derives_cost_per_car():
+    """二合每注基礎 pair_bet_cost 是單一真相;cost_per_car 導出 = 基礎 × (num_max-1)。"""
+    notes = G.num_max - 1               # lotto539 → 38
+    o = edition_store.get_odds(1, G.key)
+    assert o["pair_bet_cost"] == G.default_cost_per_car / notes   # 預設 72.5
+    assert o["cost_per_car"] == o["pair_bet_cost"] * notes        # 2755
+    e2 = edition_store.add_edition("基礎版")["eid"]
+    edition_store.set_odds(e2, G.key, {"pair_bet_cost": 80})
+    o2 = edition_store.get_odds(e2, G.key)
+    assert o2["pair_bet_cost"] == 80 and o2["cost_per_car"] == 80 * notes
+    det = edition_store.get_odds_detail(e2, G.key)
+    assert det["pair_bet_cost"]["value"] == 80 and det["pair_bet_cost"]["custom"] is True
+    assert det["cost_per_car"]["value"] == 80 * notes             # 衍生唯讀
