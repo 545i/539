@@ -662,7 +662,7 @@ export interface EditionOddsField {
 export interface EditionOddsDTO {
   eid: number;
   game: GameKey;
-  fields: Record<string, EditionOddsField>; // cost_per_car / win_payout / bet_cost / bet_prize / combo_cost{2,3,4} / combo_prize{2,3,4}
+  fields: Record<string, EditionOddsField>; // cost_per_car / win_payout / bet_cost / bet_prize / combo_cost{2,3,4} / combo_prize{2,3,4} / combo9000_cost / combo9000_prize
 }
 
 // 操作歷史(需登入):下注 / 撤銷 / 上傳 / 清空各留一筆痕跡,每筆都可以「作廢」。

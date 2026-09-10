@@ -36,6 +36,7 @@ FIELDS: tuple[str, ...] = (
     "pair_bet_cost", "win_payout", "bet_cost", "bet_prize",
     *(f"combo_cost{k}" for k in STARS),
     *(f"combo_prize{k}" for k in STARS),
+    "combo9000_cost",    # 9000碰專屬每碰成本;沒自訂時沿用四星 combo_cost4
     "combo9000_prize",   # 9000碰專屬派彩(每碰),跟星碰四星分開
 )
 
@@ -159,6 +160,8 @@ def _defaults(game_key: str) -> dict:
         # market_cost/prize 會吃到後台 star-cost 改過的值 —— 第一版沿用現況
         out[f"combo_cost{k}"] = float(combo.market_cost(k, combo.MARKET_COST[k]))
         out[f"combo_prize{k}"] = float(combo.market_prize(k, combo.MARKET_PRIZE[k]))
+    # 9000碰每碰成本:預設沿用四星(combo_cost4),升級後沒自訂的版行為不變
+    out["combo9000_cost"] = out["combo_cost4"]
     out["combo9000_prize"] = float(combo9000.PRIZE_PER_BET)   # 9000碰專屬派彩(預設 800,000)
     return out
 
@@ -191,6 +194,9 @@ def get_odds(eid: int, game_key: str) -> dict:
     out = _defaults(game_key)
     raw = _stored(eid, game_key)
     out.update({k: v for k, v in raw.items() if k in FIELDS})
+    # 9000碰成本沒自訂 → 沿用該版「有效的」四星成本(含本版 combo_cost4 覆寫),維持舊行為
+    if "combo9000_cost" not in raw:
+        out["combo9000_cost"] = out["combo_cost4"]
     base, _ = _base_of(raw, out, notes)
     out["pair_bet_cost"] = base
     out["cost_per_car"] = base * notes          # 衍生:給 settle / erhe / GroupBetTab
@@ -208,6 +214,10 @@ def get_odds_detail(eid: int, game_key: str) -> dict:
     stored = _stored(eid, game_key)
     out = {k: {"value": stored.get(k, defaults[k]), "custom": k in stored}
            for k in FIELDS}
+    # 9000碰成本沒自訂 → 顯示值沿用該版有效四星成本(stored 的 combo_cost4 優先)
+    if "combo9000_cost" not in stored:
+        out["combo9000_cost"] = {
+            "value": stored.get("combo_cost4", defaults["combo_cost4"]), "custom": False}
     base, custom = _base_of(stored, defaults, notes)
     out["pair_bet_cost"] = {"value": base, "custom": custom}
     out["cost_per_car"] = {"value": base * notes, "custom": custom}   # 衍生唯讀

@@ -16,6 +16,9 @@ const FIELD_GROUPS: {title: string; fields: [string, string][]}[] = [
     ['combo_cost3', '三星每碰成本'], ['combo_prize3', '三星中一碰'],
     ['combo_cost4', '四星每碰成本'], ['combo_prize4', '四星中一碰'],
   ]},
+  {title: '9000碰', fields: [
+    ['combo9000_cost', '每碰成本'], ['combo9000_prize', '中一碰可得'],
+  ]},
 ];
 
 export const EditionSettings: React.FC = () => {

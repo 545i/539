@@ -35,7 +35,7 @@ export const Combo9000Tab: React.FC<{ onOpenLedger?: (mode: LedgerMode) => void 
   // 遊戲由 Header 的全域切換器決定;9000碰只有 39 選 5 的款玩得起來(supports_combo9000)
   const { game: gameCfg, gameKey, loading: gameLoading } = useGame();
   const { eid, combineEditions } = useEditions();
-  // 這個版 × 這款遊戲的盤口:成本用四星每碰單價 combo_cost4、派彩用四星中一碰 combo_prize4
+  // 這個版 × 這款遊戲的盤口:成本用 9000碰專屬 combo9000_cost(沒自訂時沿用四星 combo_cost4)、派彩用 combo9000_prize
   const oddsReq = useAsync(() => api.getEditionOdds(eid, gameKey), [eid, gameKey]);
   const odds = oddsReq.data?.fields;
   // 登入時流水存後端;未登入沿用前端 state。依版篩選
@@ -112,7 +112,7 @@ export const Combo9000Tab: React.FC<{ onOpenLedger?: (mode: LedgerMode) => void 
 
   const game = gameCfg.name as LotteryGame;
   // 每碰成本 / 中一碰可得取「這個版」的四星盤口;讀不到先給常見預設
-  const betCost = odds?.combo_cost4?.value ?? 50;
+  const betCost = odds?.combo9000_cost?.value ?? odds?.combo_cost4?.value ?? 50;
   const betPrize = odds?.combo9000_prize?.value ?? 800000;
 
   // 全包固定 9000 碰;支數倍投;過關固定中 2 碰

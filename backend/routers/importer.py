@@ -243,11 +243,12 @@ def _pillar_item(odds: dict, g: GameConfig, units: float, line: str) -> _Item:
 
 
 def _combo9000_item(odds: dict, g: GameConfig, units: float, line: str) -> _Item:
-    """9000碰:碰數 = total_bets × 支數,每碰成本沿用四星每碰單價(combo_cost4)。"""
+    """9000碰:碰數 = total_bets × 支數,每碰成本用 9000碰專屬單價(combo9000_cost;
+    沒自訂時 edition_store 已讓它沿用四星 combo_cost4)。"""
     if not combo9000_mod.supports(g):
         raise ValueError(f"{g.name}不適用 9000碰(四段結構綁定 39 選 5)")
     total = combo9000_mod.total_bets(g.num_max)
-    bet_cost = float(odds["combo_cost4"])
+    bet_cost = float(odds.get("combo9000_cost") or odds["combo_cost4"])
     cost = combo9000_mod.round_cost(bet_cost, 1, g.num_max) * units
     return _Item(
         mode="combo9000",
@@ -435,7 +436,7 @@ def _base_field(mode: str, stars: int) -> str:
     if mode == "pillar1800":
         return "bet_cost"
     if mode == "combo9000":
-        return "combo_cost4"
+        return "combo9000_cost"
     if mode == "combo":
         return f"combo_cost{int(stars)}"
     return ""

@@ -20,8 +20,9 @@ pillar(乘積)不同**:這裡是「每一段都至少開出 1 顆」才過關,�
     命中碰數 = 2  (四段都有開,即 {2,1,1,1} 分布)
              = 0  (任一段沒開)
 
-成本用「四星每碰單價」(沿用星碰四星的盤口 combo_cost4);派彩則是 9000碰
-**專屬**的 combo9000_prize(預設 800,000/碰),跟星碰四星的 750,000 分開 ——
+成本與派彩都有 9000碰**專屬**盤口:每碰成本 combo9000_cost、每碰派彩
+combo9000_prize(預設 800,000/碰,跟星碰四星的 750,000 分開)。combo9000_cost
+沒自訂時由 edition_store 讓它沿用四星每碰單價 combo_cost4(維持舊行為)。
 9000碰過關固定中 2 碰 = 1,600,000。
 """
 from __future__ import annotations
@@ -37,7 +38,8 @@ PASS_HITS = 2
 
 # 9000碰「中一碰可得」的預設派彩。**刻意跟星碰四星(combo_prize4=750,000)分開** ——
 # 9000碰有自己的派彩 800,000/碰,過關(中 2 碰)= 1,600,000。可被該版盤口
-# combo9000_prize 覆寫(見 backend.edition_store)。成本仍沿用四星每碰單價 combo_cost4。
+# combo9000_prize 覆寫(見 backend.edition_store)。成本同樣有專屬 combo9000_cost,
+# 沒自訂時沿用四星每碰單價 combo_cost4。
 PRIZE_PER_BET = 800_000.0
 
 
