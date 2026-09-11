@@ -336,43 +336,46 @@ const Recover1800Card: React.FC<{ dSelf: RecoverData | null; dAll: RecoverData |
   </div>
 );
 
-// 9000碰建議支數卡:追自己流水,過關固定中2碰回本。樣式比照 1組/2組。
-const Recover9000Card: React.FC<{ d: RecoverData | null; onClick: () => void }> = ({ d, onClick }) => (
+// 9000碰單一情境(過關固定中2碰回本 + 成本/可得/中後累積)。可點 → 彈明細排除。
+const P9000Block: React.FC<{ label: string; d: RecoverData | null; onClick: () => void }> = ({ label, d, onClick }) => (
   <button
     type="button"
     onClick={onClick}
-    className="text-left w-full rounded-xl border border-sky-500/25 dark:border-sky-400/25 bg-sky-500/[0.04] dark:bg-sky-400/[0.05] p-3 hover:bg-sky-500/[0.09] transition-colors"
+    className="text-left w-full rounded-lg border border-sky-500/20 dark:border-sky-400/20 bg-sky-500/[0.03] px-2.5 py-1.5 hover:bg-sky-500/[0.09] transition-colors"
   >
     <div className="flex items-center justify-between">
-      <span className="text-[10px] uppercase tracking-wider text-sky-700 dark:text-sky-400 font-semibold">9000碰 建議支數</span>
-      <span className="text-[9px] text-neutral-400">點卡排除 ›</span>
+      <span className="text-[10px] font-semibold text-sky-700 dark:text-sky-400">{label}</span>
+      <span className="text-[9px] text-neutral-400">排除 ›</span>
     </div>
     {!d ? (
-      <div className="mt-1 text-[12px] text-neutral-400">本週無此下法紀錄</div>
+      <div className="text-[11px] text-neutral-400 mt-0.5">本週無紀錄</div>
     ) : d.cars == null ? (
-      <div className="mt-1">
-        <div className="font-mono font-bold text-sm text-emerald-600 dark:text-emerald-400">本週未虧損</div>
-        <div className="text-[10px] text-neutral-400 mt-0.5">目前損益 {sfmt1(d.cumPnl)}</div>
-      </div>
+      <div className="text-[12px] font-mono font-bold text-emerald-600 dark:text-emerald-400 mt-0.5">未虧損 <span className="text-[10px] font-normal text-neutral-400">{sfmt1(d.cumPnl)}</span></div>
     ) : !Number.isFinite(d.cars) ? (
-      <div className="mt-1">
-        <div className="font-mono font-bold text-sm text-rose-600 dark:text-rose-400">中2碰追不回</div>
-        <div className="text-[10px] text-neutral-400 mt-0.5">每支淨利 ≤ 0</div>
-      </div>
+      <div className="text-[12px] font-mono font-bold text-rose-600 dark:text-rose-400 mt-0.5">中2碰仍追不回</div>
     ) : (
-      <>
-        <div className="mt-0.5 flex items-baseline gap-1">
-          <span className="font-mono font-bold text-2xl text-neutral-900 dark:text-white">{(d.cars as number).toLocaleString()}</span>
-          <span className="text-[11px] text-neutral-400">支 · 中2碰</span>
+      <div className="mt-0.5">
+        <div className="flex items-baseline gap-1">
+          <span className="font-mono font-bold text-xl text-neutral-900 dark:text-white">{(d.cars as number).toLocaleString()}</span>
+          <span className="text-[10px] text-neutral-400">支 · 中2碰</span>
         </div>
-        <div className="mt-1.5 space-y-0.5 text-[11px] font-mono">
-          <div className="flex justify-between"><span className="text-neutral-500">本局成本</span><span className="font-semibold text-neutral-800 dark:text-neutral-100">{fmt1(d.cost)}</span></div>
-          <div className="flex justify-between"><span className="text-neutral-500">中2碰可得</span><span className="font-semibold text-emerald-600 dark:text-emerald-400">{fmt1(d.gain)}</span></div>
-          <div className="flex justify-between border-t border-black/[0.06] dark:border-white/[0.06] pt-0.5 mt-0.5"><span className="text-neutral-500">中後累積</span><span className={`font-bold ${pnlCls(d.after)}`}>{sfmt1(d.after)}</span></div>
+        <div className="text-[10px] font-mono text-neutral-500 space-y-0.5 mt-0.5">
+          <div className="flex justify-between"><span>成本</span><span className="text-neutral-800 dark:text-neutral-200">{fmt1(d.cost)}</span></div>
+          <div className="flex justify-between"><span>中2碰可得</span><span className="text-emerald-600 dark:text-emerald-400">{fmt1(d.gain)}</span></div>
+          <div className="flex justify-between"><span>中後累積</span><span className={`font-semibold ${pnlCls(d.after)}`}>{sfmt1(d.after)}</span></div>
         </div>
-      </>
+      </div>
     )}
   </button>
+);
+
+// 9000碰卡:兩種建議 —— ①獨立(追 9000碰自己流水) ②追該版總損益;皆過關固定中2碰回本。
+const Recover9000Card: React.FC<{ dSelf: RecoverData | null; dAll: RecoverData | null; onSelf: () => void; onAll: () => void }> = ({ dSelf, dAll, onSelf, onAll }) => (
+  <div className="rounded-xl border border-sky-500/25 dark:border-sky-400/25 bg-sky-500/[0.04] dark:bg-sky-400/[0.05] p-2 space-y-1.5">
+    <span className="text-[10px] uppercase tracking-wider text-sky-700 dark:text-sky-400 font-semibold">9000碰 建議支數</span>
+    <P9000Block label="獨立(追9000碰流水)" d={dSelf} onClick={onSelf} />
+    <P9000Block label="追該版總損益" d={dAll} onClick={onAll} />
+  </div>
 );
 
 // 建議車數明細彈窗:逐筆點擊排除/納入(排除的不算進要追的赤字);建議車數即時重算。
@@ -381,7 +384,8 @@ const RecoverModal: React.FC<{
   title: string; weekLabel: string; rows: ModalRow[];
   excluded: Set<string>; onToggle: (id: string) => void;
   d: RecoverData | null; onClose: () => void;
-}> = ({ title, weekLabel, rows, excluded, onToggle, d, onClose }) => (
+  dirty: boolean; saveState: 'idle' | 'saving' | 'saved' | 'error'; onSave: () => void;
+}> = ({ title, weekLabel, rows, excluded, onToggle, d, onClose, dirty, saveState, onSave }) => (
   <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
     <div className="w-full max-w-md max-h-[82vh] overflow-auto rounded-2xl bg-white dark:bg-[#161616] border border-black/10 dark:border-white/10 p-4 space-y-3" onClick={e => e.stopPropagation()}>
       <div className="flex items-center justify-between">
@@ -419,6 +423,29 @@ const RecoverModal: React.FC<{
             </button>
           );
         })}
+      </div>
+      {/* 手動儲存排除設定:排除變更自動存本機,按此才同步到帳號(跨裝置),帶儲存回饋 */}
+      <div className="flex items-center justify-between gap-2 border-t border-black/[0.06] dark:border-white/[0.08] pt-3">
+        <span className="text-[10px] text-neutral-400">
+          {dirty ? '有未儲存的排除變更' : saveState === 'saved' ? '已同步到帳號' : '排除變更已存本機'}
+        </span>
+        <button
+          type="button"
+          onClick={onSave}
+          disabled={saveState === 'saving' || (!dirty && saveState !== 'error')}
+          className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-colors disabled:opacity-40 ${
+            saveState === 'error'
+              ? 'bg-rose-500/15 text-rose-700 dark:text-rose-300 hover:bg-rose-500/25'
+              : saveState === 'saved' && !dirty
+                ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                : 'bg-indigo-600 text-white hover:bg-indigo-500'
+          }`}
+        >
+          {saveState === 'saving' ? '儲存中…'
+            : saveState === 'error' ? '儲存失敗,重試'
+            : saveState === 'saved' && !dirty ? '已儲存 ✓'
+            : '儲存排除設定'}
+        </button>
       </div>
     </div>
   </div>
@@ -557,36 +584,54 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
   // (不同組頭各自對帳,回本要各版各算)。盤口「遊戲共用」,取任一款(優先 539)的
   // 每車成本 / 中一顆彩金;虧損基準用「目前聚焦週」該版該下法的損益。
   //   中1顆每車淨利 = 中一顆彩金 − 顆數×每車成本;建議車數 = ⌈該版該下法虧損 ÷ 每車淨利⌉。
-  // 建議車數:可手動「排除」某些下注(例如大贏那筆先落袋,不算進要追的赤字)。排除清單存 localStorage。
+  // 建議車數:可手動「排除」某些下注(例如大贏那筆先落袋,不算進要追的赤字)。
+  // 排除清單本機即時存 localStorage(穩定不丟);跨裝置(伺服器)改「手動儲存」按鈕 ——
+  // 舊版每次點都自動推伺服器且靜默吞錯,會漏存;現在改由使用者按鈕明確儲存 + 回饋。
   const [excludedIds, setExcludedIds] = useState<Set<string>>(() => {
     try { return new Set(JSON.parse(localStorage.getItem('lottery_recover_excluded') || '[]')); }
     catch { return new Set(); }
   });
+  const [excludeDirty, setExcludeDirty] = useState(false);            // 有未存到伺服器的變更
+  const [excludeSaveState, setExcludeSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   // 登入後從帳號讀回排除清單(跨裝置);沒登入 / 讀不到就沿用本機 localStorage 那份。
   React.useEffect(() => {
     if (!loggedIn) return;
     let alive = true;
     api.recoverExcludeGet()
-      .then(r => { if (alive) setExcludedIds(new Set(r.ids)); })
+      .then(r => { if (alive) { setExcludedIds(new Set(r.ids)); setExcludeDirty(false); } })
       .catch(() => { /* 讀不到就用本機 */ });
     return () => { alive = false; };
   }, [loggedIn]);
-  const persistExcluded = (n: Set<string>) => {
+  // 本機即時存(不推伺服器);標記為待儲存,等使用者按「儲存」才同步跨裝置。
+  const persistExcludedLocal = (n: Set<string>) => {
     try { localStorage.setItem('lottery_recover_excluded', JSON.stringify([...n])); } catch { /* ignore */ }
-    if (loggedIn) api.recoverExcludeSet([...n]).catch(() => { /* 存不到不擋操作 */ });
+    setExcludeDirty(true);
+    setExcludeSaveState('idle');
   };
   const toggleExcluded = (id: string) => setExcludedIds(prev => {
     const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id);
-    persistExcluded(n);
+    persistExcludedLocal(n);
     return n;
   });
   const clearExcluded = () => {
     const n = new Set<string>();
     setExcludedIds(n);
-    persistExcluded(n);
+    persistExcludedLocal(n);
+  };
+  // 手動儲存:明確把排除清單推到伺服器(跨裝置),帶儲存中/已儲存/失敗回饋。
+  const saveExcluded = async () => {
+    setExcludeSaveState('saving');
+    try {
+      await api.recoverExcludeSet([...excludedIds]);
+      setExcludeDirty(false);
+      setExcludeSaveState('saved');
+      setTimeout(() => setExcludeSaveState(s => (s === 'saved' ? 'idle' : s)), 2500);
+    } catch {
+      setExcludeSaveState('error');
+    }
   };
   // 點建議某列 → 彈出該版該組本週明細,逐筆勾選排除。mode='all' = 1800碰追總損益(該版全部下法)
-  const [recoverModal, setRecoverModal] = useState<{ eid: number; mode: 'single' | 'multi' | 'all' | 'pillar1800' | 'combo9000'; label: string } | null>(null);
+  const [recoverModal, setRecoverModal] = useState<{ eid: number; mode: 'single' | 'multi' | 'all' | 'pillar1800' | 'combo9000' | 'combo9000_all'; label: string } | null>(null);
 
   // 螢幕寬度(摺疊機展開/闔上):≥768px 走左右雙欄,否則垂直單欄。用 state 驅動,
   // 讓斷點變化觸發 React 重繪,motion 的 layout 才抓得到並做 morph 過場。
@@ -685,9 +730,9 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
         after3: ok ? cumPnl + n * 3 * o.betPrize - cost : 0,
       };
     };
-    // 9000碰:追自己流水,過關固定中 2 碰回本。
-    const calc9000 = (eid: number): RecoverData | null => {
-      const rows = rowsOf(eid, 'combo9000');
+    // 9000碰:base='self' 追 9000碰自己流水;base='all' 追該版總損益。過關固定中 2 碰回本。
+    const calc9000 = (eid: number, base: 'self' | 'all'): RecoverData | null => {
+      const rows = base === 'self' ? rowsOf(eid, 'combo9000') : rowsOf(eid);
       if (rows.length === 0) return null;
       const o = oddsOf(eid);
       const perUnitNet = 2 * o.c9kPrize - C9K * o.c9kCost;
@@ -709,9 +754,9 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
         eid, name: edName(eid),
         single: calc(eid, 'single'), multi: calc(eid, 'multi'),
         p1800self: calc1800(eid, 'self'), p1800all: calc1800(eid, 'all'),
-        c9000: calc9000(eid),
+        c9000self: calc9000(eid, 'self'), c9000all: calc9000(eid, 'all'),
       }))
-      .filter(x => x.single || x.multi || x.p1800self || x.p1800all || x.c9000);
+      .filter(x => x.single || x.multi || x.p1800self || x.p1800all || x.c9000self || x.c9000all);
   }, [entries, simEids, focusMonday, wk.allWeeks, games, selEd, usedEds, excludedIds, oddsByEid]);
 
   // 彈窗要顯示的明細:該版該組在聚焦週(或全部週)的逐筆(含被排除者,給勾選用)
@@ -721,7 +766,9 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
       .filter(e => {
         const r = e.record as Record<string, unknown>;
         if ((num(r.edition) || 1) !== recoverModal.eid) return false;
-        if (recoverModal.mode !== 'all' && String(r.mode ?? '') !== recoverModal.mode) return false;
+        // 總損益模式('all'=1800追總、'combo9000_all'=9000追總)看該版全部下法;其餘只看該下法
+        const isTotal = recoverModal.mode === 'all' || recoverModal.mode === 'combo9000_all';
+        if (!isTotal && String(r.mode ?? '') !== recoverModal.mode) return false;
         return wk.allWeeks ? true : weekMonday(String(r.date ?? '')) === focusMonday;
       })
       .map(e => {
@@ -771,6 +818,25 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
             ) : (
               <span className="font-normal text-neutral-400">·點卡片可排除下注</span>
             )}
+            {(excludeDirty || excludeSaveState !== 'idle') && (
+              <button
+                type="button"
+                onClick={saveExcluded}
+                disabled={excludeSaveState === 'saving'}
+                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md font-semibold transition-colors ${
+                  excludeSaveState === 'error'
+                    ? 'bg-rose-500/15 text-rose-700 dark:text-rose-300 hover:bg-rose-500/25'
+                    : excludeSaveState === 'saved'
+                      ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                      : 'bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-500/25'
+                }`}
+              >
+                {excludeSaveState === 'saving' ? '儲存中…'
+                  : excludeSaveState === 'saved' ? '已儲存 ✓'
+                  : excludeSaveState === 'error' ? '儲存失敗,點擊重試'
+                  : '儲存排除設定 ⬆'}
+              </button>
+            )}
           </div>
           {recoverRows.map(g => (
             <div key={g.eid} className="space-y-1.5">
@@ -784,7 +850,11 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
                   onSelf={() => setRecoverModal({ eid: g.eid, mode: 'pillar1800', label: `${g.name} 1800碰(獨立)` })}
                   onAll={() => setRecoverModal({ eid: g.eid, mode: 'all', label: `${g.name} 1800碰(總損益)` })}
                 />
-                <Recover9000Card d={g.c9000} onClick={() => setRecoverModal({ eid: g.eid, mode: 'combo9000', label: `${g.name} 9000碰` })} />
+                <Recover9000Card
+                  dSelf={g.c9000self} dAll={g.c9000all}
+                  onSelf={() => setRecoverModal({ eid: g.eid, mode: 'combo9000', label: `${g.name} 9000碰(獨立)` })}
+                  onAll={() => setRecoverModal({ eid: g.eid, mode: 'combo9000_all', label: `${g.name} 9000碰(總損益)` })}
+                />
               </div>
             </div>
           ))}
@@ -806,11 +876,15 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
               case 'single': return g.single;
               case 'multi': return g.multi;
               case 'pillar1800': return g.p1800self;
-              case 'combo9000': return g.c9000;
+              case 'combo9000': return g.c9000self;
+              case 'combo9000_all': return g.c9000all;
               default: return g.p1800all;   // 'all' = 1800碰追總損益
             }
           })()}
           onClose={() => setRecoverModal(null)}
+          dirty={excludeDirty}
+          saveState={excludeSaveState}
+          onSave={saveExcluded}
         />
       )}
         </motion.div>{/* /左欄 */}
