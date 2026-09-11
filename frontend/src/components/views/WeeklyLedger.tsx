@@ -289,44 +289,84 @@ const RecoverCard: React.FC<{ title: string; d: RecoverData | null; onClick?: ()
   </button>
 );
 
-// 1800碰建議支數卡:追「該版總損益」,假設中 4 碰(3 碰不計);點卡片彈全部下法明細排除。
-const Recover1800Card: React.FC<{ name: string; d: RecoverData | null; onClick?: () => void }> = ({ name, d, onClick }) => (
+// 1800碰單一情境(中4碰回本 + 只中3碰對照 + 中後累積)。可點 → 彈明細排除。
+const P1800Block: React.FC<{ label: string; d: RecoverData | null; onClick: () => void }> = ({ label, d, onClick }) => (
   <button
     type="button"
     onClick={onClick}
-    className="text-left w-full rounded-xl border border-amber-500/25 dark:border-amber-400/25 bg-amber-500/[0.04] dark:bg-amber-400/[0.05] p-3 hover:bg-amber-500/[0.08] transition-colors"
+    className="text-left w-full rounded-lg border border-amber-500/20 dark:border-amber-400/20 bg-amber-500/[0.03] px-2.5 py-1.5 hover:bg-amber-500/[0.09] transition-colors"
   >
     <div className="flex items-center justify-between">
-      <span className="text-[10px] uppercase tracking-wider text-amber-700 dark:text-amber-400 font-semibold">{name} · 1800碰回本(追總損益·中4碰)</span>
+      <span className="text-[10px] font-semibold text-amber-700 dark:text-amber-400">{label}</span>
+      <span className="text-[9px] text-neutral-400">排除 ›</span>
+    </div>
+    {!d ? (
+      <div className="text-[11px] text-neutral-400 mt-0.5">本週無紀錄</div>
+    ) : d.cars == null ? (
+      <div className="text-[12px] font-mono font-bold text-emerald-600 dark:text-emerald-400 mt-0.5">未虧損 <span className="text-[10px] font-normal text-neutral-400">{sfmt1(d.cumPnl)}</span></div>
+    ) : !Number.isFinite(d.cars) ? (
+      <div className="text-[12px] font-mono font-bold text-rose-600 dark:text-rose-400 mt-0.5">中4碰仍追不回</div>
+    ) : (
+      <div className="mt-0.5">
+        <div className="flex items-baseline gap-1">
+          <span className="font-mono font-bold text-xl text-neutral-900 dark:text-white">{(d.cars as number).toLocaleString()}</span>
+          <span className="text-[10px] text-neutral-400">支 · 中4碰</span>
+        </div>
+        <div className="text-[10px] font-mono text-neutral-500 space-y-0.5 mt-0.5">
+          <div className="flex justify-between"><span>成本</span><span className="text-neutral-800 dark:text-neutral-200">{fmt1(d.cost)}</span></div>
+          <div className="flex justify-between"><span>中4碰可得</span><span className="text-emerald-600 dark:text-emerald-400">{fmt1(d.gain)}</span></div>
+          <div className="flex justify-between"><span>中後累積</span><span className={`font-semibold ${pnlCls(d.after)}`}>{sfmt1(d.after)}</span></div>
+          <div className="flex justify-between border-t border-black/[0.05] dark:border-white/[0.06] pt-0.5 text-neutral-400"><span>只中3碰</span><span>可得 {fmt1(d.gain3 ?? 0)} · <span className={pnlCls(d.after3 ?? 0)}>{sfmt1(d.after3 ?? 0)}</span></span></div>
+        </div>
+      </div>
+    )}
+  </button>
+);
+
+// 1800碰卡:兩種建議 —— ①獨立(追 1800碰自己流水) ②追該版總損益;各用中4碰回本。
+const Recover1800Card: React.FC<{ dSelf: RecoverData | null; dAll: RecoverData | null; onSelf: () => void; onAll: () => void }> = ({ dSelf, dAll, onSelf, onAll }) => (
+  <div className="rounded-xl border border-amber-500/25 dark:border-amber-400/25 bg-amber-500/[0.04] dark:bg-amber-400/[0.05] p-2 space-y-1.5">
+    <span className="text-[10px] uppercase tracking-wider text-amber-700 dark:text-amber-400 font-semibold">1800碰 建議支數</span>
+    <P1800Block label="獨立(追1800碰流水)" d={dSelf} onClick={onSelf} />
+    <P1800Block label="追該版總損益" d={dAll} onClick={onAll} />
+  </div>
+);
+
+// 9000碰建議支數卡:追自己流水,過關固定中2碰回本。樣式比照 1組/2組。
+const Recover9000Card: React.FC<{ d: RecoverData | null; onClick: () => void }> = ({ d, onClick }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    className="text-left w-full rounded-xl border border-sky-500/25 dark:border-sky-400/25 bg-sky-500/[0.04] dark:bg-sky-400/[0.05] p-3 hover:bg-sky-500/[0.09] transition-colors"
+  >
+    <div className="flex items-center justify-between">
+      <span className="text-[10px] uppercase tracking-wider text-sky-700 dark:text-sky-400 font-semibold">9000碰 建議支數</span>
       <span className="text-[9px] text-neutral-400">點卡排除 ›</span>
     </div>
     {!d ? (
-      <div className="mt-1 text-[12px] text-neutral-400">本週無紀錄</div>
+      <div className="mt-1 text-[12px] text-neutral-400">本週無此下法紀錄</div>
     ) : d.cars == null ? (
       <div className="mt-1">
-        <div className="font-mono font-bold text-sm text-emerald-600 dark:text-emerald-400">本週總損益未虧損</div>
-        <div className="text-[10px] text-neutral-400 mt-0.5">目前總損益 {sfmt1(d.cumPnl)}</div>
+        <div className="font-mono font-bold text-sm text-emerald-600 dark:text-emerald-400">本週未虧損</div>
+        <div className="text-[10px] text-neutral-400 mt-0.5">目前損益 {sfmt1(d.cumPnl)}</div>
       </div>
     ) : !Number.isFinite(d.cars) ? (
-      <div className="mt-1 font-mono font-bold text-sm text-rose-600 dark:text-rose-400">中4碰仍追不回</div>
-    ) : (
-      <div className="mt-0.5 space-y-1">
-        <div className="flex items-baseline gap-3 flex-wrap">
-          <div className="flex items-baseline gap-1">
-            <span className="font-mono font-bold text-2xl text-neutral-900 dark:text-white">{(d.cars as number).toLocaleString()}</span>
-            <span className="text-[11px] text-neutral-400">支 · 中4碰</span>
-          </div>
-          <span className="text-[11px] font-mono text-neutral-500">成本 <span className="text-neutral-800 dark:text-neutral-200 font-semibold">{fmt1(d.cost)}</span></span>
-          <span className="text-[11px] font-mono text-neutral-500">中4碰可得 <span className="text-emerald-600 dark:text-emerald-400 font-semibold">{fmt1(d.gain)}</span></span>
-          <span className="text-[11px] font-mono text-neutral-500">中後累積 <span className={`font-bold ${pnlCls(d.after)}`}>{sfmt1(d.after)}</span></span>
-        </div>
-        {/* 保守對照:同支數但只中3碰(支數不變,計算仍用中4碰) */}
-        <div className="flex items-baseline gap-3 flex-wrap text-[10px] font-mono text-neutral-400 border-t border-black/[0.05] dark:border-white/[0.06] pt-1">
-          <span>只中3碰</span>
-          <span>可得 {fmt1(d.gain3 ?? 0)}</span>
-          <span>中後累積 <span className={`font-semibold ${pnlCls(d.after3 ?? 0)}`}>{sfmt1(d.after3 ?? 0)}</span></span>
-        </div>
+      <div className="mt-1">
+        <div className="font-mono font-bold text-sm text-rose-600 dark:text-rose-400">中2碰追不回</div>
+        <div className="text-[10px] text-neutral-400 mt-0.5">每支淨利 ≤ 0</div>
       </div>
+    ) : (
+      <>
+        <div className="mt-0.5 flex items-baseline gap-1">
+          <span className="font-mono font-bold text-2xl text-neutral-900 dark:text-white">{(d.cars as number).toLocaleString()}</span>
+          <span className="text-[11px] text-neutral-400">支 · 中2碰</span>
+        </div>
+        <div className="mt-1.5 space-y-0.5 text-[11px] font-mono">
+          <div className="flex justify-between"><span className="text-neutral-500">本局成本</span><span className="font-semibold text-neutral-800 dark:text-neutral-100">{fmt1(d.cost)}</span></div>
+          <div className="flex justify-between"><span className="text-neutral-500">中2碰可得</span><span className="font-semibold text-emerald-600 dark:text-emerald-400">{fmt1(d.gain)}</span></div>
+          <div className="flex justify-between border-t border-black/[0.06] dark:border-white/[0.06] pt-0.5 mt-0.5"><span className="text-neutral-500">中後累積</span><span className={`font-bold ${pnlCls(d.after)}`}>{sfmt1(d.after)}</span></div>
+        </div>
+      </>
     )}
   </button>
 );
@@ -541,75 +581,122 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
     setExcludedIds(n);
     persistExcluded(n);
   };
-  // 點建議車數某列 → 彈出該版該組本週明細,逐筆勾選排除。mode='all' = 1800碰追總損益(該版全部下法)
-  const [recoverModal, setRecoverModal] = useState<{ eid: number; mode: 'single' | 'multi' | 'all'; label: string } | null>(null);
+  // 點建議某列 → 彈出該版該組本週明細,逐筆勾選排除。mode='all' = 1800碰追總損益(該版全部下法)
+  const [recoverModal, setRecoverModal] = useState<{ eid: number; mode: 'single' | 'multi' | 'all' | 'pillar1800' | 'combo9000'; label: string } | null>(null);
+
+  // 建議試算用「該版實際盤口」(非遊戲預設)—— 9000碰 combo9000_cost 每版不同,用預設會算錯。
+  const [oddsByEid, setOddsByEid] = useState<Record<number, Record<string, { value: number; custom: boolean }>>>({});
+  React.useEffect(() => {
+    let alive = true;
+    const eds = selEd === 'all' ? usedEds.filter(ed => !simEids.has(ed)) : [selEd as number];
+    Promise.all(eds.map(eid =>
+      api.getEditionOdds(eid, 'lotto539').then(r => [eid, r.fields] as const).catch(() => null)))
+      .then(res => {
+        if (!alive) return;
+        const m: Record<number, Record<string, { value: number; custom: boolean }>> = {};
+        for (const x of res) if (x) m[x[0]] = x[1];
+        setOddsByEid(m);
+      });
+    return () => { alive = false; };
+  }, [usedEds, selEd, simEids]);
 
   const recoverRows = useMemo(() => {
-    const g = games.find(x => x.key === 'lotto539') ?? games[0];
-    const costPerCar = num(g?.default_cost_per_car);
-    const winPayout = num(g?.default_win_payout);
-    const betCost = num(g?.default_bet_cost);      // 1800碰每注成本(如 63)
-    const betPrize = num(g?.default_bet_prize);    // 1800碰中一碰可得(如 57,000)
-    const FULL_1800 = 1800;                        // 一支 = 全包 1800 注
-    // 1800碰:一支成本 = 1800×每注;過關固定看「中4碰」(3碰不計,依使用者規則)。
-    // 中4碰每支淨利 = 4×中一碰 − 1800×每注成本;建議支數 = ⌈該版總損益虧損 ÷ 每支淨利⌉。
-    const perUnitNet1800 = 4 * betPrize - FULL_1800 * betCost;
-    const calc1800 = (eid: number): RecoverData | null => {
-      // 回本基準 = 該版「總損益」(全部下法合計),不是只看 1800碰自己
-      const rows = entries
-        .filter(e => {
-          const r = e.record as Record<string, unknown>;
-          if ((num(r.edition) || 1) !== eid) return false;
-          if (excludedIds.has(String(e.id))) return false;
-          return wk.allWeeks ? true : weekMonday(String(r.date ?? '')) === focusMonday;
-        })
-        .map(e => e.record as Record<string, unknown>);
-      if (rows.length === 0) return null;
-      const cumPnl = rows.reduce((s, r) => s + num(r.payout) - num(r.cost), 0);
-      const units = cumPnl >= 0 ? null : perUnitNet1800 > 0 ? Math.max(1, Math.ceil(-cumPnl / perUnitNet1800)) : Infinity;
-      const ok = units != null && Number.isFinite(units);
-      const n = ok ? (units as number) : 0;
-      const cost1800 = ok ? n * FULL_1800 * betCost : 0;  // 本局成本 = 支×1800×每注
+    const gDef = games.find(x => x.key === 'lotto539') ?? games[0];
+    // 各版實際盤口(讀不到就退回遊戲預設);9000碰另有專屬 combo9000_cost/prize。
+    const oddsOf = (eid: number) => {
+      const f = oddsByEid[eid];
+      const get = (k: string, dflt: number) => (f && f[k] ? num(f[k].value) : dflt);
       return {
-        cumPnl, suggestBalls: 4, cars: units,             // suggestBalls 借放「碰數」;cars=支數
-        cost: cost1800,
-        gain: ok ? n * 4 * betPrize : 0,                  // 中4碰可得(計算建議支數用這個)
-        after: ok ? cumPnl + n * 4 * betPrize - cost1800 : 0,
-        gain3: ok ? n * 3 * betPrize : 0,                 // 只中3碰可得(保守對照,支數不變)
-        after3: ok ? cumPnl + n * 3 * betPrize - cost1800 : 0,
+        costPerCar: get('cost_per_car', num(gDef?.default_cost_per_car)),
+        winPayout: get('win_payout', num(gDef?.default_win_payout)),
+        betCost: get('bet_cost', num(gDef?.default_bet_cost)),     // 1800碰每注成本
+        betPrize: get('bet_prize', num(gDef?.default_bet_prize)),  // 1800碰中一碰可得
+        c9kCost: get('combo9000_cost', get('combo_cost4', 50)),    // 9000碰每碰成本
+        c9kPrize: get('combo9000_prize', 800000),                  // 9000碰中一碰可得
       };
     };
+    const FULL_1800 = 1800;   // 一支 = 全包 1800 注
+    const C9K = 9000;         // 一支 = 買滿 9000 碰
+    const inFocus = (r: Record<string, unknown>) =>
+      wk.allWeeks ? true : weekMonday(String(r.date ?? '')) === focusMonday;
+    // 該版(可選該下法)在聚焦週、未被排除的流水
+    const rowsOf = (eid: number, mode?: string) => entries
+      .filter(e => {
+        const r = e.record as Record<string, unknown>;
+        if ((num(r.edition) || 1) !== eid) return false;
+        if (mode && String(r.mode ?? '') !== mode) return false;
+        if (excludedIds.has(String(e.id))) return false;
+        return inFocus(r);
+      })
+      .map(e => e.record as Record<string, unknown>);
+
+    // 1組/2組:追該下法流水,中 1 顆回本。
     const calc = (eid: number, mode: 'single' | 'multi'): RecoverData | null => {
-      const rows = entries
-        .filter(e => {
-          const r = e.record as Record<string, unknown>;
-          if ((num(r.edition) || 1) !== eid) return false;
-          if (String(r.mode ?? '') !== mode) return false;
-          if (excludedIds.has(String(e.id))) return false;   // 被排除的不算進赤字
-          return wk.allWeeks ? true : weekMonday(String(r.date ?? '')) === focusMonday;
-        })
-        .map(e => e.record as Record<string, unknown>);
+      const rows = rowsOf(eid, mode);
       if (rows.length === 0) return null;
+      const o = oddsOf(eid);
       const cumPnl = rows.reduce((s, r) => s + num(r.payout) - num(r.cost), 0);
       const last = rows.reduce((b, r) => (String(r.date ?? '') >= String(b.date ?? '') ? r : b));
       const suggestBalls = (last.selectedBalls as number[])?.length || 5;
-      const per1HitNet = winPayout - suggestBalls * costPerCar;
+      const per1HitNet = o.winPayout - suggestBalls * o.costPerCar;
       const cars = cumPnl >= 0 ? null : per1HitNet > 0 ? Math.max(1, Math.ceil(-cumPnl / per1HitNet)) : Infinity;
       const ok = cars != null && Number.isFinite(cars);
       const n = ok ? (cars as number) : 0;
       return {
         cumPnl, suggestBalls, cars,
-        cost: ok ? suggestBalls * n * costPerCar : 0,     // 本局成本
-        gain: ok ? n * winPayout : 0,                     // 中1顆可得
-        after: ok ? cumPnl + n * winPayout - suggestBalls * n * costPerCar : 0,  // 中後累積
+        cost: ok ? suggestBalls * n * o.costPerCar : 0,
+        gain: ok ? n * o.winPayout : 0,
+        after: ok ? cumPnl + n * o.winPayout - suggestBalls * n * o.costPerCar : 0,
+      };
+    };
+    // 1800碰:base='self' 追 1800碰自己流水(獨立);base='all' 追該版總損益。
+    // 過關固定看「中4碰」回本,另附「只中3碰」保守對照(支數不變)。
+    const calc1800 = (eid: number, base: 'self' | 'all'): RecoverData | null => {
+      const rows = base === 'self' ? rowsOf(eid, 'pillar1800') : rowsOf(eid);
+      if (rows.length === 0) return null;
+      const o = oddsOf(eid);
+      const perUnitNet = 4 * o.betPrize - FULL_1800 * o.betCost;
+      const cumPnl = rows.reduce((s, r) => s + num(r.payout) - num(r.cost), 0);
+      const units = cumPnl >= 0 ? null : perUnitNet > 0 ? Math.max(1, Math.ceil(-cumPnl / perUnitNet)) : Infinity;
+      const ok = units != null && Number.isFinite(units);
+      const n = ok ? (units as number) : 0;
+      const cost = ok ? n * FULL_1800 * o.betCost : 0;
+      return {
+        cumPnl, suggestBalls: 4, cars: units, cost,
+        gain: ok ? n * 4 * o.betPrize : 0,
+        after: ok ? cumPnl + n * 4 * o.betPrize - cost : 0,
+        gain3: ok ? n * 3 * o.betPrize : 0,
+        after3: ok ? cumPnl + n * 3 * o.betPrize - cost : 0,
+      };
+    };
+    // 9000碰:追自己流水,過關固定中 2 碰回本。
+    const calc9000 = (eid: number): RecoverData | null => {
+      const rows = rowsOf(eid, 'combo9000');
+      if (rows.length === 0) return null;
+      const o = oddsOf(eid);
+      const perUnitNet = 2 * o.c9kPrize - C9K * o.c9kCost;
+      const cumPnl = rows.reduce((s, r) => s + num(r.payout) - num(r.cost), 0);
+      const units = cumPnl >= 0 ? null : perUnitNet > 0 ? Math.max(1, Math.ceil(-cumPnl / perUnitNet)) : Infinity;
+      const ok = units != null && Number.isFinite(units);
+      const n = ok ? (units as number) : 0;
+      const cost = ok ? n * C9K * o.c9kCost : 0;
+      return {
+        cumPnl, suggestBalls: 2, cars: units, cost,
+        gain: ok ? n * 2 * o.c9kPrize : 0,
+        after: ok ? cumPnl + n * 2 * o.c9kPrize - cost : 0,
       };
     };
     // 要顯示哪些版:選特定版就只那版;'all' = 全部出現過的版(排除模擬)
     const edList = selEd === 'all' ? usedEds.filter(ed => !simEids.has(ed)) : [selEd as number];
     return edList
-      .map(eid => ({ eid, name: edName(eid), single: calc(eid, 'single'), multi: calc(eid, 'multi'), p1800: calc1800(eid) }))
-      .filter(x => x.single || x.multi || x.p1800);
-  }, [entries, simEids, focusMonday, wk.allWeeks, games, selEd, usedEds, excludedIds]);
+      .map(eid => ({
+        eid, name: edName(eid),
+        single: calc(eid, 'single'), multi: calc(eid, 'multi'),
+        p1800self: calc1800(eid, 'self'), p1800all: calc1800(eid, 'all'),
+        c9000: calc9000(eid),
+      }))
+      .filter(x => x.single || x.multi || x.p1800self || x.p1800all || x.c9000);
+  }, [entries, simEids, focusMonday, wk.allWeeks, games, selEd, usedEds, excludedIds, oddsByEid]);
 
   // 彈窗要顯示的明細:該版該組在聚焦週(或全部週)的逐筆(含被排除者,給勾選用)
   const modalRows = useMemo(() => {
@@ -653,7 +740,7 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
       {recoverRows.length > 0 && (
         <div className="space-y-2.5">
           <div className="flex items-center flex-wrap gap-x-2 gap-y-1 text-[11px] font-semibold text-neutral-600 dark:text-neutral-300">
-            <span>建議車數(中 1 顆回本)<span className="ml-1 font-normal font-mono text-neutral-400">{wk.allWeeks ? '全部週' : wk.label}</span></span>
+            <span>建議下注量(回本試算)<span className="ml-1 font-normal font-mono text-neutral-400">{wk.allWeeks ? '全部週' : wk.label}</span></span>
             {excludedIds.size > 0 ? (
               <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-300 font-normal">
                 已排除 {excludedIds.size} 筆
@@ -666,11 +753,17 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
           {recoverRows.map(g => (
             <div key={g.eid} className="space-y-1.5">
               <div className="inline-block px-2 py-0.5 rounded-md bg-violet-500/10 text-violet-600 dark:text-violet-400 text-[11px] font-bold">{g.name}</div>
-              <div className="grid grid-cols-2 gap-2">
+              {/* 每版 2×2:上排 1組/2組,下排 1800碰/9000碰 */}
+              <div className="grid grid-cols-2 gap-2 items-start">
                 <RecoverCard title={`${g.name} · 1組`} d={g.single} onClick={() => setRecoverModal({ eid: g.eid, mode: 'single', label: `${g.name} 1組` })} />
                 <RecoverCard title={`${g.name} · 2組`} d={g.multi} onClick={() => setRecoverModal({ eid: g.eid, mode: 'multi', label: `${g.name} 2組` })} />
+                <Recover1800Card
+                  dSelf={g.p1800self} dAll={g.p1800all}
+                  onSelf={() => setRecoverModal({ eid: g.eid, mode: 'pillar1800', label: `${g.name} 1800碰(獨立)` })}
+                  onAll={() => setRecoverModal({ eid: g.eid, mode: 'all', label: `${g.name} 1800碰(總損益)` })}
+                />
+                <Recover9000Card d={g.c9000} onClick={() => setRecoverModal({ eid: g.eid, mode: 'combo9000', label: `${g.name} 9000碰` })} />
               </div>
-              <Recover1800Card name={g.name} d={g.p1800} onClick={() => setRecoverModal({ eid: g.eid, mode: 'all', label: `${g.name} 1800碰回本` })} />
             </div>
           ))}
         </div>
@@ -684,7 +777,17 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
           rows={modalRows}
           excluded={excludedIds}
           onToggle={toggleExcluded}
-          d={(() => { const g = recoverRows.find(r => r.eid === recoverModal.eid); return g ? (recoverModal.mode === 'all' ? g.p1800 : g[recoverModal.mode]) : null; })()}
+          d={(() => {
+            const g = recoverRows.find(r => r.eid === recoverModal.eid);
+            if (!g) return null;
+            switch (recoverModal.mode) {
+              case 'single': return g.single;
+              case 'multi': return g.multi;
+              case 'pillar1800': return g.p1800self;
+              case 'combo9000': return g.c9000;
+              default: return g.p1800all;   // 'all' = 1800碰追總損益
+            }
+          })()}
           onClose={() => setRecoverModal(null)}
         />
       )}
