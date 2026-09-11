@@ -736,7 +736,12 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
         點<strong>週</strong>展開看每日小計,再點<strong>某日</strong>看當天逐筆的下注方式 / 組合 / 成本 / 派彩 / 盈虧。
       </p>
 
-      {/* 建議車數(回本試算):依版分區,每區 1組/2組 兩張卡並排。點卡片彈明細逐筆排除。 */}
+      {/* 展開螢幕(摺疊機展開/平板/桌機,≥md)切兩欄:左建議 + 右週帳列表;窄螢幕(摺疊闔上/手機)維持單欄垂直 */}
+      <div className="grid gap-4 md:grid-cols-[minmax(0,22rem)_minmax(0,1fr)] md:items-start">
+        {/* 左欄:建議 */}
+        <div className="space-y-4">
+
+      {/* 建議下注量(回本試算):依版分區,每區 2×2(上 1組/2組,下 1800碰/9000碰)。點卡彈明細逐筆排除。 */}
       {recoverRows.length > 0 && (
         <div className="space-y-2.5">
           <div className="flex items-center flex-wrap gap-x-2 gap-y-1 text-[11px] font-semibold text-neutral-600 dark:text-neutral-300">
@@ -791,7 +796,10 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
           onClose={() => setRecoverModal(null)}
         />
       )}
+        </div>{/* /左欄 */}
 
+        {/* 右欄:週帳列表(版/下法篩選 + 總計 + 逐週) */}
+        <div className="space-y-4 min-w-0">
       {/* 版篩選 */}
       {usedEds.length > 1 && (
         <div className="flex flex-wrap items-center gap-1.5">
@@ -1090,6 +1098,8 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
           <strong>盈虧</strong> = 派彩 − 成本。待開獎的筆不計入派彩合計,開獎後自動補上。
         </span>
       </div>
+        </div>{/* /右欄 */}
+      </div>{/* /雙欄 */}
     </div>
   );
 };
