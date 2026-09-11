@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { motion } from 'motion/react';
 import { AlertTriangle, Trash2 } from 'lucide-react';
 import { useAllLedger, useLedgerActions } from '../../api/useLedger';
 import { useEditions } from '../../api/useEditions';
@@ -16,6 +17,9 @@ const num = (v: unknown): number => {
 };
 
 const isPending = (result: string) => !result || result.includes('待開') || result.includes('待對');
+
+// 垂直單欄 ↔ 左右雙欄 切換的過場(摺疊機展開/闔上時 morph,消除割裂感)
+const FOLD_SPRING = { type: 'spring' as const, damping: 26, stiffness: 210 };
 
 // 帶正負號的金額(綠賺紅賠)
 const pnlCls = (v: number) =>
@@ -584,6 +588,18 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
   // 點建議某列 → 彈出該版該組本週明細,逐筆勾選排除。mode='all' = 1800碰追總損益(該版全部下法)
   const [recoverModal, setRecoverModal] = useState<{ eid: number; mode: 'single' | 'multi' | 'all' | 'pillar1800' | 'combo9000'; label: string } | null>(null);
 
+  // 螢幕寬度(摺疊機展開/闔上):≥768px 走左右雙欄,否則垂直單欄。用 state 驅動,
+  // 讓斷點變化觸發 React 重繪,motion 的 layout 才抓得到並做 morph 過場。
+  const [isWide, setIsWide] = useState<boolean>(
+    () => typeof window !== 'undefined' && window.matchMedia('(min-width: 768px)').matches,
+  );
+  React.useEffect(() => {
+    const mq = window.matchMedia('(min-width: 768px)');
+    const on = () => setIsWide(mq.matches);
+    mq.addEventListener('change', on);
+    return () => mq.removeEventListener('change', on);
+  }, []);
+
   // 建議試算用「該版實際盤口」(非遊戲預設)—— 9000碰 combo9000_cost 每版不同,用預設會算錯。
   const [oddsByEid, setOddsByEid] = useState<Record<number, Record<string, { value: number; custom: boolean }>>>({});
   React.useEffect(() => {
@@ -736,10 +752,11 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
         點<strong>週</strong>展開看每日小計,再點<strong>某日</strong>看當天逐筆的下注方式 / 組合 / 成本 / 派彩 / 盈虧。
       </p>
 
-      {/* 展開螢幕(摺疊機展開/平板/桌機,≥md)切兩欄:左建議 + 右週帳列表;窄螢幕(摺疊闔上/手機)維持單欄垂直 */}
-      <div className="grid gap-4 md:grid-cols-[minmax(0,22rem)_minmax(0,1fr)] md:items-start">
+      {/* 展開螢幕(≥768,摺疊機展開/平板/桌機)左建議 + 右週帳雙欄;窄螢幕單欄垂直。
+          切換由 isWide 驅動 + motion layout,做 spring morph 過場避免割裂感。 */}
+      <motion.div layout transition={FOLD_SPRING} className={`flex gap-4 ${isWide ? 'flex-row items-start' : 'flex-col'}`}>
         {/* 左欄:建議 */}
-        <div className="space-y-4">
+        <motion.div layout transition={FOLD_SPRING} className={`space-y-4 ${isWide ? 'w-[22rem] shrink-0' : 'w-full'}`}>
 
       {/* 建議下注量(回本試算):依版分區,每區 2×2(上 1組/2組,下 1800碰/9000碰)。點卡彈明細逐筆排除。 */}
       {recoverRows.length > 0 && (
@@ -796,10 +813,10 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
           onClose={() => setRecoverModal(null)}
         />
       )}
-        </div>{/* /左欄 */}
+        </motion.div>{/* /左欄 */}
 
         {/* 右欄:週帳列表(版/下法篩選 + 總計 + 逐週) */}
-        <div className="space-y-4 min-w-0">
+        <motion.div layout transition={FOLD_SPRING} className="space-y-4 min-w-0 flex-1">
       {/* 版篩選 */}
       {usedEds.length > 1 && (
         <div className="flex flex-wrap items-center gap-1.5">
@@ -1098,8 +1115,8 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
           <strong>盈虧</strong> = 派彩 − 成本。待開獎的筆不計入派彩合計,開獎後自動補上。
         </span>
       </div>
-        </div>{/* /右欄 */}
-      </div>{/* /雙欄 */}
+        </motion.div>{/* /右欄 */}
+      </motion.div>{/* /雙欄 */}
     </div>
   );
 };
