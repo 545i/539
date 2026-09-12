@@ -997,8 +997,8 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
             )}
           </div>
 
-          {/* 儀表板:追平損益需成本 / 命中可得(大字) */}
-          {avgSummary.deficit > 0 && (
+          {/* 儀表板:追平損益需成本 / 命中可得(大字) —— 僅攤平模式顯示 */}
+          {recoverMode === 'average' && avgSummary.deficit > 0 && (
             <div className="grid grid-cols-2 gap-2">
               <div className="rounded-xl border border-rose-500/20 dark:border-rose-400/20 bg-rose-500/[0.04] dark:bg-rose-400/[0.05] p-3">
                 <div className="text-[10px] uppercase tracking-wider text-rose-600 dark:text-rose-400 font-semibold">追平損益需成本</div>
