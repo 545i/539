@@ -878,21 +878,26 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
       const cumPnl = rows.reduce((s, r) => s + num(r.payout) - num(r.cost), 0);
       const deficit = cumPnl < 0 ? -cumPnl : 0;
       const sumRtp = base.reduce((s, m) => s + m.rtp, 0);
-      // 依返還率(期望值)加權把「追回目標」分散:target_i = 赤字 × 比例;
-      // 每法下注量 = 命中該法可追回 target_i 所需(units = target ÷ 每單位命中可得);
-      // 成本 = units × 每單位成本(命中可追回 > 成本,因命中賠率>1;期望值仍為負,見返還率)。
+      // 注額(成本)按返還率(期望值)比例分配 → 大小注額依期望值;規模抓到「全中可追回=赤字」。
+      // 命中賠率 = 每單位命中可得 ÷ 每單位成本 (>1);故命中可追回 = 注額×命中賠率 > 注額。
+      // 總投入 = 赤字 ÷ Σ(比例×命中賠率) < 赤字(命中賠率>1);期望值仍為負(返還率<100%)。
+      const denom = sumRtp > 0
+        ? base.reduce((s, m) => s + (m.rtp / sumRtp) * (m.costPerUnit > 0 ? m.payoutPerHit / m.costPerUnit : 0), 0)
+        : 0;
+      const budget = deficit > 0 && denom > 0 ? deficit / denom : 0;      // 總投入
       const alloc: AllocMethod[] = base.map(m => {
         const weight = sumRtp > 0 ? m.rtp / sumRtp : 0;
-        const target = deficit * weight;                                  // 該法分到的追回目標
-        const units = m.payoutPerHit > 0 ? target / m.payoutPerHit : 0;
+        const cost = budget * weight;                                     // 注額 ∝ 期望值
+        const hitOdds = m.costPerUnit > 0 ? m.payoutPerHit / m.costPerUnit : 0;
         return {
-          key: m.key, label: m.label, unit: m.unit, rtp: m.rtp, weight, units,
-          cost: units * m.costPerUnit,
-          ifHit: units * m.payoutPerHit,                                  // 命中可追回(= target)
+          key: m.key, label: m.label, unit: m.unit, rtp: m.rtp, weight,
+          units: m.costPerUnit > 0 ? cost / m.costPerUnit : 0,
+          cost,
+          ifHit: cost * hitOdds,                                          // 命中可追回(> 成本)
         };
-      }).sort((a, b) => b.rtp - a.rtp);                                   // 依期望值排序:大注額(大柱)在前
-      const totalCost = alloc.reduce((s, m) => s + m.cost, 0);
-      const bestKey = alloc[0]?.key ?? '';                                // 返還率最高
+      }).sort((a, b) => b.cost - a.cost);                                 // 依注額大小排序:大注額(大柱)在前
+      const totalCost = budget;
+      const bestKey = base.reduce((b, m) => (m.rtp > b.rtp ? m : b), base[0]).key;  // 返還率(期望值)最高
       return { name: edName(eid), deficit, cumPnl, totalCost, alloc, bestKey, hasData: rows.length > 0 };
     }).filter(x => x.hasData);
   }, [entries, simEids, focusMonday, wk.allWeeks, games, selEd, usedEds, excludedIds, oddsByEid, avgBase]);
