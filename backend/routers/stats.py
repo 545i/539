@@ -7,7 +7,8 @@ from pydantic import BaseModel, Field
 from backend import reminders, watch_store
 from backend.data import get_game, load_df
 from backend.deps import current_user
-from core import combo9000, notify, stats
+from core import combo9000, notify, pillar, stats
+from core.loader import draws_as_lists
 
 router = APIRouter(prefix="/stats", tags=["stats"])
 
@@ -50,6 +51,25 @@ def tens_pairs(game: str = Query(...), threshold: int = Query(3, ge=1)):
     g = get_game(game)
     df = load_df(game)
     return stats.tens_pair_alerts(df, threshold=threshold, num_max=g.num_max)
+
+
+@router.get("/pillar-missing")
+def pillar_missing(game: str = Query(...),
+                   threshold: int = Query(pillar.PILLAR_ALERT_DRAWS, ge=1)):
+    """1800碰真正的三柱斷柱:第一柱(10~18)/第二柱(20~29)/第三柱(其餘) 各自目前連續
+    幾期整柱沒開。1800碰過關需三柱都有開,任一柱斷 = 沒過關。只有 39選5 遊戲支援。
+    """
+    g = get_game(game)
+    if not pillar.supports(g):
+        return []
+    draws = draws_as_lists(load_df(game))
+    pm = pillar.pillar_missing(draws, g.num_max)
+    return [
+        {"pillar": i, "name": v["name"], "label": v["label"],
+         "current": v["current"], "max_gap": v["max_gap"], "size": v["size"],
+         "alert": v["current"] >= threshold}
+        for i, v in sorted(pm.items())
+    ]
 
 
 @router.get("/combo9000-watch")

@@ -15,7 +15,7 @@ import {
 import { INITIAL_PILLAR_RECORDS, PILLAR_THEORY_ROWS } from '../../data/lotteryData';
 import { useWeekNav, WeekNav, WeekSubtotal } from '../WeekNav';
 import { LotteryGame } from '../../types';
-import { api, PillarInfoDTO, TensPairDTO, LedgerMode } from '../../api/client';
+import { api, PillarInfoDTO, TensPairDTO, PillarMissingDTO, LedgerMode } from '../../api/client';
 import { useAsync } from '../../api/useAsync';
 import { useGame } from '../../api/useGame';
 import { useLedger } from '../../api/useLedger';
@@ -91,7 +91,12 @@ export const ThreePillarTab: React.FC<{ onOpenLedger?: (mode: LedgerMode) => voi
   const pillars: number[][] = infoReq.data ? infoReq.data.pillars : [[], [], []];
   const sizes: number[] = infoReq.data ? infoReq.data.sizes : [0, 0, 0];
 
-  // 區間組合斷檔提醒
+  // 1800碰真三柱斷柱提醒(主):第一柱/第二柱/第三柱 任一連續 N 期沒開 = 斷柱
+  const pillarMissReq = useAsync<PillarMissingDTO[] | null>(
+    () => (supported ? api.pillarMissing(gameKey, 4) : Promise.resolve(null)),
+    [gameKey, supported],
+  );
+  // 十位段配對斷檔提醒(輔助):任兩十位段連續幾期都沒開
   const pairsReq = useAsync<TensPairDTO[] | null>(
     () => (supported ? api.tensPairs(gameKey, 3) : Promise.resolve(null)),
     [gameKey, supported],
@@ -479,19 +484,75 @@ export const ThreePillarTab: React.FC<{ onOpenLedger?: (mode: LedgerMode) => voi
             </button>
           </div>
 
-          {/* 區間組合斷檔提醒 */}
+          {/* 1800碰三柱斷柱提醒(主):任一柱連續沒開 = 斷柱,過關需三柱都開 */}
           <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-xs font-display font-bold uppercase tracking-wider text-neutral-900 dark:text-white">
-                02 / 1800碰斷檔提醒
+                02 / 1800碰三柱斷檔
               </span>
               <span className="text-[11px] font-mono text-neutral-400">
-                連續 3 期未開
+                連續 ≥4 期沒開
               </span>
             </div>
 
             <div className="text-[11px] text-neutral-500 dark:text-neutral-400">
-              任兩個十位區段連續 3 期都沒開出號碼，就列為警示。
+              1800碰過關需<strong>三柱都有開</strong>；任一柱（第一柱 10~18 / 第二柱 20~29 / 第三柱其餘）整柱沒開就斷柱。連續 4 期沒開列為警示。
+            </div>
+
+            {pillarMissReq.loading && (
+              <div className="text-xs text-neutral-400">載入三柱統計中…</div>
+            )}
+            {pillarMissReq.error && (
+              <div className="text-xs text-rose-500">{pillarMissReq.error}</div>
+            )}
+
+            <div className="space-y-2">
+              {(pillarMissReq.data || []).map(p => (
+                <div
+                  key={p.pillar}
+                  className={`p-2.5 rounded-xl border flex items-center justify-between gap-2 ${
+                    p.alert
+                      ? 'bg-amber-500/10 border-amber-500/20'
+                      : 'border-black/[0.06] dark:border-white/[0.06] bg-black/[0.02] dark:bg-white/[0.03]'
+                  }`}
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      {p.alert && (
+                        <AlertTriangle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                      )}
+                      <span className={`text-xs font-mono font-bold ${
+                        p.alert ? 'text-amber-900 dark:text-amber-300' : 'text-neutral-900 dark:text-white'
+                      }`}>
+                        {p.name}
+                      </span>
+                    </div>
+                    <div className="text-[10px] font-mono text-neutral-400 mt-0.5">{p.label}</div>
+                  </div>
+                  <div className={`text-[11px] font-mono shrink-0 text-right ${
+                    p.alert ? 'text-amber-900 dark:text-amber-300 font-bold' : 'text-neutral-400'
+                  }`}>
+                    {p.current > 0 ? `連續 ${p.current} 期沒開` : '本期有開'}
+                    <div className="text-[10px] text-neutral-400">歷史最長 {p.max_gap}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* 十位段配對斷檔提醒(輔助):任兩十位段連續幾期都沒開 */}
+          <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-display font-bold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
+                十位段配對（輔助）
+              </span>
+              <span className="text-[11px] font-mono text-neutral-400">
+                連續 3 期都沒開
+              </span>
+            </div>
+
+            <div className="text-[11px] text-neutral-500 dark:text-neutral-400">
+              參考用：任兩個十位段（0頭~3頭）連續 3 期<strong>都沒開出號碼</strong>才列示（與三柱定義不同，僅供輔助觀察）。
             </div>
 
             {pairsReq.loading && (
