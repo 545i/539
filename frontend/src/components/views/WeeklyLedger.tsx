@@ -388,42 +388,47 @@ const Recover9000Card: React.FC<{ dSelf: RecoverData | null; dAll: RecoverData |
 // 攤平模式:一個版一張卡,依「返還率(期望值)加權」把追回金額分散到四種下法(不集中單一)。
 type AllocMethod = { key: string; label: string; unit: string; rtp: number; weight: number; amount: number; units: number; expRecover: number };
 type AverageData = { name: string; deficit: number; cumPnl: number; total: number; alloc: AllocMethod[]; bestKey: string; hasData: boolean };
-const AverageCard: React.FC<{ d: AverageData }> = ({ d }) => (
-  <div className="rounded-xl border border-black/10 dark:border-white/10 bg-white dark:bg-[#121212] p-3 space-y-2">
+// 攤平單一下法格(比照 RecoverCard 尺寸,湊成每版 2×2)。
+const AverageMethodCell: React.FC<{ m: AllocMethod; best: boolean; hasDeficit: boolean }> = ({ m, best, hasDeficit }) => (
+  <div className={`rounded-xl border p-3 ${best && hasDeficit ? 'border-emerald-500/40 bg-emerald-500/[0.06]' : 'border-black/10 dark:border-white/10 bg-white dark:bg-[#121212]'}`}>
     <div className="flex items-center justify-between">
-      <span className="text-[11px] font-bold text-violet-600 dark:text-violet-400">{d.name}</span>
-      {d.deficit > 0
-        ? <span className="text-[10px] font-mono text-neutral-500">目前 <span className="text-rose-600 dark:text-rose-400 font-semibold">{sfmt1(d.cumPnl)}</span></span>
-        : <span className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400 font-semibold">未虧損 {sfmt1(d.cumPnl)}</span>}
+      <span className="text-[10px] uppercase tracking-wider font-semibold text-neutral-500 dark:text-neutral-300">{m.label}</span>
+      {best && hasDeficit && <span className="text-[9px] text-emerald-600 dark:text-emerald-400 font-semibold">期望值最高</span>}
     </div>
-    {d.deficit <= 0 ? (
-      <div className="text-[11px] text-neutral-400">本週未虧損,無需攤平。</div>
+    {!hasDeficit ? (
+      <div className="mt-1 text-[11px] text-neutral-400">—</div>
     ) : (
       <>
-        <div className="text-[10px] font-mono text-neutral-500">
-          需投入 <span className="font-bold text-neutral-900 dark:text-white">{fmt1(d.total)}</span> · 期望追回 <span className="text-emerald-600 dark:text-emerald-400 font-semibold">{fmt1(d.deficit)}</span>
+        <div className="mt-0.5 flex items-baseline gap-1">
+          <span className="font-mono font-bold text-2xl text-neutral-900 dark:text-white">{(m.weight * 100).toFixed(1)}</span>
+          <span className="text-[11px] text-neutral-400">% 比例</span>
         </div>
-        <div className="space-y-0.5">
-          <div className="grid grid-cols-[1fr_auto_auto_auto] gap-x-2 text-[9px] uppercase tracking-wider text-neutral-400 px-1">
-            <span>下法</span><span className="text-right">比例</span><span className="text-right">建議量</span><span className="text-right">期望回收</span>
-          </div>
-          {d.alloc.map(m => (
-            <div key={m.key} className={`grid grid-cols-[1fr_auto_auto_auto] gap-x-2 text-[11px] font-mono px-1 py-0.5 rounded ${m.key === d.bestKey ? 'bg-emerald-500/10' : ''}`}>
-              <span className="font-sans text-neutral-700 dark:text-neutral-200 truncate">
-                {m.label}
-                {m.key === d.bestKey && <span className="ml-1 text-[9px] text-emerald-600 dark:text-emerald-400">期望值最高</span>}
-                <span className="ml-1 text-[9px] text-neutral-400">RTP {(m.rtp * 100).toFixed(1)}%</span>
-              </span>
-              <span className="text-right text-neutral-800 dark:text-neutral-100 font-semibold">{(m.weight * 100).toFixed(1)}%</span>
-              <span className="text-right text-neutral-600 dark:text-neutral-300">{fmt1(m.units)} {m.unit}</span>
-              <span className="text-right text-emerald-600 dark:text-emerald-400">{fmt1(m.expRecover)}</span>
-            </div>
-          ))}
-        </div>
-        <div className="text-[9px] text-neutral-400 leading-relaxed border-t border-black/[0.05] dark:border-white/[0.06] pt-1">
-          比例 = 各下法返還率 ÷ 四法返還率總和(期望值越高分越多,不集中單一);金額按比例分散,建議量 = 金額 ÷ 每單位成本。返還率&lt;100%(負期望),故需投入 &gt; 追回額。
+        <div className="mt-1.5 space-y-0.5 text-[11px] font-mono">
+          <div className="flex justify-between"><span className="text-neutral-500">建議量</span><span className="font-semibold text-neutral-800 dark:text-neutral-100">{fmt1(m.units)} {m.unit}</span></div>
+          <div className="flex justify-between"><span className="text-neutral-500">期望回收</span><span className="font-semibold text-emerald-600 dark:text-emerald-400">{fmt1(m.expRecover)}</span></div>
+          <div className="flex justify-between border-t border-black/[0.06] dark:border-white/[0.06] pt-0.5 mt-0.5"><span className="text-neutral-500">返還率</span><span className="font-semibold text-neutral-700 dark:text-neutral-200">{(m.rtp * 100).toFixed(1)}%</span></div>
         </div>
       </>
+    )}
+  </div>
+);
+
+// 攤平模式:每版 = 版名 + 摘要 + 四下法 2×2(與流水同版面比例)。
+const AverageCard: React.FC<{ d: AverageData }> = ({ d }) => (
+  <div className="space-y-1.5">
+    <div className="flex items-center gap-2 flex-wrap">
+      <span className="inline-block px-2 py-0.5 rounded-md bg-violet-500/10 text-violet-600 dark:text-violet-400 text-[11px] font-bold">{d.name}</span>
+      {d.deficit > 0
+        ? <span className="text-[10px] font-mono text-neutral-500">需投入 <span className="font-bold text-neutral-900 dark:text-white">{fmt1(d.total)}</span> · 期望追回 <span className="text-emerald-600 dark:text-emerald-400 font-semibold">{fmt1(d.deficit)}</span></span>
+        : <span className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400 font-semibold">未虧損 {sfmt1(d.cumPnl)},無需攤平</span>}
+    </div>
+    <div className="grid grid-cols-2 gap-2 items-start">
+      {d.alloc.map(m => <AverageMethodCell key={m.key} m={m} best={m.key === d.bestKey} hasDeficit={d.deficit > 0} />)}
+    </div>
+    {d.deficit > 0 && (
+      <div className="text-[9px] text-neutral-400 leading-relaxed">
+        比例 = 返還率 ÷ 四法總和(期望值越高分越多,不集中單一);返還率&lt;100%(負期望),需投入 &gt; 追回額。
+      </div>
     )}
   </div>
 );
