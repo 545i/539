@@ -386,9 +386,10 @@ const Recover9000Card: React.FC<{ dSelf: RecoverData | null; dAll: RecoverData |
 );
 
 // 攤平模式:一個版一張卡,依「返還率(期望值)加權」把追回金額分散到四種下法(不集中單一)。
-type AllocMethod = { key: string; label: string; unit: string; rtp: number; weight: number; amount: number; units: number; expRecover: number };
-type AverageData = { name: string; deficit: number; cumPnl: number; total: number; alloc: AllocMethod[]; bestKey: string; hasData: boolean };
+type AllocMethod = { key: string; label: string; unit: string; rtp: number; weight: number; units: number; cost: number; ifHit: number };
+type AverageData = { name: string; deficit: number; cumPnl: number; totalCost: number; alloc: AllocMethod[]; bestKey: string; hasData: boolean };
 // 攤平單一下法格(比照 RecoverCard 尺寸,湊成每版 2×2)。
+// 大字 = 建議量(可執行數字);比例改小字並用長條(柱)呈現大小,依期望值排序 → 大柱在前。
 const AverageMethodCell: React.FC<{ m: AllocMethod; best: boolean; hasDeficit: boolean }> = ({ m, best, hasDeficit }) => (
   <div className={`rounded-xl border p-3 ${best && hasDeficit ? 'border-emerald-500/40 bg-emerald-500/[0.06]' : 'border-black/10 dark:border-white/10 bg-white dark:bg-[#121212]'}`}>
     <div className="flex items-center justify-between">
@@ -399,13 +400,26 @@ const AverageMethodCell: React.FC<{ m: AllocMethod; best: boolean; hasDeficit: b
       <div className="mt-1 text-[11px] text-neutral-400">—</div>
     ) : (
       <>
+        {/* 大字 = 建議下注量 */}
         <div className="mt-0.5 flex items-baseline gap-1">
-          <span className="font-mono font-bold text-2xl text-neutral-900 dark:text-white">{(m.weight * 100).toFixed(1)}</span>
-          <span className="text-[11px] text-neutral-400">% 比例</span>
+          <span className="font-mono font-bold text-2xl text-neutral-900 dark:text-white">{fmt1(m.units)}</span>
+          <span className="text-[11px] text-neutral-400">{m.unit}</span>
+        </div>
+        {/* 比例小字 + 長條(柱):依期望值分大小柱 */}
+        <div className="mt-1.5">
+          <div className="flex justify-between text-[10px] font-mono text-neutral-500">
+            <span>攤平比例</span><span className="font-semibold text-neutral-700 dark:text-neutral-200">{(m.weight * 100).toFixed(1)}%</span>
+          </div>
+          <div className="mt-0.5 h-1.5 rounded-full bg-black/10 dark:bg-white/10 overflow-hidden">
+            <div
+              className={`h-full rounded-full ${best ? 'bg-emerald-500' : 'bg-violet-400 dark:bg-violet-500'}`}
+              style={{ width: `${Math.max(2, Math.min(100, m.weight * 100))}%` }}
+            />
+          </div>
         </div>
         <div className="mt-1.5 space-y-0.5 text-[11px] font-mono">
-          <div className="flex justify-between"><span className="text-neutral-500">建議量</span><span className="font-semibold text-neutral-800 dark:text-neutral-100">{fmt1(m.units)} {m.unit}</span></div>
-          <div className="flex justify-between"><span className="text-neutral-500">期望回收</span><span className="font-semibold text-emerald-600 dark:text-emerald-400">{fmt1(m.expRecover)}</span></div>
+          <div className="flex justify-between"><span className="text-neutral-500">成本</span><span className="font-semibold text-neutral-800 dark:text-neutral-100">{fmt1(m.cost)}</span></div>
+          <div className="flex justify-between"><span className="text-neutral-500">命中可追回</span><span className="font-semibold text-emerald-600 dark:text-emerald-400">{fmt1(m.ifHit)}</span></div>
           <div className="flex justify-between border-t border-black/[0.06] dark:border-white/[0.06] pt-0.5 mt-0.5"><span className="text-neutral-500">返還率</span><span className="font-semibold text-neutral-700 dark:text-neutral-200">{(m.rtp * 100).toFixed(1)}%</span></div>
         </div>
       </>
@@ -419,7 +433,7 @@ const AverageCard: React.FC<{ d: AverageData }> = ({ d }) => (
     <div className="flex items-center gap-2 flex-wrap">
       <span className="inline-block px-2 py-0.5 rounded-md bg-violet-500/10 text-violet-600 dark:text-violet-400 text-[11px] font-bold">{d.name}</span>
       {d.deficit > 0
-        ? <span className="text-[10px] font-mono text-neutral-500">需投入 <span className="font-bold text-neutral-900 dark:text-white">{fmt1(d.total)}</span> · 期望追回 <span className="text-emerald-600 dark:text-emerald-400 font-semibold">{fmt1(d.deficit)}</span></span>
+        ? <span className="text-[10px] font-mono text-neutral-500">總投入 <span className="font-bold text-neutral-900 dark:text-white">{fmt1(d.totalCost)}</span> · 全中可追回 <span className="text-emerald-600 dark:text-emerald-400 font-semibold">{fmt1(d.deficit)}</span></span>
         : <span className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400 font-semibold">未虧損 {sfmt1(d.cumPnl)},無需攤平</span>}
     </div>
     <div className="grid grid-cols-2 gap-2 items-start">
@@ -427,7 +441,7 @@ const AverageCard: React.FC<{ d: AverageData }> = ({ d }) => (
     </div>
     {d.deficit > 0 && (
       <div className="text-[9px] text-neutral-400 leading-relaxed">
-        比例 = 返還率 ÷ 四法總和(期望值越高分越多,不集中單一);返還率&lt;100%(負期望),需投入 &gt; 追回額。
+        比例(注額大小)= 返還率 ÷ 四法總和(期望值越高注額越大);各法注額 = 命中可追回該份目標所需。命中賠率&gt;1 故命中可追回&gt;成本;但返還率&lt;100%(負期望),長期仍虧,攤平只挑最不虧的組合。
       </div>
     )}
   </div>
@@ -848,36 +862,38 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
     const edList = selEd === 'all' ? usedEds.filter(ed => !simEids.has(ed)) : [selEd as number];
     return edList.map((eid): AverageData => {
       const o = oddsOf(eid);
-      // 各下法「返還率(期望回收 ÷ 成本)」與每單位成本
+      // 各下法:返還率(理論期望值)、每單位成本、命中一次每單位可得(target-hit 用)
       const twoRtp = o.costPerCar > 0 ? (P_DAN * o.winPayout) / o.costPerCar : 0;
       const pilCost = 1800 * o.betCost;
       const pilRtp = pilCost > 0 ? ((P_PILLAR4 * 4 + P_PILLAR3 * 3) * o.betPrize) / pilCost : 0;
       const nineCost = 9000 * o.c9kCost;
       const nineRtp = nineCost > 0 ? (P_9000PASS * 2 * o.c9kPrize) / nineCost : 0;
-      const base: { key: string; label: string; unit: string; rtp: number; costPerUnit: number }[] = [
-        { key: 'single', label: '1組', unit: '車', rtp: twoRtp, costPerUnit: o.costPerCar },
-        { key: 'multi', label: '2組', unit: '車', rtp: twoRtp, costPerUnit: o.costPerCar },
-        { key: 'pillar1800', label: '1800碰', unit: '支', rtp: pilRtp, costPerUnit: pilCost },
-        { key: 'combo9000', label: '9000碰', unit: '支', rtp: nineRtp, costPerUnit: nineCost },
+      const base: { key: string; label: string; unit: string; rtp: number; costPerUnit: number; payoutPerHit: number }[] = [
+        { key: 'single', label: '1組', unit: '車', rtp: twoRtp, costPerUnit: o.costPerCar, payoutPerHit: o.winPayout },      // 中1顆/車
+        { key: 'multi', label: '2組', unit: '車', rtp: twoRtp, costPerUnit: o.costPerCar, payoutPerHit: o.winPayout },
+        { key: 'pillar1800', label: '1800碰', unit: '支', rtp: pilRtp, costPerUnit: pilCost, payoutPerHit: 4 * o.betPrize }, // 中4碰/支
+        { key: 'combo9000', label: '9000碰', unit: '支', rtp: nineRtp, costPerUnit: nineCost, payoutPerHit: 2 * o.c9kPrize },// 中2碰/支
       ];
       const rows = avgBase === 'total' ? rowsOf(eid) : rowsOf(eid, avgBase);
       const cumPnl = rows.reduce((s, r) => s + num(r.payout) - num(r.cost), 0);
       const deficit = cumPnl < 0 ? -cumPnl : 0;
       const sumRtp = base.reduce((s, m) => s + m.rtp, 0);
-      // 需投入總額 T:讓「期望回收 = Σ 金額×RTP = Σ T·w·RTP = 赤字」
-      const denom = sumRtp > 0 ? base.reduce((s, m) => s + (m.rtp / sumRtp) * m.rtp, 0) : 0;
-      const total = deficit > 0 && denom > 0 ? deficit / denom : 0;
+      // 依返還率(期望值)加權把「追回目標」分散:target_i = 赤字 × 比例;
+      // 每法下注量 = 命中該法可追回 target_i 所需(units = target ÷ 每單位命中可得);
+      // 成本 = units × 每單位成本(命中可追回 > 成本,因命中賠率>1;期望值仍為負,見返還率)。
       const alloc: AllocMethod[] = base.map(m => {
         const weight = sumRtp > 0 ? m.rtp / sumRtp : 0;
-        const amount = total * weight;
+        const target = deficit * weight;                                  // 該法分到的追回目標
+        const units = m.payoutPerHit > 0 ? target / m.payoutPerHit : 0;
         return {
-          key: m.key, label: m.label, unit: m.unit, rtp: m.rtp, weight, amount,
-          units: m.costPerUnit > 0 ? amount / m.costPerUnit : 0,
-          expRecover: amount * m.rtp,
+          key: m.key, label: m.label, unit: m.unit, rtp: m.rtp, weight, units,
+          cost: units * m.costPerUnit,
+          ifHit: units * m.payoutPerHit,                                  // 命中可追回(= target)
         };
-      });
-      const bestKey = base.reduce((b, m) => (m.rtp > b.rtp ? m : b), base[0]).key;
-      return { name: edName(eid), deficit, cumPnl, total, alloc, bestKey, hasData: rows.length > 0 };
+      }).sort((a, b) => b.rtp - a.rtp);                                   // 依期望值排序:大注額(大柱)在前
+      const totalCost = alloc.reduce((s, m) => s + m.cost, 0);
+      const bestKey = alloc[0]?.key ?? '';                                // 返還率最高
+      return { name: edName(eid), deficit, cumPnl, totalCost, alloc, bestKey, hasData: rows.length > 0 };
     }).filter(x => x.hasData);
   }, [entries, simEids, focusMonday, wk.allWeeks, games, selEd, usedEds, excludedIds, oddsByEid, avgBase]);
 
