@@ -21,6 +21,13 @@ const isPending = (result: string) => !result || result.includes('待開') || re
 // 垂直單欄 ↔ 左右雙欄 切換的過場(摺疊機展開/闔上時 morph,消除割裂感)
 const FOLD_SPRING = { type: 'spring' as const, damping: 26, stiffness: 210 };
 
+// 今彩539 各下法「理論命中機率」(39 取 5,固定常數;對齊 core/pillar.hit_probs 與 5/39 膽中)。
+// 攤平模式用「機率×該版盤口派彩 ÷ 成本 = 返還率(期望值)」比較四種下法。
+const P_DAN = 5 / 39;          // 二合:膽號被開出(整車中)機率 ≈ 0.12821
+const P_PILLAR4 = 0.30871;     // 1800碰:中 4 碰機率
+const P_PILLAR3 = 0.24490;     // 1800碰:中 3 碰機率
+const P_9000PASS = 0.27356;    // 9000碰:過關(四段各≥1)機率;過關固定中 2 碰
+
 // 帶正負號的金額(綠賺紅賠)
 const pnlCls = (v: number) =>
   v > 0 ? 'text-emerald-600 dark:text-emerald-400'
@@ -378,6 +385,49 @@ const Recover9000Card: React.FC<{ dSelf: RecoverData | null; dAll: RecoverData |
   </div>
 );
 
+// 攤平模式:一個版一張卡,依「返還率(期望值)加權」把追回金額分散到四種下法(不集中單一)。
+type AllocMethod = { key: string; label: string; unit: string; rtp: number; weight: number; amount: number; units: number; expRecover: number };
+type AverageData = { name: string; deficit: number; cumPnl: number; total: number; alloc: AllocMethod[]; bestKey: string; hasData: boolean };
+const AverageCard: React.FC<{ d: AverageData }> = ({ d }) => (
+  <div className="rounded-xl border border-black/10 dark:border-white/10 bg-white dark:bg-[#121212] p-3 space-y-2">
+    <div className="flex items-center justify-between">
+      <span className="text-[11px] font-bold text-violet-600 dark:text-violet-400">{d.name}</span>
+      {d.deficit > 0
+        ? <span className="text-[10px] font-mono text-neutral-500">目前 <span className="text-rose-600 dark:text-rose-400 font-semibold">{sfmt1(d.cumPnl)}</span></span>
+        : <span className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400 font-semibold">未虧損 {sfmt1(d.cumPnl)}</span>}
+    </div>
+    {d.deficit <= 0 ? (
+      <div className="text-[11px] text-neutral-400">本週未虧損,無需攤平。</div>
+    ) : (
+      <>
+        <div className="text-[10px] font-mono text-neutral-500">
+          需投入 <span className="font-bold text-neutral-900 dark:text-white">{fmt1(d.total)}</span> · 期望追回 <span className="text-emerald-600 dark:text-emerald-400 font-semibold">{fmt1(d.deficit)}</span>
+        </div>
+        <div className="space-y-0.5">
+          <div className="grid grid-cols-[1fr_auto_auto_auto] gap-x-2 text-[9px] uppercase tracking-wider text-neutral-400 px-1">
+            <span>下法</span><span className="text-right">比例</span><span className="text-right">建議量</span><span className="text-right">期望回收</span>
+          </div>
+          {d.alloc.map(m => (
+            <div key={m.key} className={`grid grid-cols-[1fr_auto_auto_auto] gap-x-2 text-[11px] font-mono px-1 py-0.5 rounded ${m.key === d.bestKey ? 'bg-emerald-500/10' : ''}`}>
+              <span className="font-sans text-neutral-700 dark:text-neutral-200 truncate">
+                {m.label}
+                {m.key === d.bestKey && <span className="ml-1 text-[9px] text-emerald-600 dark:text-emerald-400">期望值最高</span>}
+                <span className="ml-1 text-[9px] text-neutral-400">RTP {(m.rtp * 100).toFixed(1)}%</span>
+              </span>
+              <span className="text-right text-neutral-800 dark:text-neutral-100 font-semibold">{(m.weight * 100).toFixed(1)}%</span>
+              <span className="text-right text-neutral-600 dark:text-neutral-300">{fmt1(m.units)} {m.unit}</span>
+              <span className="text-right text-emerald-600 dark:text-emerald-400">{fmt1(m.expRecover)}</span>
+            </div>
+          ))}
+        </div>
+        <div className="text-[9px] text-neutral-400 leading-relaxed border-t border-black/[0.05] dark:border-white/[0.06] pt-1">
+          比例 = 各下法返還率 ÷ 四法返還率總和(期望值越高分越多,不集中單一);金額按比例分散,建議量 = 金額 ÷ 每單位成本。返還率&lt;100%(負期望),故需投入 &gt; 追回額。
+        </div>
+      </>
+    )}
+  </div>
+);
+
 // 建議車數明細彈窗:逐筆點擊排除/納入(排除的不算進要追的赤字);建議車數即時重算。
 type ModalRow = { id: string; date: string; tag: string; balls: number[]; cost: number; payout: number; pnl: number; result: string };
 const RecoverModal: React.FC<{
@@ -632,6 +682,10 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
   };
   // 點建議某列 → 彈出該版該組本週明細,逐筆勾選排除。mode='all' = 1800碰追總損益(該版全部下法)
   const [recoverModal, setRecoverModal] = useState<{ eid: number; mode: 'single' | 'multi' | 'all' | 'pillar1800' | 'combo9000' | 'combo9000_all'; label: string } | null>(null);
+  // 建議切換:'flow'=流水(各下法回本試算) / 'average'=攤平(依返還率加權分散追回)
+  const [recoverMode, setRecoverMode] = useState<'flow' | 'average'>('flow');
+  // 攤平追回的赤字基準:'total'=該版總損益,或某單一下法
+  const [avgBase, setAvgBase] = useState<'total' | 'single' | 'multi' | 'pillar1800' | 'combo9000'>('total');
 
   // 螢幕寬度(摺疊機展開/闔上):≥768px 走左右雙欄,否則垂直單欄。用 state 驅動,
   // 讓斷點變化觸發 React 重繪,motion 的 layout 才抓得到並做 morph 過場。
@@ -759,6 +813,69 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
       .filter(x => x.single || x.multi || x.p1800self || x.p1800all || x.c9000self || x.c9000all);
   }, [entries, simEids, focusMonday, wk.allWeeks, games, selEd, usedEds, excludedIds, oddsByEid]);
 
+  // 攤平模式:依「返還率(理論期望值)加權」把該版赤字分散到四種下法(不集中單一)。
+  const averageRows = useMemo((): AverageData[] => {
+    const gDef = games.find(x => x.key === 'lotto539') ?? games[0];
+    const oddsOf = (eid: number) => {
+      const f = oddsByEid[eid];
+      const get = (k: string, dflt: number) => (f && f[k] ? num(f[k].value) : dflt);
+      return {
+        costPerCar: get('cost_per_car', num(gDef?.default_cost_per_car)),
+        winPayout: get('win_payout', num(gDef?.default_win_payout)),
+        betCost: get('bet_cost', num(gDef?.default_bet_cost)),
+        betPrize: get('bet_prize', num(gDef?.default_bet_prize)),
+        c9kCost: get('combo9000_cost', get('combo_cost4', 50)),
+        c9kPrize: get('combo9000_prize', 800000),
+      };
+    };
+    const inFocus = (r: Record<string, unknown>) =>
+      wk.allWeeks ? true : weekMonday(String(r.date ?? '')) === focusMonday;
+    const rowsOf = (eid: number, mode?: string) => entries
+      .filter(e => {
+        const r = e.record as Record<string, unknown>;
+        if ((num(r.edition) || 1) !== eid) return false;
+        if (mode && String(r.mode ?? '') !== mode) return false;
+        if (excludedIds.has(String(e.id))) return false;
+        return inFocus(r);
+      })
+      .map(e => e.record as Record<string, unknown>);
+
+    const edList = selEd === 'all' ? usedEds.filter(ed => !simEids.has(ed)) : [selEd as number];
+    return edList.map((eid): AverageData => {
+      const o = oddsOf(eid);
+      // 各下法「返還率(期望回收 ÷ 成本)」與每單位成本
+      const twoRtp = o.costPerCar > 0 ? (P_DAN * o.winPayout) / o.costPerCar : 0;
+      const pilCost = 1800 * o.betCost;
+      const pilRtp = pilCost > 0 ? ((P_PILLAR4 * 4 + P_PILLAR3 * 3) * o.betPrize) / pilCost : 0;
+      const nineCost = 9000 * o.c9kCost;
+      const nineRtp = nineCost > 0 ? (P_9000PASS * 2 * o.c9kPrize) / nineCost : 0;
+      const base: { key: string; label: string; unit: string; rtp: number; costPerUnit: number }[] = [
+        { key: 'single', label: '1組', unit: '車', rtp: twoRtp, costPerUnit: o.costPerCar },
+        { key: 'multi', label: '2組', unit: '車', rtp: twoRtp, costPerUnit: o.costPerCar },
+        { key: 'pillar1800', label: '1800碰', unit: '支', rtp: pilRtp, costPerUnit: pilCost },
+        { key: 'combo9000', label: '9000碰', unit: '支', rtp: nineRtp, costPerUnit: nineCost },
+      ];
+      const rows = avgBase === 'total' ? rowsOf(eid) : rowsOf(eid, avgBase);
+      const cumPnl = rows.reduce((s, r) => s + num(r.payout) - num(r.cost), 0);
+      const deficit = cumPnl < 0 ? -cumPnl : 0;
+      const sumRtp = base.reduce((s, m) => s + m.rtp, 0);
+      // 需投入總額 T:讓「期望回收 = Σ 金額×RTP = Σ T·w·RTP = 赤字」
+      const denom = sumRtp > 0 ? base.reduce((s, m) => s + (m.rtp / sumRtp) * m.rtp, 0) : 0;
+      const total = deficit > 0 && denom > 0 ? deficit / denom : 0;
+      const alloc: AllocMethod[] = base.map(m => {
+        const weight = sumRtp > 0 ? m.rtp / sumRtp : 0;
+        const amount = total * weight;
+        return {
+          key: m.key, label: m.label, unit: m.unit, rtp: m.rtp, weight, amount,
+          units: m.costPerUnit > 0 ? amount / m.costPerUnit : 0,
+          expRecover: amount * m.rtp,
+        };
+      });
+      const bestKey = base.reduce((b, m) => (m.rtp > b.rtp ? m : b), base[0]).key;
+      return { name: edName(eid), deficit, cumPnl, total, alloc, bestKey, hasData: rows.length > 0 };
+    }).filter(x => x.hasData);
+  }, [entries, simEids, focusMonday, wk.allWeeks, games, selEd, usedEds, excludedIds, oddsByEid, avgBase]);
+
   // 彈窗要顯示的明細:該版該組在聚焦週(或全部週)的逐筆(含被排除者,給勾選用)
   const modalRows = useMemo(() => {
     if (!recoverModal) return [];
@@ -806,10 +923,19 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
         <motion.div layout transition={FOLD_SPRING} className={`space-y-4 ${isWide ? 'w-[22rem] shrink-0' : 'w-full'}`}>
 
       {/* 建議下注量(回本試算):依版分區,每區 2×2(上 1組/2組,下 1800碰/9000碰)。點卡彈明細逐筆排除。 */}
-      {recoverRows.length > 0 && (
+      {(recoverRows.length > 0 || averageRows.length > 0) && (
         <div className="space-y-2.5">
           <div className="flex items-center flex-wrap gap-x-2 gap-y-1 text-[11px] font-semibold text-neutral-600 dark:text-neutral-300">
-            <span>建議下注量(回本試算)<span className="ml-1 font-normal font-mono text-neutral-400">{wk.allWeeks ? '全部週' : wk.label}</span></span>
+            <span>建議下注量<span className="ml-1 font-normal font-mono text-neutral-400">{wk.allWeeks ? '全部週' : wk.label}</span></span>
+            {/* 流水(各下法回本) / 攤平(依返還率加權分散) 切換 */}
+            <span className="inline-flex rounded-lg border border-black/10 dark:border-white/10 overflow-hidden">
+              {(['flow', 'average'] as const).map(m => (
+                <button key={m} type="button" onClick={() => setRecoverMode(m)}
+                  className={`px-2 py-0.5 text-[10px] font-semibold transition-colors ${recoverMode === m ? 'bg-black text-white dark:bg-white dark:text-black' : 'text-neutral-500 hover:bg-black/5 dark:hover:bg-white/10'}`}>
+                  {m === 'flow' ? '流水(回本)' : '攤平(期望值)'}
+                </button>
+              ))}
+            </span>
             {excludedIds.size > 0 ? (
               <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-300 font-normal">
                 已排除 {excludedIds.size} 筆
@@ -838,7 +964,21 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
               </button>
             )}
           </div>
-          {recoverRows.map(g => (
+
+          {/* 攤平模式:追回赤字基準(總損益 / 單一下法) */}
+          {recoverMode === 'average' && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-[10px] text-neutral-400">追回基準</span>
+              {([['total', '總損益'], ['single', '1組'], ['multi', '2組'], ['pillar1800', '1800碰'], ['combo9000', '9000碰']] as const).map(([k, lbl]) => (
+                <button key={k} type="button" onClick={() => setAvgBase(k)}
+                  className={`px-2 py-0.5 rounded-md text-[10px] font-semibold transition-colors ${avgBase === k ? 'bg-violet-500/20 text-violet-700 dark:text-violet-300' : 'text-neutral-500 hover:bg-black/5 dark:hover:bg-white/10'}`}>
+                  {lbl}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {recoverMode === 'flow' && recoverRows.map(g => (
             <div key={g.eid} className="space-y-1.5">
               <div className="inline-block px-2 py-0.5 rounded-md bg-violet-500/10 text-violet-600 dark:text-violet-400 text-[11px] font-bold">{g.name}</div>
               {/* 每版 2×2:上排 1組/2組,下排 1800碰/9000碰 */}
@@ -858,6 +998,13 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
               </div>
             </div>
           ))}
+
+          {/* 攤平模式:每版一張分配卡(依返還率加權分散追回) */}
+          {recoverMode === 'average' && (
+            <div className="space-y-2">
+              {averageRows.map(d => <AverageCard key={d.name} d={d} />)}
+            </div>
+          )}
         </div>
       )}
 
