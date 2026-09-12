@@ -10,11 +10,20 @@ from __future__ import annotations
 
 from backend import reminder_image, watch_store
 from backend.data import all_games, get_game, load_df
-from core import notify, render, stats
+from core import notify, pillar, render, stats
+from core.loader import draws_as_lists
+
+
+def _pillars_hot(df, num_max: int) -> list[dict]:
+    """1800碰真三柱斷柱:任一柱連續整柱沒開,只回 current>=1(不支援的遊戲回空)。"""
+    draws = draws_as_lists(df)
+    pm = pillar.pillar_missing(draws, num_max)
+    return sorted((v for v in pm.values() if v["current"] >= 1),
+                  key=lambda v: -v["current"])
 
 
 def _pairs_hot(df, num_max: int) -> list[dict]:
-    """1800碰:兩兩十位段配對,只要 streak>=1(沒開就 +1,不設門檻)。"""
+    """1800碰(輔助):兩兩十位段配對,只要 streak>=1(沒開就 +1,不設門檻)。"""
     return [p for p in stats.tens_pair_alerts(df, threshold=1, num_max=num_max)
             if p["streak"] >= 1]
 
@@ -57,23 +66,27 @@ def notify_combo_watch(game_key: str) -> bool:
     if not notify.enabled():
         return False
     try:
+        g = get_game(game_key)
         df = load_df(game_key)
-        singles = _singles_hot(df, get_game(game_key).num_max)
-        pairs = _pairs_hot(df, get_game(game_key).num_max)
+        pillars = _pillars_hot(df, g.num_max) if pillar.supports(g) else []
+        singles = _singles_hot(df, g.num_max)
+        pairs = _pairs_hot(df, g.num_max)
         nine = _nine_hot(df, game_key)
     except Exception:       # noqa: BLE001 — 提醒失敗不能影響排程
         return False
-    if not singles and not pairs and not nine:
+    if not pillars and not singles and not pairs and not nine:
         return False
-    g = get_game(game_key)
     lines = [f"<b>{g.name} 斷檔提醒</b>"]
-    if singles:
+    if pillars:   # 主:1800碰真三柱斷柱(任一柱沒開 = 沒過關)
+        cells = [f"{v['name']} <b>{v['current']}</b> 期" for v in pillars]
+        lines.append("1800碰(三柱斷柱):" + "、".join(cells))
+    if singles:   # 輔助:十位段
         cells = [f"{x['label']} <b>{x['streak']}</b> 期" for x in singles]
-        lines.append("1800碰(單一區間沒開):" + "、".join(cells))
-    if pairs:
+        lines.append("1800碰(十位段·輔助):" + "、".join(cells))
+    if pairs:     # 輔助:十位段雙雙
         cells = [f"{p['labels'][0]}×{p['labels'][1]} <b>{p['streak']}</b> 期"
                  for p in pairs]
-        lines.append("1800碰(雙雙沒開):" + "、".join(cells))
+        lines.append("1800碰(十位段雙雙·輔助):" + "、".join(cells))
     for r in nine:
         lines.append(f"9000碰({r['label']}):已 <b>{r['streak']}</b> 期沒全部一起開")
     return notify.send("\n".join(lines))
