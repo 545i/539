@@ -50,14 +50,20 @@ def _num_odds(df, g, lo: int = 10, hi: int = 19,
     rwin = draws[-rate_window:] if len(draws) >= rate_window else draws
     lwin = draws[-long_window:] if len(draws) >= long_window else draws
     rw, lw = len(rwin) or 1, len(lwin) or 1
+    mg = stats.missing(df, g.num_max)   # current(目前遺漏) / max_gap(歷史最長)
     M = 10  # 貝式平滑假期數:向理論 p 收斂,避免小樣本出現 0%/極端值
     def sm(c, w):
         return (c + p * M) / (w + M)
-    nums = [{"n": n,
-             "short": round(sm(sum(1 for d in rwin if n in d), rw), 4),
-             "long": round(sm(sum(1 for d in lwin if n in d), lw), 4)}
-            for n in range(lo, hi + 1)]
-    return {"lo": lo, "hi": hi, "rw": rw, "lw": lw, "m": M,
+    nums = []
+    for n in range(lo, hi + 1):
+        gap = int(mg.get(n, {}).get("current", 0))
+        maxg = int(mg.get(n, {}).get("max_gap", 0))
+        pressure = round(0.9 * min(gap / maxg, 1.0), 4) if maxg > 0 else 0.0
+        nums.append({"n": n,
+                     "short": round(sm(sum(1 for d in rwin if n in d), rw), 4),
+                     "long": round(sm(sum(1 for d in lwin if n in d), lw), 4),
+                     "gap": gap, "max_gap": maxg, "pressure": pressure})
+    return {"lo": lo, "hi": hi, "rw": rw, "lw": lw, "m": M, "pa": 0.55,
             "theo": round(p, 4), "numbers": nums}
 
 

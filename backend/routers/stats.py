@@ -88,7 +88,9 @@ def number_odds(game: str = Query(...), lo: int = Query(10, ge=1),
     g = get_game(game)
     lo, hi = min(lo, hi), max(lo, hi)
     hi = min(hi, g.num_max)
-    draws = draws_as_lists(load_df(game))
+    df = load_df(game)
+    draws = draws_as_lists(df)
+    mg = stats.missing(df, g.num_max)            # 每號 current(目前遺漏) / max_gap(歷史最長)
     p = g.pick / g.num_max                       # 理論單顆單期機率(錨點)
     span = hi - lo + 1
     combined = 1 - comb(g.num_max - span, g.pick) / comb(g.num_max, g.pick)  # 至少一顆
@@ -101,12 +103,6 @@ def number_odds(game: str = Query(...), lo: int = Query(10, ge=1),
     zsd = sqrt(zw * p * (1 - p)) or 1.0
     se = sqrt(p * (1 - p) / rw) if rw else 0.0            # 短期標準誤
     se_long = sqrt(p * (1 - p) / lw) if lw else 0.0       # 長期(近 long_window 期)標準誤
-    # 目前遺漏(距今幾期沒開,全歷史)
-    last_seen = {n: None for n in range(lo, hi + 1)}
-    for i, d in enumerate(draws):
-        for n in d:
-            if lo <= n <= hi:
-                last_seen[n] = i
     M = 10  # 貝式平滑假期數:向理論 p 收斂,避免小樣本 0%/極端值
 
     def _sm(c, w):
@@ -116,15 +112,19 @@ def number_odds(game: str = Query(...), lo: int = Query(10, ge=1),
         rc = sum(1 for d in rwin if n in d)      # 短期出現次數
         lc = sum(1 for d in lwin if n in d)      # 長期出現次數
         zc = sum(1 for d in zwin if n in d)      # z 視窗出現次數
-        gap = (total - 1 - last_seen[n]) if last_seen[n] is not None else total
+        gap = int(mg.get(n, {}).get("current", 0))
+        maxg = int(mg.get(n, {}).get("max_gap", 0))
+        # 回補壓力(非真實機率):目前遺漏÷歷史最長,趨近時逼近 90%(封頂)
+        pressure = round(0.9 * min(gap / maxg, 1.0), 4) if maxg > 0 else 0.0
         nums.append({"num": n, "prob": round(p, 6),
                      "rate": round(_sm(rc, rw), 6),
                      "rate_long": round(_sm(lc, lw), 6),
                      "rate_count": rc, "hist_count": lc, "count": zc,
-                     "z": round((zc - zmean) / zsd, 2), "gap": gap})
+                     "z": round((zc - zmean) / zsd, 2),
+                     "gap": gap, "max_gap": maxg, "pressure": pressure})
     return {"prob": round(p, 6), "combined": round(combined, 6),
             "rate_window": rw, "long_window": lw, "z_window": zw, "total": total,
-            "smooth_m": M, "se": round(se, 6), "se_long": round(se_long, 6),
+            "smooth_m": M, "pressure_alert": 0.55, "se": round(se, 6), "se_long": round(se_long, 6),
             "pick": g.pick, "num_max": g.num_max, "numbers": nums}
 
 

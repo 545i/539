@@ -629,12 +629,12 @@ export const ThreePillarTab: React.FC<{ onOpenLedger?: (mode: LedgerMode) => voi
 
             <div className="space-y-1">
               <div className="grid grid-cols-[auto_1fr_1fr_auto_auto] gap-x-2 text-[9px] uppercase tracking-wider text-neutral-400 px-1">
-                <span>號</span><span className="text-right">短期機率</span><span className="text-right">長期機率</span><span className="text-right">z</span><span className="text-right">遺漏</span>
+                <span>號</span><span className="text-right">短期機率</span><span className="text-right">長期機率</span><span className="text-right">z</span><span className="text-right">壓力(非機率)</span>
               </div>
               {(() => {
-                const maxS = Math.max(...oddsRangeReq.data.numbers.map(x => x.rate));
+                const pa = oddsRangeReq.data.pressure_alert;
                 return oddsRangeReq.data.numbers.map(o => {
-                const top = o.rate === maxS;   // 短期開獎機率最高 → 風險高亮
+                const top = o.pressure > pa;   // 回補壓力 >55% → 風險高亮(非真實機率)
                 return (
                 <div key={o.num} className={`grid grid-cols-[auto_1fr_1fr_auto_auto] gap-x-2 items-center text-[11px] font-mono px-1 py-1 rounded ${top ? 'bg-amber-500/15 ring-1 ring-amber-500/40' : 'border-b border-black/[0.03] dark:border-white/[0.04]'}`}>
                   <span className={`font-bold w-6 ${top ? 'text-amber-700 dark:text-amber-300' : 'text-neutral-900 dark:text-white'}`}>{String(o.num).padStart(2, '0')}{top ? ' ⚠' : ''}</span>
@@ -645,7 +645,7 @@ export const ThreePillarTab: React.FC<{ onOpenLedger?: (mode: LedgerMode) => voi
                   <span className={`text-right ${o.z >= 1 ? 'text-rose-500' : o.z <= -1 ? 'text-sky-500' : 'text-neutral-400'}`}>
                     {o.z >= 0 ? '+' : ''}{o.z.toFixed(1)}
                   </span>
-                  <span className="text-right text-neutral-400">{o.gap}</span>
+                  <span className={`text-right ${top ? 'text-amber-600 dark:text-amber-400 font-bold' : 'text-neutral-400'}`}>{(o.pressure * 100).toFixed(0)}%<span className="text-[9px] text-neutral-400 ml-0.5">{o.gap}/{o.max_gap}</span></span>
                 </div>
                 );
                 });
