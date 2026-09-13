@@ -647,8 +647,8 @@ export const ThreePillarTab: React.FC<{ onOpenLedger?: (mode: LedgerMode) => voi
             </div>
 
             <div className="text-[10px] text-neutral-500 dark:text-neutral-400 leading-relaxed border-t border-black/[0.06] dark:border-white/[0.06] pt-2 space-y-0.5 font-mono">
-              <div>短期機率 = 近{oddsRangeReq.data.rate_window}期出現次數 ÷ {oddsRangeReq.data.rate_window}（±√(p(1−p)/{oddsRangeReq.data.rate_window})=±{(oddsRangeReq.data.se * 100).toFixed(1)}%）</div>
-              <div>長期機率 = 近{oddsRangeReq.data.long_window}期出現次數 ÷ {oddsRangeReq.data.long_window}（±{(oddsRangeReq.data.se_long * 100).toFixed(2)}%）</div>
+              <div>短期機率 = (近{oddsRangeReq.data.rate_window}期次數 + p×{oddsRangeReq.data.smooth_m}) ÷ ({oddsRangeReq.data.rate_window}+{oddsRangeReq.data.smooth_m})　貝式平滑,向理論收斂不會0%</div>
+              <div>長期機率 = (近{oddsRangeReq.data.long_window}期次數 + p×{oddsRangeReq.data.smooth_m}) ÷ ({oddsRangeReq.data.long_window}+{oddsRangeReq.data.smooth_m})</div>
               <div>理論錨點 = pick ÷ num_max = {oddsRangeReq.data.pick}/{oddsRangeReq.data.num_max} = {(oddsRangeReq.data.prob * 100).toFixed(2)}%</div>
               <div>z(冷熱) = (近{oddsRangeReq.data.z_window}期次數 − {oddsRangeReq.data.z_window}×p) ÷ √({oddsRangeReq.data.z_window}×p×(1−p))</div>
             </div>

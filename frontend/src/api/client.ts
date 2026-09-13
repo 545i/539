@@ -183,6 +183,7 @@ export interface NumberOddsDTO {
   long_window: number; // 長期機率採樣期數(近 N 期)
   z_window: number;    // z 冷熱採樣期數
   total: number;       // 全歷史期數(長期機率)
+  smooth_m: number;    // 貝式平滑假期數(向理論 p 收斂,避免小樣本 0%)
   se: number;          // 短期標準誤 = √(p(1-p)/rate_window)
   se_long: number;     // 長期標準誤 = √(p(1-p)/total)
   pick: number;

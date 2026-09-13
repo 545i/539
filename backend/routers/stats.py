@@ -107,6 +107,10 @@ def number_odds(game: str = Query(...), lo: int = Query(10, ge=1),
         for n in d:
             if lo <= n <= hi:
                 last_seen[n] = i
+    M = 10  # 貝式平滑假期數:向理論 p 收斂,避免小樣本 0%/極端值
+
+    def _sm(c, w):
+        return (c + p * M) / (w + M) if w else 0.0
     nums = []
     for n in range(lo, hi + 1):
         rc = sum(1 for d in rwin if n in d)      # 短期出現次數
@@ -114,13 +118,13 @@ def number_odds(game: str = Query(...), lo: int = Query(10, ge=1),
         zc = sum(1 for d in zwin if n in d)      # z 視窗出現次數
         gap = (total - 1 - last_seen[n]) if last_seen[n] is not None else total
         nums.append({"num": n, "prob": round(p, 6),
-                     "rate": round(rc / rw if rw else 0.0, 6),
-                     "rate_long": round(lc / lw if lw else 0.0, 6),
+                     "rate": round(_sm(rc, rw), 6),
+                     "rate_long": round(_sm(lc, lw), 6),
                      "rate_count": rc, "hist_count": lc, "count": zc,
                      "z": round((zc - zmean) / zsd, 2), "gap": gap})
     return {"prob": round(p, 6), "combined": round(combined, 6),
             "rate_window": rw, "long_window": lw, "z_window": zw, "total": total,
-            "se": round(se, 6), "se_long": round(se_long, 6),
+            "smooth_m": M, "se": round(se, 6), "se_long": round(se_long, 6),
             "pick": g.pick, "num_max": g.num_max, "numbers": nums}
 
 
