@@ -624,7 +624,7 @@ export const ThreePillarTab: React.FC<{ onOpenLedger?: (mode: LedgerMode) => voi
             </div>
 
             <div className="text-[11px] text-indigo-700 dark:text-indigo-300 bg-indigo-500/[0.08] rounded-lg px-3 py-2 leading-relaxed">
-              <strong>短期</strong>=近 {oddsRangeReq.data.rate_window} 期實測（跳動大，±{(oddsRangeReq.data.se * 100).toFixed(1)}%）；<strong>長期</strong>=全歷史 {oddsRangeReq.data.total} 期實測（穩，±{(oddsRangeReq.data.se_long * 100).toFixed(2)}%）。理論錨點 {(oddsRangeReq.data.prob * 100).toFixed(2)}%（{oddsRangeReq.data.pick}/{oddsRangeReq.data.num_max}）。短期只是近況、<strong>不代表下期更會開</strong>（每期獨立）。
+              <strong>短期</strong>=近 {oddsRangeReq.data.rate_window} 期實測（跳動大，±{(oddsRangeReq.data.se * 100).toFixed(1)}%）；<strong>長期</strong>=近 {oddsRangeReq.data.long_window} 期實測（±{(oddsRangeReq.data.se_long * 100).toFixed(2)}%）。理論錨點 {(oddsRangeReq.data.prob * 100).toFixed(2)}%（{oddsRangeReq.data.pick}/{oddsRangeReq.data.num_max}）。短期只是近況、<strong>不代表下期更會開</strong>（每期獨立）。
             </div>
 
             <div className="space-y-1">
@@ -648,7 +648,7 @@ export const ThreePillarTab: React.FC<{ onOpenLedger?: (mode: LedgerMode) => voi
 
             <div className="text-[10px] text-neutral-500 dark:text-neutral-400 leading-relaxed border-t border-black/[0.06] dark:border-white/[0.06] pt-2 space-y-0.5 font-mono">
               <div>短期機率 = 近{oddsRangeReq.data.rate_window}期出現次數 ÷ {oddsRangeReq.data.rate_window}（±√(p(1−p)/{oddsRangeReq.data.rate_window})=±{(oddsRangeReq.data.se * 100).toFixed(1)}%）</div>
-              <div>長期機率 = 全歷史出現次數 ÷ {oddsRangeReq.data.total}（±{(oddsRangeReq.data.se_long * 100).toFixed(2)}%）</div>
+              <div>長期機率 = 近{oddsRangeReq.data.long_window}期出現次數 ÷ {oddsRangeReq.data.long_window}（±{(oddsRangeReq.data.se_long * 100).toFixed(2)}%）</div>
               <div>理論錨點 = pick ÷ num_max = {oddsRangeReq.data.pick}/{oddsRangeReq.data.num_max} = {(oddsRangeReq.data.prob * 100).toFixed(2)}%</div>
               <div>z(冷熱) = (近{oddsRangeReq.data.z_window}期次數 − {oddsRangeReq.data.z_window}×p) ÷ √({oddsRangeReq.data.z_window}×p×(1−p))</div>
             </div>

@@ -180,6 +180,7 @@ export interface NumberOddsDTO {
   prob: number;        // 理論單顆單期機率 = pick/num_max(錨點)
   combined: number;    // 該段至少一顆 = 1 - C(num_max-span,pick)/C(num_max,pick)
   rate_window: number; // 短期機率採樣期數(近 N 期)
+  long_window: number; // 長期機率採樣期數(近 N 期)
   z_window: number;    // z 冷熱採樣期數
   total: number;       // 全歷史期數(長期機率)
   se: number;          // 短期標準誤 = √(p(1-p)/rate_window)

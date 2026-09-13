@@ -76,6 +76,7 @@ def pillar_missing(game: str = Query(...),
 def number_odds(game: str = Query(...), lo: int = Query(10, ge=1),
                 hi: int = Query(19, ge=1),
                 rate_window: int = Query(15, ge=1),
+                long_window: int = Query(50, ge=1),
                 z_window: int = Query(50, ge=10)):
     """某號段(預設 10~19)逐號:近 rate_window 期的「浮動開獎機率」+ 近 z_window 期
     標準化分數(z)冷熱觀察。
@@ -92,34 +93,33 @@ def number_odds(game: str = Query(...), lo: int = Query(10, ge=1),
     span = hi - lo + 1
     combined = 1 - comb(g.num_max - span, g.pick) / comb(g.num_max, g.pick)  # 至少一顆
     total = len(draws)
-    rwin = draws[-rate_window:] if total >= rate_window else draws   # 浮動機率視窗
+    rwin = draws[-rate_window:] if total >= rate_window else draws   # 短期機率視窗
+    lwin = draws[-long_window:] if total >= long_window else draws   # 長期機率視窗
     zwin = draws[-z_window:] if total >= z_window else draws         # 冷熱 z 視窗
-    rw, zw = len(rwin), len(zwin)
+    rw, lw, zw = len(rwin), len(lwin), len(zwin)
     zmean = zw * p
     zsd = sqrt(zw * p * (1 - p)) or 1.0
-    se = sqrt(p * (1 - p) / rw) if rw else 0.0            # 短期(近 rate_window 期)標準誤
-    se_long = sqrt(p * (1 - p) / total) if total else 0.0  # 長期(全歷史)標準誤
-    # 全歷史出現次數(長期率) + 目前遺漏(距今幾期沒開)
-    hist = {n: 0 for n in range(lo, hi + 1)}
+    se = sqrt(p * (1 - p) / rw) if rw else 0.0            # 短期標準誤
+    se_long = sqrt(p * (1 - p) / lw) if lw else 0.0       # 長期(近 long_window 期)標準誤
+    # 目前遺漏(距今幾期沒開,全歷史)
     last_seen = {n: None for n in range(lo, hi + 1)}
     for i, d in enumerate(draws):
         for n in d:
             if lo <= n <= hi:
-                hist[n] += 1
                 last_seen[n] = i
     nums = []
     for n in range(lo, hi + 1):
-        rc = sum(1 for d in rwin if n in d)      # 近 rate_window 期出現次數
-        zc = sum(1 for d in zwin if n in d)      # 近 z_window 期出現次數
-        rate = rc / rw if rw else 0.0            # 短期開獎機率
-        rate_long = hist[n] / total if total else 0.0   # 長期開獎機率
+        rc = sum(1 for d in rwin if n in d)      # 短期出現次數
+        lc = sum(1 for d in lwin if n in d)      # 長期出現次數
+        zc = sum(1 for d in zwin if n in d)      # z 視窗出現次數
         gap = (total - 1 - last_seen[n]) if last_seen[n] is not None else total
         nums.append({"num": n, "prob": round(p, 6),
-                     "rate": round(rate, 6), "rate_long": round(rate_long, 6),
-                     "rate_count": rc, "hist_count": hist[n], "count": zc,
+                     "rate": round(rc / rw if rw else 0.0, 6),
+                     "rate_long": round(lc / lw if lw else 0.0, 6),
+                     "rate_count": rc, "hist_count": lc, "count": zc,
                      "z": round((zc - zmean) / zsd, 2), "gap": gap})
     return {"prob": round(p, 6), "combined": round(combined, 6),
-            "rate_window": rw, "z_window": zw, "total": total,
+            "rate_window": rw, "long_window": lw, "z_window": zw, "total": total,
             "se": round(se, 6), "se_long": round(se_long, 6),
             "pick": g.pick, "num_max": g.num_max, "numbers": nums}
 

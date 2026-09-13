@@ -39,26 +39,22 @@ def _pillars(df, g) -> list[dict]:
             for v in pm.values()]
 
 
-def _num_odds(df, g, lo: int = 10, hi: int = 19, rate_window: int = 15) -> dict | None:
-    """10~19 逐號:短期(近 rate_window 期)+ 長期(全歷史)開獎機率。理論錨點 pick/num_max。
-    不支援 39選5 的款回 None。機率不因冷熱改變,短期只是近況。"""
+def _num_odds(df, g, lo: int = 10, hi: int = 19,
+              rate_window: int = 15, long_window: int = 50) -> dict | None:
+    """10~19 逐號:短期(近 rate_window 期)+ 長期(近 long_window 期)開獎機率。
+    理論錨點 pick/num_max。不支援 39選5 的款回 None。機率不因冷熱大幅變動。"""
     if not pillar.supports(g):
         return None
     draws = stats.draws_as_lists(df)
-    total = len(draws) or 1
     p = g.pick / g.num_max
     rwin = draws[-rate_window:] if len(draws) >= rate_window else draws
-    rw = len(rwin) or 1
-    hist = {n: 0 for n in range(lo, hi + 1)}
-    for d in draws:
-        for n in d:
-            if lo <= n <= hi:
-                hist[n] += 1
+    lwin = draws[-long_window:] if len(draws) >= long_window else draws
+    rw, lw = len(rwin) or 1, len(lwin) or 1
     nums = [{"n": n,
              "short": round(sum(1 for d in rwin if n in d) / rw, 4),
-             "long": round(hist[n] / total, 4)}
+             "long": round(sum(1 for d in lwin if n in d) / lw, 4)}
             for n in range(lo, hi + 1)]
-    return {"lo": lo, "hi": hi, "rw": rw, "total": len(draws),
+    return {"lo": lo, "hi": hi, "rw": rw, "lw": lw,
             "theo": round(p, 4), "numbers": nums}
 
 
