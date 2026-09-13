@@ -633,11 +633,20 @@ export const ThreePillarTab: React.FC<{ onOpenLedger?: (mode: LedgerMode) => voi
               </div>
               {(() => {
                 const pa = oddsRangeReq.data.pressure_alert;
+                const shorts = oddsRangeReq.data.numbers.map(x => x.rate);
+                const maxS = Math.max(...shorts), minS = Math.min(...shorts);
                 return oddsRangeReq.data.numbers.map(o => {
-                const top = o.pressure > pa;   // 回補壓力 >55% → 風險高亮(非真實機率)
+                const top = o.pressure > pa;      // ① 回補壓力>55%(琥珀)
+                const hot = o.rate === maxS;       // ② 短期最高(玫紅)
+                const cold = o.rate === minS;      // ③ 短期最低(天藍)
+                const cls = top ? 'bg-amber-500/15 ring-1 ring-amber-500/40'
+                  : hot ? 'bg-rose-500/12 ring-1 ring-rose-500/30'
+                  : cold ? 'bg-sky-500/12 ring-1 ring-sky-500/30'
+                  : 'border-b border-black/[0.03] dark:border-white/[0.04]';
+                const tag = top ? ' ⚠' : hot ? ' 高' : cold ? ' 低' : '';
                 return (
-                <div key={o.num} className={`grid grid-cols-[auto_1fr_1fr_auto_auto] gap-x-2 items-center text-[11px] font-mono px-1 py-1 rounded ${top ? 'bg-amber-500/15 ring-1 ring-amber-500/40' : 'border-b border-black/[0.03] dark:border-white/[0.04]'}`}>
-                  <span className={`font-bold w-6 ${top ? 'text-amber-700 dark:text-amber-300' : 'text-neutral-900 dark:text-white'}`}>{String(o.num).padStart(2, '0')}{top ? ' ⚠' : ''}</span>
+                <div key={o.num} className={`grid grid-cols-[auto_1fr_1fr_auto_auto] gap-x-2 items-center text-[11px] font-mono px-1 py-1 rounded ${cls}`}>
+                  <span className={`font-bold w-8 ${top ? 'text-amber-700 dark:text-amber-300' : hot ? 'text-rose-600 dark:text-rose-300' : cold ? 'text-sky-600 dark:text-sky-300' : 'text-neutral-900 dark:text-white'}`}>{String(o.num).padStart(2, '0')}{tag}</span>
                   <span className={`text-right font-semibold ${o.rate > o.rate_long ? 'text-rose-600 dark:text-rose-400' : o.rate < o.rate_long ? 'text-sky-600 dark:text-sky-400' : 'text-neutral-700 dark:text-neutral-200'}`}>
                     {(o.rate * 100).toFixed(1)}%
                   </span>
