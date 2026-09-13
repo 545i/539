@@ -72,6 +72,49 @@ def pillar_missing(game: str = Query(...),
     ]
 
 
+@router.get("/number-odds")
+def number_odds(game: str = Query(...), lo: int = Query(10, ge=1),
+                hi: int = Query(19, ge=1), window: int = Query(50, ge=10)):
+    """某號段(預設 10~19)逐號的「單期開獎機率」+ 近 window 期標準化分數(z)冷熱觀察。
+
+    機率是固定的(單顆 = pick/num_max = 5/39,每期獨立);z 分數只描述近期出現次數
+    偏離期望幾個標準差,**不改變**下期機率。前端據此標明「僅供參考、不因冷熱改變」。
+    """
+    from math import comb, sqrt
+    g = get_game(game)
+    lo, hi = min(lo, hi), max(lo, hi)
+    hi = min(hi, g.num_max)
+    draws = draws_as_lists(load_df(game))
+    p = g.pick / g.num_max                       # 單顆單期機率
+    span = hi - lo + 1
+    combined = 1 - comb(g.num_max - span, g.pick) / comb(g.num_max, g.pick)  # 至少一顆
+    recent = draws[-window:] if len(draws) >= window else draws
+    w = len(recent)
+    mean = w * p
+    sd = sqrt(w * p * (1 - p)) or 1.0
+    total = len(draws)
+    se = sqrt(p * (1 - p) / total) if total else 0.0   # 出現率估計的標準誤(浮動機率的±band)
+    # 全歷史出現次數 + 目前遺漏(距今幾期沒開)
+    hist = {n: 0 for n in range(lo, hi + 1)}
+    last_seen = {n: None for n in range(lo, hi + 1)}
+    for i, d in enumerate(draws):
+        for n in d:
+            if lo <= n <= hi:
+                hist[n] += 1
+                last_seen[n] = i
+    nums = []
+    for n in range(lo, hi + 1):
+        c = sum(1 for d in recent if n in d)
+        rate = hist[n] / total if total else 0.0       # 浮動機率 = 歷史長期實測出現率
+        gap = (total - 1 - last_seen[n]) if last_seen[n] is not None else total
+        nums.append({"num": n, "prob": round(p, 6), "rate": round(rate, 6),
+                     "hist_count": hist[n], "count": c,
+                     "z": round((c - mean) / sd, 2), "gap": gap})
+    return {"prob": round(p, 6), "combined": round(combined, 6),
+            "window": w, "total": total, "se": round(se, 6),
+            "pick": g.pick, "num_max": g.num_max, "numbers": nums}
+
+
 @router.get("/combo9000-watch")
 def combo9000_watch(game: str = Query(...), threshold: int = Query(3, ge=1)):
     """9000碰 全段同開提醒:四段(0/1/2/3頭)連續幾期沒有『全部一起開出』。

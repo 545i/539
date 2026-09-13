@@ -15,7 +15,7 @@ import {
 import { INITIAL_PILLAR_RECORDS, PILLAR_THEORY_ROWS } from '../../data/lotteryData';
 import { useWeekNav, WeekNav, WeekSubtotal } from '../WeekNav';
 import { LotteryGame } from '../../types';
-import { api, PillarInfoDTO, TensPairDTO, PillarMissingDTO, LedgerMode } from '../../api/client';
+import { api, PillarInfoDTO, TensPairDTO, PillarMissingDTO, NumberOddsDTO, LedgerMode } from '../../api/client';
 import { useAsync } from '../../api/useAsync';
 import { useGame } from '../../api/useGame';
 import { useLedger } from '../../api/useLedger';
@@ -99,6 +99,11 @@ export const ThreePillarTab: React.FC<{ onOpenLedger?: (mode: LedgerMode) => voi
   // 十位段配對斷檔提醒(輔助):任兩十位段連續幾期都沒開
   const pairsReq = useAsync<TensPairDTO[] | null>(
     () => (supported ? api.tensPairs(gameKey, 3) : Promise.resolve(null)),
+    [gameKey, supported],
+  );
+  // 10~19 逐號開獎機率 + 近50期標準化分數(冷熱觀察);機率固定不因冷熱改變
+  const oddsRangeReq = useAsync<NumberOddsDTO | null>(
+    () => (supported ? api.numberOdds(gameKey, 10, 19, 50) : Promise.resolve(null)),
     [gameKey, supported],
   );
 
@@ -607,6 +612,50 @@ export const ThreePillarTab: React.FC<{ onOpenLedger?: (mode: LedgerMode) => voi
               })()}
             </div>
           </div>
+
+          {/* 10~19 逐號開獎機率 + 標準差冷熱觀察(機率固定,不因冷熱改變) */}
+          {oddsRangeReq.data && (
+          <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-display font-bold uppercase tracking-wider text-neutral-900 dark:text-white">
+                03 / 10~19 逐號機率
+              </span>
+              <span className="text-[11px] font-mono text-neutral-400">近 {oddsRangeReq.data.window} 期冷熱</span>
+            </div>
+
+            <div className="text-[11px] text-indigo-700 dark:text-indigo-300 bg-indigo-500/[0.08] rounded-lg px-3 py-2 leading-relaxed">
+              浮動機率依<strong>歷史長期出現率</strong>（每號略異），錨定理論 {(oddsRangeReq.data.prob * 100).toFixed(2)}%（{oddsRangeReq.data.pick}/{oddsRangeReq.data.num_max}）附近，<strong>不會因短期冷熱大幅變動</strong>。z 只描述近期偏離、無預測力。
+            </div>
+
+            <div className="space-y-1">
+              <div className="grid grid-cols-[auto_1fr_auto_auto] gap-x-3 text-[9px] uppercase tracking-wider text-neutral-400 px-1">
+                <span>號</span><span>浮動機率(±{(oddsRangeReq.data.se * 100).toFixed(2)})</span><span className="text-right">z(冷熱)</span><span className="text-right">遺漏</span>
+              </div>
+              {oddsRangeReq.data.numbers.map(o => (
+                <div key={o.num} className="grid grid-cols-[auto_1fr_auto_auto] gap-x-3 items-center text-[11px] font-mono px-1 py-0.5 border-b border-black/[0.03] dark:border-white/[0.04]">
+                  <span className="font-bold text-neutral-900 dark:text-white w-6">{String(o.num).padStart(2, '0')}</span>
+                  <span className="text-neutral-700 dark:text-neutral-200">
+                    {(o.rate * 100).toFixed(2)}%
+                    <span className={`ml-1 text-[9px] ${o.rate > oddsRangeReq.data.prob ? 'text-rose-500/70' : 'text-sky-500/70'}`}>
+                      ({o.rate >= oddsRangeReq.data.prob ? '+' : ''}{((o.rate - oddsRangeReq.data.prob) * 100).toFixed(2)})
+                    </span>
+                  </span>
+                  <span className={`text-right font-semibold ${o.z >= 1 ? 'text-rose-600 dark:text-rose-400' : o.z <= -1 ? 'text-sky-600 dark:text-sky-400' : 'text-neutral-400'}`}>
+                    {o.z >= 0 ? '+' : ''}{o.z.toFixed(2)}
+                  </span>
+                  <span className="text-right text-neutral-400">{o.gap} 期</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="text-[10px] text-neutral-500 dark:text-neutral-400 leading-relaxed border-t border-black/[0.06] dark:border-white/[0.06] pt-2 space-y-0.5 font-mono">
+              <div>浮動機率 = 該號歷史出現次數 ÷ 總期數({oddsRangeReq.data.total}) ，±標準誤 √(p(1−p)/N) = ±{(oddsRangeReq.data.se * 100).toFixed(2)}%</div>
+              <div>理論錨點(單顆) = pick ÷ num_max = {oddsRangeReq.data.pick}/{oddsRangeReq.data.num_max} = {(oddsRangeReq.data.prob * 100).toFixed(2)}%</div>
+              <div>10~19 至少一顆 = 1 − C({oddsRangeReq.data.num_max - 10},{oddsRangeReq.data.pick}) ÷ C({oddsRangeReq.data.num_max},{oddsRangeReq.data.pick}) = {(oddsRangeReq.data.combined * 100).toFixed(2)}%</div>
+              <div>z(冷熱) = (近{oddsRangeReq.data.window}期次數 − {oddsRangeReq.data.window}×p) ÷ √({oddsRangeReq.data.window}×p×(1−p))</div>
+            </div>
+          </div>
+          )}
 
         </div>
 
