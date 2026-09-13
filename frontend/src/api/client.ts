@@ -179,13 +179,14 @@ export interface TensPairDTO {
 export interface NumberOddsDTO {
   prob: number;        // 理論單顆單期機率 = pick/num_max(錨點)
   combined: number;    // 該段至少一顆 = 1 - C(num_max-span,pick)/C(num_max,pick)
-  window: number;      // 近期採樣期數(z 冷熱用)
-  total: number;       // 全歷史期數(浮動機率用)
-  se: number;          // 出現率估計標準誤 = √(p(1-p)/total)
+  rate_window: number; // 浮動機率採樣期數(近 N 期)
+  z_window: number;    // z 冷熱採樣期數
+  total: number;       // 全歷史期數
+  se: number;          // 浮動機率標準誤 = √(p(1-p)/rate_window)
   pick: number;
   num_max: number;
-  // rate=浮動機率(歷史長期出現率);z=近期標準化分數(冷熱觀察);gap=目前遺漏
-  numbers: { num: number; prob: number; rate: number; hist_count: number; count: number; z: number; gap: number }[];
+  // rate=浮動機率(近 rate_window 期出現率);z=近 z_window 期標準化分數(冷熱);gap=目前遺漏
+  numbers: { num: number; prob: number; rate: number; rate_count: number; count: number; z: number; gap: number }[];
 }
 
 // 1800碰三柱斷柱:第一柱/第二柱/第三柱各自目前連續幾期整柱沒開
@@ -1070,8 +1071,8 @@ export const api = {
     get<TensPairDTO[]>(`stats/tens-pairs?game=${game}&threshold=${threshold}`),
   pillarMissing: (game: GameKey, threshold = 4) =>
     get<PillarMissingDTO[]>(`stats/pillar-missing?game=${game}&threshold=${threshold}`),
-  numberOdds: (game: GameKey, lo = 10, hi = 19, window = 50) =>
-    get<NumberOddsDTO>(`stats/number-odds?game=${game}&lo=${lo}&hi=${hi}&window=${window}`),
+  numberOdds: (game: GameKey, lo = 10, hi = 19, rateWindow = 15, zWindow = 50) =>
+    get<NumberOddsDTO>(`stats/number-odds?game=${game}&lo=${lo}&hi=${hi}&rate_window=${rateWindow}&z_window=${zWindow}`),
   combo9000Watch: (game: GameKey, threshold = 3) =>
     get<Combo9000WatchDTO | null>(
       `stats/combo9000-watch?game=${game}&threshold=${threshold}`),

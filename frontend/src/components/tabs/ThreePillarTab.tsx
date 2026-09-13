@@ -101,9 +101,9 @@ export const ThreePillarTab: React.FC<{ onOpenLedger?: (mode: LedgerMode) => voi
     () => (supported ? api.tensPairs(gameKey, 3) : Promise.resolve(null)),
     [gameKey, supported],
   );
-  // 10~19 逐號開獎機率 + 近15期標準化分數(短期冷熱觀察);浮動機率取全歷史,不受此視窗影響
+  // 10~19 逐號:浮動機率取近15期實測、z冷熱取近50期標準化
   const oddsRangeReq = useAsync<NumberOddsDTO | null>(
-    () => (supported ? api.numberOdds(gameKey, 10, 19, 15) : Promise.resolve(null)),
+    () => (supported ? api.numberOdds(gameKey, 10, 19, 15, 50) : Promise.resolve(null)),
     [gameKey, supported],
   );
 
@@ -620,11 +620,11 @@ export const ThreePillarTab: React.FC<{ onOpenLedger?: (mode: LedgerMode) => voi
               <span className="text-xs font-display font-bold uppercase tracking-wider text-neutral-900 dark:text-white">
                 03 / 10~19 逐號機率
               </span>
-              <span className="text-[11px] font-mono text-neutral-400">近 {oddsRangeReq.data.window} 期冷熱</span>
+              <span className="text-[11px] font-mono text-neutral-400">浮動{oddsRangeReq.data.rate_window}期 · 冷熱{oddsRangeReq.data.z_window}期</span>
             </div>
 
             <div className="text-[11px] text-indigo-700 dark:text-indigo-300 bg-indigo-500/[0.08] rounded-lg px-3 py-2 leading-relaxed">
-              浮動機率依<strong>歷史長期出現率</strong>（每號略異），錨定理論 {(oddsRangeReq.data.prob * 100).toFixed(2)}%（{oddsRangeReq.data.pick}/{oddsRangeReq.data.num_max}）附近，<strong>不會因短期冷熱大幅變動</strong>。z 只描述近期偏離、無預測力。
+              浮動機率取<strong>近 {oddsRangeReq.data.rate_window} 期實測出現率</strong>（每號略異，±SE {(oddsRangeReq.data.se * 100).toFixed(2)}%），錨定理論 {(oddsRangeReq.data.prob * 100).toFixed(2)}%（{oddsRangeReq.data.pick}/{oddsRangeReq.data.num_max}）。z（冷熱）取近 {oddsRangeReq.data.z_window} 期標準化，只描述偏離、<strong>無預測力</strong>。
             </div>
 
             <div className="space-y-1">
@@ -649,10 +649,10 @@ export const ThreePillarTab: React.FC<{ onOpenLedger?: (mode: LedgerMode) => voi
             </div>
 
             <div className="text-[10px] text-neutral-500 dark:text-neutral-400 leading-relaxed border-t border-black/[0.06] dark:border-white/[0.06] pt-2 space-y-0.5 font-mono">
-              <div>浮動機率 = 該號歷史出現次數 ÷ 總期數({oddsRangeReq.data.total}) ，±標準誤 √(p(1−p)/N) = ±{(oddsRangeReq.data.se * 100).toFixed(2)}%</div>
+              <div>浮動機率 = 近{oddsRangeReq.data.rate_window}期出現次數 ÷ {oddsRangeReq.data.rate_window}，±標準誤 √(p(1−p)/{oddsRangeReq.data.rate_window}) = ±{(oddsRangeReq.data.se * 100).toFixed(2)}%</div>
               <div>理論錨點(單顆) = pick ÷ num_max = {oddsRangeReq.data.pick}/{oddsRangeReq.data.num_max} = {(oddsRangeReq.data.prob * 100).toFixed(2)}%</div>
               <div>10~19 至少一顆 = 1 − C({oddsRangeReq.data.num_max - 10},{oddsRangeReq.data.pick}) ÷ C({oddsRangeReq.data.num_max},{oddsRangeReq.data.pick}) = {(oddsRangeReq.data.combined * 100).toFixed(2)}%</div>
-              <div>z(冷熱) = (近{oddsRangeReq.data.window}期次數 − {oddsRangeReq.data.window}×p) ÷ √({oddsRangeReq.data.window}×p×(1−p))</div>
+              <div>z(冷熱) = (近{oddsRangeReq.data.z_window}期次數 − {oddsRangeReq.data.z_window}×p) ÷ √({oddsRangeReq.data.z_window}×p×(1−p))</div>
             </div>
           </div>
           )}

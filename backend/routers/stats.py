@@ -74,44 +74,47 @@ def pillar_missing(game: str = Query(...),
 
 @router.get("/number-odds")
 def number_odds(game: str = Query(...), lo: int = Query(10, ge=1),
-                hi: int = Query(19, ge=1), window: int = Query(50, ge=10)):
-    """某號段(預設 10~19)逐號的「單期開獎機率」+ 近 window 期標準化分數(z)冷熱觀察。
+                hi: int = Query(19, ge=1),
+                rate_window: int = Query(15, ge=1),
+                z_window: int = Query(50, ge=10)):
+    """某號段(預設 10~19)逐號:近 rate_window 期的「浮動開獎機率」+ 近 z_window 期
+    標準化分數(z)冷熱觀察。
 
-    機率是固定的(單顆 = pick/num_max = 5/39,每期獨立);z 分數只描述近期出現次數
-    偏離期望幾個標準差,**不改變**下期機率。前端據此標明「僅供參考、不因冷熱改變」。
+    浮動機率 = 近 rate_window 期實測出現率(每號略異);理論錨點 = pick/num_max = 5/39。
+    z 只描述近 z_window 期偏離期望幾個標準差,不改變下期機率(前端標明無預測力)。
     """
     from math import comb, sqrt
     g = get_game(game)
     lo, hi = min(lo, hi), max(lo, hi)
     hi = min(hi, g.num_max)
     draws = draws_as_lists(load_df(game))
-    p = g.pick / g.num_max                       # 單顆單期機率
+    p = g.pick / g.num_max                       # 理論單顆單期機率(錨點)
     span = hi - lo + 1
     combined = 1 - comb(g.num_max - span, g.pick) / comb(g.num_max, g.pick)  # 至少一顆
-    recent = draws[-window:] if len(draws) >= window else draws
-    w = len(recent)
-    mean = w * p
-    sd = sqrt(w * p * (1 - p)) or 1.0
     total = len(draws)
-    se = sqrt(p * (1 - p) / total) if total else 0.0   # 出現率估計的標準誤(浮動機率的±band)
-    # 全歷史出現次數 + 目前遺漏(距今幾期沒開)
-    hist = {n: 0 for n in range(lo, hi + 1)}
+    rwin = draws[-rate_window:] if total >= rate_window else draws   # 浮動機率視窗
+    zwin = draws[-z_window:] if total >= z_window else draws         # 冷熱 z 視窗
+    rw, zw = len(rwin), len(zwin)
+    zmean = zw * p
+    zsd = sqrt(zw * p * (1 - p)) or 1.0
+    se = sqrt(p * (1 - p) / rw) if rw else 0.0   # 浮動機率(近 rate_window 期)的標準誤
+    # 目前遺漏(距今幾期沒開,全歷史)
     last_seen = {n: None for n in range(lo, hi + 1)}
     for i, d in enumerate(draws):
         for n in d:
             if lo <= n <= hi:
-                hist[n] += 1
                 last_seen[n] = i
     nums = []
     for n in range(lo, hi + 1):
-        c = sum(1 for d in recent if n in d)
-        rate = hist[n] / total if total else 0.0       # 浮動機率 = 歷史長期實測出現率
+        rc = sum(1 for d in rwin if n in d)      # 近 rate_window 期出現次數
+        zc = sum(1 for d in zwin if n in d)      # 近 z_window 期出現次數
+        rate = rc / rw if rw else 0.0            # 浮動機率
         gap = (total - 1 - last_seen[n]) if last_seen[n] is not None else total
         nums.append({"num": n, "prob": round(p, 6), "rate": round(rate, 6),
-                     "hist_count": hist[n], "count": c,
-                     "z": round((c - mean) / sd, 2), "gap": gap})
+                     "rate_count": rc, "count": zc,
+                     "z": round((zc - zmean) / zsd, 2), "gap": gap})
     return {"prob": round(p, 6), "combined": round(combined, 6),
-            "window": w, "total": total, "se": round(se, 6),
+            "rate_window": rw, "z_window": zw, "total": total, "se": round(se, 6),
             "pick": g.pick, "num_max": g.num_max, "numbers": nums}
 
 
