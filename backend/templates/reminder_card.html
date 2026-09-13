@@ -266,6 +266,12 @@
         <div class="panel">
           <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px">${cells}</div>
           <div style="margin-top:10px;font-size:16px;color:#8595b3">機率不因冷熱大幅變動;短期只是近況、不代表下期更會開(每期獨立)</div>
+          <div style="margin-top:8px;padding-top:8px;border-top:1px solid #232c44;font-size:15px;color:#7c8db0;font-family:ui-monospace,Menlo,monospace;line-height:1.7">
+            短期機率 = 近${o.rw}期出現次數 ÷ ${o.rw}<br>
+            長期機率 = 全歷史出現次數 ÷ ${o.total}<br>
+            理論錨點 = pick ÷ num_max = 5/39 = ${(o.theo * 100).toFixed(2)}%<br>
+            10~19 至少一顆 = 1 − C(29,5) ÷ C(39,5) = 79.37%
+          </div>
         </div></div>`;
     }
 
