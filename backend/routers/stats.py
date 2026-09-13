@@ -97,24 +97,30 @@ def number_odds(game: str = Query(...), lo: int = Query(10, ge=1),
     rw, zw = len(rwin), len(zwin)
     zmean = zw * p
     zsd = sqrt(zw * p * (1 - p)) or 1.0
-    se = sqrt(p * (1 - p) / rw) if rw else 0.0   # 浮動機率(近 rate_window 期)的標準誤
-    # 目前遺漏(距今幾期沒開,全歷史)
+    se = sqrt(p * (1 - p) / rw) if rw else 0.0            # 短期(近 rate_window 期)標準誤
+    se_long = sqrt(p * (1 - p) / total) if total else 0.0  # 長期(全歷史)標準誤
+    # 全歷史出現次數(長期率) + 目前遺漏(距今幾期沒開)
+    hist = {n: 0 for n in range(lo, hi + 1)}
     last_seen = {n: None for n in range(lo, hi + 1)}
     for i, d in enumerate(draws):
         for n in d:
             if lo <= n <= hi:
+                hist[n] += 1
                 last_seen[n] = i
     nums = []
     for n in range(lo, hi + 1):
         rc = sum(1 for d in rwin if n in d)      # 近 rate_window 期出現次數
         zc = sum(1 for d in zwin if n in d)      # 近 z_window 期出現次數
-        rate = rc / rw if rw else 0.0            # 浮動機率
+        rate = rc / rw if rw else 0.0            # 短期開獎機率
+        rate_long = hist[n] / total if total else 0.0   # 長期開獎機率
         gap = (total - 1 - last_seen[n]) if last_seen[n] is not None else total
-        nums.append({"num": n, "prob": round(p, 6), "rate": round(rate, 6),
-                     "rate_count": rc, "count": zc,
+        nums.append({"num": n, "prob": round(p, 6),
+                     "rate": round(rate, 6), "rate_long": round(rate_long, 6),
+                     "rate_count": rc, "hist_count": hist[n], "count": zc,
                      "z": round((zc - zmean) / zsd, 2), "gap": gap})
     return {"prob": round(p, 6), "combined": round(combined, 6),
-            "rate_window": rw, "z_window": zw, "total": total, "se": round(se, 6),
+            "rate_window": rw, "z_window": zw, "total": total,
+            "se": round(se, 6), "se_long": round(se_long, 6),
             "pick": g.pick, "num_max": g.num_max, "numbers": nums}
 
 

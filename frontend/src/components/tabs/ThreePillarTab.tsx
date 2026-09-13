@@ -624,34 +624,32 @@ export const ThreePillarTab: React.FC<{ onOpenLedger?: (mode: LedgerMode) => voi
             </div>
 
             <div className="text-[11px] text-indigo-700 dark:text-indigo-300 bg-indigo-500/[0.08] rounded-lg px-3 py-2 leading-relaxed">
-              浮動機率取<strong>近 {oddsRangeReq.data.rate_window} 期實測出現率</strong>（每號略異，±SE {(oddsRangeReq.data.se * 100).toFixed(2)}%），錨定理論 {(oddsRangeReq.data.prob * 100).toFixed(2)}%（{oddsRangeReq.data.pick}/{oddsRangeReq.data.num_max}）。z（冷熱）取近 {oddsRangeReq.data.z_window} 期標準化，只描述偏離、<strong>無預測力</strong>。
+              <strong>短期</strong>=近 {oddsRangeReq.data.rate_window} 期實測（跳動大，±{(oddsRangeReq.data.se * 100).toFixed(1)}%）；<strong>長期</strong>=全歷史 {oddsRangeReq.data.total} 期實測（穩，±{(oddsRangeReq.data.se_long * 100).toFixed(2)}%）。理論錨點 {(oddsRangeReq.data.prob * 100).toFixed(2)}%（{oddsRangeReq.data.pick}/{oddsRangeReq.data.num_max}）。短期只是近況、<strong>不代表下期更會開</strong>（每期獨立）。
             </div>
 
             <div className="space-y-1">
-              <div className="grid grid-cols-[auto_1fr_auto_auto] gap-x-3 text-[9px] uppercase tracking-wider text-neutral-400 px-1">
-                <span>號</span><span>浮動機率(±{(oddsRangeReq.data.se * 100).toFixed(2)})</span><span className="text-right">z(冷熱)</span><span className="text-right">遺漏</span>
+              <div className="grid grid-cols-[auto_1fr_1fr_auto_auto] gap-x-2 text-[9px] uppercase tracking-wider text-neutral-400 px-1">
+                <span>號</span><span className="text-right">短期機率</span><span className="text-right">長期機率</span><span className="text-right">z</span><span className="text-right">遺漏</span>
               </div>
               {oddsRangeReq.data.numbers.map(o => (
-                <div key={o.num} className="grid grid-cols-[auto_1fr_auto_auto] gap-x-3 items-center text-[11px] font-mono px-1 py-0.5 border-b border-black/[0.03] dark:border-white/[0.04]">
+                <div key={o.num} className="grid grid-cols-[auto_1fr_1fr_auto_auto] gap-x-2 items-center text-[11px] font-mono px-1 py-1 border-b border-black/[0.03] dark:border-white/[0.04]">
                   <span className="font-bold text-neutral-900 dark:text-white w-6">{String(o.num).padStart(2, '0')}</span>
-                  <span className="text-neutral-700 dark:text-neutral-200">
-                    {(o.rate * 100).toFixed(2)}%
-                    <span className={`ml-1 text-[9px] ${o.rate > oddsRangeReq.data.prob ? 'text-rose-500/70' : 'text-sky-500/70'}`}>
-                      ({o.rate >= oddsRangeReq.data.prob ? '+' : ''}{((o.rate - oddsRangeReq.data.prob) * 100).toFixed(2)})
-                    </span>
+                  <span className={`text-right font-semibold ${o.rate > o.rate_long ? 'text-rose-600 dark:text-rose-400' : o.rate < o.rate_long ? 'text-sky-600 dark:text-sky-400' : 'text-neutral-700 dark:text-neutral-200'}`}>
+                    {(o.rate * 100).toFixed(1)}%
                   </span>
-                  <span className={`text-right font-semibold ${o.z >= 1 ? 'text-rose-600 dark:text-rose-400' : o.z <= -1 ? 'text-sky-600 dark:text-sky-400' : 'text-neutral-400'}`}>
-                    {o.z >= 0 ? '+' : ''}{o.z.toFixed(2)}
+                  <span className="text-right text-neutral-700 dark:text-neutral-200">{(o.rate_long * 100).toFixed(2)}%</span>
+                  <span className={`text-right ${o.z >= 1 ? 'text-rose-500' : o.z <= -1 ? 'text-sky-500' : 'text-neutral-400'}`}>
+                    {o.z >= 0 ? '+' : ''}{o.z.toFixed(1)}
                   </span>
-                  <span className="text-right text-neutral-400">{o.gap} 期</span>
+                  <span className="text-right text-neutral-400">{o.gap}</span>
                 </div>
               ))}
             </div>
 
             <div className="text-[10px] text-neutral-500 dark:text-neutral-400 leading-relaxed border-t border-black/[0.06] dark:border-white/[0.06] pt-2 space-y-0.5 font-mono">
-              <div>浮動機率 = 近{oddsRangeReq.data.rate_window}期出現次數 ÷ {oddsRangeReq.data.rate_window}，±標準誤 √(p(1−p)/{oddsRangeReq.data.rate_window}) = ±{(oddsRangeReq.data.se * 100).toFixed(2)}%</div>
-              <div>理論錨點(單顆) = pick ÷ num_max = {oddsRangeReq.data.pick}/{oddsRangeReq.data.num_max} = {(oddsRangeReq.data.prob * 100).toFixed(2)}%</div>
-              <div>10~19 至少一顆 = 1 − C({oddsRangeReq.data.num_max - 10},{oddsRangeReq.data.pick}) ÷ C({oddsRangeReq.data.num_max},{oddsRangeReq.data.pick}) = {(oddsRangeReq.data.combined * 100).toFixed(2)}%</div>
+              <div>短期機率 = 近{oddsRangeReq.data.rate_window}期出現次數 ÷ {oddsRangeReq.data.rate_window}（±√(p(1−p)/{oddsRangeReq.data.rate_window})=±{(oddsRangeReq.data.se * 100).toFixed(1)}%）</div>
+              <div>長期機率 = 全歷史出現次數 ÷ {oddsRangeReq.data.total}（±{(oddsRangeReq.data.se_long * 100).toFixed(2)}%）</div>
+              <div>理論錨點 = pick ÷ num_max = {oddsRangeReq.data.pick}/{oddsRangeReq.data.num_max} = {(oddsRangeReq.data.prob * 100).toFixed(2)}%</div>
               <div>z(冷熱) = (近{oddsRangeReq.data.z_window}期次數 − {oddsRangeReq.data.z_window}×p) ÷ √({oddsRangeReq.data.z_window}×p×(1−p))</div>
             </div>
           </div>

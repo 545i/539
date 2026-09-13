@@ -179,14 +179,15 @@ export interface TensPairDTO {
 export interface NumberOddsDTO {
   prob: number;        // 理論單顆單期機率 = pick/num_max(錨點)
   combined: number;    // 該段至少一顆 = 1 - C(num_max-span,pick)/C(num_max,pick)
-  rate_window: number; // 浮動機率採樣期數(近 N 期)
+  rate_window: number; // 短期機率採樣期數(近 N 期)
   z_window: number;    // z 冷熱採樣期數
-  total: number;       // 全歷史期數
-  se: number;          // 浮動機率標準誤 = √(p(1-p)/rate_window)
+  total: number;       // 全歷史期數(長期機率)
+  se: number;          // 短期標準誤 = √(p(1-p)/rate_window)
+  se_long: number;     // 長期標準誤 = √(p(1-p)/total)
   pick: number;
   num_max: number;
-  // rate=浮動機率(近 rate_window 期出現率);z=近 z_window 期標準化分數(冷熱);gap=目前遺漏
-  numbers: { num: number; prob: number; rate: number; rate_count: number; count: number; z: number; gap: number }[];
+  // rate=短期機率(近rate_window期);rate_long=長期機率(全歷史);z=近z_window期標準化(冷熱);gap=遺漏
+  numbers: { num: number; prob: number; rate: number; rate_long: number; rate_count: number; hist_count: number; count: number; z: number; gap: number }[];
 }
 
 // 1800碰三柱斷柱:第一柱/第二柱/第三柱各自目前連續幾期整柱沒開
