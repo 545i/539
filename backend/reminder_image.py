@@ -11,7 +11,7 @@
 """
 from __future__ import annotations
 
-from core import combo9000, stats
+from core import combo9000, pillar, stats
 
 # 各款固定開獎時刻(顯示用;與 core.drawtime 說明一致)。
 _DRAW_TIME = {"lotto539": "20:30", "marksix": "21:30", "fantasy5": "18:30"}
@@ -25,6 +25,18 @@ def _latest(df) -> dict:
     nums = [int(row[c]) for c in df.columns if str(c).startswith("n")]
     return {"issue": str(row.get("issue", "")),
             "date": str(row.get("date", ""))[:10], "nums": nums}
+
+
+def _pillars(df, g) -> list[dict]:
+    """1800碰真三柱斷柱:第一柱(10~18)/第二柱(20~29)/第三柱(其餘) 各自目前連續幾期
+    整柱沒開。1800碰過關需三柱都開,任一柱斷=沒過關。>= 門檻示警。不支援的款回空。"""
+    if not pillar.supports(g):
+        return []
+    draws = stats.draws_as_lists(df)
+    pm = pillar.pillar_missing(draws, g.num_max)
+    return [{"name": v["name"], "label": v["label"], "current": v["current"],
+             "max_gap": v["max_gap"], "alert": v["current"] >= pillar.PILLAR_ALERT_DRAWS}
+            for v in pm.values()]
 
 
 def _pairs(df, num_max: int) -> list[dict]:
@@ -133,6 +145,7 @@ def build_card_data(g, df) -> dict:
         "date": latest["date"],
         "time": _DRAW_TIME.get(getattr(g, "key", ""), ""),
         "nums": latest["nums"],
+        "pillars": _pillars(df, g),
         "singles": _singles(df, g.num_max),
         "pairs": _pairs(df, g.num_max),
         "nine": _nine(df, g),

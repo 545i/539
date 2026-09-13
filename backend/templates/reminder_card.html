@@ -164,6 +164,11 @@
     const DEMO = {
       game: "今彩539", issue: "114000221", date: "2026-08-28", time: "20:30",
       nums: [3, 12, 20, 25, 31],
+      pillars: [
+        { name: "第一柱", label: "10~18", current: 4, max_gap: 4, alert: true },
+        { name: "第二柱", label: "20~29", current: 0, max_gap: 5, alert: false },
+        { name: "第三柱", label: "01~09、19、30~39", current: 1, max_gap: 1, alert: false }
+      ],
       singles: [
         { label: "2頭", streak: 3, alert: true },
         { label: "0頭", streak: 1, alert: true }
@@ -228,7 +233,22 @@
       return `<div class="tiles">${oe}${nine}</div>`;
     }
 
-    // 1800碰:單一十位段斷檔(自己連續幾期沒開,斷 1 期就示警)
+    // 1800碰:真三柱斷柱(第一柱/第二柱/第三柱 任一沒開就沒過關) —— 主提醒
+    function pillarsSection(pillars) {
+      if (!pillars || !pillars.length) return "";
+      const chips = pillars.map(p =>
+        `<span class="chip ${p.alert ? "warn" : ""}">${p.name} ${p.label} <b>${p.current}</b>期沒開</span>`
+      ).join("");
+      const warnN = pillars.filter(p => p.alert).length;
+      const hint = warnN ? `${warnN} 柱達 4 期示警` : "任一柱斷 4 期示警";
+      return `<div class="section">
+        <div class="shead"><span class="dot"></span><span class="stitle">1800碰 · 三柱斷柱</span>
+          <span class="shint">${hint}</span></div>
+        <div class="panel"><div class="chips">${chips}</div></div>
+      </div>`;
+    }
+
+    // 1800碰:單一十位段斷檔(輔助;自己連續幾期沒開,斷 1 期就示警)
     function singlesSection(singles) {
       let inner;
       if (!singles || !singles.length) {
@@ -240,7 +260,7 @@
         inner = `<div class="chips">${chips}</div>`;
       }
       return `<div class="section">
-        <div class="shead"><span class="dot"></span><span class="stitle">1800碰 · 單一區間斷檔</span>
+        <div class="shead"><span class="dot"></span><span class="stitle">1800碰 · 十位段(輔助)</span>
           <span class="shint">斷 1 期就示警</span></div>
         <div class="panel">${inner}</div>
       </div>`;
@@ -260,7 +280,7 @@
       const warnN = (pairs || []).filter(p => p.alert).length;
       const hint = warnN ? `${warnN} 組達 3 期示警` : "連 3 期沒一起開就示警";
       return `<div class="section">
-        <div class="shead"><span class="dot"></span><span class="stitle">1800碰 · 十位段配對斷檔</span>
+        <div class="shead"><span class="dot"></span><span class="stitle">1800碰 · 十位段配對(輔助)</span>
           <span class="shint">${hint}</span></div>
         <div class="panel">${inner}</div>
       </div>`;
@@ -325,6 +345,7 @@
         <div class="balls">${ballsHtml(d.nums)}</div>
         <div class="body">
           ${tilesHtml(d)}
+          ${pillarsSection(d.pillars)}
           ${singlesSection(d.singles)}
           ${pairsSection(d.pairs)}
           ${hotColdSection(d.hotcold)}
