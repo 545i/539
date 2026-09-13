@@ -631,9 +631,13 @@ export const ThreePillarTab: React.FC<{ onOpenLedger?: (mode: LedgerMode) => voi
               <div className="grid grid-cols-[auto_1fr_1fr_auto_auto] gap-x-2 text-[9px] uppercase tracking-wider text-neutral-400 px-1">
                 <span>號</span><span className="text-right">短期機率</span><span className="text-right">長期機率</span><span className="text-right">z</span><span className="text-right">遺漏</span>
               </div>
-              {oddsRangeReq.data.numbers.map(o => (
-                <div key={o.num} className="grid grid-cols-[auto_1fr_1fr_auto_auto] gap-x-2 items-center text-[11px] font-mono px-1 py-1 border-b border-black/[0.03] dark:border-white/[0.04]">
-                  <span className="font-bold text-neutral-900 dark:text-white w-6">{String(o.num).padStart(2, '0')}</span>
+              {(() => {
+                const maxS = Math.max(...oddsRangeReq.data.numbers.map(x => x.rate));
+                return oddsRangeReq.data.numbers.map(o => {
+                const top = o.rate === maxS;   // 短期開獎機率最高 → 風險高亮
+                return (
+                <div key={o.num} className={`grid grid-cols-[auto_1fr_1fr_auto_auto] gap-x-2 items-center text-[11px] font-mono px-1 py-1 rounded ${top ? 'bg-amber-500/15 ring-1 ring-amber-500/40' : 'border-b border-black/[0.03] dark:border-white/[0.04]'}`}>
+                  <span className={`font-bold w-6 ${top ? 'text-amber-700 dark:text-amber-300' : 'text-neutral-900 dark:text-white'}`}>{String(o.num).padStart(2, '0')}{top ? ' ⚠' : ''}</span>
                   <span className={`text-right font-semibold ${o.rate > o.rate_long ? 'text-rose-600 dark:text-rose-400' : o.rate < o.rate_long ? 'text-sky-600 dark:text-sky-400' : 'text-neutral-700 dark:text-neutral-200'}`}>
                     {(o.rate * 100).toFixed(1)}%
                   </span>
@@ -643,7 +647,9 @@ export const ThreePillarTab: React.FC<{ onOpenLedger?: (mode: LedgerMode) => voi
                   </span>
                   <span className="text-right text-neutral-400">{o.gap}</span>
                 </div>
-              ))}
+                );
+                });
+              })()}
             </div>
 
             <div className="text-[10px] text-neutral-500 dark:text-neutral-400 leading-relaxed border-t border-black/[0.06] dark:border-white/[0.06] pt-2 space-y-0.5 font-mono">

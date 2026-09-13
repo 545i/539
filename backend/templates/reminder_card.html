@@ -251,11 +251,14 @@
     // 10~19 逐號 短期(近rw期)/長期(全歷史) 開獎機率;機率不因冷熱大幅變動
     function numOddsSection(o) {
       if (!o || !o.numbers || !o.numbers.length) return "";
+      const maxS = Math.max(...o.numbers.map(x => x.short));
       const cells = o.numbers.map(x => {
         const s = (x.short * 100).toFixed(0), l = (x.long * 100).toFixed(1);
         const warm = x.short > x.long;
-        return `<div style="background:#141a2b;border:1px solid #232c44;border-radius:14px;padding:12px 6px;text-align:center">
-          <div style="font-size:30px;font-weight:800;color:#e8ecf6;line-height:1.1">${pad2(x.n)}</div>
+        const top = x.short === maxS;   // 短期開獎機率最高 → 風險高亮
+        return `<div style="background:${top ? '#2a2210' : '#141a2b'};border:${top ? '2px' : '1px'} solid ${top ? '#ffb020' : '#232c44'};border-radius:14px;padding:12px 6px;text-align:center;position:relative;${top ? 'box-shadow:0 0 16px rgba(255,176,32,.35)' : ''}">
+          ${top ? `<div style="position:absolute;top:-11px;left:50%;transform:translateX(-50%);background:#ffb020;color:#1a1400;font-size:13px;font-weight:800;padding:1px 9px;border-radius:8px;white-space:nowrap">⚠ 最高</div>` : ''}
+          <div style="font-size:30px;font-weight:800;color:${top ? '#ffcf6a' : '#e8ecf6'};line-height:1.1">${pad2(x.n)}</div>
           <div style="margin-top:6px;font-size:20px;font-weight:700;color:${warm ? '#ff7a7a' : '#6ea8ff'}">短 ${s}%</div>
           <div style="font-size:18px;color:#9fb0cc">長 ${l}%</div>
         </div>`;
