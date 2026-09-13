@@ -248,6 +248,27 @@
       </div>`;
     }
 
+    // 10~19 逐號 短期(近rw期)/長期(全歷史) 開獎機率;機率不因冷熱大幅變動
+    function numOddsSection(o) {
+      if (!o || !o.numbers || !o.numbers.length) return "";
+      const cells = o.numbers.map(x => {
+        const s = (x.short * 100).toFixed(0), l = (x.long * 100).toFixed(1);
+        const warm = x.short > x.long;
+        return `<div style="background:#141a2b;border:1px solid #232c44;border-radius:14px;padding:12px 6px;text-align:center">
+          <div style="font-size:30px;font-weight:800;color:#e8ecf6;line-height:1.1">${pad2(x.n)}</div>
+          <div style="margin-top:6px;font-size:20px;font-weight:700;color:${warm ? '#ff7a7a' : '#6ea8ff'}">短 ${s}%</div>
+          <div style="font-size:18px;color:#9fb0cc">長 ${l}%</div>
+        </div>`;
+      }).join("");
+      return `<div class="section">
+        <div class="shead"><span class="dot"></span><span class="stitle">10~19 逐號機率</span>
+          <span class="shint">短:近${o.rw}期 · 長:全${o.total}期 · 理論${(o.theo * 100).toFixed(2)}%</span></div>
+        <div class="panel">
+          <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px">${cells}</div>
+          <div style="margin-top:10px;font-size:16px;color:#8595b3">機率不因冷熱大幅變動;短期只是近況、不代表下期更會開(每期獨立)</div>
+        </div></div>`;
+    }
+
     // 1800碰:單一十位段斷檔(輔助;自己連續幾期沒開,斷 1 期就示警)
     function singlesSection(singles) {
       let inner;
@@ -346,6 +367,7 @@
         <div class="body">
           ${tilesHtml(d)}
           ${pillarsSection(d.pillars)}
+          ${numOddsSection(d.num_odds)}
           ${singlesSection(d.singles)}
           ${pairsSection(d.pairs)}
           ${hotColdSection(d.hotcold)}
