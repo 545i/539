@@ -101,9 +101,9 @@ export const ThreePillarTab: React.FC<{ onOpenLedger?: (mode: LedgerMode) => voi
     () => (supported ? api.tensPairs(gameKey, 3) : Promise.resolve(null)),
     [gameKey, supported],
   );
-  // 10~19 逐號開獎機率 + 近50期標準化分數(冷熱觀察);機率固定不因冷熱改變
+  // 10~19 逐號開獎機率 + 近15期標準化分數(短期冷熱觀察);浮動機率取全歷史,不受此視窗影響
   const oddsRangeReq = useAsync<NumberOddsDTO | null>(
-    () => (supported ? api.numberOdds(gameKey, 10, 19, 50) : Promise.resolve(null)),
+    () => (supported ? api.numberOdds(gameKey, 10, 19, 15) : Promise.resolve(null)),
     [gameKey, supported],
   );
 
