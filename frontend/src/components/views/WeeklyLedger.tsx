@@ -7,6 +7,7 @@ import { useGame } from '../../api/useGame';
 import { useHistoriesByGame } from '../../api/useHistories';
 import { IssuePicker } from '../IssuePicker';
 import { useWeekNav, WeekNav } from '../WeekNav';
+import { useBillReuse, BillReuseButton } from '../BillReuse';
 import { api, LedgerMode } from '../../api/client';
 import { MODE_LABEL, money } from '../uploadHistory';
 import { weekAddDays, weekMonday } from '../../weeks';
@@ -641,6 +642,10 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
   const wk = useWeekNav(navRecords);
   const focusMonday = wk.focusWeek;
   const visibleWeeks = wk.allWeeks ? weeks : weeks.filter(w => w.monday === focusMonday);
+  // 帳單沿用:挑「之前週期」的帳單併進本週的建議車支數(依版/下法各自歸位)。
+  // 折算方式=把被沿用的 ledger id 也算進 recoverRows/averageRows 的赤字基準(見下方 rowsOf)。
+  const { reuseIds } = useBillReuse();
+  const reuseSet = useMemo(() => new Set(reuseIds), [reuseIds]);
 
   // 頂端總計:跟著聚焦週 —— 單週時只算該週,「全部週」時才是全部合計。
   const grand = useMemo(() => {
@@ -753,14 +758,14 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
     const C9K = 9000;         // 一支 = 買滿 9000 碰
     const inFocus = (r: Record<string, unknown>) =>
       wk.allWeeks ? true : weekMonday(String(r.date ?? '')) === focusMonday;
-    // 該版(可選該下法)在聚焦週、未被排除的流水
+    // 該版(可選該下法)在聚焦週、未被排除的流水;另納入「沿用帳單」(之前週期挑選的同版/同下法)。
     const rowsOf = (eid: number, mode?: string) => entries
       .filter(e => {
         const r = e.record as Record<string, unknown>;
         if ((num(r.edition) || 1) !== eid) return false;
         if (mode && String(r.mode ?? '') !== mode) return false;
         if (excludedIds.has(String(e.id))) return false;
-        return inFocus(r);
+        return inFocus(r) || reuseSet.has(String(e.id));
       })
       .map(e => e.record as Record<string, unknown>);
 
@@ -830,7 +835,7 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
         c9000self: calc9000(eid, 'self'), c9000all: calc9000(eid, 'all'),
       }))
       .filter(x => x.single || x.multi || x.p1800self || x.p1800all || x.c9000self || x.c9000all);
-  }, [entries, simEids, focusMonday, wk.allWeeks, games, selEd, usedEds, excludedIds, oddsByEid]);
+  }, [entries, simEids, focusMonday, wk.allWeeks, games, selEd, usedEds, excludedIds, oddsByEid, reuseSet]);
 
   // 攤平模式:依「返還率(理論期望值)加權」把該版赤字分散到四種下法(不集中單一)。
   const averageRows = useMemo((): AverageData[] => {
@@ -855,7 +860,7 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
         if ((num(r.edition) || 1) !== eid) return false;
         if (mode && String(r.mode ?? '') !== mode) return false;
         if (excludedIds.has(String(e.id))) return false;
-        return inFocus(r);
+        return inFocus(r) || reuseSet.has(String(e.id));
       })
       .map(e => e.record as Record<string, unknown>);
 
@@ -900,7 +905,7 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
       const bestKey = base.reduce((b, m) => (m.rtp > b.rtp ? m : b), base[0]).key;  // 返還率(期望值)最高
       return { name: edName(eid), deficit, cumPnl, totalCost, alloc, bestKey, hasData: rows.length > 0 };
     }).filter(x => x.hasData);
-  }, [entries, simEids, focusMonday, wk.allWeeks, games, selEd, usedEds, excludedIds, oddsByEid, avgBase]);
+  }, [entries, simEids, focusMonday, wk.allWeeks, games, selEd, usedEds, excludedIds, oddsByEid, avgBase, reuseSet]);
 
   // 儀表板加總(跨所顯示的版):追平損益需成本 / 全中可追回
   const avgSummary = useMemo(() => ({
@@ -959,6 +964,11 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
         <div className="space-y-2.5">
           <div className="flex items-center flex-wrap gap-x-2 gap-y-1 text-[11px] font-semibold text-neutral-600 dark:text-neutral-300">
             <span>建議下注量<span className="ml-1 font-normal font-mono text-neutral-400">{wk.allWeeks ? '全部週' : wk.label}</span></span>
+            {reuseIds.length > 0 && (
+              <span className="px-1.5 py-0.5 rounded-md bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 font-mono text-[10px]">
+                含沿用帳單 {reuseIds.length} 筆
+              </span>
+            )}
             {/* 流水(各下法回本) / 攤平(依返還率加權分散) 切換 */}
             <span className="inline-flex rounded-lg border border-black/10 dark:border-white/10 overflow-hidden">
               {(['flow', 'average'] as const).map(m => (
@@ -1167,6 +1177,7 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
             onNext={() => wk.goWeek(1)}
             onToggleAll={() => wk.setAllWeeks(v => !v)}
           />
+          <BillReuseButton focusWeek={wk.focusWeek} />
         </div>
       )}
       {/* 聚焦週在本篩選下沒有紀錄(日曆式切週可能落在空週) */}
