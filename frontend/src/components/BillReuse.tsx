@@ -255,7 +255,7 @@ export const BillReuseButton: React.FC<{ focusWeek: string }> = ({ focusWeek }) 
           onClick={() => setOpen(false)}
         >
           <div
-            className="w-full max-w-lg md:max-w-3xl max-h-[85vh] flex flex-col bg-white dark:bg-[#161616] rounded-2xl border border-black/10 dark:border-white/10 shadow-2xl text-neutral-800 dark:text-neutral-200 overflow-hidden"
+            className="w-full max-w-lg md:max-w-4xl lg:max-w-6xl 2xl:max-w-[88rem] max-h-[88vh] flex flex-col bg-white dark:bg-[#161616] rounded-2xl border border-black/10 dark:border-white/10 shadow-2xl text-neutral-800 dark:text-neutral-200 overflow-hidden"
             onClick={e => e.stopPropagation()}
           >
             {/* 標題列 */}
@@ -311,7 +311,7 @@ export const BillReuseButton: React.FC<{ focusWeek: string }> = ({ focusWeek }) 
               ) : (
                 <>
                   {/* 左欄:週清單(獨立滾動);直板機填滿高度可捲,寬板機固定寬 */}
-                  <div className="flex-1 min-h-0 md:flex-none md:w-72 md:shrink-0 md:border-r border-black/[0.06] dark:border-white/[0.08] overflow-y-auto p-3 space-y-2 md:space-y-0 md:p-0">
+                  <div className="flex-1 min-h-0 md:flex-none md:w-72 lg:w-80 xl:w-96 md:shrink-0 md:border-r border-black/[0.06] dark:border-white/[0.08] overflow-y-auto p-3 space-y-2 md:space-y-0 md:p-0">
                     {weeks.map(wk => {
                       const rows = byWeek.get(wk) ?? [];
                       return (
