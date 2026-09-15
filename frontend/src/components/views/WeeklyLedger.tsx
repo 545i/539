@@ -710,6 +710,8 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
   const [recoverMode, setRecoverMode] = useState<'flow' | 'average'>('flow');
   // 攤平追回的赤字基準:'total'=該版總損益,或某單一下法
   const [avgBase, setAvgBase] = useState<'total' | 'single' | 'multi' | 'pillar1800' | 'combo9000'>('total');
+  // 建議車數的盤口基準:預設用 539/天天樂(共用),可切成六合彩(六合彩成本/派彩不同)。
+  const [oddsGame, setOddsGame] = useState<'lotto539' | 'marksix'>('lotto539');
 
   // 螢幕寬度(摺疊機展開/闔上):≥768px 走左右雙欄,否則垂直單欄。用 state 驅動,
   // 讓斷點變化觸發 React 重繪,motion 的 layout 才抓得到並做 morph 過場。
@@ -729,7 +731,7 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
     let alive = true;
     const eds = selEd === 'all' ? usedEds.filter(ed => !simEids.has(ed)) : [selEd as number];
     Promise.all(eds.map(eid =>
-      api.getEditionOdds(eid, 'lotto539').then(r => [eid, r.fields] as const).catch(() => null)))
+      api.getEditionOdds(eid, oddsGame).then(r => [eid, r.fields] as const).catch(() => null)))
       .then(res => {
         if (!alive) return;
         const m: Record<number, Record<string, { value: number; custom: boolean }>> = {};
@@ -737,10 +739,10 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
         setOddsByEid(m);
       });
     return () => { alive = false; };
-  }, [usedEds, selEd, simEids]);
+  }, [usedEds, selEd, simEids, oddsGame]);
 
   const recoverRows = useMemo(() => {
-    const gDef = games.find(x => x.key === 'lotto539') ?? games[0];
+    const gDef = games.find(x => x.key === oddsGame) ?? games[0];
     // 各版實際盤口(讀不到就退回遊戲預設);9000碰另有專屬 combo9000_cost/prize。
     const oddsOf = (eid: number) => {
       const f = oddsByEid[eid];
@@ -835,11 +837,11 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
         c9000self: calc9000(eid, 'self'), c9000all: calc9000(eid, 'all'),
       }))
       .filter(x => x.single || x.multi || x.p1800self || x.p1800all || x.c9000self || x.c9000all);
-  }, [entries, simEids, focusMonday, wk.allWeeks, games, selEd, usedEds, excludedIds, oddsByEid, reuseSet]);
+  }, [entries, simEids, focusMonday, wk.allWeeks, games, selEd, usedEds, excludedIds, oddsByEid, reuseSet, oddsGame]);
 
   // 攤平模式:依「返還率(理論期望值)加權」把該版赤字分散到四種下法(不集中單一)。
   const averageRows = useMemo((): AverageData[] => {
-    const gDef = games.find(x => x.key === 'lotto539') ?? games[0];
+    const gDef = games.find(x => x.key === oddsGame) ?? games[0];
     const oddsOf = (eid: number) => {
       const f = oddsByEid[eid];
       const get = (k: string, dflt: number) => (f && f[k] ? num(f[k].value) : dflt);
@@ -905,7 +907,7 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
       const bestKey = base.reduce((b, m) => (m.rtp > b.rtp ? m : b), base[0]).key;  // 返還率(期望值)最高
       return { name: edName(eid), deficit, cumPnl, totalCost, alloc, bestKey, hasData: rows.length > 0 };
     }).filter(x => x.hasData);
-  }, [entries, simEids, focusMonday, wk.allWeeks, games, selEd, usedEds, excludedIds, oddsByEid, avgBase, reuseSet]);
+  }, [entries, simEids, focusMonday, wk.allWeeks, games, selEd, usedEds, excludedIds, oddsByEid, avgBase, reuseSet, oddsGame]);
 
   // 儀表板加總(跨所顯示的版):追平損益需成本 / 全中可追回
   const avgSummary = useMemo(() => ({
@@ -975,6 +977,15 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
                 <button key={m} type="button" onClick={() => setRecoverMode(m)}
                   className={`px-2 py-0.5 text-[10px] font-semibold transition-colors ${recoverMode === m ? 'bg-black text-white dark:bg-white dark:text-black' : 'text-neutral-500 hover:bg-black/5 dark:hover:bg-white/10'}`}>
                   {m === 'flow' ? '流水(回本)' : '攤平(期望值)'}
+                </button>
+              ))}
+            </span>
+            {/* 盤口基準:成本/派彩用 539(天天樂共用) 或 六合彩 */}
+            <span className="inline-flex rounded-lg border border-black/10 dark:border-white/10 overflow-hidden" title="建議車數的成本與派彩要用哪個遊戲的盤口">
+              {([['lotto539', '539/天天樂盤口'], ['marksix', '六合彩盤口']] as const).map(([k, label]) => (
+                <button key={k} type="button" onClick={() => setOddsGame(k)}
+                  className={`px-2 py-0.5 text-[10px] font-semibold transition-colors ${oddsGame === k ? 'bg-sky-600 text-white' : 'text-neutral-500 hover:bg-black/5 dark:hover:bg-white/10'}`}>
+                  {label}
                 </button>
               ))}
             </span>
