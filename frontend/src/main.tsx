@@ -5,6 +5,7 @@ import {GameProvider} from './api/useGame';
 import {GroupsProvider} from './api/useGroups';
 import {EditionsProvider} from './api/useEditions';
 import {WeekFocusProvider} from './components/WeekNav';
+import {BillReuseProvider} from './components/BillReuse';
 import {LedgerProvider} from './api/useLedger';
 import './index.css';
 
@@ -15,7 +16,9 @@ createRoot(document.getElementById('root')!).render(
         <EditionsProvider>
           <LedgerProvider>
             <WeekFocusProvider>
-              <App />
+              <BillReuseProvider>
+                <App />
+              </BillReuseProvider>
             </WeekFocusProvider>
           </LedgerProvider>
         </EditionsProvider>

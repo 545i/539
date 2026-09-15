@@ -16,6 +16,7 @@ import { useAsync } from '../../api/useAsync';
 import { useGame } from '../../api/useGame';
 import { useLedger } from '../../api/useLedger';
 import { useWeekNav, WeekNav, WeekSubtotal } from '../WeekNav';
+import { useBillReuse, BillReuseButton } from '../BillReuse';
 import { useHistoriesByGame } from '../../api/useHistories';
 import { useEditions } from '../../api/useEditions';
 import { IssuePicker } from '../IssuePicker';
@@ -44,6 +45,14 @@ export const Combo9000Tab: React.FC<{ onOpenLedger?: (mode: LedgerMode) => void 
   // 流水週導覽(共用):‹ › 依日曆前後移,中間切「全部週」
   const wk = useWeekNav(records);
   const flowRecords = wk.flowRecords;
+  // 帳單沿用(全策略共用):把「之前週期」挑選的帳單併進本週損益 / 建議車數。
+  const reuse = useBillReuse();
+  const carried = React.useMemo(() => {
+    if (wk.allWeeks) return [];
+    const inWeek = new Set(flowRecords.map(r => r.id));
+    return reuse.reuseRecords.filter(r => !inWeek.has(r.id));
+  }, [wk.allWeeks, flowRecords, reuse.reuseRecords]);
+  const carryPnl = React.useMemo(() => carried.reduce((a, r) => a + (Number(r.pnl) || 0), 0), [carried]);
   const [units, setUnits] = useState<number>(1);
 
   // 期號 / 日期:預設帶最新一期,使用者可用下拉選單改記到別期(補記 / 修期)
@@ -76,7 +85,7 @@ export const Combo9000Tab: React.FC<{ onOpenLedger?: (mode: LedgerMode) => void 
   // 上方儀表板依「聚焦週」(flowRecords)計算,切週整頁一起變;全部週時=全部紀錄
   const totalSpent = flowRecords.reduce((acc, r) => acc + r.cost, 0);
   const totalReturn = flowRecords.reduce((acc, r) => acc + r.payout, 0);
-  const cumPnl = totalReturn - totalSpent;
+  const cumPnl = totalReturn - totalSpent + carryPnl; // 損益含沿用帳單 → 驅動累積損益顯示 + 建議車數
   const winCount = flowRecords.filter(r => r.payout > 0).length;
   const roundCount = flowRecords.length;
 
@@ -430,6 +439,7 @@ export const Combo9000Tab: React.FC<{ onOpenLedger?: (mode: LedgerMode) => void 
                   onNext={() => wk.goWeek(1)}
                   onToggleAll={() => wk.setAllWeeks(v => !v)}
                 />
+                <BillReuseButton focusWeek={wk.focusWeek} />
               </div>
               <div className="flex items-center gap-3">
                 <button

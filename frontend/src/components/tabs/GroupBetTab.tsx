@@ -17,6 +17,7 @@ import { useAsync } from '../../api/useAsync';
 import { useGame } from '../../api/useGame';
 import { useLedger } from '../../api/useLedger';
 import { useWeekNav, WeekNav, WeekSubtotal } from '../WeekNav';
+import { useBillReuse, BillReuseButton } from '../BillReuse';
 import { useHistoriesByGame } from '../../api/useHistories';
 import { useEditions } from '../../api/useEditions';
 
@@ -80,6 +81,15 @@ export const GroupBetTab: React.FC<Props> = ({ group, onOpenLedger }) => {
   // 流水週導覽(共用):‹ › 依日曆前後移,中間切「全部週」
   const wk = useWeekNav(records);
   const flowRecords = wk.flowRecords;
+  // 帳單沿用(全策略共用):把「之前週期」挑選的帳單併進本週損益 / 建議車數。
+  // 全部週時本來就全含,不再重複折;同 id 已在本週的也排除,避免重複計。
+  const reuse = useBillReuse();
+  const carried = React.useMemo(() => {
+    if (wk.allWeeks) return [];
+    const inWeek = new Set(flowRecords.map(r => r.id));
+    return reuse.reuseRecords.filter(r => !inWeek.has(r.id));
+  }, [wk.allWeeks, flowRecords, reuse.reuseRecords]);
+  const carryPnl = React.useMemo(() => carried.reduce((a, r) => a + (Number(r.pnl) || 0), 0), [carried]);
 
   // 重新整理:補了最新一期開獎後,後端會自動把「待開獎」結算掉(見 backend/autosettle.py),
   // 但這頁的流水是掛載時抓一次就不動,不會反映後端已結算的 pnl。這裡重抓流水 + 開獎歷史,
@@ -133,7 +143,7 @@ export const GroupBetTab: React.FC<Props> = ({ group, onOpenLedger }) => {
   // 上方儀表板(損益/局數/車數/回本試算)依「聚焦週」(flowRecords)計算,切週整頁一起變
   const totalSpent = flowRecords.reduce((acc, r) => acc + r.cost, 0);
   const totalReturn = flowRecords.reduce((acc, r) => acc + r.payout, 0);
-  const cumPnl = totalReturn - totalSpent;
+  const cumPnl = totalReturn - totalSpent + carryPnl; // 損益含沿用帳單 → 驅動累積損益顯示 + 建議車數
   const winCount = flowRecords.filter(r => r.payout > 0).length;
   const roundCount = flowRecords.length;
   // 累計總車數:聚焦週所有下注的車數(1組/2組;cars 缺就取 units)
@@ -273,6 +283,11 @@ export const GroupBetTab: React.FC<Props> = ({ group, onOpenLedger }) => {
             <div>
               <div className="text-[10px] uppercase tracking-[0.25em] text-neutral-400 font-semibold">
                 建議車數 · 中 1 顆回本(依建議 {suggestBalls} 顆)
+                {carried.length > 0 && (
+                  <span className="ml-1 normal-case tracking-normal text-indigo-500 dark:text-indigo-400">
+                    · 含沿用 {carried.length} 筆({carryPnl >= 0 ? '+' : ''}{carryPnl.toLocaleString()})
+                  </span>
+                )}
               </div>
               {!inLoss ? (
                 <div className="text-2xl sm:text-3xl font-display font-black text-emerald-600 dark:text-emerald-400 mt-0.5">
@@ -540,6 +555,7 @@ export const GroupBetTab: React.FC<Props> = ({ group, onOpenLedger }) => {
                   onNext={() => wk.goWeek(1)}
                   onToggleAll={() => wk.setAllWeeks(v => !v)}
                 />
+                <BillReuseButton focusWeek={wk.focusWeek} />
               </div>
               <div className="flex items-center gap-3">
                 <button
