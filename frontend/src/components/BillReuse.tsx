@@ -93,14 +93,19 @@ export const BillReuseButton: React.FC<{ focusWeek: string }> = ({ focusWeek }) 
   const { reuseRecords, reusePnl, count, isReused, toggle, setMany, clearAll } = useBillReuse();
   const { entries, loggedIn } = useAllLedger();
   const [open, setOpen] = useState(false);
-  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());  // 直板機:週手風琴展開
+  const [detailWeek, setDetailWeek] = useState<string>('');                // 寬板機:右側明細看哪一週
+  const [modeFilter, setModeFilter] = useState<LedgerMode | 'all'>('all'); // 下法篩選
 
-  // 可沿用的帳單 = 全部 ledger 紀錄中「不在目前聚焦週」的(之前 / 其他週期),新→舊。
+  // 可沿用的帳單 = 全部 ledger 紀錄中「不在目前聚焦週」的(之前 / 其他週期),新→舊;再套下法篩選。
   const all = useMemo(
     () => entries.map(e => entryToRecord(e.id, e.record)).filter(r => /^\d{4}-\d{2}-\d{2}/.test(String(r.date ?? ''))),
     [entries],
   );
-  const pool = useMemo(() => all.filter(r => weekMonday(r.date) !== focusWeek), [all, focusWeek]);
+  const pool = useMemo(
+    () => all.filter(r => weekMonday(r.date) !== focusWeek && (modeFilter === 'all' || r.mode === modeFilter)),
+    [all, focusWeek, modeFilter],
+  );
 
   // 週 → 日 → 逐筆
   const weeks = useMemo(() => distinctWeeks(pool.map(r => r.date)).filter(Boolean), [pool]);
@@ -126,6 +131,102 @@ export const BillReuseButton: React.FC<{ focusWeek: string }> = ({ focusWeek }) 
   const allSelected = (rows: BetRecord[]) => rows.length > 0 && rows.every(r => isReused(r.id));
   const someSelected = (rows: BetRecord[]) => rows.some(r => isReused(r.id));
   const pnlOf = (rows: BetRecord[]) => rows.reduce((a, r) => a + (Number(r.pnl) || 0), 0);
+
+  // 寬板機右側明細看哪一週:優先選中的那週,選中的已不存在(篩選/切週後)就退回最新一週。
+  const activeWeek = (detailWeek && byWeek.has(detailWeek)) ? detailWeek : (weeks[0] ?? '');
+
+  const FILTERS: { key: LedgerMode | 'all'; label: string }[] = [
+    { key: 'all', label: '全部' },
+    { key: 'single', label: '1組' },
+    { key: 'multi', label: '2組' },
+    { key: 'pillar1800', label: '1800碰' },
+    { key: 'combo9000', label: '9000碰' },
+    { key: 'combo', label: '連碰' },
+  ];
+
+  // 某週的「逐日 → 逐筆」明細(直板機手風琴 / 寬板機右欄共用)。
+  const renderDetail = (rows: BetRecord[]) => {
+    const days = Array.from(new Set(rows.map(r => r.date))).sort();
+    if (rows.length === 0)
+      return <div className="text-[11px] text-neutral-400 py-6 text-center">這週在目前篩選下沒有帳單。</div>;
+    return days.map(day => {
+      const dayRows = rows.filter(r => r.date === day);
+      const dAll = allSelected(dayRows);
+      const dSome = someSelected(dayRows);
+      return (
+        <div key={day} className="border-t border-black/[0.05] dark:border-white/[0.06] first:border-t-0">
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-black/[0.01] dark:bg-white/[0.015]">
+            <input
+              type="checkbox"
+              checked={dAll}
+              ref={el => { if (el) el.indeterminate = !dAll && dSome; }}
+              onChange={e => setMany(idsOf(dayRows), e.target.checked)}
+              className="w-3.5 h-3.5 accent-indigo-600 shrink-0"
+            />
+            <span className="flex-1 text-[11px] font-mono text-neutral-500">{day.slice(5)}</span>
+            <span className={`text-[10px] font-mono shrink-0 ${pnlOf(dayRows) >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+              {money(pnlOf(dayRows))}
+            </span>
+          </div>
+          {dayRows.map(r => (
+            <label
+              key={r.id}
+              className="flex items-center gap-2 px-3 py-1.5 pl-6 cursor-pointer hover:bg-black/[0.03] dark:hover:bg-white/[0.04] transition-colors"
+            >
+              <input
+                type="checkbox"
+                checked={isReused(r.id)}
+                onChange={() => toggle(r.id)}
+                className="w-3.5 h-3.5 accent-indigo-600 shrink-0"
+              />
+              <span className="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 shrink-0">
+                {modeLabel(r.mode)}
+              </span>
+              <span className="text-[10px] font-mono text-neutral-500 truncate flex-1">
+                {fmtBalls(r.selectedBalls) || r.result || '—'}
+              </span>
+              <span className="text-[10px] font-mono text-neutral-400 shrink-0">{money(-r.cost).replace('+', '')}</span>
+              <span className={`text-[10px] font-mono font-bold shrink-0 ${r.pnl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                {money(r.pnl)}
+              </span>
+            </label>
+          ))}
+        </div>
+      );
+    });
+  };
+
+  // 週清單的一列(標題:全選框 + 週標 + 損益);點列 → 直板機展開手風琴、寬板機切右欄明細。
+  const renderWeekHeader = (wk: string, rows: BetRecord[]) => {
+    const wkAll = allSelected(rows);
+    const wkSome = someSelected(rows);
+    const active = wk === activeWeek || expanded.has(wk);
+    return (
+      <div className={`flex items-center gap-2 px-3 py-2 transition-colors ${active ? 'bg-indigo-500/10' : 'bg-black/[0.02] dark:bg-white/[0.03]'}`}>
+        <input
+          type="checkbox"
+          checked={wkAll}
+          ref={el => { if (el) el.indeterminate = !wkAll && wkSome; }}
+          onChange={e => setMany(idsOf(rows), e.target.checked)}
+          className="w-4 h-4 accent-indigo-600 shrink-0"
+        />
+        <button
+          type="button"
+          onClick={() => { toggleExpand(wk); setDetailWeek(wk); }}
+          className="flex-1 flex items-center gap-1.5 text-left text-[12px] font-semibold min-w-0"
+        >
+          {/* 直板機顯示展開箭頭;寬板機用右箭頭表示「看右欄明細」 */}
+          <span className="md:hidden">{expanded.has(wk) ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}</span>
+          <ChevronRight className="hidden md:inline w-3.5 h-3.5" />
+          <span className="truncate">{weekRangeLabel(wk)}</span>
+          <span className="text-[10px] font-mono font-normal text-neutral-400 shrink-0">{rows.length} 筆</span>
+        </button>
+        <span className={`text-[11px] font-mono font-bold shrink-0 ${pnlOf(rows) >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+          {money(pnlOf(rows))}
+        </span>
+      </div>
+    );
+  };
 
   return (
     <>
@@ -154,7 +255,7 @@ export const BillReuseButton: React.FC<{ focusWeek: string }> = ({ focusWeek }) 
           onClick={() => setOpen(false)}
         >
           <div
-            className="w-full max-w-lg max-h-[85vh] flex flex-col bg-white dark:bg-[#161616] rounded-2xl border border-black/10 dark:border-white/10 shadow-2xl text-neutral-800 dark:text-neutral-200"
+            className="w-full max-w-lg md:max-w-3xl max-h-[85vh] flex flex-col bg-white dark:bg-[#161616] rounded-2xl border border-black/10 dark:border-white/10 shadow-2xl text-neutral-800 dark:text-neutral-200 overflow-hidden"
             onClick={e => e.stopPropagation()}
           >
             {/* 標題列 */}
@@ -177,99 +278,73 @@ export const BillReuseButton: React.FC<{ focusWeek: string }> = ({ focusWeek }) 
               五個下注分頁共用同一批。只列「本週以外」的週期。
             </p>
 
-            {/* 清單 */}
-            <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
-              {!loggedIn && (
-                <div className="text-[11px] text-neutral-400 py-6 text-center">
+            {/* 下法篩選:1組/2組/1800碰/9000碰/連碰 */}
+            <div className="flex flex-wrap items-center gap-1.5 px-4 pt-2 pb-2">
+              <span className="text-[10px] uppercase tracking-wider text-neutral-400 font-semibold mr-0.5">下法</span>
+              {FILTERS.map(f => (
+                <button
+                  key={f.key}
+                  type="button"
+                  onClick={() => setModeFilter(f.key)}
+                  className={`px-2 py-0.5 rounded-lg text-[10px] font-semibold transition-all ${
+                    modeFilter === f.key
+                      ? 'bg-black text-white dark:bg-white dark:text-black'
+                      : 'border border-black/10 dark:border-white/10 text-neutral-600 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5'
+                  }`}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+
+            {/* 本體:直板機=單欄(週手風琴向下展開);寬板機=左右雙欄(明細由右側邊緣向右展開),
+                左右各自獨立滾動。 */}
+            <div className="flex-1 min-h-0 flex flex-col md:flex-row border-t border-black/[0.06] dark:border-white/[0.08]">
+              {!loggedIn ? (
+                <div className="flex-1 text-[11px] text-neutral-400 py-10 text-center">
                   未登入:沒有跨週帳單可沿用(帳單存在登入帳號)。
                 </div>
-              )}
-              {loggedIn && weeks.length === 0 && (
-                <div className="text-[11px] text-neutral-400 py-6 text-center">
-                  本週以外沒有其他帳單可沿用。
+              ) : weeks.length === 0 ? (
+                <div className="flex-1 text-[11px] text-neutral-400 py-10 text-center">
+                  本週以外沒有其他帳單可沿用(或此下法無紀錄)。
                 </div>
-              )}
-              {weeks.map(wk => {
-                const rows = byWeek.get(wk) ?? [];
-                const isOpen = expanded.has(wk);
-                const wkAll = allSelected(rows);
-                const wkSome = someSelected(rows);
-                // 逐日分組
-                const days = Array.from(new Set(rows.map(r => r.date))).sort();
-                return (
-                  <div key={wk} className="rounded-xl border border-black/[0.08] dark:border-white/[0.10] overflow-hidden">
-                    {/* 週標題 */}
-                    <div className="flex items-center gap-2 px-3 py-2 bg-black/[0.02] dark:bg-white/[0.03]">
-                      <input
-                        type="checkbox"
-                        checked={wkAll}
-                        ref={el => { if (el) el.indeterminate = !wkAll && wkSome; }}
-                        onChange={e => setMany(idsOf(rows), e.target.checked)}
-                        className="w-4 h-4 accent-indigo-600 shrink-0"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => toggleExpand(wk)}
-                        className="flex-1 flex items-center gap-1.5 text-left text-[12px] font-semibold"
-                      >
-                        {isOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
-                        {weekRangeLabel(wk)}
-                        <span className="text-[10px] font-mono font-normal text-neutral-400">{rows.length} 筆</span>
-                      </button>
-                      <span className={`text-[11px] font-mono font-bold shrink-0 ${pnlOf(rows) >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
-                        {money(pnlOf(rows))}
-                      </span>
-                    </div>
-
-                    {/* 逐日 + 逐筆 */}
-                    {isOpen && days.map(day => {
-                      const dayRows = rows.filter(r => r.date === day);
-                      const dAll = allSelected(dayRows);
-                      const dSome = someSelected(dayRows);
+              ) : (
+                <>
+                  {/* 左欄:週清單(獨立滾動);直板機填滿高度可捲,寬板機固定寬 */}
+                  <div className="flex-1 min-h-0 md:flex-none md:w-72 md:shrink-0 md:border-r border-black/[0.06] dark:border-white/[0.08] overflow-y-auto p-3 space-y-2 md:space-y-0 md:p-0">
+                    {weeks.map(wk => {
+                      const rows = byWeek.get(wk) ?? [];
                       return (
-                        <div key={day} className="border-t border-black/[0.05] dark:border-white/[0.06]">
-                          <div className="flex items-center gap-2 px-3 py-1.5 bg-black/[0.01] dark:bg-white/[0.015]">
-                            <input
-                              type="checkbox"
-                              checked={dAll}
-                              ref={el => { if (el) el.indeterminate = !dAll && dSome; }}
-                              onChange={e => setMany(idsOf(dayRows), e.target.checked)}
-                              className="w-3.5 h-3.5 accent-indigo-600 shrink-0"
-                            />
-                            <span className="flex-1 text-[11px] font-mono text-neutral-500">{day.slice(5)}</span>
-                            <span className={`text-[10px] font-mono shrink-0 ${pnlOf(dayRows) >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
-                              {money(pnlOf(dayRows))}
-                            </span>
-                          </div>
-                          {dayRows.map(r => (
-                            <label
-                              key={r.id}
-                              className="flex items-center gap-2 px-3 py-1.5 pl-6 cursor-pointer hover:bg-black/[0.03] dark:hover:bg-white/[0.04] transition-colors"
-                            >
-                              <input
-                                type="checkbox"
-                                checked={isReused(r.id)}
-                                onChange={() => toggle(r.id)}
-                                className="w-3.5 h-3.5 accent-indigo-600 shrink-0"
-                              />
-                              <span className="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 shrink-0">
-                                {modeLabel(r.mode)}
-                              </span>
-                              <span className="text-[10px] font-mono text-neutral-500 truncate flex-1">
-                                {fmtBalls(r.selectedBalls) || r.result || '—'}
-                              </span>
-                              <span className="text-[10px] font-mono text-neutral-400 shrink-0">{money(-r.cost).replace('+', '')}</span>
-                              <span className={`text-[10px] font-mono font-bold shrink-0 ${r.pnl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
-                                {money(r.pnl)}
-                              </span>
-                            </label>
-                          ))}
+                        <div
+                          key={wk}
+                          className="rounded-xl md:rounded-none border md:border-0 md:border-b border-black/[0.08] dark:border-white/[0.10] overflow-hidden"
+                        >
+                          {renderWeekHeader(wk, rows)}
+                          {/* 直板機:手風琴內嵌明細(寬板機隱藏,改由右欄顯示) */}
+                          {expanded.has(wk) && <div className="md:hidden">{renderDetail(rows)}</div>}
                         </div>
                       );
                     })}
                   </div>
-                );
-              })}
+
+                  {/* 右欄:明細(僅寬板機;由彈窗右側向右展開,獨立滾動) */}
+                  <div className="hidden md:flex md:flex-col flex-1 min-w-0 overflow-y-auto">
+                    {activeWeek ? (
+                      <>
+                        <div className="sticky top-0 z-10 flex items-center justify-between gap-2 px-3 py-2 bg-white dark:bg-[#161616] border-b border-black/[0.06] dark:border-white/[0.08]">
+                          <span className="text-[12px] font-semibold truncate">{weekRangeLabel(activeWeek)} 明細</span>
+                          <span className={`text-[11px] font-mono font-bold shrink-0 ${pnlOf(byWeek.get(activeWeek) ?? []) >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                            {money(pnlOf(byWeek.get(activeWeek) ?? []))}
+                          </span>
+                        </div>
+                        <div>{renderDetail(byWeek.get(activeWeek) ?? [])}</div>
+                      </>
+                    ) : (
+                      <div className="flex-1 text-[11px] text-neutral-400 py-10 text-center">左側選一個週期看明細</div>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
 
             {/* 底部:合計 + 清空 + 完成 */}
