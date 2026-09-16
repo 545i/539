@@ -12,7 +12,8 @@
   想改版面 → 只動這個檔;想改內容 → 只換 JSON(schema 見 build_card_data 的 docstring)。
   本機預覽:直接用瀏覽器開,會吃下面 DEMO 那包假資料。
 
-  設計:白底、上下寬版、扁平(無漸層/發光/多餘陰影)、相關數據整合成一區、克制配色。
+  設計:白底、寬版(不強迫瘦長直板)、扁平、克制配色、字級偏大;上方左右兩欄並排,
+  10~19 機率與前中後段遺漏走全寬。
 -->
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -20,146 +21,131 @@
   body { display: inline-block; padding: 20px; }
 
   :root {
-    --ink: #16181d;        /* 主文字 */
-    --sub: #6b7280;        /* 次文字 */
-    --faint: #9aa1ac;      /* 更淡 */
-    --line: #e7e9ee;       /* 分隔線 */
-    --line2: #eef0f4;      /* 更淡分隔線 */
-    --panel: #f7f8fa;      /* 面板底 */
-    --brand: #1f3a5f;      /* 深藍主色(標題點/重點) */
-    --warn: #b45309;       /* 琥珀(示警) */
-    --warnbg: #fdf6ea;
-    --warnbd: #f0dcae;
-    --hot: #c0392b;        /* 熱 */
-    --hotbg: #fbefec;
-    --hotbd: #ecc7bf;
-    --cold: #2f5fd0;       /* 冷 */
-    --coldbg: #eef2fc;
-    --coldbd: #c6d3f2;
-    --good: #17794b;       /* 綠(過關/正常) */
+    --ink: #16181d; --sub: #6b7280; --faint: #9aa1ac;
+    --line: #e7e9ee; --line2: #eef0f4; --panel: #f7f8fa;
+    --brand: #1f3a5f; --warn: #b45309; --warnbg: #fdf6ea; --warnbd: #f0dcae;
+    --hot: #c0392b; --hotbg: #fbefec; --hotbd: #ecc7bf;
+    --cold: #2f5fd0; --coldbg: #eef2fc; --coldbd: #c6d3f2; --good: #17794b;
   }
 
   #card {
-    width: 820px;
+    width: 1080px;
     font-family: "Noto Sans CJK TC", "PingFang TC", "Microsoft JhengHei",
       "WenQuanYi Zen Hei", "Noto Color Emoji", sans-serif;
     background: #ffffff; color: var(--ink);
-    border: 1px solid var(--line);
-    border-radius: 20px; overflow: hidden;
+    border: 1px solid var(--line); border-radius: 22px; overflow: hidden;
     font-variant-numeric: tabular-nums;
   }
 
   /* ── 標題 ── */
-  .head { padding: 26px 34px 22px; border-bottom: 1px solid var(--line); }
-  .head .kick { font-size: 12px; letter-spacing: 5px; font-weight: 800; color: var(--brand); }
-  .head .title { font-size: 38px; font-weight: 900; margin-top: 8px; line-height: 1.05; color: var(--ink); }
-  .head .meta { margin-top: 12px; display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; }
-  .head .issue { font-size: 20px; font-weight: 800; color: var(--ink); }
-  .head .date { font-size: 16px; font-weight: 600; color: var(--sub); }
+  .head { padding: 30px 40px 24px; border-bottom: 1px solid var(--line); }
+  .head .kick { font-size: 14px; letter-spacing: 6px; font-weight: 800; color: var(--brand); }
+  .head .title { font-size: 48px; font-weight: 900; margin-top: 8px; line-height: 1.05; }
+  .head .meta { margin-top: 14px; display: flex; align-items: baseline; gap: 18px; flex-wrap: wrap; }
+  .head .issue { font-size: 25px; font-weight: 800; }
+  .head .date { font-size: 20px; font-weight: 600; color: var(--sub); }
 
   /* ── 開獎號碼(扁平球)── */
-  .balls { padding: 22px 34px; display: flex; gap: 12px; flex-wrap: wrap;
-    border-bottom: 1px solid var(--line); }
-  .ball {
-    width: 58px; height: 58px; border-radius: 50%;
-    background: #f4c453; color: #3d2b00;
-    border: 1px solid #e0ad33;
-    font-size: 25px; font-weight: 900;
-    display: flex; align-items: center; justify-content: center;
-  }
+  .balls { padding: 26px 40px; display: flex; gap: 14px; flex-wrap: wrap; border-bottom: 1px solid var(--line); }
+  .ball { width: 70px; height: 70px; border-radius: 50%; background: #f4c453; color: #3d2b00;
+    border: 1px solid #e0ad33; font-size: 30px; font-weight: 900;
+    display: flex; align-items: center; justify-content: center; }
 
-  .body { padding: 24px 34px 28px; display: flex; flex-direction: column; gap: 26px; }
+  .body { padding: 28px 40px 32px; display: flex; flex-direction: column; gap: 30px; }
+
+  /* ── 兩欄並排(上方)── */
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 26px; align-items: start; }
+  .col { display: flex; flex-direction: column; gap: 26px; }
 
   /* ── 區塊標題 ── */
-  .sec { }
-  .sh { display: flex; align-items: baseline; gap: 9px; margin-bottom: 14px;
-    padding-bottom: 9px; border-bottom: 1px solid var(--line); }
-  .sh .bar { width: 4px; height: 15px; border-radius: 2px; background: var(--brand); align-self: center; }
-  .sh .t { font-size: 18px; font-weight: 900; letter-spacing: .3px; color: var(--ink); }
-  .sh .h { margin-left: auto; font-size: 12.5px; color: var(--faint); font-weight: 600; }
+  .sh { display: flex; align-items: baseline; gap: 10px; margin-bottom: 15px;
+    padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+  .sh .bar { width: 5px; height: 18px; border-radius: 2px; background: var(--brand); align-self: center; }
+  .sh .t { font-size: 21px; font-weight: 900; letter-spacing: .3px; }
+  .sh .h { margin-left: auto; font-size: 14px; color: var(--faint); font-weight: 600; }
 
-  /* ── 快照條:單雙比 + 9000碰 ── */
+  /* ── 快照:單雙比 + 9000碰 ── */
   .snap { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-  .cell { border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px; background: #fff; }
-  .cell .l { font-size: 12.5px; font-weight: 800; letter-spacing: 1px; color: var(--sub); }
-  .cell .v { font-size: 30px; font-weight: 900; margin-top: 5px; line-height: 1.1; color: var(--ink); }
-  .cell .s { font-size: 13.5px; margin-top: 4px; color: var(--sub); font-weight: 600; }
+  .cell { border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; background: #fff; }
+  .cell .l { font-size: 14px; font-weight: 800; letter-spacing: 1px; color: var(--sub); }
+  .cell .v { font-size: 34px; font-weight: 900; margin-top: 6px; line-height: 1.1; }
+  .cell .s { font-size: 15px; margin-top: 5px; color: var(--sub); font-weight: 600; }
   .cell.good { background: #f1f9f4; border-color: #c9e7d6; }
   .cell.good .v { color: var(--good); }
   .cell.warn { background: var(--warnbg); border-color: var(--warnbd); }
   .cell.warn .v { color: var(--warn); }
 
   /* ── 整合面板 + 子列 ── */
-  .panel { border: 1px solid var(--line); border-radius: 14px; padding: 4px 16px; background: #fff; }
-  .row { display: flex; gap: 14px; align-items: flex-start; padding: 14px 0; }
+  .panel { border: 1px solid var(--line); border-radius: 14px; padding: 4px 18px; background: #fff; }
+  .row { display: flex; gap: 16px; align-items: flex-start; padding: 15px 0; }
   .row + .row { border-top: 1px solid var(--line2); }
-  .row .lab { flex: 0 0 82px; font-size: 13px; font-weight: 800; color: var(--sub); padding-top: 5px; }
+  .row .lab { flex: 0 0 92px; font-size: 15px; font-weight: 800; color: var(--sub); padding-top: 6px; }
   .row .val { flex: 1; min-width: 0; }
 
-  .chips { display: flex; gap: 8px; flex-wrap: wrap; }
-  .chip { display: inline-flex; align-items: center; gap: 6px;
-    background: #fff; border: 1px solid var(--line); border-radius: 9px;
-    padding: 7px 11px; font-size: 14px; color: #3a3f4a; font-weight: 600; }
-  .chip b { color: var(--ink); font-weight: 900; margin: 0 1px; font-size: 15px; }
+  .chips { display: flex; gap: 9px; flex-wrap: wrap; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; background: #fff;
+    border: 1px solid var(--line); border-radius: 10px; padding: 8px 13px;
+    font-size: 16px; color: #3a3f4a; font-weight: 600; }
+  .chip b { color: var(--ink); font-weight: 900; margin: 0 1px; font-size: 17px; }
   .chip.warn { background: var(--warnbg); border-color: var(--warnbd); color: #8a5a00; }
   .chip.warn b { color: var(--warn); }
-  .okline { color: var(--good); font-size: 14px; font-weight: 700; padding: 3px 0; }
+  .okline { color: var(--good); font-size: 16px; font-weight: 700; padding: 4px 0; }
 
-  /* ── 10~19 逐號機率 ── */
-  .grid5 { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
-  .oc { border: 1px solid var(--line); background: #fff; border-radius: 12px;
-    padding: 12px 6px 10px; text-align: center; position: relative; }
+  /* ── 10~19 逐號機率(全寬 5 欄)── */
+  .grid5 { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; }
+  .oc { border: 1px solid var(--line); background: #fff; border-radius: 14px;
+    padding: 16px 8px 13px; text-align: center; position: relative; }
   .oc.warn { border-color: var(--warnbd); background: var(--warnbg); }
   .oc.hot { border-color: var(--hotbd); background: var(--hotbg); }
   .oc.cold { border-color: var(--coldbd); background: var(--coldbg); }
-  .oc .tag { position: absolute; top: -9px; left: 50%; transform: translateX(-50%);
-    font-size: 11px; font-weight: 800; padding: 1px 8px; border-radius: 7px; white-space: nowrap; }
+  .oc .tag { position: absolute; top: -11px; left: 50%; transform: translateX(-50%);
+    font-size: 13px; font-weight: 800; padding: 2px 10px; border-radius: 8px; white-space: nowrap; }
   .oc .tag.w { background: var(--warn); color: #fff; }
-  .oc .tag.h { background: var(--hot); color: #fff; left: auto; right: -4px; transform: none; }
-  .oc .tag.c { background: var(--cold); color: #fff; left: -4px; transform: none; }
-  .oc .n { font-size: 27px; font-weight: 900; color: var(--ink); line-height: 1.1; }
-  .oc .p1 { margin-top: 5px; font-size: 17px; font-weight: 800; color: #3a3f4a; }
+  .oc .tag.h { background: var(--hot); color: #fff; left: auto; right: -5px; transform: none; }
+  .oc .tag.c { background: var(--cold); color: #fff; left: -5px; transform: none; }
+  .oc .n { font-size: 34px; font-weight: 900; line-height: 1.1; }
+  .oc .p1 { margin-top: 7px; font-size: 21px; font-weight: 800; color: #3a3f4a; }
   .oc.hot .p1 { color: var(--hot); }
   .oc.cold .p1 { color: var(--cold); }
-  .oc .p2 { font-size: 14px; color: var(--sub); }
-  .oc .p3 { margin-top: 3px; font-size: 12.5px; color: var(--faint); }
+  .oc .p2 { font-size: 17px; color: var(--sub); }
+  .oc .p3 { margin-top: 4px; font-size: 14px; color: var(--faint); }
   .oc.warn .p3 { color: var(--warn); font-weight: 700; }
-  .legend { margin-top: 12px; font-size: 13px; color: var(--sub); line-height: 1.6; }
-  .legend .k { display: inline-flex; align-items: center; gap: 5px; margin-right: 14px; }
-  .legend .sw { width: 11px; height: 11px; border-radius: 3px; border: 1px solid; }
+  .legend { margin-top: 14px; font-size: 15px; color: var(--sub); line-height: 1.7; }
+  .legend .k { display: inline-flex; align-items: center; gap: 6px; margin-right: 18px; }
+  .legend .sw { width: 13px; height: 13px; border-radius: 3px; border: 1px solid; }
 
   /* ── 冷熱號(扁平圓球 + 標籤)── */
-  .pills { display: grid; grid-template-columns: repeat(8, 1fr); gap: 8px; }
-  .pill { display: flex; flex-direction: column; align-items: center;
-    gap: 6px; border: 1px solid var(--line); border-radius: 12px; padding: 11px 6px 10px; background: #fff; }
-  .pb { width: 42px; height: 42px; border-radius: 50%; display: flex; align-items: center;
-    justify-content: center; font-size: 19px; font-weight: 900; }
+  .pills { display: grid; grid-template-columns: repeat(8, 1fr); gap: 9px; }
+  .pill { display: flex; flex-direction: column; align-items: center; gap: 6px;
+    border: 1px solid var(--line); border-radius: 12px; padding: 12px 5px 11px; background: #fff; }
+  .pb { width: 46px; height: 46px; border-radius: 50%; display: flex; align-items: center;
+    justify-content: center; font-size: 21px; font-weight: 900; }
   .hot .pb { background: var(--hotbg); color: var(--hot); border: 1px solid var(--hotbd); }
   .cold .pb { background: var(--coldbg); color: var(--cold); border: 1px solid var(--coldbd); }
-  .pl1 { font-size: 11px; color: var(--faint); line-height: 1; }
-  .pl2 { font-size: 12.5px; color: var(--sub); line-height: 1; }
-  .pl2 b { font-size: 15px; font-weight: 900; margin: 0 1px; color: var(--ink); }
+  .pl1 { font-size: 12.5px; color: var(--faint); line-height: 1; }
+  .pl2 { font-size: 14px; color: var(--sub); line-height: 1; }
+  .pl2 b { font-size: 17px; font-weight: 900; margin: 0 1px; color: var(--ink); }
 
-  /* ── 前中後段遺漏 ── */
-  .thirds { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 14px; }
-  .third { border: 1px solid var(--line); border-radius: 12px; padding: 13px 13px 15px; background: #fff; }
-  .tname { font-size: 13.5px; font-weight: 900; color: var(--sub); margin-bottom: 11px;
-    display: flex; align-items: center; gap: 7px; }
-  .tname .tbar { width: 18px; height: 3px; border-radius: 2px; }
-  .badges { display: flex; gap: 7px; flex-wrap: wrap; }
-  .miss { display: inline-flex; align-items: center; gap: 5px; background: #fff;
-    border: 1px solid var(--line); border-radius: 9px; padding: 3px 9px 3px 3px; }
-  .miss .mb { width: 26px; height: 26px; border-radius: 50%; color: #fff;
-    display: flex; align-items: center; justify-content: center; font-size: 12.5px; font-weight: 900; }
-  .miss .mc { font-size: 12.5px; color: var(--sub); }
-  .miss .mc b { color: var(--ink); font-size: 14px; font-weight: 900; margin-right: 1px; }
+  /* ── 前中後段遺漏(全寬 3 欄)── */
+  .thirds { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .third { border: 1px solid var(--line); border-radius: 14px; padding: 15px 15px 17px; background: #fff; }
+  .tname { font-size: 15px; font-weight: 900; color: var(--sub); margin-bottom: 12px;
+    display: flex; align-items: center; gap: 8px; }
+  .tname .tbar { width: 20px; height: 4px; border-radius: 2px; }
+  .badges { display: flex; gap: 8px; flex-wrap: wrap; }
+  .miss { display: inline-flex; align-items: center; gap: 6px; background: #fff;
+    border: 1px solid var(--line); border-radius: 10px; padding: 4px 11px 4px 4px; }
+  .miss .mb { width: 30px; height: 30px; border-radius: 50%; color: #fff;
+    display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 900; }
+  .miss .mc { font-size: 14px; color: var(--sub); }
+  .miss .mc b { color: var(--ink); font-size: 16px; font-weight: 900; margin-right: 1px; }
   .miss.hi { background: var(--warnbg); border-color: var(--warnbd); }
   .miss.hi .mb { background: #d99500 !important; }
   .miss.hi .mc b { color: var(--warn); }
-  .miss.none { padding: 5px 11px; color: var(--good); font-size: 13px; font-weight: 700; }
+  .miss.none { padding: 6px 12px; color: var(--good); font-size: 15px; font-weight: 700; }
 
-  .foot { padding: 4px 34px 22px; display: flex; justify-content: space-between;
-    align-items: center; font-size: 12.5px; color: var(--faint); }
+  .foot { padding: 6px 40px 24px; display: flex; justify-content: space-between;
+    align-items: center; font-size: 14px; color: var(--faint); }
 </style>
 </head>
 <body>
@@ -213,15 +199,13 @@
       return (nums || []).map(n => `<span class="ball">${pad2(n)}</span>`).join("");
     }
 
-    // 快照條:單雙比 + 9000碰 過關間隔(整合成一條)
+    // 快照:單雙比 + 9000碰 過關間隔
     function snapHtml(d) {
       const oe = d.odd_even
         ? `<div class="cell"><div class="l">單雙比</div>
-             <div class="v">${d.odd_even.side}</div>
-             <div class="s">已連續 ${d.odd_even.streak} 期</div></div>`
+             <div class="v">${d.odd_even.side}</div><div class="s">已連續 ${d.odd_even.streak} 期</div></div>`
         : `<div class="cell"><div class="l">單雙比</div>
              <div class="v">—</div><div class="s">最新一期單雙相同</div></div>`;
-
       let nine;
       if (d.nine) {
         const n = d.nine;
@@ -229,8 +213,7 @@
           nine = `<div class="cell good"><div class="l">9000碰 · 過關間隔</div>
                     <div class="v">本期過關</div><div class="s">四段全開 · 最長槓 ${n.max_gap} 期</div></div>`;
         } else {
-          const c = n.alert ? "warn" : "";
-          nine = `<div class="cell ${c}"><div class="l">9000碰 · 過關間隔</div>
+          nine = `<div class="cell ${n.alert ? "warn" : ""}"><div class="l">9000碰 · 過關間隔</div>
                     <div class="v">${n.streak} 期未過</div><div class="s">四段沒到齊 · 最長槓 ${n.max_gap} 期</div></div>`;
         }
       } else {
@@ -240,43 +223,34 @@
       return `<div class="snap">${oe}${nine}</div>`;
     }
 
-    // 1800碰 斷檔(整合):三柱斷柱(主) + 十位段單一 + 十位段配對 併成一個面板
+    // 1800碰 斷檔(整合):三柱斷柱 + 十位段 + 十位段配對
     function pillar1800Section(d) {
       const hasP = d.pillars && d.pillars.length;
-      const hasS = d.singles || d.pairs;              // 39選5 才會有(build_card_data 給空陣列)
       if (!hasP && !(d.singles && d.pairs)) return "";
-
       const pillarChips = hasP ? d.pillars.map(p =>
-        `<span class="chip ${p.alert ? "warn" : ""}">${p.name} ${p.label} <b>${p.current}</b>期沒開</span>`
-      ).join("") : "";
-
+        `<span class="chip ${p.alert ? "warn" : ""}">${p.name} ${p.label} <b>${p.current}</b>期沒開</span>`).join("") : "";
       const singleChips = (d.singles && d.singles.length)
         ? `<div class="chips">${d.singles.map(s =>
             `<span class="chip ${s.alert ? "warn" : ""}">${s.label} <b>${s.streak}</b>期沒開</span>`).join("")}</div>`
         : `<div class="okline">各十位段近期都有開 ✓</div>`;
-
       const pairChips = (d.pairs && d.pairs.length)
         ? `<div class="chips">${d.pairs.map(p =>
             `<span class="chip ${p.alert ? "warn" : ""}">${p.a}·${p.b} <b>${p.streak}</b>期</span>`).join("")}</div>`
         : `<div class="okline">各十位段配對近期都有一起開 ✓</div>`;
-
       const warnN = hasP ? d.pillars.filter(p => p.alert).length : 0;
       const hint = warnN ? `${warnN} 柱達 4 期示警` : "任一柱斷 4 期未過關";
-
       const pillarRow = hasP
-        ? `<div class="row"><div class="lab">三柱斷柱</div><div class="val"><div class="chips">${pillarChips}</div></div></div>`
-        : "";
+        ? `<div class="row"><div class="lab">三柱斷柱</div><div class="val"><div class="chips">${pillarChips}</div></div></div>` : "";
       return `<div class="sec">
         <div class="sh"><span class="bar"></span><span class="t">1800碰 · 斷檔追蹤</span><span class="h">${hint}</span></div>
         <div class="panel">
           ${pillarRow}
           <div class="row"><div class="lab">十位段</div><div class="val">${singleChips}</div></div>
           <div class="row"><div class="lab">十位段配對</div><div class="val">${pairChips}</div></div>
-        </div>
-      </div>`;
+        </div></div>`;
     }
 
-    // 10~19 逐號機率(精簡:保留號碼格 + 一行圖例,拿掉冗長算式)
+    // 10~19 逐號機率(全寬;精簡:號碼格 + 一行圖例)
     function numOddsSection(o) {
       if (!o || !o.numbers || !o.numbers.length) return "";
       const shorts = o.numbers.map(x => x.short);
@@ -287,14 +261,12 @@
         const top = x.pressure > o.pa, hot = x.short === maxS, cold = x.short === minS;
         const cls = top ? "warn" : hot ? "hot" : cold ? "cold" : "";
         const tag = top ? `<span class="tag w">壓 ${pr}%</span>`
-          : hot ? `<span class="tag h">最高</span>`
-          : cold ? `<span class="tag c">最低</span>` : "";
+          : hot ? `<span class="tag h">最高</span>` : cold ? `<span class="tag c">最低</span>` : "";
         return `<div class="oc ${cls}">${tag}
           <div class="n">${pad2(x.n)}</div>
           <div class="p1">短 ${s}%</div>
           <div class="p2">長 ${l}%</div>
-          <div class="p3">壓 ${pr}% · 遺 ${x.gap}/${x.max_gap}</div>
-        </div>`;
+          <div class="p3">壓 ${pr}% · 遺 ${x.gap}/${x.max_gap}</div></div>`;
       }).join("");
       return `<div class="sec">
         <div class="sh"><span class="bar"></span><span class="t">10~19 逐號機率</span>
@@ -305,29 +277,31 @@
           <span class="k"><span class="sw" style="background:var(--hotbg);border-color:var(--hotbd)"></span>短期最高</span>
           <span class="k"><span class="sw" style="background:var(--coldbg);border-color:var(--coldbd)"></span>短期最低</span>
           <div style="margin-top:6px">機率經貝式平滑向理論值收斂;短期僅近況、每期獨立,真實機率約 ${(o.theo * 100).toFixed(2)}%。</div>
-        </div>
-      </div>`;
+        </div></div>`;
     }
 
-    // 冷熱號與遺漏(整合):熱號 + 冷號 一個面板;前中後段遺漏接在同一區
-    function coldMissSection(d) {
-      const hc = d.hotcold;
-      let hcPanel = "";
-      if (hc) {
-        const hotPills = (hc.hot || []).map(x =>
-          `<div class="pill hot"><div class="pb">${pad2(x.n)}</div>
-             <div class="pl1">近${hc.window}期</div><div class="pl2">開 <b>${x.c}</b> 次</div></div>`).join("");
-        const coldPills = (hc.cold || []).map(x =>
-          `<div class="pill cold"><div class="pb">${pad2(x.n)}</div>
-             <div class="pl1">未開</div><div class="pl2"><b>${x.miss}</b> 期</div></div>`).join("");
-        hcPanel = `<div class="panel">
+    // 冷熱號(熱 + 冷,一個面板)
+    function hotColdSection(hc) {
+      if (!hc) return "";
+      const hotPills = (hc.hot || []).map(x =>
+        `<div class="pill hot"><div class="pb">${pad2(x.n)}</div>
+           <div class="pl1">近${hc.window}期</div><div class="pl2">開 <b>${x.c}</b> 次</div></div>`).join("");
+      const coldPills = (hc.cold || []).map(x =>
+        `<div class="pill cold"><div class="pb">${pad2(x.n)}</div>
+           <div class="pl1">未開</div><div class="pl2"><b>${x.miss}</b> 期</div></div>`).join("");
+      return `<div class="sec">
+        <div class="sh"><span class="bar"></span><span class="t">冷熱號</span><span class="h">近 ${hc.window} 期</span></div>
+        <div class="panel">
           <div class="row"><div class="lab" style="color:var(--hot)">熱號 · 追熱</div><div class="val"><div class="pills">${hotPills}</div></div></div>
           <div class="row"><div class="lab" style="color:var(--cold)">冷號 · 養牌</div><div class="val"><div class="pills">${coldPills}</div></div></div>
-        </div>`;
-      }
+        </div></div>`;
+    }
 
+    // 前中後段遺漏(全寬 3 欄)
+    function thirdsSection(thirds) {
+      if (!thirds || !thirds.length) return "";
       const bars = { "前段": "#5c8cff", "中段": "#9b6dff", "後段": "#e06db0" };
-      const cols = (d.thirds || []).map(t => {
+      const cols = thirds.map(t => {
         const bar = bars[t.name] || "#8a90a0";
         const badges = (t.items && t.items.length)
           ? t.items.map(it =>
@@ -337,15 +311,10 @@
           <div class="tname"><span class="tbar" style="background:${bar}"></span>${t.name}</div>
           <div class="badges">${badges}</div></div>`;
       }).join("");
-      const thirds = (d.thirds && d.thirds.length) ? `<div class="thirds">${cols}</div>` : "";
-
-      if (!hcPanel && !thirds) return "";
       return `<div class="sec">
-        <div class="sh"><span class="bar"></span><span class="t">冷熱號與遺漏分布</span>
-          <span class="h">近 ${hc ? hc.window : 30} 期 · 遺漏≥8 標黃</span></div>
-        ${hcPanel}
-        ${thirds}
-      </div>`;
+        <div class="sh"><span class="bar"></span><span class="t">前中後段 · 目前遺漏</span>
+          <span class="h">球號／已幾期沒開(≥8 標黃)</span></div>
+        <div class="thirds">${cols}</div></div>`;
     }
 
     function render(d) {
@@ -364,7 +333,8 @@
           ${snapHtml(d)}
           ${pillar1800Section(d)}
           ${numOddsSection(d.num_odds)}
-          ${coldMissSection(d)}
+          ${hotColdSection(d.hotcold)}
+          ${thirdsSection(d.thirds)}
         </div>
         <div class="foot"><span>539 / 天天樂 損益儀表板</span><span>${d.date}${metaTime}</span></div>`;
       document.documentElement.setAttribute("data-ready", "1");
