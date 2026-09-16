@@ -92,9 +92,12 @@ def test_combo9000_full_and_fullwidth(env):
 
 
 def test_combo9000_decimal_multiplier(env):
-    """乘數本身可小數:9000碰x0.5 → 0.005 支。"""
+    """小數乘數 = 直接指定支數(不 ÷100):9000碰x0.5 → 0.5 支、4500 碰。
+    (整數才走 ÷100;寫小數時使用者是直接給支數 —— 舊版誤算成 0.005 支)。"""
     items, errors = _parse(env, "9000碰x0.5")
-    assert errors == [] and items[0].units == 0.005
+    assert errors == []
+    assert items[0].units == 0.5
+    assert items[0].bets_count == 4500
 
 
 def test_combo9000_zero_rejected(env):
