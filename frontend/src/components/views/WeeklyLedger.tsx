@@ -991,7 +991,7 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
       <div ref={splitRef} className={`flex ${isWide ? 'flex-row items-start gap-0' : 'flex-col gap-4'}`}>
         {/* 左欄:建議(寬度可拖動) */}
         <div
-          className={`space-y-4 ${isWide ? 'shrink-0' : 'w-full'}`}
+          className={`space-y-4 ${isWide ? 'shrink-0 self-start sticky top-[4.5rem] max-h-[calc(100vh-5.5rem)] overflow-y-auto pr-1' : 'w-full'}`}
           style={isWide ? { width: `calc(${leftPct}% - 8px)` } : undefined}
         >
 
@@ -1145,14 +1145,14 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
           <div
             onPointerDown={startDrag}
             title="拖動調整左右比例"
-            className="group w-4 shrink-0 self-stretch flex items-center justify-center cursor-col-resize touch-none"
+            className="group w-4 shrink-0 self-start sticky top-[4.5rem] h-[calc(100vh-5.5rem)] flex items-center justify-center cursor-col-resize touch-none"
           >
             <div className="w-[3px] h-20 rounded-full bg-black/15 dark:bg-white/20 group-hover:bg-indigo-500 dark:group-hover:bg-indigo-400 transition-colors" />
           </div>
         )}
 
-        {/* 右欄:週帳列表(版/下法篩選 + 總計 + 逐週) */}
-        <div className="space-y-4 min-w-0 flex-1">
+        {/* 右欄:週帳列表(版/下法篩選 + 總計 + 逐週);雙欄時獨立捲動 */}
+        <div className={`space-y-4 min-w-0 flex-1 ${isWide ? 'self-start sticky top-[4.5rem] max-h-[calc(100vh-5.5rem)] overflow-y-auto pr-1' : ''}`}>
       {/* 版篩選 */}
       {usedEds.length > 1 && (
         <div className="flex flex-wrap items-center gap-1.5">
