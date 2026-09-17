@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { motion } from 'motion/react';
 import { AlertTriangle, Trash2 } from 'lucide-react';
 import { useAllLedger, useLedgerActions } from '../../api/useLedger';
@@ -662,7 +663,8 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
   // 排除清單本機即時存 localStorage(穩定不丟);跨裝置(伺服器)改「手動儲存」按鈕 ——
   // 舊版每次點都自動推伺服器且靜默吞錯,會漏存;現在改由使用者按鈕明確儲存 + 回饋。
   const [excludedIds, setExcludedIds] = useState<Set<string>>(() => {
-    try { return new Set(JSON.parse(localStorage.getItem('lottery_recover_excluded') || '[]')); }
+    // 讀回一律字串化(舊資料可能是數字),否則 .has(String(id)) 比對不到、送後端也會 422
+    try { return new Set((JSON.parse(localStorage.getItem('lottery_recover_excluded') || '[]') as unknown[]).map(String)); }
     catch { return new Set(); }
   });
   const [excludeDirty, setExcludeDirty] = useState(false);            // 有未存到伺服器的變更
@@ -672,7 +674,7 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
     if (!loggedIn) return;
     let alive = true;
     api.recoverExcludeGet()
-      .then(r => { if (alive) { setExcludedIds(new Set(r.ids)); setExcludeDirty(false); } })
+      .then(r => { if (alive) { setExcludedIds(new Set((r.ids ?? []).map(String))); setExcludeDirty(false); } })
       .catch(() => { /* 讀不到就用本機 */ });
     return () => { alive = false; };
   }, [loggedIn]);
@@ -1076,7 +1078,9 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
       )}
 
       {/* 建議車數:點某列彈出的明細,逐筆勾選排除(不影響週期帳,只影響建議車數的赤字基準) */}
-      {recoverModal && (
+      {/* 用 Portal 掛到 body:脫離 motion.div layout 的 transform 祖先,
+          否則 position:fixed 會相對左欄(22rem)定位 → 先擠在側邊、動畫後才跳全畫面(卡頓) */}
+      {recoverModal && createPortal(
         <RecoverModal
           title={recoverModal.label}
           weekLabel={wk.allWeeks ? '全部週' : wk.label}
@@ -1099,7 +1103,8 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
           dirty={excludeDirty}
           saveState={excludeSaveState}
           onSave={saveExcluded}
-        />
+        />,
+        document.body,
       )}
         </motion.div>{/* /左欄 */}
 

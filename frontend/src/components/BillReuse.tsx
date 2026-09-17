@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { ClipboardList, X, ChevronDown, ChevronRight, Trash2 } from 'lucide-react';
 import { useAllLedger } from '../api/useLedger';
 import { LedgerMode } from '../api/client';
@@ -249,7 +250,7 @@ export const BillReuseButton: React.FC<{ focusWeek: string }> = ({ focusWeek }) 
         )}
       </button>
 
-      {open && (
+      {open && createPortal((
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150"
           onClick={() => setOpen(false)}
@@ -375,7 +376,7 @@ export const BillReuseButton: React.FC<{ focusWeek: string }> = ({ focusWeek }) 
             </div>
           </div>
         </div>
-      )}
+      ), document.body)}
     </>
   );
 };

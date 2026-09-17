@@ -11,7 +11,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from backend import (audit_store, autosettle, cycle_store, data, ledger_store,
                      reconcile, recover_exclude_store, settle,
@@ -318,6 +318,15 @@ def clear_entries(mode: str | None = Query(default=None),
 # ── 建議車數/支數「排除下注」清單(每人一份,跨裝置) ──────────────
 class RecoverExcludeIn(BaseModel):
     ids: list[str] = Field(default_factory=list)   # 要排除的 ledger 紀錄 id(字串)
+
+    @field_validator("ids", mode="before")
+    @classmethod
+    def _coerce_ids(cls, v):
+        # 容錯:舊版 / 前端可能送來數字或含 null 的 id,pydantic v2 對 list[str] 會 422。
+        # 一律轉字串、丟掉 None/空字串,存的一律是字串 id。
+        if v is None:
+            return []
+        return [str(x) for x in v if x is not None and str(x) != ""]
 
 
 @router.get("/recover-exclude")

@@ -947,7 +947,8 @@ export const api = {
   // 建議車數/支數「排除下注」清單(每人一份,跨裝置)
   recoverExcludeGet: () => get<{ids: string[]}>('ledger/recover-exclude'),
   recoverExcludeSet: (ids: string[]) =>
-    put<{ids: string[]}>('ledger/recover-exclude', {ids}),
+    // 一律字串化 + 濾空,避免舊資料混入數字/null 讓後端 422
+    put<{ids: string[]}>('ledger/recover-exclude', {ids: ids.map(String).filter(Boolean)}),
 
   // 備援:一鍵把自己所有「待開獎」且該期已開的紀錄自動對獎
   ledgerSettlePending: () =>
