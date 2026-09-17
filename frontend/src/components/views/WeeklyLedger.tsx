@@ -1,6 +1,5 @@
 import React, { useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { motion } from 'motion/react';
 import { AlertTriangle, Trash2 } from 'lucide-react';
 import { useAllLedger, useLedgerActions } from '../../api/useLedger';
 import { useEditions } from '../../api/useEditions';
@@ -20,8 +19,6 @@ const num = (v: unknown): number => {
 
 const isPending = (result: string) => !result || result.includes('待開') || result.includes('待對');
 
-// 垂直單欄 ↔ 左右雙欄 切換的過場(摺疊機展開/闔上時 morph,消除割裂感)
-const FOLD_SPRING = { type: 'spring' as const, damping: 26, stiffness: 210 };
 
 // 今彩539 各下法「理論命中機率」(39 取 5,固定常數;對齊 core/pillar.hit_probs 與 5/39 膽中)。
 // 攤平模式用「機率×該版盤口派彩 ÷ 成本 = 返還率(期望值)」比較四種下法。
@@ -715,17 +712,49 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
   // 建議車數的盤口基準:預設用 539/天天樂(共用),可切成六合彩(六合彩成本/派彩不同)。
   const [oddsGame, setOddsGame] = useState<'lotto539' | 'marksix'>('lotto539');
 
-  // 螢幕寬度(摺疊機展開/闔上):≥768px 走左右雙欄,否則垂直單欄。用 state 驅動,
-  // 讓斷點變化觸發 React 重繪,motion 的 layout 才抓得到並做 morph 過場。
+  // 螢幕寬度(摺疊機展開/闔上):≥640px 走左右雙欄,否則垂直單欄。斷點壓到 640 是因為
+  // 折疊機展開的 CSS 寬度約 690px,原本 768 要縮到 90% 才觸發,改 640 正常寬就進雙欄。
   const [isWide, setIsWide] = useState<boolean>(
-    () => typeof window !== 'undefined' && window.matchMedia('(min-width: 768px)').matches,
+    () => typeof window !== 'undefined' && window.matchMedia('(min-width: 640px)').matches,
   );
   React.useEffect(() => {
-    const mq = window.matchMedia('(min-width: 768px)');
+    const mq = window.matchMedia('(min-width: 640px)');
     const on = () => setIsWide(mq.matches);
     mq.addEventListener('change', on);
     return () => mq.removeEventListener('change', on);
   }, []);
+
+  // 左右雙欄的比例:中間可拖動的滑塊調整左欄寬度(%),記在 localStorage 下次沿用。
+  const splitRef = React.useRef<HTMLDivElement>(null);
+  const draggingRef = React.useRef(false);
+  const [leftPct, setLeftPct] = useState<number>(() => {
+    const v = Number(localStorage.getItem('lottery_ledger_split') || '');
+    return Number.isFinite(v) && v >= 22 && v <= 72 ? v : 34;
+  });
+  React.useEffect(() => {
+    const onMove = (e: PointerEvent) => {
+      if (!draggingRef.current || !splitRef.current) return;
+      const r = splitRef.current.getBoundingClientRect();
+      const pct = ((e.clientX - r.left) / r.width) * 100;
+      setLeftPct(Math.min(72, Math.max(22, pct)));   // 夾在 22%~72%
+    };
+    const onUp = () => {
+      if (!draggingRef.current) return;
+      draggingRef.current = false;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      try { localStorage.setItem('lottery_ledger_split', String(Math.round(leftPct))); } catch { /* ignore */ }
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    return () => { window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); };
+  }, [leftPct]);
+  const startDrag = (e: React.PointerEvent) => {
+    e.preventDefault();
+    draggingRef.current = true;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  };
 
   // 建議試算用「該版實際盤口」(非遊戲預設)—— 9000碰 combo9000_cost 每版不同,用預設會算錯。
   const [oddsByEid, setOddsByEid] = useState<Record<number, Record<string, { value: number; custom: boolean }>>>({});
@@ -957,11 +986,14 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
         點<strong>週</strong>展開看每日小計,再點<strong>某日</strong>看當天逐筆的下注方式 / 組合 / 成本 / 派彩 / 盈虧。
       </p>
 
-      {/* 展開螢幕(≥768,摺疊機展開/平板/桌機)左建議 + 右週帳雙欄;窄螢幕單欄垂直。
-          切換由 isWide 驅動 + motion layout,做 spring morph 過場避免割裂感。 */}
-      <motion.div layout transition={FOLD_SPRING} className={`flex gap-4 ${isWide ? 'flex-row items-start' : 'flex-col'}`}>
-        {/* 左欄:建議 */}
-        <motion.div layout transition={FOLD_SPRING} className={`space-y-4 ${isWide ? 'w-[22rem] shrink-0' : 'w-full'}`}>
+      {/* 展開螢幕(≥640,摺疊機展開/平板/桌機)左建議 + 右週帳雙欄;窄螢幕單欄垂直。
+          雙欄中間有可拖動滑塊,調整左右比例(leftPct)。 */}
+      <div ref={splitRef} className={`flex ${isWide ? 'flex-row items-start gap-0' : 'flex-col gap-4'}`}>
+        {/* 左欄:建議(寬度可拖動) */}
+        <div
+          className={`space-y-4 ${isWide ? 'shrink-0' : 'w-full'}`}
+          style={isWide ? { width: `calc(${leftPct}% - 8px)` } : undefined}
+        >
 
       {/* 建議下注量(回本試算):依版分區,每區 2×2(上 1組/2組,下 1800碰/9000碰)。點卡彈明細逐筆排除。 */}
       {(recoverRows.length > 0 || averageRows.length > 0) && (
@@ -1106,10 +1138,21 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
         />,
         document.body,
       )}
-        </motion.div>{/* /左欄 */}
+        </div>{/* /左欄 */}
+
+        {/* 中間:可拖動比例滑塊(僅雙欄) */}
+        {isWide && (
+          <div
+            onPointerDown={startDrag}
+            title="拖動調整左右比例"
+            className="group w-4 shrink-0 self-stretch flex items-center justify-center cursor-col-resize touch-none"
+          >
+            <div className="w-[3px] h-20 rounded-full bg-black/15 dark:bg-white/20 group-hover:bg-indigo-500 dark:group-hover:bg-indigo-400 transition-colors" />
+          </div>
+        )}
 
         {/* 右欄:週帳列表(版/下法篩選 + 總計 + 逐週) */}
-        <motion.div layout transition={FOLD_SPRING} className="space-y-4 min-w-0 flex-1">
+        <div className="space-y-4 min-w-0 flex-1">
       {/* 版篩選 */}
       {usedEds.length > 1 && (
         <div className="flex flex-wrap items-center gap-1.5">
@@ -1409,8 +1452,8 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
           <strong>盈虧</strong> = 派彩 − 成本。待開獎的筆不計入派彩合計,開獎後自動補上。
         </span>
       </div>
-        </motion.div>{/* /右欄 */}
-      </motion.div>{/* /雙欄 */}
+        </div>{/* /右欄 */}
+      </div>{/* /雙欄 */}
     </div>
   );
 };
