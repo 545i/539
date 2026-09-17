@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import {
   ChevronRight,
   ChevronDown,
-  ShieldAlert,
   Info,
   ClipboardPaste,
   History
@@ -23,7 +22,7 @@ import { CalculatorView } from './components/views/CalculatorView';
 import { AnalysisView } from './components/views/AnalysisView';
 import { PredictionView } from './components/views/PredictionView';
 import { ExportView } from './components/views/ExportView';
-import { LeaderboardView } from './components/views/LeaderboardView';
+import { RiskView } from './components/views/RiskView';
 import { AuditView } from './components/views/AuditView';
 import { SettingsView } from './components/views/SettingsView';
 
@@ -43,7 +42,6 @@ export default function App() {
 
   // UI expanders
   const [isHowToUseOpen, setIsHowToUseOpen] = useState(false);
-  const [isDisclaimerOpen, setIsDisclaimerOpen] = useState(false);
   const [isFormulaModalOpen, setIsFormulaModalOpen] = useState(false);
   const [formulaModalType, setFormulaModalType] = useState<'formula' | 'disclaimer'>('formula');
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
@@ -127,7 +125,7 @@ export default function App() {
       case 'analysis': return '統計分析';
       case 'prediction': return '五策略預測';
       case 'export': return '匯出中心';
-      case 'leaderboard': return '績效榜單';
+      case 'risk': return '風險與數學期望值';
       case 'audit': return '操作歷史';
       case 'upload_history': return '快速上傳歷史';
       case 'settings': return '系統設定';
@@ -277,7 +275,7 @@ export default function App() {
           {activeNav === 'analysis' && <AnalysisView />}
           {activeNav === 'prediction' && <PredictionView />}
           {activeNav === 'export' && <ExportView />}
-          {activeNav === 'leaderboard' && <LeaderboardView />}
+          {activeNav === 'risk' && <RiskView />}
           {/* 作廢會改到記帳流水,沿用快速上傳那套 ledgerVersion 讓各分頁重抓 */}
           {activeNav === 'audit' && (
             <AuditView onReverted={refreshLedger} />
@@ -295,36 +293,6 @@ export default function App() {
             />
           )}
           {activeNav === 'settings' && <SettingsView theme={theme} onToggleTheme={toggleTheme} />}
-
-          {/* Bottom Disclaimer Expander */}
-          <div className="pt-6">
-            <div className="rounded-2xl border border-black/[0.08] dark:border-white/[0.08] overflow-hidden bg-white dark:bg-[#121212]">
-              <button
-                type="button"
-                id="bottom-disclaimer-btn"
-                onClick={() => setIsDisclaimerOpen(!isDisclaimerOpen)}
-                className="w-full px-5 py-3.5 flex items-center justify-between text-xs sm:text-sm font-semibold text-neutral-700 dark:text-neutral-300 hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors"
-              >
-                <div className="flex items-center gap-2 text-neutral-900 dark:text-neutral-100">
-                  <ShieldAlert className="w-4 h-4 text-neutral-500" />
-                  <span className="tracking-wide">風險與數學期望值提醒</span>
-                </div>
-                {isDisclaimerOpen ? <ChevronDown className="w-4 h-4 text-neutral-400" /> : <ChevronRight className="w-4 h-4 text-neutral-400" />}
-              </button>
-
-              {isDisclaimerOpen && (
-                <div className="p-5 border-t border-black/[0.08] dark:border-white/[0.08] text-xs sm:text-sm text-neutral-600 dark:text-neutral-300 space-y-2 leading-relaxed bg-black/[0.01] dark:bg-white/[0.01]">
-                  <p>回本車數純屬算術推算，無法改變每局之負期望值本質。</p>
-                  <p>
-                    連敗時虧損呈幾何級數成長：每敗一局虧損乘上 1/(1−k)。k 主要由「押選顆數」決定。選號越多、下注越多款，k 越趨近於 1，資金消耗急遽加速。
-                  </p>
-                  <p className="text-neutral-400">
-                    長期統計仍為負期望值，請理性娛樂。詳細數學推導請點選左側「統計推導 / 算式」。
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
         </main>
       </div>
 

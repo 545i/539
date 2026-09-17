@@ -6,7 +6,7 @@ export type NavItem =
   | 'analysis'     // 統計分析
   | 'prediction'   // 五策略預測
   | 'export'       // 匯出
-  | 'leaderboard'  // 排行榜
+  | 'risk'         // 風險與數學期望值提醒(獨立頁)
   | 'audit'        // 操作歷史(可作廢=反轉)
   | 'upload_history' // 快速上傳歷史(每筆明細/派彩/盈虧)
   | 'settings';    // 設定
