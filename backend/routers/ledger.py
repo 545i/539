@@ -244,7 +244,7 @@ def settle_preview(body: PreviewIn):
     return _resettle(body.record, body.issue, body.hit_count)
 
 
-@router.put("/{entry_id}")
+@router.put("/{entry_id:int}")   # :int 限定只匹配數字,才不會攔截 /recover-exclude 等靜態路徑
 def resettle_entry(entry_id: int, body: SettleIn, user: str = Depends(current_user)):
     """改一筆的期數並重新對獎:抓該期真實開獎號,重算中獎狀態與損益後存回。
 
@@ -276,7 +276,7 @@ def resettle_entry(entry_id: int, body: SettleIn, user: str = Depends(current_us
     return new_entry
 
 
-@router.delete("/{entry_id}")
+@router.delete("/{entry_id:int}")   # 同上:只匹配數字,別攔到靜態路徑
 def delete_entry(entry_id: int, user: str = Depends(current_user)):
     """刪一筆(撤銷上一筆);不是自己的紀錄回 404。
 
