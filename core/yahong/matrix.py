@@ -7,16 +7,29 @@ from __future__ import annotations
 
 from math import sqrt
 
-# ── 牌局設定(spaceConfigs;只依 type 分)──────────────────────
+from core import combo, combo9000
+
+# ── 牌局設定(spaceConfigs;只保留碰數 basePuffs;成本/彩金改讀即時盤口)──
 _CONFIGS = {
-    "1800": {"type": "1800", "unitBet": 1, "basePuffs": 1800, "rebate": 37, "unitPrize": 570},
-    "9000": {"type": "9000", "unitBet": 1, "basePuffs": 9000, "rebate": 50, "unitPrize": 8000},
+    "1800": {"type": "1800", "basePuffs": 1800},
+    "9000": {"type": "9000", "basePuffs": 9000},
 }
 
 
 def config_for(mode: str) -> dict:
     """依 mode(1800|9000)取得牌局設定的副本。"""
     return dict(_CONFIGS[mode])
+
+
+def _market_econ(mode: str) -> tuple[float, float]:
+    """讀我方即時盤口(無退水)。回 (每碰成本 unit_cost, 中一碰可得 unit_prize)。
+
+    1800=三星:combo.market_cost(3)/market_prize(3)(63 / 57000);
+    9000=四星:combo.market_cost(4)/combo9000.PRIZE_PER_BET(50 / 800000)。
+    """
+    if mode == "1800":
+        return float(combo.market_cost(3) or 63.0), float(combo.market_prize(3) or 57_000.0)
+    return float(combo.market_cost(4) or 50.0), float(combo9000.PRIZE_PER_BET)
 
 
 # ── 中獎判定 ─────────────────────────────────────────────────
@@ -64,9 +77,11 @@ def analyze_space(cfg: dict, data: list[list[int]]) -> dict | None:
         return None
 
     base_p = 0.5536 if cfg["type"] == "1800" else 0.2736
-    cost_per_round = cfg["unitBet"] * cfg["basePuffs"] * (1 - cfg["rebate"] / 100)
+    # 用我方即時盤口、**不含退水**:成本=碰數×每碰成本,彩金=期望碰數×中一碰可得
+    unit_cost, unit_prize = _market_econ(cfg["type"])
+    cost_per_round = cfg["basePuffs"] * unit_cost
     expected_prize_puffs = 3.5576 if cfg["type"] == "1800" else 2.0
-    avg_prize_when_win = expected_prize_puffs * cfg["unitPrize"] * cfg["unitBet"]
+    avg_prize_when_win = expected_prize_puffs * unit_prize
 
     reversed_data = data[::-1]      # 舊→新
 

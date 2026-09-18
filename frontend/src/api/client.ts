@@ -929,11 +929,16 @@ export interface YahongSingleTargetDTO {
   giants: YahongGiantDTO[]; // 18 宗師
   sparkline: number[];      // 最近遺漏段(新→舊)+ 末尾當前遺漏
 }
+export interface YahongRecentDrawDTO {
+  date: string;
+  nums: number[];
+}
 export interface YahongSingleDTO {
   game: GameKey;
   totalDraws: number;
   ranking: YahongRankRowDTO[]; // 39 筆,score 由高到低
   target: YahongSingleTargetDTO | null;
+  recent8?: YahongRecentDrawDTO[]; // 最近 8 期開獎(新→舊)
   error?: string; // 資料 <100 期:{error, totalDraws}
 }
 
@@ -941,9 +946,12 @@ export interface YahongSingleDTO {
 export type YahongPillarBadge = 'alert' | 'ready' | 'ok';
 export interface YahongPillarDTO {
   miss: number;
-  nextProb: number; // 百分比(0~100)
+  nextProb: number; // 百分比(0~100);天天樂為「AI 爆發率」
   badge: YahongPillarBadge;
   badgeText: string;
+  theoProb: number;  // 理論機率(base_p*100,1 位小數)—— 兩款都有
+  avgCycle?: number; // 平均週期(幾期開一次)—— 天天樂才有
+  histProb?: number; // 歷史實際命中率(%)—— 天天樂才有
 }
 export interface YahongHotDTO {
   num: number;
@@ -954,13 +962,16 @@ export interface YahongColdDTO {
   num: number;
   miss: number;
 }
+// 539:freq*0.65 + rebound*0.35,近 50 期(recent50)。
+// 天天樂:freq*0.35 + recent*0.35 + rebound*0.30,近 15 期(recent)。
 export interface YahongProbScoreDTO {
   num: number;
   score: number;
   freq: number;
   rebound: number;
   miss: number;
-  recent50: number;
+  recent50?: number; // 539:近 50 期出現次數
+  recent?: number;   // 天天樂:近 15 期出現次數
 }
 export type YahongRecommendColor = 'gold' | 'rose' | 'cyan' | 'purple';
 export interface YahongRecommendDTO {
@@ -981,26 +992,36 @@ export interface YahongAnalysisDTO {
   recommend: YahongRecommendDTO[]; // 四模式 × 三星/四星
 }
 
-// 資金規劃(純計算)
-export type YahongPlanKind = 'single' | 'four' | 'tier';
+// 資金規劃(純計算)。pillar1800/pillar9000 為天天樂專屬立柱倍投(spec-fantasy §4.4)。
+export type YahongPlanKind = 'single' | 'four' | 'tier' | 'pillar1800' | 'pillar9000';
 export interface YahongPlanRowDTO {
   day: number;
-  target: number;
-  units: number;
-  dailyCost: number;
-  accCost: number;
-  winPrize: number;
-  netProfit: number;
-  doubleWin?: number; // four 才有:中 2 碼暴利
+  // 倍投 / 階梯共用
+  target?: number;    // 目標累計淨利(single/four;tier 無)
+  tier?: number;      // 階梯階數(tier)
+  units?: number;     // 下注車數(single/four/tier,2 位小數)
+  dailyCost: number;  // 當期成本 / 實繳
+  accCost: number;    // 累計投入 / 實繳
+  winPrize?: number;  // 中獎彩金(single/four/tier)
+  netProfit?: number; // 結算淨利(single/four/tier)
+  doubleWin?: number; // four 才有:中 2 碼淨利(暴利)
+  doubleWinPrize?: number; // 天天樂 four 才有:中 2 碼彩金
+  // 立柱倍投(pillar1800/pillar9000)
+  bet?: number;         // 下注金額(整數元)
+  basePrize?: number;   // 中3碰(1800)/中2碰滿貫(9000)彩金
+  baseProfit?: number;  // 保底淨利 / 結算實得淨利
+  bonusPrize?: number;  // 僅 1800:中4碰彩金
+  bonusProfit?: number; // 僅 1800:中4碰淨利(大爆發)
 }
 export interface YahongPlanDTO {
   kind: YahongPlanKind;
+  game?: GameKey;
   rows: YahongPlanRowDTO[];
 }
 export interface YahongPlanParams {
   kind: YahongPlanKind;
-  units?: number;
-  target?: number;
+  units?: number;   // single/four=起步車數;tier=起始車數;pillar=firstBet(元)
+  target?: number;  // single/four=每期目標淨利;pillar=每期保底淨利 targetProfit
   days?: number;
   cost?: number;
   prize?: number;

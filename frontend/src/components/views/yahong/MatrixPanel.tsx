@@ -6,12 +6,15 @@ import { Disclaimer, Loading, ErrorBox, cardClass, fmtValue, VERDICT_BANNER, mon
 
 type Mode = '1800' | '9000';
 
-// 一格指標卡:drawdown 特別處理(value=當前回撤 / extra=歷史最大)
+// 一格指標卡:drawdown 特別處理(value=當前回撤 / extra=歷史最大);
+// geomMean(理論平均遺漏)補「期」單位(對齊原站)。
 const MetricCell: React.FC<{ m: YahongMetricDTO }> = ({ m }) => {
   const display =
     m.key === 'drawdown' && m.extra !== undefined
       ? `$${money(m.value)} / 最大 $${money(m.extra)}`
-      : fmtValue(m.value, m.fmt);
+      : m.key === 'geomMean'
+        ? `${fmtValue(m.value, m.fmt)} 期`
+        : fmtValue(m.value, m.fmt);
   return (
     <div className="p-3 rounded-xl bg-black/[0.02] dark:bg-white/[0.03] border border-black/[0.06] dark:border-white/[0.06]">
       <div className="text-[10px] uppercase tracking-wider text-neutral-400 truncate">{m.label}</div>
@@ -53,8 +56,10 @@ export const MatrixPanel: React.FC<{ game: GameKey }> = ({ game }) => {
 
       {data && (
         <>
-          {/* 五裁決橫幅 */}
-          <div className={`p-5 rounded-2xl border ${VERDICT_BANNER[data.verdict.color]}`}>
+          {/* 五裁決橫幅:紅圈 emoji(🔴 聯合否決等)即使後端仍給 slate 也上紅色,對齊原站 */}
+          <div className={`p-5 rounded-2xl border ${VERDICT_BANNER[
+            data.verdict.color === 'slate' && data.verdict.title.includes('🔴') ? 'red' : data.verdict.color
+          ]}`}>
             <div className="flex items-center justify-between flex-wrap gap-2">
               <span className="text-base font-display font-bold tracking-wide">{data.verdict.title}</span>
               <span className="text-xs font-mono font-bold px-2.5 py-1 rounded-full bg-black/10 dark:bg-white/10">

@@ -60,7 +60,7 @@ export const Zone34Panel: React.FC<{ game: GameKey }> = ({ game }) => {
               </span>
             </div>
             <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-2">
-              條件:連 {data.strategyA.threshold} 期未出同區 3 顆。{data.strategyA.note}
+              條件:連 {data.strategyA.threshold} 期未出同區 3 顆。打法:{data.strategyA.note}
             </p>
             {data.strategyA.active && data.strategyA.coldest && data.strategyA.coldest.length > 0 && (
               <div className="mt-3">
@@ -92,11 +92,11 @@ export const Zone34Panel: React.FC<{ game: GameKey }> = ({ game }) => {
               </span>
             </div>
             <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-2">
-              條件:連 {data.strategyB.threshold} 期未出同區 3 顆。{data.strategyB.note}
+              條件:連 {data.strategyB.threshold} 期未出同區 3 顆。打法:{data.strategyB.note}
             </p>
             {data.strategyB.active && (
               <div className="mt-3 text-xs font-semibold text-purple-700 dark:text-purple-300">
-                🎯 狙擊時機已到!今晚不刪牌直接滿注進場,等待爆發。
+                🎯 狙擊時機已到!今晚不刪牌直接滿注進場,等待爆發,睡覺免煩惱!
               </div>
             )}
           </div>

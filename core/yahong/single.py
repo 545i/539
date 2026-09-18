@@ -8,12 +8,27 @@ from __future__ import annotations
 
 from math import sqrt
 
+from core import combo
+
 MIN_DRAWS = 100
-HIT_PROFIT = 330
-MISS_COST = 100
-B_ODDS = 3.3
 
 _FIB = {1, 2, 3, 5, 8, 13, 21, 34}
+
+
+def _econ() -> tuple[float, float, float, float, float]:
+    """單碼頁損益模型:單一號碼 = 包該號的**二星全車**(讀即時盤口、無退水)。
+
+    38 注全車(該號 + 其餘 38 號各一注);命中(該號開出)= 與另 4 顆各成 1 碰 → 中 4 注。
+    回 (COST 每期成本, GROSS 命中派彩, NET 命中淨賺, b 賠率, SCALE 金額門檻縮放)。
+    """
+    c2 = float(combo.market_cost(2) or 80.0)
+    p2 = float(combo.market_prize(2) or 80.0 * 53)
+    cost = 38 * c2                       # 全車二星 38 注
+    gross = 4 * p2                       # 命中 → 4 碰中
+    net = gross - cost
+    b = net / cost if cost > 0 else 0.0
+    scale = cost / 100                   # finalScore 金額門檻等比縮放基準
+    return cost, gross, net, b, scale
 
 _GIANT_LABELS = {
     "m1": "數學家(均值)", "m2": "資金家(凱利)", "m3": "贏家(馬可夫)",
@@ -29,6 +44,7 @@ def _compute(data: list[list[int]], target: int) -> dict:
     """對單一號碼 target 掃過歷史(data 為新→舊,data[0]=最新),算 18 宗師 + finalScore。"""
     n = len(data)
     reversed_ = data[::-1]      # 舊→新
+    cost, gross, net, b, scale = _econ()
 
     # ── 前置回測(舊→新)──
     missing_history: list[int] = []
@@ -52,13 +68,13 @@ def _compute(data: list[list[int]], target: int) -> dict:
         if is_hit:
             missing_history.append(temp_miss)
             temp_miss = 0
-            new_eq = eq_curve[-1] + HIT_PROFIT
+            new_eq = eq_curve[-1] + net
             eq_curve.append(new_eq)
             if new_eq > peak:
                 peak = new_eq
         else:
             temp_miss += 1
-            new_eq = eq_curve[-1] - MISS_COST
+            new_eq = eq_curve[-1] - cost
             eq_curve.append(new_eq)
         dd = peak - eq_curve[-1]
         if dd > max_dd:
@@ -94,7 +110,7 @@ def _compute(data: list[list[int]], target: int) -> dict:
 
     # ── 西方 8 大 ──
     m1 = (hits + 1) / (n + 2)
-    m2 = prob30 - ((1 - prob30) / B_ODDS)
+    m2 = prob30 - ((1 - prob30) / b) if b > 0 else 0.0
 
     m_hit = m_miss = trk = 0
     for idx, item in enumerate(reversed_):
@@ -110,21 +126,21 @@ def _compute(data: list[list[int]], target: int) -> dict:
     m4 = (current_miss - avg_miss) / std_dev if std_dev > 0 else 0.0
     m5 = max_dd
 
-    m6 = (prob30 * 330) - ((1 - prob30) * 100)
+    m6 = (prob30 * net) - ((1 - prob30) * cost)
 
-    gains = losses = 0
+    gains = losses = 0.0
     for item in data[:14]:
         if target in item:
-            gains += 330
+            gains += net
         else:
-            losses += 100
+            losses += cost
     if losses == 0:
         m7 = 100.0
     else:
         rs = (gains / 14) / (losses / 14)
         m7 = 100 - (100 / (1 + rs))
 
-    rets = [330 if (target in item) else -100 for item in data[:30]]
+    rets = [net if (target in item) else -cost for item in data[:30]]
     avg_ret = sum(rets) / (len(rets) or 1)
     var_ret = sum((v - avg_ret) ** 2 for v in rets) / (len(rets) or 1)
     std_ret = sqrt(var_ret) or 1
@@ -176,8 +192,9 @@ def _compute(data: list[list[int]], target: int) -> dict:
     # ── finalScore ──
     kelly_clamped = max(0.0, min(m2 * 10, 1.0)) * 10
     z_pts = 6 if m4 > 1.5 else (4 if m4 > 0.5 else (2 if m4 > -0.5 else 0))
-    dd_pts = 5 if m5 <= 4000 else (3 if m5 <= 8000 else 0)
-    ev_pts = 5 if m6 > 20 else (3 if m6 > 0 else 0)
+    # 金額門檻等比縮放(SCALE=COST/100),否則換成全車成本後級距失效
+    dd_pts = 5 if m5 <= 4000 * scale else (3 if m5 <= 8000 * scale else 0)
+    ev_pts = 5 if m6 > 20 * scale else (3 if m6 > 0 else 0)
     rsi_pts = 5 if m7 >= 60 else (3 if m7 >= 40 else 0)
     sharpe_pts = 5 if m8 > 0.5 else (3 if m8 > 0 else 0)
     final_score = (
@@ -194,7 +211,7 @@ def _compute(data: list[list[int]], target: int) -> dict:
         final_score = final_score - 15
 
     return {
-        "target": target, "finalScore": final_score,
+        "target": target, "finalScore": final_score, "scale": scale,
         "probAll": prob_all, "prob30": prob30, "accel": accel,
         "maxMiss": int(max_miss), "survivalPR": survival_pr, "currentMiss": current_miss,
         "missingHistory": missing_history,
@@ -210,12 +227,13 @@ def _giants_display(c: dict) -> list[dict]:
     """18 宗師顯示格式(display 字串 + green 燈號)。"""
     g = c["giants"]
     prob_all = c["probAll"]
+    scale = c["scale"]
     out = [
         {"key": "m1", "display": f"{g['m1'] * 100:.1f}%", "green": g["m1"] > prob_all},
         {"key": "m2", "display": f"f* {(g['m2'] * 100 if g['m2'] > 0 else 0):.1f}%", "green": g["m2"] > 0},
         {"key": "m3", "display": f"{g['m3'] * 100:.1f}%", "green": g["m3"] > prob_all},
         {"key": "m4", "display": f"Z = {g['m4']:.2f}", "green": g["m4"] > 0},
-        {"key": "m5", "display": f"DD ${round(g['m5'])}", "green": g["m5"] <= 6000},
+        {"key": "m5", "display": f"DD ${round(g['m5'])}", "green": g["m5"] <= 6000 * scale},
         {"key": "m6", "display": f"EV {g['m6']:+.0f}", "green": g["m6"] > 0},
         {"key": "m7", "display": f"{g['m7']:.1f}", "green": 40 <= g["m7"] <= 75},
         {"key": "m8", "display": f"{g['m8']:.2f}", "green": g["m8"] > 0},
@@ -262,14 +280,19 @@ def _sparkline(c: dict) -> list[int]:
     return recent + [c["currentMiss"]]
 
 
-def single_response(game: str, data: list[list[int]], target: int | None) -> dict:
-    """組出 API 端點 3 的 JSON。資料 <100 期回 error。"""
+def single_response(game: str, data: list[list[int]], target: int | None,
+                    recent8: list[dict] | None = None) -> dict:
+    """組出 API 端點 3 的 JSON。資料 <100 期回 error。
+
+    recent8:最新 8 期 [{date, nums:[..]}](新→舊),由 router 從 df 取日期組好傳入。
+    """
     total = len(data)
     if total < MIN_DRAWS:
         return {"error": "資料不足 100 期", "totalDraws": total}
 
     ranking = rank_all(data)
-    result = {"game": game, "totalDraws": total, "ranking": ranking, "target": None}
+    result = {"game": game, "totalDraws": total, "ranking": ranking,
+              "target": None, "recent8": recent8 or []}
 
     if target is not None:
         row = next((r for r in ranking if r["num"] == target), None)

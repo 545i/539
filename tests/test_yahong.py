@@ -31,21 +31,27 @@ def test_matrix_response_structure():
     assert resp["verdict"]["color"] in {"red", "amber", "gold", "green", "slate"}
 
 
-def test_matrix_constants():
-    """baseP / expectedPrizePuffs / costPerRound 常數逐字對照。"""
-    # 1800:baseP 0.5536、cost=1*1800*(1-0.37)=1134、avgPrize=3.5576*570=2027.832
-    cfg = matrix.config_for("1800")
-    assert cfg["basePuffs"] == 1800 and cfg["rebate"] == 37 and cfg["unitPrize"] == 570
-    a = matrix.analyze_space(cfg, [[10, 20, 1, 2, 3]] * 10)
+def test_matrix_uses_our_market_no_rebate():
+    """碰經濟改讀我方即時盤口、**無退水**:成本=碰數×每碰成本,彩金=期望碰數×中一碰可得。
+
+    baseP / expectedPrizePuffs(0.5536/0.2736、3.5576/2.0)維持(牌路統計,非成本)。
+    """
+    from core import combo, combo9000
+    combo.clear_market_overrides()           # 用出廠預設驗證
+    # 1800=三星:cost=1800*market_cost(3)、avgPrize=3.5576*market_prize(3);無 (1-rebate)
+    a = matrix.analyze_space(matrix.config_for("1800"), [[10, 20, 1, 2, 3]] * 10)
     assert a["baseP_Threshold"] == 0.5536
-    assert a["costPerRound"] == pytest.approx(1134.0)
-    assert a["avgPrizeWhenWin"] == pytest.approx(3.5576 * 570)
-    # 9000:baseP 0.2736、cost=1*9000*0.5=4500、avgPrize=2.0*8000
-    cfg9 = matrix.config_for("9000")
-    a9 = matrix.analyze_space(cfg9, [[1, 10, 20, 30, 5]] * 10)
+    assert a["costPerRound"] == pytest.approx(1800 * float(combo.market_cost(3)))
+    assert a["avgPrizeWhenWin"] == pytest.approx(3.5576 * float(combo.market_prize(3)))
+    assert a["costPerRound"] == pytest.approx(113400.0)          # 1800*63
+    assert a["avgPrizeWhenWin"] == pytest.approx(3.5576 * 57000)
+    # 9000=四星:cost=9000*market_cost(4)、avgPrize=2.0*combo9000.PRIZE_PER_BET
+    a9 = matrix.analyze_space(matrix.config_for("9000"), [[1, 10, 20, 30, 5]] * 10)
     assert a9["baseP_Threshold"] == 0.2736
-    assert a9["costPerRound"] == pytest.approx(4500.0)
-    assert a9["avgPrizeWhenWin"] == pytest.approx(2.0 * 8000)
+    assert a9["costPerRound"] == pytest.approx(9000 * float(combo.market_cost(4)))
+    assert a9["avgPrizeWhenWin"] == pytest.approx(2.0 * float(combo9000.PRIZE_PER_BET))
+    assert a9["costPerRound"] == pytest.approx(450000.0)         # 9000*50
+    assert a9["avgPrizeWhenWin"] == pytest.approx(1600000.0)     # 2*800000
 
 
 def test_verdict_insufficient():
@@ -132,9 +138,36 @@ def test_single_ranking_grades():
     assert tgt["sparkline"] and tgt["grade"] in {"S", "A", "B", "C"}
 
 
-def test_single_constants():
-    assert single.MIN_DRAWS == 100 and single.B_ODDS == 3.3
-    assert single.HIT_PROFIT == 330 and single.MISS_COST == 100
+def test_single_econ_uses_market_full_wheel():
+    """單碼頁損益 = 包該號的二星全車(讀盤口、無退水):COST=38×c2、GROSS=4×p2。"""
+    from core import combo
+    combo.clear_market_overrides()
+    c2, p2 = float(combo.market_cost(2)), float(combo.market_prize(2))
+    cost, gross, net, b, scale = single._econ()
+    assert single.MIN_DRAWS == 100
+    assert cost == 38 * c2 and gross == 4 * p2
+    assert net == gross - cost and b == net / cost
+    assert scale == cost / 100
+    # 出廠預設:c2=80、p2=4240 → COST=3040、GROSS=16960、NET=13920、b≈4.579
+    assert cost == pytest.approx(3040.0) and gross == pytest.approx(16960.0)
+    assert net == pytest.approx(13920.0) and b == pytest.approx(13920 / 3040)
+
+
+def test_single_recent8():
+    """F5:single_response 帶 recent8(最新 8 期,新→舊)。"""
+    data = _new_old("lotto539")
+    recent8 = [{"date": "2026-09-17", "nums": [1, 2, 3, 4, 5]}]
+    resp = single.single_response("lotto539", data, None, recent8)
+    assert resp["recent8"] == recent8
+
+
+def test_single_uses_full_history():
+    """F1:single 端點用全歷史(不截 1500)。"""
+    df = load_df("lotto539")
+    full = len(df)
+    resp = single_ep_direct = yahong_router.single_ep("lotto539", None)
+    assert resp["totalDraws"] == full
+    assert len(resp["recent8"]) == min(8, full)
 
 
 # ── 綜合分析 / analysis ─────────────────────────────────────
@@ -147,8 +180,8 @@ def test_analysis_response_structure():
         assert resp["pillars"]["p1800"]["badge"] in {"alert", "ready", "ok"}
         assert len(resp["hot"]) == 8 and len(resp["cold"]) == 8
         assert len(resp["probScore"]) == 39
-        assert len(resp["recommend"]) == 4
-        assert [m["mode"] for m in resp["recommend"]] == [1, 2, 3, 4]
+        expected_modes = [1, 2, 3, 4] if game == "lotto539" else [1, 2, 3]
+        assert [m["mode"] for m in resp["recommend"]] == expected_modes
 
 
 def test_analysis_recommend_reproducible():
@@ -186,44 +219,114 @@ def test_analysis_prob_score_factor_fields_per_game():
 
 
 def test_analysis_pillar_algo_differs_by_game():
-    """539 柱碰用幾何(無 avgCycle);天天樂用線性 boost(帶 avgCycle)。"""
+    """539 柱碰用幾何(無 avgCycle);天天樂用線性 boost(帶 avgCycle)。兩款都帶 theoProb(F3)。"""
     p539 = analysis.analysis_response("lotto539", _new_old("lotto539"), None)["pillars"]["p1800"]
     pfan = analysis.analysis_response("fantasy5", _new_old("fantasy5"), None)["pillars"]["p1800"]
     assert "avgCycle" not in p539
-    assert "avgCycle" in pfan
+    assert "avgCycle" in pfan and "histProb" in pfan
     for p in (p539, pfan):
-        assert set(p) >= {"miss", "nextProb", "badge", "badgeText"}
+        assert set(p) >= {"miss", "nextProb", "badge", "badgeText", "theoProb"}
         assert p["badge"] in {"alert", "ready", "ok"}
+    assert p539["theoProb"] == round(analysis.BASE_P_1800 * 100, 1)
+    assert pfan["theoProb"] == round(analysis.BASE_P_1800 * 100, 1)
 
 
-# ── 資金規劃 / plan ─────────────────────────────────────────
+def test_recommend_mode_count_by_game():
+    """F2:539 回 4 模式;天天樂只回 3 模式(無加強矩陣 mode4)。"""
+    r539 = analysis.analysis_response("lotto539", _new_old("lotto539"), None)["recommend"]
+    rfan = analysis.analysis_response("fantasy5", _new_old("fantasy5"), None)["recommend"]
+    assert [m["mode"] for m in r539] == [1, 2, 3, 4]
+    assert [m["mode"] for m in rfan] == [1, 2, 3]
+    assert all(m["color"] in {"gold", "rose", "cyan"} for m in rfan)
+
+
+def test_analysis_uses_full_history():
+    """F1:analysis 端點用全歷史(不截 1500)。"""
+    df = load_df("fantasy5")
+    resp = yahong_router.analysis_ep("fantasy5", None)
+    assert resp["totalDraws"] == len(df)
+
+
+# ── 資金規劃 / plan(539 維持不動)──────────────────────────
 def test_plan_single_structure():
-    resp = plan.plan_response("single", 1.0, 18440, None, 2755, 21200, "single")
-    assert resp["kind"] == "single" and len(resp["rows"]) == 15
+    resp = plan.plan_response("lotto539", "single", None, None, None, 2755, 21200, "single")
+    assert resp["kind"] == "single" and resp["game"] == "lotto539" and len(resp["rows"]) == 15
     row = resp["rows"][0]
     assert set(row) >= {"day", "target", "units", "dailyCost", "accCost",
                         "winPrize", "netProfit"}
 
 
 def test_plan_four_has_double_win():
-    resp = plan.plan_response("four", 1.0, 18440, None, 2755, 21200, "four")
+    resp = plan.plan_response("lotto539", "four", None, None, None, 2755, 21200, "four")
     assert resp["kind"] == "four" and len(resp["rows"]) == 6
     assert "doubleWin" in resp["rows"][0]
 
 
 def test_plan_tier_step():
-    resp = plan.plan_response("tier", 1.0, 18440, 15, 2755, 21200, "single")
+    resp = plan.plan_response("lotto539", "tier", 1.0, 18440, 15, 2755, 21200, "single")
     assert resp["kind"] == "tier" and len(resp["rows"]) == 15
     # single 每 3 期一階:第1~3 期 tier=1、第4 期起 tier=2
     tiers = [r["tier"] for r in resp["rows"]]
     assert tiers[0] == 1 and tiers[2] == 1 and tiers[3] == 2
 
 
-def test_plan_units_ceil_to_005():
-    resp = plan.plan_response("single", 0.01, 18440, 15, 2755, 21200, "single")
+def test_plan_539_units_ceil_to_005():
+    resp = plan.plan_response("lotto539", "single", 0.01, 18440, 15, 2755, 21200, "single")
     for row in resp["rows"]:
-        # 車數為 0.05 的倍數(允許浮點誤差)
         assert abs(round(row["units"] / 0.05) * 0.05 - row["units"]) < 1e-6
+
+
+# ── 資金規劃 / plan(天天樂,spec-fantasy §4)────────────────
+def test_plan_fantasy_single_defaults_and_ceil_001():
+    """天天樂單碼:預設車數 0.10、target 1844、車數 ceil 到 0.01。"""
+    resp = plan.plan_response("fantasy5", "single", None, None, None, 2755, 21200, "single")
+    assert resp["game"] == "fantasy5" and resp["kind"] == "single" and len(resp["rows"]) == 15
+    assert resp["rows"][0]["units"] == 0.10          # day1 恆用 firstUnits
+    for row in resp["rows"]:
+        assert abs(round(row["units"] * 100) / 100 - row["units"]) < 1e-9
+
+
+def test_plan_fantasy_four_double_win():
+    resp = plan.plan_response("fantasy5", "four", None, None, None, 2755, 21200, "four")
+    assert resp["kind"] == "four" and len(resp["rows"]) == 6
+    assert "doubleWin" in resp["rows"][0]
+
+
+def test_plan_fantasy_tier_four_positive_profit():
+    """天天樂 4碼階梯:2 期一階,且負利修正保證每期 netProfit >= 0。"""
+    resp = plan.plan_response("fantasy5", "tier", None, None, 8, 2755, 21200, "four")
+    assert len(resp["rows"]) == 8
+    tiers = [r["tier"] for r in resp["rows"]]
+    assert tiers[0] == 1 and tiers[1] == 1 and tiers[2] == 2   # 每 2 期一階
+    assert all(r["netProfit"] >= 0 for r in resp["rows"])
+
+
+def test_plan_pillar1800_uses_market():
+    """立柱倍投 1800:讀我方盤口(無退水)—— 成本=1800×每碰成本、中3碰=3×中一碰可得、4碰暴利=4×。"""
+    from core import combo
+    combo.clear_market_overrides()
+    uc, up = float(combo.market_cost(3)), float(combo.market_prize(3))
+    resp = plan.plan_response("fantasy5", "pillar1800", 1, 500, 6, 2755, 21200, "single")
+    assert resp["kind"] == "pillar1800" and len(resp["rows"]) == 6
+    r0 = resp["rows"][0]
+    assert r0["bet"] == 1
+    assert r0["dailyCost"] == round(1800 * uc)        # 113400
+    assert r0["basePrize"] == round(3 * up)           # 171000
+    assert r0["bonusPrize"] == round(4 * up)          # 228000
+    assert set(r0) >= {"day", "bet", "dailyCost", "accCost", "basePrize", "baseProfit",
+                       "bonusPrize", "bonusProfit"}
+
+
+def test_plan_pillar9000_uses_market():
+    """立柱倍投 9000:成本=9000×每碰成本、中2碰滿貫=2×combo9000.PRIZE_PER_BET、無暴利欄。"""
+    from core import combo, combo9000
+    combo.clear_market_overrides()
+    uc = float(combo.market_cost(4))
+    resp = plan.plan_response("fantasy5", "pillar9000", 1, 500, 6, 2755, 21200, "single")
+    r0 = resp["rows"][0]
+    assert r0["dailyCost"] == round(9000 * uc)                 # 450000
+    assert r0["basePrize"] == round(2 * float(combo9000.PRIZE_PER_BET))  # 1600000
+    assert "bonusPrize" not in r0
 
 
 # ── marksix 被擋 + 遊戲驗證 ─────────────────────────────────

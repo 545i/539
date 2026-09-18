@@ -88,7 +88,8 @@ def _pillar_539(data, is_hit, base_p: float, kind: str) -> dict:
             badge, text = "ready", "⚡ 進入高期望期"
         else:
             badge, text = "ok", "✅ 安全常規區間"
-    return {"miss": miss, "nextProb": round(next_prob, 2), "badge": badge, "badgeText": text}
+    return {"miss": miss, "nextProb": round(next_prob, 2), "badge": badge, "badgeText": text,
+            "theoProb": round(base_p * 100, 1)}
 
 
 def _pillar_fantasy(data, is_hit, base_p: float) -> dict:
@@ -106,6 +107,7 @@ def _pillar_fantasy(data, is_hit, base_p: float) -> dict:
     else:
         badge, text = "ok", "✅ 剛開出不久,建議繼續觀望"
     return {"miss": gap, "nextProb": round(final_prob, 2), "badge": badge, "badgeText": text,
+            "theoProb": round(base_p * 100, 1),
             "avgCycle": round(avg_cycle, 2), "histProb": round(hits / n * 100, 2) if n else 0.0}
 
 
@@ -215,7 +217,8 @@ def _pick(rng: random.Random, source: list[int], count: int) -> list[int]:
     return sorted(out)
 
 
-def _recommend(ranked_nums: list[int], seed: int) -> list[dict]:
+def _recommend(ranked_nums: list[int], seed: int, game: str) -> list[dict]:
+    """539 回 4 模式(spec-539 §F);天天樂只回 3 模式(spec-fantasy §3.4,無加強矩陣)。"""
     rng = random.Random(seed)
     all39 = list(range(1, 40))
     pool = ranked_nums if len(ranked_nums) >= 15 else all39
@@ -233,15 +236,18 @@ def _recommend(ranked_nums: list[int], seed: int) -> list[dict]:
     top, mid = pool[0:5], pool[5:12]
     m3_3 = merge(_pick(rng, top, 2), _pick(rng, mid, 1))
     m3_4 = merge(_pick(rng, top, 2), _pick(rng, mid, 2))
-    pool1, pool2 = pool[1:7], pool[6:15]
-    m4_3 = merge(_pick(rng, pool1, 2), _pick(rng, pool2, 1))
-    m4_4 = merge(_pick(rng, pool1, 2), _pick(rng, pool2, 2))
-    return [
+    modes = [
         {"mode": 1, "name": "搖球機物理模式", "star3": m1_3, "star4": m1_4, "color": "gold"},
         {"mode": 2, "name": "歷史紀錄出牌模式", "star3": m2_3, "star4": m2_4, "color": "rose"},
         {"mode": 3, "name": "尋找AI必開牌", "star3": m3_3, "star4": m3_4, "color": "cyan"},
-        {"mode": 4, "name": "AI必開加強矩陣", "star3": m4_3, "star4": m4_4, "color": "purple"},
     ]
+    if game == "lotto539":
+        pool1, pool2 = pool[1:7], pool[6:15]
+        m4_3 = merge(_pick(rng, pool1, 2), _pick(rng, pool2, 1))
+        m4_4 = merge(_pick(rng, pool1, 2), _pick(rng, pool2, 2))
+        modes.append({"mode": 4, "name": "AI必開加強矩陣",
+                      "star3": m4_3, "star4": m4_4, "color": "purple"})
+    return modes
 
 
 def _default_seed(data: list[list[int]]) -> int:
@@ -277,5 +283,5 @@ def analysis_response(game: str, data: list[list[int]],
     return {
         "game": game, "totalDraws": total, "latestDate": latest_date,
         "pillars": pillars, "hot": hot, "cold": cold, "probScore": prob_score,
-        "recommend": _recommend(ranked_nums, use_seed), "seed": use_seed,
+        "recommend": _recommend(ranked_nums, use_seed, game), "seed": use_seed,
     }

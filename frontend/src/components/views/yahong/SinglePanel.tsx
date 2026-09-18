@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Search } from 'lucide-react';
-import { api, GameKey, YahongGrade, YahongRankRowDTO, YahongSingleTargetDTO } from '../../../api/client';
+import { api, GameKey, YahongGrade, YahongRankRowDTO, YahongSingleTargetDTO, YahongRecentDrawDTO } from '../../../api/client';
 import { useAsync } from '../../../api/useAsync';
 import { Disclaimer, Loading, ErrorBox, cardClass, pad2, GRADE_META } from './format';
 
@@ -14,6 +14,108 @@ const summaryCards = (s: YahongSingleTargetDTO['summary']) => [
   { label: '最大遺漏', value: `${s.maxMiss} 期` },
   { label: '近 30 期', value: `${(s.prob30 * 100).toFixed(1)}%` },
 ];
+
+// 遺漏走勢微型圖(新→舊,末端 bar = 當前遺漏,金色標記)
+const Sparkline: React.FC<{ bars: number[]; maxMiss: number }> = ({ bars, maxMiss }) => {
+  if (!bars.length) return null;
+  const scale = Math.max(...bars, maxMiss, 10);
+  return (
+    <div>
+      <div className="text-[11px] font-semibold text-neutral-600 dark:text-neutral-300 mb-1.5">遺漏走勢(新→舊,末端為當前遺漏)</div>
+      <div className="flex items-end gap-1 h-16">
+        {bars.map((m, i) => {
+          const isCurrent = i === bars.length - 1;
+          const h = Math.max((m / scale) * 100, 5);
+          return (
+            <div
+              key={i}
+              title={`${m} 期`}
+              style={{ height: `${h}%` }}
+              className={`flex-1 min-w-[4px] rounded-t ${isCurrent ? 'bg-amber-500' : 'bg-neutral-300 dark:bg-neutral-600'}`}
+            />
+          );
+        })}
+      </div>
+      <div className="text-[10px] text-neutral-400 mt-1">歷史最大遺漏:{maxMiss} 期</div>
+    </div>
+  );
+};
+
+// 單號 18 宗師 + 摘要 + 分級 + 走勢
+const TargetDetail: React.FC<{ t: YahongSingleTargetDTO }> = ({ t }) => (
+  <div className={`${cardClass} space-y-5`}>
+    {/* 分級橫幅 */}
+    <div className={`p-4 rounded-2xl border flex items-center gap-4 ${GRADE_META[t.grade].ring}`}>
+      <span className={`w-14 h-14 rounded-full flex items-center justify-center font-mono font-bold text-xl ${GRADE_META[t.grade].dot}`}>
+        {pad2(t.num)}
+      </span>
+      <div>
+        <div className={`text-lg font-display font-bold ${GRADE_META[t.grade].text}`}>
+          {GRADE_META[t.grade].label} · {GRADE_META[t.grade].slogan}
+        </div>
+        <div className="text-xs text-neutral-500 dark:text-neutral-400 font-mono mt-0.5">
+          綜合分 {t.score.toFixed(1)} · 全盤第 {t.rank} 名
+        </div>
+      </div>
+    </div>
+
+    {/* 5 摘要 */}
+    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+      {summaryCards(t.summary).map(c => (
+        <div key={c.label} className="p-3 rounded-xl bg-black/[0.02] dark:bg-white/[0.03] border border-black/[0.06] dark:border-white/[0.06]">
+          <div className="text-[10px] uppercase tracking-wider text-neutral-400 truncate">{c.label}</div>
+          <div className="text-base font-mono font-bold text-neutral-900 dark:text-white mt-1 tabular-nums">{c.value}</div>
+        </div>
+      ))}
+    </div>
+
+    {/* 18 宗師(綠燈 / 紅燈) */}
+    <div>
+      <div className="text-[11px] font-semibold text-neutral-600 dark:text-neutral-300 mb-2">18 宗師東西方合璧</div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+        {t.giants.map(g => (
+          <div
+            key={g.key}
+            className={`p-2.5 rounded-xl border ${
+              g.green ? 'bg-emerald-500/10 border-emerald-500/25' : 'bg-rose-500/10 border-rose-500/25'
+            }`}
+          >
+            <div className="text-[10px] text-neutral-500 dark:text-neutral-400 truncate">{g.label}</div>
+            <div className={`text-xs font-mono font-bold mt-0.5 tabular-nums ${
+              g.green ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-700 dark:text-rose-300'
+            }`}>
+              {g.display}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+
+    {/* 遺漏走勢微型圖 */}
+    <Sparkline bars={t.sparkline ?? []} maxMiss={t.summary.maxMiss} />
+  </div>
+);
+
+// 最近 8 期開獎卡
+const Recent8: React.FC<{ rows: YahongRecentDrawDTO[] }> = ({ rows }) => (
+  <div className={`${cardClass} space-y-3`}>
+    <div className="text-sm font-display font-bold text-neutral-900 dark:text-white uppercase tracking-wide">最近 8 期開獎</div>
+    <div className="space-y-2">
+      {rows.map(r => (
+        <div key={r.date} className="flex items-center gap-3">
+          <span className="font-mono text-[11px] text-neutral-500 dark:text-neutral-400 w-24 shrink-0">{r.date}</span>
+          <div className="flex flex-wrap gap-1.5">
+            {r.nums.map((n, i) => (
+              <span key={i} className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-black/5 dark:bg-white/10 text-neutral-900 dark:text-white font-mono font-bold text-[11px]">
+                {pad2(n)}
+              </span>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  </div>
+);
 
 export const SinglePanel: React.FC<{ game: GameKey }> = ({ game }) => {
   const [input, setInput] = useState('');
@@ -83,58 +185,10 @@ export const SinglePanel: React.FC<{ game: GameKey }> = ({ game }) => {
       )}
 
       {/* 單號 18 宗師明細 */}
-      {data && !insufficient && data.target && (
-        <div className={`${cardClass} space-y-5`}>
-          {/* 分級橫幅 */}
-          <div className={`p-4 rounded-2xl border flex items-center gap-4 ${GRADE_META[data.target.grade].ring}`}>
-            <span className={`w-14 h-14 rounded-full flex items-center justify-center font-mono font-bold text-xl ${GRADE_META[data.target.grade].dot}`}>
-              {pad2(data.target.num)}
-            </span>
-            <div>
-              <div className={`text-lg font-display font-bold ${GRADE_META[data.target.grade].text}`}>
-                {GRADE_META[data.target.grade].label} · {GRADE_META[data.target.grade].slogan}
-              </div>
-              <div className="text-xs text-neutral-500 dark:text-neutral-400 font-mono mt-0.5">
-                綜合分 {data.target.score.toFixed(1)} · 全盤第 {data.target.rank} 名
-              </div>
-            </div>
-          </div>
+      {data && !insufficient && data.target && <TargetDetail t={data.target} />}
 
-          {/* 5 摘要 */}
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
-            {summaryCards(data.target.summary).map(c => (
-              <div key={c.label} className="p-3 rounded-xl bg-black/[0.02] dark:bg-white/[0.03] border border-black/[0.06] dark:border-white/[0.06]">
-                <div className="text-[10px] uppercase tracking-wider text-neutral-400 truncate">{c.label}</div>
-                <div className="text-base font-mono font-bold text-neutral-900 dark:text-white mt-1 tabular-nums">{c.value}</div>
-              </div>
-            ))}
-          </div>
-
-          {/* 18 宗師(綠燈 / 紅燈) */}
-          <div>
-            <div className="text-[11px] font-semibold text-neutral-600 dark:text-neutral-300 mb-2">18 宗師東西方合璧</div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
-              {data.target.giants.map(g => (
-                <div
-                  key={g.key}
-                  className={`p-2.5 rounded-xl border ${
-                    g.green
-                      ? 'bg-emerald-500/10 border-emerald-500/25'
-                      : 'bg-rose-500/10 border-rose-500/25'
-                  }`}
-                >
-                  <div className="text-[10px] text-neutral-500 dark:text-neutral-400 truncate">{g.label}</div>
-                  <div className={`text-xs font-mono font-bold mt-0.5 tabular-nums ${
-                    g.green ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-700 dark:text-rose-300'
-                  }`}>
-                    {g.display}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
+      {/* 最近 8 期開獎 */}
+      {data && !insufficient && data.recent8 && data.recent8.length > 0 && <Recent8 rows={data.recent8} />}
 
       {/* 全 39 分級榜 */}
       {data && !insufficient && (
