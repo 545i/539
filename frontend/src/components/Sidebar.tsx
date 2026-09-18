@@ -16,7 +16,8 @@ import {
   ClipboardList,
   Layers,
   LogIn,
-  Sparkles
+  Sparkles,
+  Crosshair
 } from 'lucide-react';
 import { NavItem, ThemeMode } from '../types';
 import { api } from '../api/client';
@@ -151,6 +152,7 @@ export const Sidebar: React.FC<Props> = ({
     { id: 'calculator', label: '連碰計算機', icon: <Calculator className="w-4 h-4" /> },
     { id: 'analysis', label: '統計分析', icon: <BarChart3 className="w-4 h-4" /> },
     { id: 'prediction', label: '五策略預測', icon: <Sparkles className="w-4 h-4" /> },
+    { id: 'yahong', label: '雅宏策略', icon: <Crosshair className="w-4 h-4" /> },
     { id: 'export', label: '匯出', icon: <Download className="w-4 h-4" /> },
     { id: 'risk', label: '風險提醒', icon: <ShieldAlert className="w-4 h-4" /> },
     { id: 'audit', label: '操作歷史', icon: <History className="w-4 h-4" /> },

@@ -1,10 +1,11 @@
 export type ThemeMode = 'light' | 'dark';
 
-export type NavItem = 
+export type NavItem =
   | 'duo_bet'      // 二合買牌
   | 'calculator'   // 連碰計算機
   | 'analysis'     // 統計分析
   | 'prediction'   // 五策略預測
+  | 'yahong'       // 雅宏策略(決策矩陣/單碼必贏/同區3-4球/綜合分析/資金規劃)
   | 'export'       // 匯出
   | 'risk'         // 風險與數學期望值提醒(獨立頁)
   | 'audit'        // 操作歷史(可作廢=反轉)

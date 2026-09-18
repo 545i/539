@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from backend import reminder_image, watch_store
 from backend.data import all_games, get_game, load_df
-from core import notify, pillar, render, stats
+from core import drawtime, notify, pillar, render, stats
 from core.loader import draws_as_lists
 
 
@@ -92,25 +92,81 @@ def notify_combo_watch(game_key: str) -> bool:
     return notify.send("\n".join(lines))
 
 
-def _push_card_or_text(g, df, chat_id: str | None = None) -> bool:
+def _push_card_or_text(g, df, chat_id: str | None = None,
+                       card_overrides: dict | None = None,
+                       caption: str | None = None,
+                       header: str | None = None) -> bool:
     """發「這一款」的提醒:先試圖卡,渲不出來 / 發圖失敗就退回純文字 block。
 
     版面 backend/templates/reminder_card.html、資料 backend.reminder_image、渲染
     core.render 都 best-effort;圖掛掉不會讓提醒發不出去。chat_id 不給就發預設群。
+
+    card_overrides 疊到圖卡 JSON 上(如開獎前的 kick/note/nums_label);caption 換
+    發圖說明文字;header 加在純文字退路最前面 —— 都不給就是原本的「開獎提醒」。
     """
     block = _game_block(g, df)
     if not block:
         return False
+    if header:
+        block = f"{header}\n{block}"
     try:
         data = reminder_image.build_card_data(g, df)
+        if card_overrides:
+            data.update(card_overrides)
         png = render.render_card(data)
     except Exception:       # noqa: BLE001 — 圖失敗不影響純文字退路
-        png = None
+        data, png = {}, None
     if png:
-        caption = f"{g.name} 開獎提醒 · 期 {data.get('issue', '')}({data.get('date', '')})"
-        if notify.send_photo(png, caption=caption, chat_id=chat_id):
+        cap = caption or (f"{g.name} 開獎提醒 · 期 {data.get('issue', '')}"
+                          f"({data.get('date', '')})")
+        if notify.send_photo(png, caption=cap, chat_id=chat_id):
             return True
     return notify.send(block, chat_id=chat_id)
+
+
+def _lead_text(minutes: int) -> str:
+    """把提前分鐘數轉成人看的字:120→「2 小時」、90→「1.5 小時」、40→「40 分鐘」。"""
+    if minutes % 60 == 0:
+        return f"{minutes // 60} 小時"
+    if minutes > 60:
+        return f"{minutes / 60:g} 小時"
+    return f"{minutes} 分鐘"
+
+
+def push_pre_draw(game_key: str, lead_min: int | None = None,
+                  chat_id: str | None = None) -> bool:
+    """開獎前提醒:提前 lead_min 分鐘(預設同排程設定)發這一款的圖卡。
+
+    內容與開獎後的圖卡相同(斷檔 / 冷熱 / 前中後段遺漏 —— 正是下注前要看的),
+    只把標題改成「開獎前提醒」、標明距開獎時間、號碼註明是「上期開出」。
+    沒設定 token/chat_id、讀不到資料、或送失敗都回 False。
+    """
+    if not notify.enabled():
+        return False
+    try:
+        g = get_game(game_key)
+        df = load_df(game_key)
+    except Exception:       # noqa: BLE001 — 推播失敗不能影響排程
+        return False
+    if lead_min is None:
+        from core import autoupdate
+        lead_min = autoupdate.PRE_DRAW_MIN
+    lead = _lead_text(lead_min)
+    nxt = drawtime.next_draw(game_key)
+    when = f"{nxt:%m/%d %H:%M}" if nxt else ""
+    note = f"⏰ 約 {lead}後開獎" + (f" · {when}" if when else "")
+    overrides = {"kick": "開獎前提醒", "note": note, "nums_label": "上期開出"}
+    caption = f"{g.name} 開獎前提醒 · 距開獎約 {lead}" + (f"({when})" if when else "")
+    return _push_card_or_text(g, df, chat_id=chat_id, card_overrides=overrides,
+                              caption=caption, header=f"<b>⏰ {g.name} 開獎前提醒</b>")
+
+
+def on_pre_draw(game_key: str) -> bool:
+    """排程在開獎前 lead 分鐘的掛鉤(見 core.autoupdate 的 on_pre_draw)。
+
+    回傳是否真的推出 Telegram(沒設定 / 讀不到資料 / 送失敗都是 False),給呼叫端記 log。
+    """
+    return push_pre_draw(game_key)
 
 
 def push_game_update(game_key: str) -> bool:

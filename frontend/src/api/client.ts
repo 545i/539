@@ -846,6 +846,167 @@ export interface StarCostDTO {
 /** PUT 的內容:只送要改的星數也可以。 */
 export type StarCostInput = Record<string, {cost: number; prize: number}>;
 
+// ── 雅宏策略 ──────────────────────────────────────────────
+// 五個唯讀計算端點(不需登入),依 docs/yahong/API.md 的 JSON 形狀。
+// 支援遊戲僅 lotto539 / fantasy5(39選5);marksix 後端回 400。
+
+// 統一格式化標記:pct=×100 加%(1位)、pct100=直接加%、money=千分位整數、
+// num1/num2=小數位、period=整數+「期」。前端 fmtValue() 依此渲染(見 yahong/format.ts)。
+export type YahongFmt = 'pct' | 'pct100' | 'money' | 'num1' | 'num2' | 'period';
+
+// 決策矩陣一格指標(華爾街八大 / 東方十大共用)
+export interface YahongMetricDTO {
+  key: string;
+  label: string;
+  value: number;
+  fmt: YahongFmt;
+  extra?: number; // 目前只有 drawdown 用:value=當前回撤,extra=歷史最大回撤
+}
+
+// 五裁決橫幅:color 對應五種裁決,前端上色用
+export type YahongVerdictColor = 'red' | 'amber' | 'gold' | 'green' | 'slate';
+export interface YahongVerdictDTO {
+  title: string;
+  mult: number;
+  desc: string;
+  color: YahongVerdictColor;
+}
+
+export interface YahongMatrixDTO {
+  game: GameKey;
+  mode: '1800' | '9000';
+  totalDraws: number;
+  verdict: YahongVerdictDTO;
+  wallst: YahongMetricDTO[];  // 華爾街八大,順序固定
+  eastern: YahongMetricDTO[]; // 東方十大,順序固定
+}
+
+// 同區3-4球
+export interface YahongRadarStrategyDTO {
+  active: boolean;
+  threshold: number;
+  coldest?: number[]; // 策略 A 才有:四柱最冷號
+  note: string;
+}
+export interface YahongRadarColumnDTO {
+  label: string;
+  coldest: number;
+}
+export interface YahongRadarDTO {
+  game: GameKey;
+  consecutiveMiss: number;
+  strategyA: YahongRadarStrategyDTO;
+  strategyB: YahongRadarStrategyDTO;
+  columns: YahongRadarColumnDTO[];
+}
+
+// 單碼必贏:分級榜 + (可選)單號 18 宗師明細
+export type YahongGrade = 'S' | 'A' | 'B' | 'C';
+export interface YahongRankRowDTO {
+  num: number;
+  score: number;
+  grade: YahongGrade;
+  rank: number; // 1-based 名次
+}
+export interface YahongGiantDTO {
+  key: string;
+  label: string;
+  display: string; // 已格式化好的字串(如 "12.8%"、"Z = 1.35")
+  green: boolean;  // true=綠燈(達標)、false=紅燈
+}
+export interface YahongSingleTargetDTO {
+  num: number;
+  score: number;
+  grade: YahongGrade;
+  rank: number;
+  summary: {
+    probAll: number;   // 歷史總均線(0~1)
+    survivalPR: number; // 生存 PR 值(0~100)
+    accel: number;      // BIAS 乖離(百分點)
+    maxMiss: number;    // 最大遺漏(期)
+    prob30: number;     // 近 30 期命中率(0~1)
+  };
+  giants: YahongGiantDTO[]; // 18 宗師
+  sparkline: number[];      // 最近遺漏段(新→舊)+ 末尾當前遺漏
+}
+export interface YahongSingleDTO {
+  game: GameKey;
+  totalDraws: number;
+  ranking: YahongRankRowDTO[]; // 39 筆,score 由高到低
+  target: YahongSingleTargetDTO | null;
+  error?: string; // 資料 <100 期:{error, totalDraws}
+}
+
+// 綜合分析
+export type YahongPillarBadge = 'alert' | 'ready' | 'ok';
+export interface YahongPillarDTO {
+  miss: number;
+  nextProb: number; // 百分比(0~100)
+  badge: YahongPillarBadge;
+  badgeText: string;
+}
+export interface YahongHotDTO {
+  num: number;
+  count: number;
+  today: boolean;
+}
+export interface YahongColdDTO {
+  num: number;
+  miss: number;
+}
+export interface YahongProbScoreDTO {
+  num: number;
+  score: number;
+  freq: number;
+  rebound: number;
+  miss: number;
+  recent50: number;
+}
+export type YahongRecommendColor = 'gold' | 'rose' | 'cyan' | 'purple';
+export interface YahongRecommendDTO {
+  mode: number;
+  name: string;
+  star3: number[];
+  star4: number[];
+  color: YahongRecommendColor;
+}
+export interface YahongAnalysisDTO {
+  game: GameKey;
+  totalDraws: number;
+  latestDate: string;
+  pillars: { p1800: YahongPillarDTO; p9000: YahongPillarDTO };
+  hot: YahongHotDTO[];
+  cold: YahongColdDTO[];
+  probScore: YahongProbScoreDTO[]; // 全 39,分數降序
+  recommend: YahongRecommendDTO[]; // 四模式 × 三星/四星
+}
+
+// 資金規劃(純計算)
+export type YahongPlanKind = 'single' | 'four' | 'tier';
+export interface YahongPlanRowDTO {
+  day: number;
+  target: number;
+  units: number;
+  dailyCost: number;
+  accCost: number;
+  winPrize: number;
+  netProfit: number;
+  doubleWin?: number; // four 才有:中 2 碼暴利
+}
+export interface YahongPlanDTO {
+  kind: YahongPlanKind;
+  rows: YahongPlanRowDTO[];
+}
+export interface YahongPlanParams {
+  kind: YahongPlanKind;
+  units?: number;
+  target?: number;
+  days?: number;
+  cost?: number;
+  prize?: number;
+  tierMode?: 'single' | 'four'; // kind=tier 時
+}
+
 function qs(params: Record<string, string | number | undefined>): string {
   const sp = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) {
@@ -1210,4 +1371,15 @@ export const api = {
     limit = 10,
   ) =>
     post<ComboBetsDTO>('combo/bets', {game, stars, nums, dan_nums: danNums, limit}),
+
+  // 雅宏策略(唯讀計算,不需登入;僅 lotto539 / fantasy5)
+  yahongMatrix: (game: GameKey, mode: '1800' | '9000') =>
+    get<YahongMatrixDTO>(`yahong/matrix?${qs({game, mode})}`),
+  yahongRadar: (game: GameKey) => get<YahongRadarDTO>(`yahong/radar?game=${game}`),
+  yahongSingle: (game: GameKey, target?: number) =>
+    get<YahongSingleDTO>(`yahong/single?${qs({game, target})}`),
+  yahongAnalysis: (game: GameKey) =>
+    get<YahongAnalysisDTO>(`yahong/analysis?game=${game}`),
+  yahongPlan: (game: GameKey, params: YahongPlanParams) =>
+    get<YahongPlanDTO>(`yahong/plan?${qs({game, ...params})}`),
 };

@@ -319,15 +319,22 @@
 
     function render(d) {
       const metaTime = d.time ? ` · ${d.time}` : "";
+      const numsLabel = d.nums_label
+        ? `<div class="sh" style="margin:2px 0 6px"><span class="bar"></span>`
+          + `<span class="t">${d.nums_label}</span></div>` : "";
+      const noteLine = d.note
+        ? `<div class="date" style="margin-top:6px">${d.note}</div>` : "";
       document.getElementById("card").innerHTML = `
         <div class="head">
-          <div class="kick">開獎提醒</div>
+          <div class="kick">${d.kick || "開獎提醒"}</div>
           <div class="title">${d.game}</div>
           <div class="meta">
             <span class="issue">第 ${d.issue} 期</span>
             <span class="date">${d.date}${metaTime}</span>
           </div>
+          ${noteLine}
         </div>
+        ${numsLabel}
         <div class="balls">${ballsHtml(d.nums)}</div>
         <div class="body">
           ${snapHtml(d)}

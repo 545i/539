@@ -22,6 +22,7 @@ MAX_ATTEMPTS 次就停手,等下一期的時間到了才重新開始 —— 不�
 from __future__ import annotations
 
 import datetime as dt
+import os
 import threading
 import time
 from pathlib import Path
@@ -42,8 +43,15 @@ _COOLDOWN_OK = 600       # 有抓到新資料後的冷卻秒數
 _COOLDOWN_IDLE = 300     # 抓了但沒新資料(對方還沒上架 / 那天沒開獎)→ 每幾分鐘再試,不等 30 分
 _COOLDOWN_ERR = 300      # 抓取失敗後的冷卻秒數
 
+# 開獎前提醒:提前幾分鐘推一次「開獎前」圖卡(預設 2 小時,可用環境變數覆寫)。
+PRE_DRAW_MIN = int(os.environ.get("PRE_DRAW_LEAD_MIN", "120"))
+# 跨過 T−PRE_DRAW_MIN 後多久內還算「該推」:留兩個 tick 的寬限,確保正常運轉時
+# 一定有一次檢查落在窗內就推;但行程若在窗內才啟動、已過寬限就不補推過時提醒。
+_PRE_FIRE_GRACE = TICK_SECONDS * 2
+
 _lock = threading.Lock()
 _status: dict[str, dict] = {}  # game_key -> {running, msg, error, done_ts, added, ...}
+_prefired: dict[str, str] = {}  # game_key -> 已推過開獎前提醒的那次開獎時刻(ISO),去重
 _scheduler = None              # 排程執行緒(全行程只起一條)
 
 
@@ -261,7 +269,33 @@ def kick(game_key: str, data_path: str | Path, latest=None, on_done=None,
     return True
 
 
-def _loop(paths: dict[str, Path], on_done, on_added=None) -> None:
+def _check_pre_draw(game_key: str, on_pre_draw) -> None:
+    """開獎前 PRE_DRAW_MIN 分鐘,呼叫一次 on_pre_draw(game_key)。
+
+    每次開獎只推一次(以下一次開獎時刻 ISO 去重);且只在跨過提前點後的寬限窗內
+    才推,行程若在窗過後才啟動就不補推過時的「開獎前」提醒。best-effort。
+    """
+    if on_pre_draw is None:
+        return
+    nxt = drawtime.next_draw(game_key)
+    if nxt is None:
+        return
+    now = drawtime.now_taipei()
+    lead = nxt - dt.timedelta(minutes=PRE_DRAW_MIN)
+    if not (lead <= now < lead + dt.timedelta(seconds=_PRE_FIRE_GRACE) and now < nxt):
+        return
+    key = nxt.isoformat()
+    with _lock:
+        if _prefired.get(game_key) == key:
+            return
+        _prefired[game_key] = key
+    try:
+        on_pre_draw(game_key)
+    except Exception:              # noqa: BLE001 — 提醒失敗不能拖垮排程
+        pass
+
+
+def _loop(paths: dict[str, Path], on_done, on_added=None, on_pre_draw=None) -> None:
     while True:
         for game_key, path in paths.items():
             if drawtime.get(game_key) is None:
@@ -270,13 +304,19 @@ def _loop(paths: dict[str, Path], on_done, on_added=None) -> None:
                 kick(game_key, path, on_done=on_done, on_added=on_added)
             except Exception:              # noqa: BLE001 — 排程不能被單款拖垮
                 pass
+            try:
+                _check_pre_draw(game_key, on_pre_draw)
+            except Exception:              # noqa: BLE001 — 開獎前提醒失敗不影響排程
+                pass
         time.sleep(TICK_SECONDS)
 
 
-def start_scheduler(paths: dict[str, Path], on_done=None, on_added=None) -> bool:
+def start_scheduler(paths: dict[str, Path], on_done=None, on_added=None,
+                    on_pre_draw=None) -> bool:
     """啟動背景排程(整個行程只會起一條);回傳這次是否真的啟動。
 
     on_added(game_key):有新開獎期被寫入時呼叫(斷檔提醒等)。
+    on_pre_draw(game_key):開獎前 PRE_DRAW_MIN 分鐘呼叫一次(開獎前圖卡提醒)。
     可以重複呼叫 —— Streamlit 每次 rerun 都會走到,第二次以後直接回 False。
     """
     global _scheduler
@@ -285,7 +325,8 @@ def start_scheduler(paths: dict[str, Path], on_done=None, on_added=None) -> bool
             return False
         _scheduler = threading.Thread(
             target=_loop,
-            args=({k: Path(v) for k, v in paths.items()}, on_done, on_added),
+            args=({k: Path(v) for k, v in paths.items()}, on_done, on_added,
+                  on_pre_draw),
             daemon=True, name="lotto-autoupdate")
         _scheduler.start()
     return True

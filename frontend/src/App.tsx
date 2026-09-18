@@ -21,6 +21,7 @@ import { TotalPnLTab } from './components/tabs/TotalPnLTab';
 import { CalculatorView } from './components/views/CalculatorView';
 import { AnalysisView } from './components/views/AnalysisView';
 import { PredictionView } from './components/views/PredictionView';
+import { YahongView } from './components/views/YahongView';
 import { ExportView } from './components/views/ExportView';
 import { RiskView } from './components/views/RiskView';
 import { AuditView } from './components/views/AuditView';
@@ -124,6 +125,7 @@ export default function App() {
       case 'calculator': return '連碰計算機';
       case 'analysis': return '統計分析';
       case 'prediction': return '五策略預測';
+      case 'yahong': return '雅宏策略';
       case 'export': return '匯出中心';
       case 'risk': return '風險與數學期望值';
       case 'audit': return '操作歷史';
@@ -274,6 +276,7 @@ export default function App() {
           {activeNav === 'calculator' && <CalculatorView />}
           {activeNav === 'analysis' && <AnalysisView />}
           {activeNav === 'prediction' && <PredictionView />}
+          {activeNav === 'yahong' && <YahongView />}
           {activeNav === 'export' && <ExportView />}
           {activeNav === 'risk' && <RiskView />}
           {/* 作廢會改到記帳流水,沿用快速上傳那套 ledgerVersion 讓各分頁重抓 */}

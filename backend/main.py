@@ -26,7 +26,7 @@ from backend import autosettle, bot, reminders, star_cost_store, ws
 from backend.routers import (audit, auth, combo, cycles, editions, erhe, export,
                              games, groups, history, importer, ledger,
                              leaderboard, pillar, predict, settings, star_cost,
-                             stats, upload_history)
+                             stats, upload_history, yahong)
 from core import autoupdate, notify
 
 PREFIX = os.environ.get("APP_PREFIX", "").rstrip("/")
@@ -75,6 +75,27 @@ def _on_new_draw(game_key: str) -> None:
         log.exception("[draw] 推播流程例外:game=%s", game_key)
 
 
+def _on_pre_draw(game_key: str) -> None:
+    """開獎前 autoupdate.PRE_DRAW_MIN 分鐘:推一則「開獎前」圖卡提醒。
+
+    與開獎後推播同樣在 journal 留痕,方便查「某期開獎前有沒有提醒成功」。
+    """
+    log.info("[pre-draw] 開獎前提醒觸發:game=%s (提前 %d 分)",
+             game_key, autoupdate.PRE_DRAW_MIN)
+    try:
+        pushed = reminders.on_pre_draw(game_key)
+        if pushed:
+            log.info("[pre-draw] Telegram 推播成功:game=%s", game_key)
+        elif not notify.enabled():
+            log.warning("[pre-draw] 未推播:未設定 TELEGRAM_BOT_TOKEN/CHAT_ID game=%s",
+                        game_key)
+        else:
+            log.error("[pre-draw] Telegram 推播失敗:game=%s reason=%s",
+                      game_key, notify.last_error() or "(無資料或空提醒)")
+    except Exception:       # noqa: BLE001
+        log.exception("[pre-draw] 推播流程例外:game=%s", game_key)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # 背景抓開獎資料(daemon thread,全行程只起一條)
@@ -88,10 +109,11 @@ async def lifespan(app: FastAPI):
         autosettle.settle_pending()
     except Exception:       # noqa: BLE001
         pass
-    # 有新開獎 → 自動對獎 + 檢查斷檔推 Telegram(見 _on_new_draw)
+    # 有新開獎 → 自動對獎 + 檢查斷檔推 Telegram(見 _on_new_draw);
+    # 開獎前 2 小時 → 推「開獎前」圖卡提醒(見 _on_pre_draw)
     autoupdate.start_scheduler(
         {g.key: game_data_path(g) for g in all_games()},
-        on_done=None, on_added=_on_new_draw)
+        on_done=None, on_added=_on_new_draw, on_pre_draw=_on_pre_draw)
     # Telegram bot 收訊(/提醒 + 清除按鈕);沒設 token/chat_id 就不起
     bot.start()
     yield
@@ -114,7 +136,7 @@ for r in (auth.router, games.router, history.router, stats.router,
           leaderboard.router, export.router, settings.router,
           predict.router, importer.router, star_cost.router, audit.router,
           groups.router, editions.router, upload_history.router,
-          cycles.router):
+          cycles.router, yahong.router):
     app.include_router(r, prefix=api_prefix)
 
 
