@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AlertTriangle, Trash2 } from 'lucide-react';
 import { useAllLedger, useLedgerActions } from '../../api/useLedger';
@@ -259,6 +259,8 @@ type RecoverData = { cumPnl: number; suggestBalls: number; cars: number | null; 
   gain3?: number; after3?: number };   // 1800碰:同支數但只中3碰的可得 / 中後累積(保守對照)
 const fmt1 = (v: number) => v.toLocaleString(undefined, { maximumFractionDigits: 1 });
 const sfmt1 = (v: number) => (v >= 0 ? '+' : '') + fmt1(v);
+// 建議支數進位到 0.1 支(1800碰/9000碰 支援 0.1 支的細粒度建議;-1e-9 消浮點進位誤差)
+const ceilTenth = (x: number) => Math.ceil(x * 10 - 1e-9) / 10;
 
 // 建議車數卡片(1組 / 2組 各一張,並排)。點卡片彈出明細逐筆排除。
 const RecoverCard: React.FC<{ title: string; d: RecoverData | null; onClick?: () => void }> = ({ title, d, onClick }) => (
@@ -319,7 +321,7 @@ const P1800Block: React.FC<{ label: string; d: RecoverData | null; onClick: () =
     ) : (
       <div className="mt-0.5">
         <div className="flex items-baseline gap-1">
-          <span className="font-mono font-bold text-xl text-neutral-900 dark:text-white">{(d.cars as number).toLocaleString()}</span>
+          <span className="font-mono font-bold text-xl text-neutral-900 dark:text-white">{fmt1(d.cars as number)}</span>
           <span className="text-[10px] text-neutral-400">支 · 中4碰</span>
         </div>
         <div className="text-[10px] font-mono text-neutral-500 space-y-0.5 mt-0.5">
@@ -362,7 +364,7 @@ const P9000Block: React.FC<{ label: string; d: RecoverData | null; onClick: () =
     ) : (
       <div className="mt-0.5">
         <div className="flex items-baseline gap-1">
-          <span className="font-mono font-bold text-xl text-neutral-900 dark:text-white">{(d.cars as number).toLocaleString()}</span>
+          <span className="font-mono font-bold text-xl text-neutral-900 dark:text-white">{fmt1(d.cars as number)}</span>
           <span className="text-[10px] text-neutral-400">支 · 中2碰</span>
         </div>
         <div className="text-[10px] font-mono text-neutral-500 space-y-0.5 mt-0.5">
@@ -385,11 +387,13 @@ const Recover9000Card: React.FC<{ dSelf: RecoverData | null; dAll: RecoverData |
 );
 
 // 攤平模式:一個版一張卡,依「返還率(期望值)加權」把追回金額分散到四種下法(不集中單一)。
-type AllocMethod = { key: string; label: string; unit: string; rtp: number; weight: number; units: number; cost: number; ifHit: number };
+type AllocMethod = { key: string; label: string; unit: string; rtp: number; weight: number; units: number; cost: number; ifHit: number;
+  costPerUnit: number; hitOdds: number };  // costPerUnit/hitOdds:滑塊調比例時就地重算 units/cost/ifHit 用
 type AverageData = { name: string; deficit: number; cumPnl: number; totalCost: number; alloc: AllocMethod[]; bestKey: string; hasData: boolean };
 // 攤平單一下法格(比照 RecoverCard 尺寸,湊成每版 2×2)。
-// 大字 = 建議量(可執行數字);比例改小字並用長條(柱)呈現大小,依期望值排序 → 大柱在前。
-const AverageMethodCell: React.FC<{ m: AllocMethod; best: boolean; hasDeficit: boolean }> = ({ m, best, hasDeficit }) => (
+// 大字 = 建議量(可執行數字);攤平比例改用滑塊,可手動拖動調整(其餘三法由 AverageCard 依比例重算)。
+const AverageMethodCell: React.FC<{ m: AllocMethod; best: boolean; hasDeficit: boolean; onWeight: (v: number) => void }>
+  = ({ m, best, hasDeficit, onWeight }) => (
   <div className={`rounded-xl border p-3 ${best && hasDeficit ? 'border-emerald-500/40 bg-emerald-500/[0.06]' : 'border-black/10 dark:border-white/10 bg-white dark:bg-[#121212]'}`}>
     <div className="flex items-center justify-between">
       <span className="text-[10px] uppercase tracking-wider font-semibold text-neutral-500 dark:text-neutral-300">{m.label}</span>
@@ -404,17 +408,20 @@ const AverageMethodCell: React.FC<{ m: AllocMethod; best: boolean; hasDeficit: b
           <span className="font-mono font-bold text-2xl text-neutral-900 dark:text-white">{fmt1(m.units)}</span>
           <span className="text-[11px] text-neutral-400">{m.unit}</span>
         </div>
-        {/* 比例小字 + 長條(柱):依期望值分大小柱 */}
+        {/* 攤平比例:滑塊可手動調(0~100%),放手後另三法自動依比例分配 */}
         <div className="mt-1.5">
           <div className="flex justify-between text-[10px] font-mono text-neutral-500">
             <span>攤平比例</span><span className="font-semibold text-neutral-700 dark:text-neutral-200">{(m.weight * 100).toFixed(1)}%</span>
           </div>
-          <div className="mt-0.5 h-1.5 rounded-full bg-black/10 dark:bg-white/10 overflow-hidden">
-            <div
-              className={`h-full rounded-full ${best ? 'bg-emerald-500' : 'bg-violet-400 dark:bg-violet-500'}`}
-              style={{ width: `${Math.max(2, Math.min(100, m.weight * 100))}%` }}
-            />
-          </div>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            step={1}
+            value={Math.round(m.weight * 100)}
+            onChange={e => onWeight(Number(e.target.value) / 100)}
+            className={`mt-1 w-full h-1.5 cursor-pointer ${best ? 'accent-emerald-500' : 'accent-violet-500'}`}
+          />
         </div>
         <div className="mt-1.5 space-y-0.5 text-[11px] font-mono">
           <div className="flex justify-between"><span className="text-neutral-500">成本</span><span className="font-semibold text-neutral-800 dark:text-neutral-100">{fmt1(m.cost)}</span></div>
@@ -427,24 +434,66 @@ const AverageMethodCell: React.FC<{ m: AllocMethod; best: boolean; hasDeficit: b
 );
 
 // 攤平模式:每版 = 版名 + 摘要 + 四下法 2×2(與流水同版面比例)。
-const AverageCard: React.FC<{ d: AverageData }> = ({ d }) => (
-  <div className="space-y-1.5">
-    <div className="flex items-center gap-2 flex-wrap">
-      <span className="inline-block px-2 py-0.5 rounded-md bg-violet-500/10 text-violet-600 dark:text-violet-400 text-[11px] font-bold">{d.name}</span>
-      {d.deficit > 0
-        ? <span className="text-[10px] font-mono text-neutral-500">總投入 <span className="font-bold text-neutral-900 dark:text-white">{fmt1(d.totalCost)}</span> · 全中可追回 <span className="text-emerald-600 dark:text-emerald-400 font-semibold">{fmt1(d.deficit)}</span></span>
-        : <span className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400 font-semibold">未虧損 {sfmt1(d.cumPnl)},無需攤平</span>}
-    </div>
-    <div className="grid grid-cols-2 gap-2 items-start">
-      {d.alloc.map(m => <AverageMethodCell key={m.key} m={m} best={m.key === d.bestKey} hasDeficit={d.deficit > 0} />)}
-    </div>
-    {d.deficit > 0 && (
-      <div className="text-[9px] text-neutral-400 leading-relaxed">
-        比例(注額大小)= 返還率 ÷ 四法總和(期望值越高注額越大);各法注額 = 命中可追回該份目標所需。命中賠率&gt;1 故命中可追回&gt;成本;但返還率&lt;100%(負期望),長期仍虧,攤平只挑最不虧的組合。
+// 攤平比例可用各格滑塊手動調:調某一法時,其餘三法保持彼此現有相對比例,一起縮放填滿 (1 - 該法比例);
+// 維持「全中可追回 = 赤字」不變式 → 總投入(budget)隨新比例就地重算。版/選擇/資料變動會清掉手動比例回自動。
+const AverageCard: React.FC<{ d: AverageData }> = ({ d }) => {
+  const autoW = useMemo(() => {
+    const w: Record<string, number> = {};
+    for (const a of d.alloc) w[a.key] = a.weight;
+    return w;
+  }, [d.alloc]);
+  const [override, setOverride] = useState<Record<string, number> | null>(null);
+  useEffect(() => { setOverride(null); }, [d.alloc]);   // 底層資料(版/下法/選擇)一變就回自動
+  const eff = override ?? autoW;
+
+  // 依 effective 比例就地重算:denom = Σ(比例×命中賠率),總投入 = 赤字 ÷ denom(保持全中可追回=赤字)
+  const denom = d.alloc.reduce((s, m) => s + (eff[m.key] ?? 0) * m.hitOdds, 0);
+  const budget = d.deficit > 0 && denom > 0 ? d.deficit / denom : 0;
+  const cells: AllocMethod[] = d.alloc.map(m => {
+    const wt = eff[m.key] ?? 0;
+    const cost = budget * wt;
+    return { ...m, weight: wt, cost, units: m.costPerUnit > 0 ? cost / m.costPerUnit : 0, ifHit: cost * m.hitOdds };
+  });
+
+  // 拖動某法比例到 v(0~1):其餘三法保持現有相對比例,一起縮放到 (1 - v)。
+  const setWeight = (key: string, v: number) => {
+    const others = d.alloc.map(m => m.key).filter(k => k !== key);
+    const restCur = others.reduce((s, k) => s + (eff[k] ?? 0), 0);
+    const next: Record<string, number> = { [key]: v };
+    for (const k of others)
+      next[k] = restCur > 0 ? (eff[k] ?? 0) / restCur * (1 - v) : (1 - v) / others.length;
+    setOverride(next);
+  };
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="inline-block px-2 py-0.5 rounded-md bg-violet-500/10 text-violet-600 dark:text-violet-400 text-[11px] font-bold">{d.name}</span>
+        {d.deficit > 0
+          ? <span className="text-[10px] font-mono text-neutral-500">總投入 <span className="font-bold text-neutral-900 dark:text-white">{fmt1(budget)}</span> · 全中可追回 <span className="text-emerald-600 dark:text-emerald-400 font-semibold">{fmt1(d.deficit)}</span></span>
+          : <span className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400 font-semibold">未虧損 {sfmt1(d.cumPnl)},無需攤平</span>}
+        {d.deficit > 0 && override && (
+          <button
+            type="button"
+            onClick={() => setOverride(null)}
+            className="text-[9px] px-1.5 py-0.5 rounded-md border border-black/10 dark:border-white/10 text-neutral-500 hover:bg-black/5 dark:hover:bg-white/5 font-semibold"
+          >
+            重設自動比例
+          </button>
+        )}
       </div>
-    )}
-  </div>
-);
+      <div className="grid grid-cols-2 gap-2 items-start">
+        {cells.map(m => <AverageMethodCell key={m.key} m={m} best={m.key === d.bestKey} hasDeficit={d.deficit > 0} onWeight={v => setWeight(m.key, v)} />)}
+      </div>
+      {d.deficit > 0 && (
+        <div className="text-[9px] text-neutral-400 leading-relaxed">
+          預設比例 = 返還率 ÷ 四法總和(期望值越高注額越大)。拖滑塊可手動調某一法,其餘三法自動依比例分配;
+          總投入隨新比例重算,仍保持全中可追回=赤字。命中賠率&gt;1 故命中可追回&gt;成本;但返還率&lt;100%(負期望),長期仍虧。
+        </div>
+      )}
+    </div>
+  );
+};
 
 // 建議車數明細彈窗:逐筆點擊排除/納入(排除的不算進要追的赤字);建議車數即時重算。
 type ModalRow = { id: string; date: string; tag: string; balls: number[]; cost: number; payout: number; pnl: number; result: string };
@@ -829,7 +878,8 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
       const o = oddsOf(eid);
       const perUnitNet = 4 * o.betPrize - FULL_1800 * o.betCost;
       const cumPnl = rows.reduce((s, r) => s + num(r.payout) - num(r.cost), 0);
-      const units = cumPnl >= 0 ? null : perUnitNet > 0 ? Math.max(1, Math.ceil(-cumPnl / perUnitNet)) : Infinity;
+      // 1800碰:支援 0.1 支 —— 進位到 0.1(最少 0.1 支),不再強制整數支
+      const units = cumPnl >= 0 ? null : perUnitNet > 0 ? Math.max(0.1, ceilTenth(-cumPnl / perUnitNet)) : Infinity;
       const ok = units != null && Number.isFinite(units);
       const n = ok ? (units as number) : 0;
       const cost = ok ? n * FULL_1800 * o.betCost : 0;
@@ -848,7 +898,8 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
       const o = oddsOf(eid);
       const perUnitNet = 2 * o.c9kPrize - C9K * o.c9kCost;
       const cumPnl = rows.reduce((s, r) => s + num(r.payout) - num(r.cost), 0);
-      const units = cumPnl >= 0 ? null : perUnitNet > 0 ? Math.max(1, Math.ceil(-cumPnl / perUnitNet)) : Infinity;
+      // 9000碰:支援 0.1 支 —— 進位到 0.1(最少 0.1 支),不再強制整數支
+      const units = cumPnl >= 0 ? null : perUnitNet > 0 ? Math.max(0.1, ceilTenth(-cumPnl / perUnitNet)) : Infinity;
       const ok = units != null && Number.isFinite(units);
       const n = ok ? (units as number) : 0;
       const cost = ok ? n * C9K * o.c9kCost : 0;
@@ -932,6 +983,7 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
           units: m.costPerUnit > 0 ? cost / m.costPerUnit : 0,
           cost,
           ifHit: cost * hitOdds,                                          // 命中可追回(> 成本)
+          costPerUnit: m.costPerUnit, hitOdds,
         };
       }).sort((a, b) => b.cost - a.cost);                                 // 依注額大小排序:大注額(大柱)在前
       const totalCost = budget;

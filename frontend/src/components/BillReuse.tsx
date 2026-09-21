@@ -2,6 +2,7 @@ import React, { createContext, useContext, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ClipboardList, X, ChevronDown, ChevronRight, Trash2 } from 'lucide-react';
 import { useAllLedger } from '../api/useLedger';
+import { useEditions } from '../api/useEditions';
 import { LedgerMode } from '../api/client';
 import { BetRecord } from '../types';
 import { MODE_LABEL } from './uploadHistory';
@@ -93,19 +94,39 @@ const modeLabel = (m: string) => MODE_LABEL[m as LedgerMode] ?? m;
 export const BillReuseButton: React.FC<{ focusWeek: string }> = ({ focusWeek }) => {
   const { reuseRecords, reusePnl, count, isReused, toggle, setMany, clearAll } = useBillReuse();
   const { entries, loggedIn } = useAllLedger();
+  const { editions } = useEditions();
   const [open, setOpen] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());  // 直板機:週手風琴展開
   const [detailWeek, setDetailWeek] = useState<string>('');                // 寬板機:右側明細看哪一週
   const [modeFilter, setModeFilter] = useState<LedgerMode | 'all'>('all'); // 下法篩選
+  const [edFilter, setEdFilter] = useState<number | 'all'>('all');         // 板名(版)篩選
+  const [gameFilter, setGameFilter] = useState<string>('all');             // 遊戲篩選
 
-  // 可沿用的帳單 = 全部 ledger 紀錄中「不在目前聚焦週」的(之前 / 其他週期),新→舊;再套下法篩選。
+  // 可沿用的帳單 = 全部 ledger 紀錄中「不在目前聚焦週」的(之前 / 其他週期),新→舊。
   const all = useMemo(
     () => entries.map(e => entryToRecord(e.id, e.record)).filter(r => /^\d{4}-\d{2}-\d{2}/.test(String(r.date ?? ''))),
     [entries],
   );
+  // 先取「本週以外」當底池 —— 板名/遊戲的可選清單只依這個算,不受彼此篩選影響(選了一個不會把別的藏掉)。
+  const notFocus = useMemo(() => all.filter(r => weekMonday(r.date) !== focusWeek), [all, focusWeek]);
+  const edOf = (r: BetRecord) => Number(r.edition) || 1;
+  const edName = (eid: number) => editions.find(e => e.eid === eid)?.name ?? `版${eid}`;
+  // 底池出現過的版 / 遊戲(超過一個才顯示該排篩選,單一就不必占版面)
+  const edOptions = useMemo(
+    () => Array.from(new Set(notFocus.map(edOf))).sort((a, b) => a - b),
+    [notFocus],
+  );
+  const gameOptions = useMemo(
+    () => Array.from(new Set(notFocus.map(r => r.game).filter(Boolean))),
+    [notFocus],
+  );
+  // 三個篩選一起套:下法 + 板名 + 遊戲
   const pool = useMemo(
-    () => all.filter(r => weekMonday(r.date) !== focusWeek && (modeFilter === 'all' || r.mode === modeFilter)),
-    [all, focusWeek, modeFilter],
+    () => notFocus.filter(r =>
+      (modeFilter === 'all' || r.mode === modeFilter) &&
+      (edFilter === 'all' || edOf(r) === edFilter) &&
+      (gameFilter === 'all' || r.game === gameFilter)),
+    [notFocus, modeFilter, edFilter, gameFilter],
   );
 
   // 週 → 日 → 逐筆
@@ -144,6 +165,19 @@ export const BillReuseButton: React.FC<{ focusWeek: string }> = ({ focusWeek }) 
     { key: 'combo9000', label: '9000碰' },
     { key: 'combo', label: '連碰' },
   ];
+  // 遊戲短名(record.game 是完整中文名,篩選鈕用短名比較省版面)
+  const gameShort = (g: string) =>
+    g.includes('539') ? '539'
+      : (g.includes('天天樂') || g.includes('Fantasy')) ? '天天樂'
+      : g.includes('六合') ? '六合彩' : g;
+
+  // 篩選排的共用樣式(選中=實心,未選=描邊)
+  const chipCls = (active: boolean) =>
+    `px-2 py-0.5 rounded-lg text-[10px] font-semibold transition-all ${
+      active
+        ? 'bg-black text-white dark:bg-white dark:text-black'
+        : 'border border-black/10 dark:border-white/10 text-neutral-600 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5'
+    }`;
 
   // 某週的「逐日 → 逐筆」明細(直板機手風琴 / 寬板機右欄共用)。
   const renderDetail = (rows: BetRecord[]) => {
@@ -280,23 +314,55 @@ export const BillReuseButton: React.FC<{ focusWeek: string }> = ({ focusWeek }) 
             </p>
 
             {/* 下法篩選:1組/2組/1800碰/9000碰/連碰 */}
-            <div className="flex flex-wrap items-center gap-1.5 px-4 pt-2 pb-2">
-              <span className="text-[10px] uppercase tracking-wider text-neutral-400 font-semibold mr-0.5">下法</span>
+            <div className="flex flex-wrap items-center gap-1.5 px-4 pt-2 pb-1">
+              <span className="text-[10px] uppercase tracking-wider text-neutral-400 font-semibold mr-0.5 w-8 shrink-0">下法</span>
               {FILTERS.map(f => (
                 <button
                   key={f.key}
                   type="button"
                   onClick={() => setModeFilter(f.key)}
-                  className={`px-2 py-0.5 rounded-lg text-[10px] font-semibold transition-all ${
-                    modeFilter === f.key
-                      ? 'bg-black text-white dark:bg-white dark:text-black'
-                      : 'border border-black/10 dark:border-white/10 text-neutral-600 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5'
-                  }`}
+                  className={chipCls(modeFilter === f.key)}
                 >
                   {f.label}
                 </button>
               ))}
             </div>
+
+            {/* 板名(版)篩選:只在有兩個版以上時顯示 */}
+            {edOptions.length > 1 && (
+              <div className="flex flex-wrap items-center gap-1.5 px-4 pt-1 pb-1">
+                <span className="text-[10px] uppercase tracking-wider text-neutral-400 font-semibold mr-0.5 w-8 shrink-0">板名</span>
+                <button type="button" onClick={() => setEdFilter('all')} className={chipCls(edFilter === 'all')}>全部</button>
+                {edOptions.map(eid => (
+                  <button
+                    key={eid}
+                    type="button"
+                    onClick={() => setEdFilter(eid)}
+                    className={chipCls(edFilter === eid)}
+                  >
+                    {edName(eid)}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* 遊戲篩選:只在有兩款以上遊戲時顯示 */}
+            {gameOptions.length > 1 && (
+              <div className="flex flex-wrap items-center gap-1.5 px-4 pt-1 pb-2">
+                <span className="text-[10px] uppercase tracking-wider text-neutral-400 font-semibold mr-0.5 w-8 shrink-0">遊戲</span>
+                <button type="button" onClick={() => setGameFilter('all')} className={chipCls(gameFilter === 'all')}>全部</button>
+                {gameOptions.map(g => (
+                  <button
+                    key={g}
+                    type="button"
+                    onClick={() => setGameFilter(g)}
+                    className={chipCls(gameFilter === g)}
+                  >
+                    {gameShort(g)}
+                  </button>
+                ))}
+              </div>
+            )}
 
             {/* 本體:直板機=單欄(週手風琴向下展開);寬板機=左右雙欄(明細由右側邊緣向右展開),
                 左右各自獨立滾動。 */}
@@ -307,7 +373,7 @@ export const BillReuseButton: React.FC<{ focusWeek: string }> = ({ focusWeek }) 
                 </div>
               ) : weeks.length === 0 ? (
                 <div className="flex-1 text-[11px] text-neutral-400 py-10 text-center">
-                  本週以外沒有其他帳單可沿用(或此下法無紀錄)。
+                  本週以外沒有其他帳單可沿用(或目前的下法 / 板名 / 遊戲篩選無紀錄)。
                 </div>
               ) : (
                 <>
