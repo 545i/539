@@ -152,6 +152,28 @@ export const TotalPnLTab: React.FC = () => {
     };
   }, [perfRows, loggedIn, shownEntries]);
 
+  // 各項策略勝率:可額外挑日期區間(只影響勝率卡,不動其它區塊)。空 = 不設限。
+  const [wrStart, setWrStart] = useState('');
+  const [wrEnd, setWrEnd] = useState('');
+  // 日期輸入的可選範圍:取目前這一版所有紀錄的最早/最晚開獎日
+  const dateBounds = useMemo(() => {
+    const ds = shownEntries.map(e => String(e.record.date ?? '')).filter(Boolean).sort();
+    return { min: ds[0] ?? '', max: ds[ds.length - 1] ?? '' };
+  }, [shownEntries]);
+  const winRateRows = useMemo(() => {
+    // 未登入沒有逐筆日期,直接沿用示範數字(不套區間)
+    if (!loggedIn) return perfRows.map(r => ({ name: r.name, rounds: r.rounds, hits: r.hits }));
+    const inRange = (d: string) => (!wrStart || d >= wrStart) && (!wrEnd || d <= wrEnd);
+    return MODE_ROWS.map(({ mode, name }) => {
+      const rows = shownEntries.filter(e => e.mode === mode && inRange(String(e.record.date ?? '')));
+      return {
+        name,
+        rounds: rows.length,
+        hits: rows.filter(e => num(e.record.payout) > 0).length,
+      };
+    });
+  }, [loggedIn, shownEntries, wrStart, wrEnd, perfRows]);
+
   // 淨值走勢:登入時依流水順序累加,未登入沒有逐筆資料就不畫(跟隨上方版切換)
   const curve = useMemo(() => {
     if (!loggedIn || shownEntries.length === 0) return null;
@@ -477,8 +499,43 @@ export const TotalPnLTab: React.FC = () => {
             <h3 className="text-xs sm:text-sm font-display font-bold text-neutral-900 dark:text-white uppercase tracking-wide">
               各項策略勝率
             </h3>
+
+            {/* 日期區間篩選:只影響本卡的勝率計算(未登入無逐筆日期故隱藏) */}
+            {loggedIn && (
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="date"
+                    value={wrStart}
+                    min={dateBounds.min || undefined}
+                    max={wrEnd || dateBounds.max || undefined}
+                    onChange={e => setWrStart(e.target.value)}
+                    className="flex-1 min-w-0 px-2 py-1 rounded-lg text-[11px] font-mono bg-black/[0.03] dark:bg-white/[0.05] border border-black/10 dark:border-white/10 text-neutral-700 dark:text-neutral-200"
+                  />
+                  <span className="text-[10px] text-neutral-400">~</span>
+                  <input
+                    type="date"
+                    value={wrEnd}
+                    min={wrStart || dateBounds.min || undefined}
+                    max={dateBounds.max || undefined}
+                    onChange={e => setWrEnd(e.target.value)}
+                    className="flex-1 min-w-0 px-2 py-1 rounded-lg text-[11px] font-mono bg-black/[0.03] dark:bg-white/[0.05] border border-black/10 dark:border-white/10 text-neutral-700 dark:text-neutral-200"
+                  />
+                </div>
+                {(wrStart || wrEnd) && (
+                  <button
+                    type="button"
+                    onClick={() => { setWrStart(''); setWrEnd(''); }}
+                    className="text-[10px] text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 underline"
+                  >
+                    清除區間(看全部)
+                  </button>
+                )}
+              </div>
+            )}
+
             <div className="space-y-3">
-              {perfRows.map((row, i) => {
+              {winRateRows.map((row, i) => {
                 const wr = row.rounds ? (row.hits / row.rounds) * 100 : 0;
                 return (
                   <div key={i} className="space-y-1">
