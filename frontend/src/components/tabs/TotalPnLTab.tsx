@@ -406,14 +406,14 @@ export const TotalPnLTab: React.FC = () => {
         </div>
       )}
 
-      {/* Dual Column: Performance Breakdown & Recovery Planner */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5">
-        
-        {/* Left Column (7/12) - Strategy Performance & Trend Chart */}
-        <div className="lg:col-span-7 space-y-4">
-          
+      {/* 策略列:各項策略損益(2/3) + 各項策略勝率(1/3)並排 */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-5">
+
+        {/* 各項策略損益 */}
+        <div className="lg:col-span-2">
+
           {/* Strategy Performance Section */}
-          <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] space-y-3">
+          <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] space-y-3 h-full">
             <h3 className="text-xs sm:text-sm font-display font-bold text-neutral-900 dark:text-white uppercase tracking-wide">
               01 / 4 大下注策略績效分佈
             </h3>
@@ -469,6 +469,44 @@ export const TotalPnLTab: React.FC = () => {
               </table>
             </div>
           </div>
+        </div>
+
+        {/* 各項策略勝率 */}
+        <div className="lg:col-span-1">
+          <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] space-y-3 h-full">
+            <h3 className="text-xs sm:text-sm font-display font-bold text-neutral-900 dark:text-white uppercase tracking-wide">
+              各項策略勝率
+            </h3>
+            <div className="space-y-3">
+              {perfRows.map((row, i) => {
+                const wr = row.rounds ? (row.hits / row.rounds) * 100 : 0;
+                return (
+                  <div key={i} className="space-y-1">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-semibold text-neutral-900 dark:text-white">{row.name}</span>
+                      <span className="font-mono font-bold text-neutral-900 dark:text-white">{wr.toFixed(1)}%</span>
+                    </div>
+                    <div className="h-2 rounded-full bg-black/[0.06] dark:bg-white/[0.08] overflow-hidden">
+                      <div
+                        className={`h-full rounded-full ${wr > 0 ? 'bg-emerald-500 dark:bg-emerald-400' : 'bg-neutral-300 dark:bg-neutral-600'}`}
+                        style={{ width: `${Math.min(100, wr)}%` }}
+                      />
+                    </div>
+                    <div className="text-[10px] text-neutral-400 font-mono">中 {row.hits} / {row.rounds} 局</div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      {/* Dual Column: 帳戶淨值走勢 & 追平回本方案矩陣 */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5">
+
+        {/* Left Column (7/12) - Trend Chart */}
+        <div className="lg:col-span-7 space-y-4">
 
           {/* SVG Trend Chart */}
           <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] space-y-3">
