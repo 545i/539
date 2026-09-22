@@ -7,7 +7,7 @@ import { useGame } from '../../api/useGame';
 import { useHistoriesByGame } from '../../api/useHistories';
 import { IssuePicker } from '../IssuePicker';
 import { useWeekNav, WeekNav } from '../WeekNav';
-import { useBillReuse, BillReuseButton } from '../BillReuse';
+import { useBillReuse } from '../BillReuse';
 import { api, LedgerMode } from '../../api/client';
 import { MODE_LABEL, money } from '../uploadHistory';
 import { weekAddDays, weekMonday } from '../../weeks';
@@ -500,16 +500,17 @@ type ModalRow = { id: string; date: string; tag: string; balls: number[]; cost: 
 const RecoverModal: React.FC<{
   title: string; weekLabel: string; rows: ModalRow[];
   excluded: Set<string>; onToggle: (id: string) => void;
+  reuseRows: ModalRow[]; isReused: (id: string) => boolean; onToggleReuse: (id: string) => void;
   d: RecoverData | null; onClose: () => void;
   dirty: boolean; saveState: 'idle' | 'saving' | 'saved' | 'error'; onSave: () => void;
-}> = ({ title, weekLabel, rows, excluded, onToggle, d, onClose, dirty, saveState, onSave }) => (
+}> = ({ title, weekLabel, rows, excluded, onToggle, reuseRows, isReused, onToggleReuse, d, onClose, dirty, saveState, onSave }) => (
   <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
     <div className="w-full max-w-md max-h-[82vh] overflow-auto rounded-2xl bg-white dark:bg-[#161616] border border-black/10 dark:border-white/10 p-4 space-y-3" onClick={e => e.stopPropagation()}>
       <div className="flex items-center justify-between">
         <div className="text-sm font-bold text-neutral-900 dark:text-white">{title} · {weekLabel} 明細</div>
         <button type="button" onClick={onClose} className="w-6 h-6 flex items-center justify-center rounded-md text-neutral-400 hover:text-neutral-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/10">✕</button>
       </div>
-      <div className="text-[11px] text-neutral-500 dark:text-neutral-400">點列 = 排除/納入該筆。排除的不算進要追的赤字(例如大贏那筆先落袋),不影響週期帳。</div>
+      <div className="text-[11px] text-neutral-500 dark:text-neutral-400">點本週某列 = 排除/納入該筆(排除的不算赤字,例如大贏先落袋)。下方可勾之前週期「沿用」把舊赤字併進來。都只影響建議車支數,不動週期帳。</div>
       {/* 建議車數摘要(即時) */}
       <div className="rounded-lg bg-black/[0.03] dark:bg-white/[0.05] px-3 py-2 text-[11px] font-mono">
         {d == null || d.cars == null ? (
@@ -541,10 +542,40 @@ const RecoverModal: React.FC<{
           );
         })}
       </div>
-      {/* 手動儲存排除設定:排除變更自動存本機,按此才同步到帳號(跨裝置),帶儲存回饋 */}
+
+      {/* 沿用之前週期(同一張卡=同版+同下法):勾選 = 把該筆併進赤字基準。
+          卡片本身即天然篩選器,故不需下法/板名/遊戲篩選。看「全部週」時不列(本週明細已含全部)。 */}
+      {reuseRows.length > 0 && (
+        <div className="space-y-1 border-t border-black/[0.06] dark:border-white/[0.08] pt-2.5">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400">沿用之前週期(勾選=併入赤字)</span>
+            <span className="text-[10px] font-mono text-neutral-400">{reuseRows.filter(r => isReused(r.id)).length}/{reuseRows.length} 筆</span>
+          </div>
+          {reuseRows.map(r => {
+            const on = isReused(r.id);
+            return (
+              <button key={r.id} type="button" onClick={() => onToggleReuse(r.id)}
+                className={`w-full flex items-center justify-between gap-2 text-[11px] font-mono px-2 py-1.5 rounded-lg border transition-colors ${on ? 'border-indigo-500/40 bg-indigo-500/[0.06]' : 'border-black/10 dark:border-white/10 opacity-70 hover:bg-black/[0.03] dark:hover:bg-white/[0.05]'}`}>
+                <span className="flex items-center gap-1.5 min-w-0">
+                  <span className={`w-4 h-4 shrink-0 rounded border flex items-center justify-center text-[9px] ${on ? 'border-indigo-500 bg-indigo-500 text-white' : 'border-neutral-400 text-transparent'}`}>✓</span>
+                  <span className="text-neutral-500 font-sans">{r.date.slice(5)}</span>
+                  <span className="px-1 py-0.5 rounded bg-black/[0.05] dark:bg-white/10 text-[9px] font-sans text-neutral-600 dark:text-neutral-300 shrink-0">{r.tag}</span>
+                  <span className="text-neutral-400 truncate">{r.balls.map(b => String(b).padStart(2, '0')).join(' ') || '—'}</span>
+                </span>
+                <span className="flex items-center gap-2 shrink-0">
+                  <span className={r.pnl >= 0 ? 'text-emerald-600 dark:text-emerald-400 font-bold' : 'text-rose-600 dark:text-rose-400 font-bold'}>{sfmt1(r.pnl)}</span>
+                  <span className="text-neutral-400 font-sans">{r.result}</span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* 手動儲存:排除 + 沿用變更自動存本機/session,按此同步到帳號(跨裝置),帶儲存回饋 */}
       <div className="flex items-center justify-between gap-2 border-t border-black/[0.06] dark:border-white/[0.08] pt-3">
         <span className="text-[10px] text-neutral-400">
-          {dirty ? '有未儲存的排除變更' : saveState === 'saved' ? '已同步到帳號' : '排除變更已存本機'}
+          {dirty ? '有未儲存的排除/沿用變更' : saveState === 'saved' ? '已同步到帳號' : '排除/沿用已暫存'}
         </span>
         <button
           type="button"
@@ -561,7 +592,7 @@ const RecoverModal: React.FC<{
           {saveState === 'saving' ? '儲存中…'
             : saveState === 'error' ? '儲存失敗,重試'
             : saveState === 'saved' && !dirty ? '已儲存 ✓'
-            : '儲存排除設定'}
+            : '儲存並套用'}
         </button>
       </div>
     </div>
@@ -691,7 +722,10 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
   const visibleWeeks = wk.allWeeks ? weeks : weeks.filter(w => w.monday === focusMonday);
   // 帳單沿用:挑「之前週期」的帳單併進本週的建議車支數(依版/下法各自歸位)。
   // 折算方式=把被沿用的 ledger id 也算進 recoverRows/averageRows 的赤字基準(見下方 rowsOf)。
-  const { reuseIds } = useBillReuse();
+  const {
+    reuseIds, isReused, toggle: toggleReuse,
+    saveReuse, reuseDirty, reuseSaveState,
+  } = useBillReuse();
   const reuseSet = useMemo(() => new Set(reuseIds), [reuseIds]);
 
   // 頂端總計:跟著聚焦週 —— 單週時只算該週,「全部週」時才是全部合計。
@@ -740,13 +774,6 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
     setExcludedIds(n);
     persistExcludedLocal(n);
   };
-  // 批次設定排除(整合「帳單挑選」的整週/整日勾選用):excluded=true 加入排除、false 移出。
-  const excludeMany = (ids: string[], excludedOn: boolean) => setExcludedIds(prev => {
-    const n = new Set(prev);
-    for (const id of ids) (excludedOn ? n.add(id) : n.delete(id));
-    persistExcludedLocal(n);
-    return n;
-  });
   // 手動儲存:明確把排除清單推到伺服器(跨裝置),帶儲存中/已儲存/失敗回饋。
   const saveExcluded = async () => {
     setExcludeSaveState('saving');
@@ -1034,6 +1061,37 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
       .sort((a, b) => a.date.localeCompare(b.date));
   }, [recoverModal, entries, focusMonday, wk.allWeeks]);
 
+  // 沿用清單:同一張卡(版 + 下法)在「聚焦週以外」的逐筆,勾選 = 併進赤字基準。
+  // 卡片本身就是天然篩選器,故不再有下法/板名/遊戲篩選;看「全部週」時本週明細已含全部,不另列沿用。
+  const reuseModalRows = useMemo(() => {
+    if (!recoverModal || wk.allWeeks) return [];
+    return entries
+      .filter(e => {
+        const r = e.record as Record<string, unknown>;
+        if ((num(r.edition) || 1) !== recoverModal.eid) return false;
+        const isTotal = recoverModal.mode === 'all' || recoverModal.mode === 'combo9000_all';
+        if (!isTotal && String(r.mode ?? '') !== recoverModal.mode) return false;
+        const d = String(r.date ?? '');
+        if (!/^\d{4}-\d{2}-\d{2}/.test(d)) return false;
+        return weekMonday(d) !== focusMonday;   // 只列聚焦週以外(之前 / 其他週期)
+      })
+      .map(e => {
+        const r = e.record as Record<string, unknown>;
+        const cost = num(r.cost);
+        const payout = isPending(String(r.result ?? '')) ? 0 : num(r.payout);
+        const mode = String(r.mode ?? '');
+        return {
+          id: String(e.id),
+          date: String(r.date ?? ''),
+          tag: `${MODE_LABEL[mode as LedgerMode] ?? mode}·${gameShort(String(r.game ?? ''))}`,
+          balls: (r.selectedBalls as number[]) ?? [],
+          cost, payout, pnl: payout - cost,
+          result: String(r.result ?? ''),
+        };
+      })
+      .sort((a, b) => b.date.localeCompare(a.date));   // 新→舊
+  }, [recoverModal, entries, focusMonday, wk.allWeeks]);
+
   if (!loggedIn) {
     return <div className="text-[12px] text-neutral-500 p-4">登入後才有跨裝置的下注流水可彙整成週總帳。</div>;
   }
@@ -1178,6 +1236,9 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
           rows={modalRows}
           excluded={excludedIds}
           onToggle={toggleExcluded}
+          reuseRows={reuseModalRows}
+          isReused={isReused}
+          onToggleReuse={toggleReuse}
           d={(() => {
             const g = recoverRows.find(r => r.eid === recoverModal.eid);
             if (!g) return null;
@@ -1191,9 +1252,13 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
             }
           })()}
           onClose={() => setRecoverModal(null)}
-          dirty={excludeDirty}
-          saveState={excludeSaveState}
-          onSave={saveExcluded}
+          dirty={excludeDirty || reuseDirty}
+          saveState={
+            excludeSaveState === 'saving' || reuseSaveState === 'saving' ? 'saving'
+              : excludeSaveState === 'error' || reuseSaveState === 'error' ? 'error'
+              : (excludeSaveState === 'saved' || reuseSaveState === 'saved') ? 'saved' : 'idle'
+          }
+          onSave={() => { saveExcluded(); saveReuse(); }}
         />,
         document.body,
       )}
@@ -1294,15 +1359,6 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
             onPrev={() => wk.goWeek(-1)}
             onNext={() => wk.goWeek(1)}
             onToggleAll={() => wk.setAllWeeks(v => !v)}
-          />
-          <BillReuseButton
-            focusWeek={wk.focusWeek}
-            excluded={excludedIds}
-            onToggleExclude={toggleExcluded}
-            onExcludeMany={excludeMany}
-            excludeDirty={excludeDirty}
-            excludeSaveState={excludeSaveState}
-            onSaveExclude={saveExcluded}
           />
         </div>
       )}
