@@ -740,6 +740,13 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
     setExcludedIds(n);
     persistExcludedLocal(n);
   };
+  // 批次設定排除(整合「帳單挑選」的整週/整日勾選用):excluded=true 加入排除、false 移出。
+  const excludeMany = (ids: string[], excludedOn: boolean) => setExcludedIds(prev => {
+    const n = new Set(prev);
+    for (const id of ids) (excludedOn ? n.add(id) : n.delete(id));
+    persistExcludedLocal(n);
+    return n;
+  });
   // 手動儲存:明確把排除清單推到伺服器(跨裝置),帶儲存中/已儲存/失敗回饋。
   const saveExcluded = async () => {
     setExcludeSaveState('saving');
@@ -1288,7 +1295,15 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
             onNext={() => wk.goWeek(1)}
             onToggleAll={() => wk.setAllWeeks(v => !v)}
           />
-          <BillReuseButton focusWeek={wk.focusWeek} />
+          <BillReuseButton
+            focusWeek={wk.focusWeek}
+            excluded={excludedIds}
+            onToggleExclude={toggleExcluded}
+            onExcludeMany={excludeMany}
+            excludeDirty={excludeDirty}
+            excludeSaveState={excludeSaveState}
+            onSaveExclude={saveExcluded}
+          />
         </div>
       )}
       {/* 聚焦週在本篩選下沒有紀錄(日曆式切週可能落在空週) */}

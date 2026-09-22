@@ -1132,6 +1132,11 @@ export const api = {
     // 一律字串化 + 濾空,避免舊資料混入數字/null 讓後端 422
     put<{ids: string[]}>('ledger/recover-exclude', {ids: ids.map(String).filter(Boolean)}),
 
+  // 建議車數/支數「沿用之前週期帳單」清單(每人一份,跨裝置),與排除對稱
+  recoverReuseGet: () => get<{ids: string[]}>('ledger/recover-reuse'),
+  recoverReuseSet: (ids: string[]) =>
+    put<{ids: string[]}>('ledger/recover-reuse', {ids: ids.map(String).filter(Boolean)}),
+
   // 備援:一鍵把自己所有「待開獎」且該期已開的紀錄自動對獎
   ledgerSettlePending: () =>
     post<{settled: number}>('ledger/settle-pending', {}),

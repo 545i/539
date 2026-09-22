@@ -14,8 +14,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
 
 from backend import (audit_store, autosettle, cycle_store, data, ledger_store,
-                     reconcile, recover_exclude_store, settle,
-                     upload_history_store, ws)
+                     reconcile, recover_exclude_store, recover_reuse_store,
+                     settle, upload_history_store, ws)
 from backend.deps import current_user
 from core import games
 
@@ -339,3 +339,17 @@ def get_recover_exclude(user: str = Depends(current_user)):
 def set_recover_exclude(body: RecoverExcludeIn, user: str = Depends(current_user)):
     """覆寫排除清單;前端每次勾選/取消都整份送上來存。"""
     return {"ids": recover_exclude_store.set_ids(user, body.ids)}
+
+
+# ── 建議車數/支數「沿用之前週期帳單」清單(每人一份,跨裝置)──────────
+# 與排除對稱:沿用=把之前週期帳單併進本週赤字基準。沿用 RecoverExcludeIn(結構相同)。
+@router.get("/recover-reuse")
+def get_recover_reuse(user: str = Depends(current_user)):
+    """回這個帳號沿用(併進建議車支數基準)的之前週期紀錄 id 清單(跨裝置)。"""
+    return {"ids": recover_reuse_store.get_ids(user)}
+
+
+@router.put("/recover-reuse")
+def set_recover_reuse(body: RecoverExcludeIn, user: str = Depends(current_user)):
+    """覆寫沿用清單;整合挑選器按「儲存並套用」時整份送上來存。"""
+    return {"ids": recover_reuse_store.set_ids(user, body.ids)}
