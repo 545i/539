@@ -503,9 +503,22 @@ const RecoverModal: React.FC<{
   reuseRows: ModalRow[]; isReused: (id: string) => boolean; onToggleReuse: (id: string) => void;
   d: RecoverData | null; onClose: () => void;
   dirty: boolean; saveState: 'idle' | 'saving' | 'saved' | 'error'; onSave: () => void;
-}> = ({ title, weekLabel, rows, excluded, onToggle, reuseRows, isReused, onToggleReuse, d, onClose, dirty, saveState, onSave }) => (
+}> = ({ title, weekLabel, rows, excluded, onToggle, reuseRows, isReused, onToggleReuse, d, onClose, dirty, saveState, onSave }) => {
+  // 沿用清單排序:未選在上、已選(已沿用)排到最下方;同組舊→新。依 isReused 即時重排。
+  const sortedReuse = [...reuseRows].sort((a, b) => {
+    const ra = isReused(a.id) ? 1 : 0, rb = isReused(b.id) ? 1 : 0;
+    if (ra !== rb) return ra - rb;
+    return a.date.localeCompare(b.date);
+  });
+  // 預設把彈窗捲到最底(已選/最新在下方),使用者從下往上滑看更多。只在開啟時捲一次。
+  const scrollRef = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, []);
+  return (
   <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-    <div className="w-full max-w-md max-h-[82vh] overflow-auto rounded-2xl bg-white dark:bg-[#161616] border border-black/10 dark:border-white/10 p-4 space-y-3" onClick={e => e.stopPropagation()}>
+    <div ref={scrollRef} className="w-full max-w-md max-h-[82vh] overflow-auto rounded-2xl bg-white dark:bg-[#161616] border border-black/10 dark:border-white/10 p-4 space-y-3" onClick={e => e.stopPropagation()}>
       <div className="flex items-center justify-between">
         <div className="text-sm font-bold text-neutral-900 dark:text-white">{title} · {weekLabel} 明細</div>
         <button type="button" onClick={onClose} className="w-6 h-6 flex items-center justify-center rounded-md text-neutral-400 hover:text-neutral-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/10">✕</button>
@@ -551,7 +564,7 @@ const RecoverModal: React.FC<{
             <span className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400">沿用之前週期(勾選=併入赤字)</span>
             <span className="text-[10px] font-mono text-neutral-400">{reuseRows.filter(r => isReused(r.id)).length}/{reuseRows.length} 筆</span>
           </div>
-          {reuseRows.map(r => {
+          {sortedReuse.map(r => {
             const on = isReused(r.id);
             return (
               <button key={r.id} type="button" onClick={() => onToggleReuse(r.id)}
@@ -597,7 +610,8 @@ const RecoverModal: React.FC<{
       </div>
     </div>
   </div>
-);
+  );
+};
 
 // 每週總帳:全部下注流水(排除模擬版)依開獎日期歸「週一~週日」的週,
 // 週 → 展開看每日小計 → 再展開看當天逐筆。派彩/盈虧直接取自各筆已結算紀錄。
