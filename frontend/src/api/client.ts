@@ -1303,8 +1303,10 @@ export const api = {
   predict: (game: GameKey, sets = 1, mode: 'periods' | 'days' = 'periods',
             n = 50, seed?: number) =>
     get<PredictDTO>(`predict?${qs({game, sets, mode, n, seed})}`),
-  predictReview: (game: GameKey, periods = 20) =>
-    get<PredictReviewDTO>(`predict/review?${qs({game, periods})}`),
+  // mode/n = 冷熱號選定範圍,要跟 predict 帶一樣的,回顧才會跟開獎前顯示一致
+  predictReview: (game: GameKey, periods = 20,
+                  mode: 'periods' | 'days' = 'periods', n = 50) =>
+    get<PredictReviewDTO>(`predict/review?${qs({game, periods, mode, n})}`),
   // 統計檢定:mode=periods(最近 n 期)或 days(最近 n 天);同範圍結果固定
   predictAnalysis: (game: GameKey, mode: 'periods' | 'days', n: number) =>
     get<PredictAnalysisDTO>(`predict/analysis?${qs({game, mode, n})}`),

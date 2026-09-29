@@ -19,7 +19,16 @@ import re
 
 import pandas as pd
 
-from core import checker, games, picker, storage
+from core import analysis, checker, games, picker, storage
+
+
+def _top_by_count(cnt: dict[int, int], pick: int, most: bool = True) -> list[int]:
+    """依出現次數取前 pick 名(most=True 熱、False 冷),平手以號碼小者優先。
+    與 backend/routers/predict.py 的同名函式一致 —— 顯示(/predict)與紀錄/回顧
+    (generate_for → /review)共用同一套確定性排名,才不會開獎前後對不上。"""
+    ranked = sorted(cnt.items(),
+                    key=lambda kv: (-kv[1] if most else kv[1], kv[0]))
+    return sorted(n for n, _ in ranked[:pick])
 
 
 def _as_date(value) -> dt.date | None:
@@ -166,12 +175,22 @@ def seed_for_issue(target_issue: str, target_date=None) -> int:
 
 def generate_for(df: pd.DataFrame, game_key: str, target_issue: str,
                  target_date=None,
-                 strategies: list[str] | None = None) -> dict[str, list[int]]:
+                 strategies: list[str] | None = None,
+                 mode: str = "periods", n: int = 50) -> dict[str, list[int]]:
     """替某一期產生各策略的預測號碼(只算,不寫入)。
 
-    只餵目標期之前的資料,seed 依期號推導。
+    只餵目標期之前的資料,seed 依期號推導 —— 換句話說,重現「開獎前」那一刻會
+    看到的號碼,所以開獎後回顧(/review)必須跟開獎前顯示(/predict)完全一致。
+
+    ⚠️ 演算法必須與 backend/routers/predict.py 對齊(2026-09-29 修:先前這裡用
+    picker.pick 的隨機加權抽樣,/predict 卻是確定性排名,導致開獎前後號碼不同):
+      - hot / cold:選定範圍(最近 n 期 / n 天)內出現次數最多 / 最少的確定性排名。
+      - frequency:全部歷史出現次數最多的確定性排名。
+      - random / balanced:依期號 seed 的隨機抽樣(balanced 的和值/奇偶區間取自選定範圍)。
+    mode / n 要跟畫面上的範圍選擇器一致,否則冷熱視窗不同會對不上。
+
     target_date 沒給時會用期號回查;查不到就當成還沒開的未來期(可用全部歷史)。
-    前置資料太少時(冷熱號沒東西可算)回空 dict。
+    前置資料太少時回空 dict。
     """
     strategies = strategies or picker.STRATEGIES
     known = target_date or date_of_issue(df, target_issue)
@@ -181,20 +200,28 @@ def generate_for(df: pd.DataFrame, game_key: str, target_issue: str,
     # 依該款的玩法規格出號 —— 六合彩是 49 選 6,用預設的 39 選 5 會出錯號
     g = games.get(game_key)
     base = seed_for_issue(target_issue, known)
+    recent = analysis.slice_range(past, mode, n)          # 冷熱看選定範圍
+    cnt_range = analysis.counts(recent, g.num_max, g.pick)
+    cnt_all = analysis.counts(past, g.num_max, g.pick)    # 頻率看全部歷史
     out: dict[str, list[int]] = {}
     for s in strategies:
-        # 每個策略再錯開 seed。同 seed 下權重接近均勻時,不同策略會抽出
-        # 一模一樣的號碼(random 與 frequency 實測就撞在一起),那樣拿來
-        # 比較誰準完全沒有意義。偏移取自策略在 STRATEGIES 裡的固定位置,
-        # 所以仍然可重現。
-        offset = picker.STRATEGIES.index(s) if s in picker.STRATEGIES else 0
         try:
-            got = picker.pick(past, strategy=s, sets=1, seed=base + offset * 7919,
-                              num_max=g.num_max, pick_n=g.pick)
+            if s == "hot":
+                out[s] = _top_by_count(cnt_range, g.pick, most=True)
+            elif s == "cold":
+                out[s] = _top_by_count(cnt_range, g.pick, most=False)
+            elif s == "frequency":
+                out[s] = _top_by_count(cnt_all, g.pick, most=True)
+            else:
+                # random / balanced:seed 依期號 + 策略固定偏移(與 /predict 相同)
+                offset = picker.STRATEGIES.index(s) if s in picker.STRATEGIES else 0
+                src = recent if s == "balanced" else past
+                got = picker.pick(src, strategy=s, sets=1, seed=base + offset * 7919,
+                                  num_max=g.num_max, pick_n=g.pick)
+                if got:
+                    out[s] = got[0]
         except (ValueError, KeyError, IndexError):
             continue                    # 某策略算不出來就跳過,不拖垮其他策略
-        if got:
-            out[s] = got[0]
     return out
 
 

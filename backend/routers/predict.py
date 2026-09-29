@@ -242,10 +242,14 @@ def analysis_route(game: str = Query(...),
 
 
 @router.get("/review")
-def review(game: str = Query(...), periods: int = Query(20, ge=1, le=100)):
+def review(game: str = Query(...), periods: int = Query(20, ge=1, le=100),
+           mode: str = Query("periods", pattern="^(periods|days)$"),
+           n: int = Query(50, ge=1, le=100000)):
     """最近 N 期的回顧:各策略在「當期開獎前」會出什麼號、實際中幾顆。
 
     每期都只用該期之前的資料重新出號(防 look-ahead),所以命中數是誠實的。
+    mode / n = 冷熱號的選定範圍,要跟 /predict(畫面顯示)一致,回顧才會跟開獎前
+    看到的號碼相同(2026-09-29 修:先前 generate_for 用隨機加權,與顯示對不上)。
     """
     g = get_game(game)
     df = load_df(game)
@@ -267,7 +271,7 @@ def review(game: str = Query(...), periods: int = Query(20, ge=1, le=100)):
         drawn = _row_nums(r, cols)
         draw_odd = sum(1 for n in drawn if n % 2 == 1)
         draw_lean = _oe_lean(draw_odd, len(drawn))
-        preds = predictor.generate_for(df, g.key, key, target_date=date)
+        preds = predictor.generate_for(df, g.key, key, target_date=date, mode=mode, n=n)
         if not preds:
             continue                    # 最早幾期前面沒資料可算,跳過
         picks = {}

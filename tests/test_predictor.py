@@ -2,7 +2,8 @@
 
 重點在三件事:
   1. 防 look-ahead —— 預測不能看到目標期當天的開獎結果
-  2. 可重現但不撞號 —— 同期重現、不同期不同、各策略之間也不能一樣
+  2. 可重現 —— 同期重現、不同期不同;hot/cold/frequency 是確定性排名(與 /predict 一致,
+     開獎前後號碼相同),可能彼此同組,不再要求各策略互異
   3. 存下來就不覆蓋 —— 預測寫下去之後不該被改掉
 """
 from __future__ import annotations
@@ -12,7 +13,7 @@ import datetime as dt
 import pandas as pd
 import pytest
 
-from core import picker, predictor, storage
+from core import analysis, games, picker, predictor, storage
 
 
 @pytest.fixture
@@ -96,11 +97,28 @@ def test_different_periods_differ(df539):
            predictor.generate_for(df539, "lotto539", t2)
 
 
-def test_strategies_do_not_collide(df539):
-    """各策略必須抽出不同號碼,否則排行沒有意義(曾經 random 與 frequency 撞號)。"""
-    rows = predictor.generate_for(df539, "lotto539", df539.iloc[-1]["date"].date())
+def test_ranking_strategies_match_deterministic_ranking(df539):
+    """hot/cold/frequency 是確定性排名(與 /predict 顯示同一套算式),不再是隨機加權。
+
+    2026-09-29 修:先前這裡用 picker.pick 隨機加權,導致開獎前(/predict 顯示)與
+    開獎後(generate_for → /review 紀錄)號碼不同。現在兩邊共用 _top_by_count 排名。
+    確定性排名下 hot 與 frequency 有可能剛好同組(冷熱視窗與全頻率一致),這是允許的,
+    所以不再斷言五策略號碼全互異;改為驗證各排名策略確實等於其定義。
+    """
+    g = games.get("lotto539")
+    target = df539.iloc[-1]["date"].date()
+    rows = predictor.generate_for(df539, "lotto539", target, mode="periods", n=50)
     assert len(rows) == len(picker.STRATEGIES)
-    assert len({tuple(v) for v in rows.values()}) == len(rows)
+
+    past = predictor.history_before(df539, target)
+    recent = analysis.slice_range(past, "periods", 50)
+    cnt_range = analysis.counts(recent, g.num_max, g.pick)
+    cnt_all = analysis.counts(past, g.num_max, g.pick)
+    assert rows["hot"] == predictor._top_by_count(cnt_range, g.pick, most=True)
+    assert rows["cold"] == predictor._top_by_count(cnt_range, g.pick, most=False)
+    assert rows["frequency"] == predictor._top_by_count(cnt_all, g.pick, most=True)
+    # 冷、熱是分佈兩端,非退化資料下必不同組
+    assert rows["hot"] != rows["cold"]
 
 
 def test_seed_for_is_stable():

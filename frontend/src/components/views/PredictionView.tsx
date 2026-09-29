@@ -141,9 +141,10 @@ export const PredictionView: React.FC = () => {
   // 不再提供「重新抽一組」—— 預測結果不該隨手動抽組變動(切回同一期要答案一致)。
   const pred = useAsync(() => api.predict(gameKey, sets, rangeMode, rangeN),
     [gameKey, sets, rangeMode, rangeN]);
+  // 回顧帶跟預測相同的範圍(rangeMode/rangeN),冷熱視窗一致 → 開獎前後號碼相同
   const review = useAsync<PredictReviewDTO | null>(
-    () => api.predictReview(gameKey, reviewN),
-    [gameKey, reviewN],
+    () => api.predictReview(gameKey, reviewN, rangeMode, rangeN),
+    [gameKey, reviewN, rangeMode, rangeN],
   );
 
   // 開獎數據更新 → 自動產生新預測:predict 的 seed 綁「下一期期號」,新一期進來
