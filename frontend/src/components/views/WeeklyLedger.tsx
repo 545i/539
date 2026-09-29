@@ -529,7 +529,7 @@ const RecoverModal: React.FC<{
         <div className="text-sm font-bold text-neutral-900 dark:text-white">{title} · {weekLabel} 明細</div>
         <button type="button" onClick={onClose} className="w-6 h-6 flex items-center justify-center rounded-md text-neutral-400 hover:text-neutral-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/10">✕</button>
       </div>
-      <div className="text-[11px] text-neutral-500 dark:text-neutral-400">點本週某列 = 排除/納入該筆(排除的不算赤字,例如大贏先落袋)。下方可勾之前週期「沿用」把舊赤字併進來。都只影響建議車支數,不動週期帳。</div>
+      <div className="text-[11px] text-neutral-500 dark:text-neutral-400">本週明細在最下方(彈窗預設捲到底):點某列 = 排除/納入該筆(排除的不算赤字,例如大贏先落袋)。往上滑可勾之前週期「沿用」把舊赤字併進來。都只影響建議車支數,不動週期帳。</div>
       {/* 建議車數摘要(即時) */}
       <div className="rounded-lg bg-black/[0.03] dark:bg-white/[0.05] px-3 py-2 text-[11px] font-mono">
         {d == null || d.cars == null ? (
@@ -540,32 +540,10 @@ const RecoverModal: React.FC<{
           <span>建議 <span className="font-bold text-base text-neutral-900 dark:text-white">{(d.cars as number).toLocaleString()}</span> 車 · 成本 {fmt1(d.cost)} · 中1顆可得 <span className="text-emerald-600 dark:text-emerald-400">{fmt1(d.gain)}</span> · 中後 {sfmt1(d.after)}</span>
         )}
       </div>
-      <div className="space-y-1">
-        {rows.length === 0 && <div className="text-[11px] text-neutral-400 py-2">這週沒有紀錄。</div>}
-        {sortedRows.map(r => {
-          const ex = excluded.has(r.id);
-          return (
-            <button key={r.id} type="button" onClick={() => onToggle(r.id)}
-              className={`w-full flex items-center justify-between gap-2 text-[11px] font-mono px-2 py-1.5 rounded-lg border transition-colors ${ex ? 'border-black/10 dark:border-white/10 opacity-45' : 'border-black/10 dark:border-white/10 hover:bg-black/[0.03] dark:hover:bg-white/[0.05]'}`}>
-              <span className="flex items-center gap-1.5 min-w-0">
-                <span className={`w-4 h-4 shrink-0 rounded border flex items-center justify-center text-[9px] ${ex ? 'border-neutral-400 text-transparent' : 'border-emerald-500 bg-emerald-500 text-white'}`}>✓</span>
-                <span className="text-neutral-500 font-sans">{r.date.slice(5)}</span>
-                <span className="px-1 py-0.5 rounded bg-black/[0.05] dark:bg-white/10 text-[9px] font-sans text-neutral-600 dark:text-neutral-300 shrink-0">{r.tag}</span>
-                <span className={`text-neutral-400 truncate ${ex ? 'line-through' : ''}`}>{r.balls.map(b => String(b).padStart(2, '0')).join(' ') || '—'}</span>
-              </span>
-              <span className="flex items-center gap-2 shrink-0">
-                <span className={r.pnl >= 0 ? 'text-emerald-600 dark:text-emerald-400 font-bold' : 'text-rose-600 dark:text-rose-400 font-bold'}>{sfmt1(r.pnl)}</span>
-                <span className="text-neutral-400 font-sans">{r.result}</span>
-              </span>
-            </button>
-          );
-        })}
-      </div>
-
-      {/* 沿用之前週期(同一張卡=同版+同下法):勾選 = 把該筆併進赤字基準。
+      {/* 沿用之前週期(移到上方,同一張卡=同版+同下法):勾選 = 把該筆併進赤字基準。
           卡片本身即天然篩選器,故不需下法/板名/遊戲篩選。看「全部週」時不列(本週明細已含全部)。 */}
       {reuseRows.length > 0 && (
-        <div className="space-y-1 border-t border-black/[0.06] dark:border-white/[0.08] pt-2.5">
+        <div className="space-y-1">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400">沿用之前週期(勾選=併入赤字)</span>
             <span className="text-[10px] font-mono text-neutral-400">{reuseRows.filter(r => isReused(r.id)).length}/{reuseRows.length} 筆</span>
@@ -590,6 +568,33 @@ const RecoverModal: React.FC<{
           })}
         </div>
       )}
+
+      {/* 本週明細(放最下方,配合彈窗預設捲到最底):勾/取消 = 納入/排除該筆 */}
+      <div className="space-y-1 border-t border-black/[0.06] dark:border-white/[0.08] pt-2.5">
+        <div className="flex items-center justify-between">
+          <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">本週明細(取消勾選=排除)</span>
+          <span className="text-[10px] font-mono text-neutral-400">{rows.filter(r => !excluded.has(r.id)).length}/{rows.length} 筆</span>
+        </div>
+        {rows.length === 0 && <div className="text-[11px] text-neutral-400 py-2">這週沒有紀錄。</div>}
+        {sortedRows.map(r => {
+          const ex = excluded.has(r.id);
+          return (
+            <button key={r.id} type="button" onClick={() => onToggle(r.id)}
+              className={`w-full flex items-center justify-between gap-2 text-[11px] font-mono px-2 py-1.5 rounded-lg border transition-colors ${ex ? 'border-black/10 dark:border-white/10 opacity-45' : 'border-black/10 dark:border-white/10 hover:bg-black/[0.03] dark:hover:bg-white/[0.05]'}`}>
+              <span className="flex items-center gap-1.5 min-w-0">
+                <span className={`w-4 h-4 shrink-0 rounded border flex items-center justify-center text-[9px] ${ex ? 'border-neutral-400 text-transparent' : 'border-emerald-500 bg-emerald-500 text-white'}`}>✓</span>
+                <span className="text-neutral-500 font-sans">{r.date.slice(5)}</span>
+                <span className="px-1 py-0.5 rounded bg-black/[0.05] dark:bg-white/10 text-[9px] font-sans text-neutral-600 dark:text-neutral-300 shrink-0">{r.tag}</span>
+                <span className={`text-neutral-400 truncate ${ex ? 'line-through' : ''}`}>{r.balls.map(b => String(b).padStart(2, '0')).join(' ') || '—'}</span>
+              </span>
+              <span className="flex items-center gap-2 shrink-0">
+                <span className={r.pnl >= 0 ? 'text-emerald-600 dark:text-emerald-400 font-bold' : 'text-rose-600 dark:text-rose-400 font-bold'}>{sfmt1(r.pnl)}</span>
+                <span className="text-neutral-400 font-sans">{r.result}</span>
+              </span>
+            </button>
+          );
+        })}
+      </div>
 
       {/* 手動儲存:排除 + 沿用變更自動存本機/session,按此同步到帳號(跨裝置),帶儲存回饋 */}
       <div className="flex items-center justify-between gap-2 border-t border-black/[0.06] dark:border-white/[0.08] pt-3">
