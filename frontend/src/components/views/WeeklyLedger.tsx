@@ -504,6 +504,12 @@ const RecoverModal: React.FC<{
   d: RecoverData | null; onClose: () => void;
   dirty: boolean; saveState: 'idle' | 'saving' | 'saved' | 'error'; onSave: () => void;
 }> = ({ title, weekLabel, rows, excluded, onToggle, reuseRows, isReused, onToggleReuse, d, onClose, dirty, saveState, onSave }) => {
+  // 本週清單排序:排除的(未選)在上、已選(納入=未排除)排到最下方;同組舊→新。依 excluded 即時重排。
+  const sortedRows = [...rows].sort((a, b) => {
+    const sa = excluded.has(a.id) ? 0 : 1, sb = excluded.has(b.id) ? 0 : 1;
+    if (sa !== sb) return sa - sb;
+    return a.date.localeCompare(b.date);
+  });
   // 沿用清單排序:未選在上、已選(已沿用)排到最下方;同組舊→新。依 isReused 即時重排。
   const sortedReuse = [...reuseRows].sort((a, b) => {
     const ra = isReused(a.id) ? 1 : 0, rb = isReused(b.id) ? 1 : 0;
@@ -536,7 +542,7 @@ const RecoverModal: React.FC<{
       </div>
       <div className="space-y-1">
         {rows.length === 0 && <div className="text-[11px] text-neutral-400 py-2">這週沒有紀錄。</div>}
-        {rows.map(r => {
+        {sortedRows.map(r => {
           const ex = excluded.has(r.id);
           return (
             <button key={r.id} type="button" onClick={() => onToggle(r.id)}
