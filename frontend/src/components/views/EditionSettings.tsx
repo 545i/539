@@ -109,7 +109,7 @@ export const SharesEditor: React.FC<{eid: number; edName: string; loggedIn: bool
     } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
   };
 
-  const inputCls = 'px-3 py-2 text-[13px] rounded-lg border border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.03] text-neutral-900 dark:text-white focus:outline-hidden focus:border-violet-500/50';
+  const inputCls = 'px-0.5 py-1.5 text-[13px] bg-transparent border-0 border-b border-black/15 dark:border-white/15 text-neutral-900 dark:text-white focus:outline-hidden focus:border-violet-500';
   const barItems = shares.map(x => ({name: x.name, pct: x.pct}));
   return (
     <div className="space-y-4 pt-3 border-t border-black/[0.06] dark:border-white/[0.06]">
@@ -118,7 +118,7 @@ export const SharesEditor: React.FC<{eid: number; edName: string; loggedIn: bool
         <div className="flex items-center gap-2">
           <PieChart className="w-4 h-4 text-violet-500" />
           <span className="text-sm font-bold text-neutral-900 dark:text-white">損益佔比</span>
-          <span className="px-2 py-0.5 rounded-md bg-violet-500/10 text-violet-600 dark:text-violet-400 text-[11px] font-bold">{edName}</span>
+          <span className="text-sm font-bold text-violet-600 dark:text-violet-400">{edName}</span>
         </div>
         <details className="text-[11px] text-neutral-500 dark:text-neutral-400">
           <summary className="cursor-pointer select-none text-neutral-400">怎麼算?</summary>
@@ -134,12 +134,12 @@ export const SharesEditor: React.FC<{eid: number; edName: string; loggedIn: bool
       {/* 生效日 */}
       <div className="space-y-2">
         <div className="text-[11px] font-semibold text-neutral-500">生效日</div>
-        <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-1 px-1">
+        <div className="flex gap-5 overflow-x-auto">
           {versions.map(v => (
             <button key={v.since || 'base'} type="button" onClick={() => pickVersion(v)}
-              className={`shrink-0 px-3 py-1.5 rounded-lg text-[12px] font-semibold border transition-all ${
-                since === v.since ? 'bg-black text-white dark:bg-white dark:text-black border-transparent'
-                  : 'border-black/10 dark:border-white/10 text-neutral-600 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5'}`}>
+              className={`shrink-0 pb-1 text-left text-[12px] font-semibold border-b-2 transition-colors ${
+                since === v.since ? 'text-neutral-900 dark:text-white border-current'
+                  : 'text-neutral-400 border-transparent hover:text-neutral-700 dark:hover:text-neutral-200'}`}>
               {sinceLabel(v.since)}
               <span className="block text-[10px] font-normal opacity-70 font-mono">
                 {v.shares.filter(x => x.pct > 0).map(x => `${x.name}${x.pct}%`).join(' / ')}
@@ -147,7 +147,7 @@ export const SharesEditor: React.FC<{eid: number; edName: string; loggedIn: bool
             </button>
           ))}
           {isNew && (
-            <span className="shrink-0 px-3 py-1.5 rounded-lg text-[12px] font-semibold bg-violet-500/15 text-violet-600 dark:text-violet-400">
+            <span className="shrink-0 pb-1 text-[12px] font-semibold text-violet-600 dark:text-violet-400 border-b-2 border-current">
               {sinceLabel(since)}
               <span className="block text-[10px] font-normal">新,未儲存</span>
             </span>
@@ -156,7 +156,7 @@ export const SharesEditor: React.FC<{eid: number; edName: string; loggedIn: bool
         <div className="flex gap-2">
           <input type="date" value={newSince} onChange={e => setNewSince(e.target.value)} className={`${inputCls} font-mono flex-1 min-w-0`} />
           <button type="button" onClick={addVersion} disabled={!loggedIn}
-            className="shrink-0 px-3 rounded-lg text-[12px] font-semibold border border-violet-500/30 text-violet-600 dark:text-violet-400 hover:bg-violet-500/10 disabled:opacity-30 flex items-center gap-1">
+            className="shrink-0 px-1 text-[12px] font-semibold text-violet-600 dark:text-violet-400 hover:underline disabled:opacity-30 flex items-center gap-1">
             <Plus className="w-3.5 h-3.5" />新增生效日
           </button>
         </div>
@@ -171,7 +171,7 @@ export const SharesEditor: React.FC<{eid: number; edName: string; loggedIn: bool
         <ShareBar items={barItems} className="h-3" />
 
         {/* 本人 */}
-        <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-violet-500/[0.07] dark:bg-violet-400/[0.08]">
+        <div className="flex items-center gap-2 py-2 border-b border-black/[0.06] dark:border-white/[0.06]">
           <span className={`w-2.5 h-2.5 rounded-full ${shareColor(0)}`} />
           <span className="text-[13px] font-semibold text-neutral-800 dark:text-neutral-100">本人</span>
           <span className="text-[10px] text-neutral-400">自動 = 100 − 其他人</span>
@@ -180,9 +180,9 @@ export const SharesEditor: React.FC<{eid: number; edName: string; loggedIn: bool
           </span>
         </div>
 
-        {/* 其他人:一人一張卡(手機兩行,不擠) */}
+        {/* 其他人:一人一列、手機兩行不擠;不加框,只用分隔線 */}
         {others.map((o, i) => (
-          <div key={i} className="rounded-xl border border-black/[0.08] dark:border-white/[0.08] p-2.5 space-y-2">
+          <div key={i} className="py-2.5 space-y-2 border-b border-black/[0.06] dark:border-white/[0.06]">
             <div className="flex items-center gap-2">
               <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${shareColor(i + 1)}`} />
               <input value={o.name} placeholder="名字" onChange={e => setRow(i, 'name', e.target.value)}
@@ -199,14 +199,14 @@ export const SharesEditor: React.FC<{eid: number; edName: string; loggedIn: bool
                 autoCapitalize="none" autoCorrect="off"
                 className={`${inputCls} flex-1 min-w-0 font-mono text-[12px]`} />
               <button type="button" onClick={() => setOthers(prev => prev.filter((_, j) => j !== i))} title="移除"
-                className="shrink-0 w-9 h-9 flex items-center justify-center rounded-lg text-rose-500 border border-rose-500/20 hover:bg-rose-500/10">
+                className="shrink-0 w-9 h-9 flex items-center justify-center text-neutral-400 hover:text-rose-500">
                 <Trash2 className="w-3.5 h-3.5" />
               </button>
             </div>
           </div>
         ))}
         <button type="button" onClick={() => setOthers(prev => [...prev, {name: '', pct: '', account: ''}])} disabled={!loggedIn}
-          className="w-full py-2.5 rounded-xl text-[12px] font-semibold border border-dashed border-black/15 dark:border-white/15 text-neutral-600 dark:text-neutral-300 hover:bg-black/[0.03] dark:hover:bg-white/[0.04] disabled:opacity-30 flex items-center justify-center gap-1">
+          className="py-1 text-[12px] font-semibold text-violet-600 dark:text-violet-400 hover:underline disabled:opacity-30 flex items-center gap-1">
           <Plus className="w-3.5 h-3.5" />新增分配對象
         </button>
         {over && <div className="text-[12px] text-rose-500">分出去的佔比合計 {(usedBps / 100).toFixed(2)}%,超過 100%。</div>}
@@ -215,7 +215,7 @@ export const SharesEditor: React.FC<{eid: number; edName: string; loggedIn: bool
 
       {/* 試算 */}
       {demoRows.length > 0 && (
-        <div className="rounded-xl bg-black/[0.02] dark:bg-white/[0.03] p-3 space-y-1.5">
+        <div className="space-y-1.5">
           <div className="flex items-center gap-2">
             <span className="text-[11px] font-semibold text-neutral-500 shrink-0">試算損益</span>
             <input type="number" inputMode="numeric" value={demo} onChange={e => setDemo(e.target.value)} className={`${inputCls} flex-1 min-w-0 font-mono`} />
@@ -230,12 +230,12 @@ export const SharesEditor: React.FC<{eid: number; edName: string; loggedIn: bool
       {/* 動作列:手機上黏在底部 */}
       <div className="sticky bottom-0 -mx-1 px-1 py-2 bg-white/95 dark:bg-[#121212]/95 backdrop-blur-sm flex items-center gap-2">
         <button type="button" onClick={save} disabled={busy || !loggedIn || over || !!problem}
-          className="flex-1 py-3 rounded-xl text-[13px] font-bold bg-black text-white dark:bg-white dark:text-black hover:opacity-90 disabled:opacity-30 flex items-center justify-center gap-2">
+          className="flex-1 py-3 rounded-full text-[13px] font-bold bg-black text-white dark:bg-white dark:text-black hover:opacity-90 disabled:opacity-30 flex items-center justify-center gap-2">
           <Save className="w-4 h-4" />{busy ? '儲存中…' : loggedIn ? `儲存(${sinceLabel(since)})` : '登入後才能改'}
         </button>
         {!isNew && (since !== '' || others.length > 0) && (
           <button type="button" onClick={removeVersion} disabled={busy || !loggedIn} title="刪除這組生效日"
-            className="shrink-0 px-3 py-3 rounded-xl text-[12px] font-semibold border border-rose-500/30 text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 disabled:opacity-30 flex items-center gap-1">
+            className="shrink-0 px-2 py-3 text-[12px] font-semibold text-rose-600 dark:text-rose-400 hover:underline disabled:opacity-30 flex items-center gap-1">
             <Trash2 className="w-3.5 h-3.5" />刪除這組
           </button>
         )}

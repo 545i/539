@@ -1498,16 +1498,16 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
               if (sp.eds.length === 0) return null;
               const md = (d: string) => d.slice(5).replace('-', '/');
               return (
-                <div className="px-3 py-3 sm:pl-8 border-t border-black/[0.06] dark:border-white/[0.06] bg-black/[0.015] dark:bg-white/[0.02] space-y-2">
+                <div className="px-3 py-3 sm:pl-8 border-t border-black/[0.06] dark:border-white/[0.06] space-y-1">
                   <div className="text-[10px] uppercase tracking-wider text-neutral-400 font-semibold">本週損益佔比</div>
-                  <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                  <div className="grid gap-x-8 sm:grid-cols-2 xl:grid-cols-3 divide-y sm:divide-y-0 divide-black/[0.06] dark:divide-white/[0.06]">
                     {sp.eds.map(e => {
                       const last = e.segs[e.segs.length - 1];
                       const single = e.segs.length === 1;
                       return (
-                        <div key={e.ed} className="rounded-xl bg-white dark:bg-[#161616] border border-black/[0.08] dark:border-white/[0.08] p-3 space-y-2">
+                        <div key={e.ed} className="py-2.5 space-y-2">
                           <div className="flex items-center gap-2">
-                            <span className="px-2 py-0.5 rounded-md bg-violet-500/10 text-violet-600 dark:text-violet-400 text-[11px] font-bold">{e.name}</span>
+                            <span className="text-[13px] font-bold text-violet-600 dark:text-violet-400">{e.name}</span>
                             <span className={`ml-auto font-mono text-base font-bold ${pnlTone(e.net)}`}>{fmtSigned(e.net)}</span>
                           </div>
                           <div className="flex gap-3 text-[10px] text-neutral-500 font-mono">
@@ -1525,7 +1525,7 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
                             };
                           })} colorIndex={n => Math.max(0, (last?.shares ?? []).findIndex(x => x.name === n))} />
                           {!single && (
-                            <div className="text-[10px] text-neutral-400 space-y-0.5 pt-1 border-t border-black/[0.05] dark:border-white/[0.05]">
+                            <div className="text-[10px] text-neutral-400 space-y-0.5">
                               {e.segs.map(sg => (
                                 <div key={sg.since || 'base'}>
                                   <span className="font-mono">{md(sg.from)}{sg.to !== sg.from ? `~${md(sg.to)}` : ''}</span>
@@ -1535,15 +1535,15 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
                             </div>
                           )}
                           <button type="button" onClick={() => setShareEdit(e.ed)}
-                            className="w-full py-1.5 rounded-lg border border-violet-500/30 text-violet-600 dark:text-violet-400 hover:bg-violet-500/10 text-[11px] font-semibold">
-                            設定佔比
+                            className="text-violet-600 dark:text-violet-400 hover:underline text-[11px] font-semibold">
+                            設定佔比 ›
                           </button>
                         </div>
                       );
                     })}
                   </div>
                   {sp.eds.length > 1 && (
-                    <div className="rounded-xl bg-white dark:bg-[#161616] border border-black/[0.08] dark:border-white/[0.08] p-3">
+                    <div className="pt-2.5 border-t border-black/[0.08] dark:border-white/[0.08]">
                       <div className="text-[10px] text-neutral-400 font-semibold mb-1">各人合計(全部版)</div>
                       <AllocList items={Array.from(sp.total.entries()).map(([n, t]) => ({
                         name: n, amount: t.net, sub: `付 ${money(t.cost)} · 分 ${money(t.payout)}`,

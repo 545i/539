@@ -24,20 +24,20 @@ export interface AllocItem {
   name: string;
   pct?: number;        // 有給就顯示 (xx%)
   amount: number;
-  highlight?: boolean; // 「我」:整列加底色、字加大
+  highlight?: boolean; // 「我」:名字上色、金額加大
   sub?: string;        // 名字下方小字(例如連動帳號)
 }
 
-// 分配清單:一人一列,金額靠右大字;highlight 那列(我)特別醒目
+// 分配清單:一人一列,金額靠右大字;highlight 那列(我)名字上色 + 金額加大(不加框)
 export const AllocList: React.FC<{ items: AllocItem[]; colorIndex?: (name: string, i: number) => number }> = ({ items, colorIndex }) => (
   <div className="divide-y divide-black/[0.05] dark:divide-white/[0.06]">
     {items.map((r, i) => (
       <div key={r.name}
-        className={`flex items-center gap-2 py-1.5 ${r.highlight ? 'px-2 -mx-2 rounded-lg bg-violet-500/[0.08] dark:bg-violet-400/[0.10] border-none' : ''}`}>
+        className="flex items-center gap-2 py-1.5">
         <span className={`w-2 h-2 rounded-full shrink-0 ${shareColor(colorIndex ? colorIndex(r.name, i) : i)}`} />
         <div className="min-w-0 flex-1">
-          <div className={`truncate ${r.highlight ? 'text-[13px] font-bold text-neutral-900 dark:text-white' : 'text-[12px] text-neutral-700 dark:text-neutral-200'}`}>
-            {r.name}
+          <div className={`truncate ${r.highlight ? 'text-[13px] font-bold text-violet-600 dark:text-violet-400' : 'text-[12px] text-neutral-700 dark:text-neutral-200'}`}>
+            {r.name}{r.highlight && <span className="ml-1 text-[10px] font-normal">(你)</span>}
             {r.pct !== undefined && <span className="ml-1 text-[11px] font-mono font-normal text-neutral-400">{r.pct}%</span>}
           </div>
           {r.sub && <div className="text-[10px] text-neutral-400 font-mono truncate">{r.sub}</div>}
@@ -50,9 +50,9 @@ export const AllocList: React.FC<{ items: AllocItem[]; colorIndex?: (name: strin
   </div>
 );
 
-// 大數字統計格(標籤在上、數字大字)
+// 大數字統計(標籤在上、數字大字;不加框)
 export const StatTile: React.FC<{ label: string; value: React.ReactNode; tone?: number; big?: boolean }> = ({ label, value, tone, big }) => (
-  <div className="rounded-xl bg-black/[0.03] dark:bg-white/[0.04] px-3 py-2.5 min-w-0">
+  <div className="min-w-0">
     <div className="text-[10px] text-neutral-500 dark:text-neutral-400">{label}</div>
     <div className={`font-mono font-bold truncate ${big ? 'text-2xl' : 'text-lg'} ${tone !== undefined ? pnlText(tone) : 'text-neutral-900 dark:text-white'}`}>
       {value}
