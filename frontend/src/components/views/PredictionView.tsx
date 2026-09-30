@@ -547,9 +547,8 @@ export const PredictionView: React.FC = () => {
           逐期明細
         </h3>
         <p className="text-[11px] text-neutral-400">
-          點開某一期,看各策略押了哪些號碼(綠底=押中的號)。
-          <b>只有「均衡」策略在壓單雙</b> —— 它押的 5 顆單雙偏向(單多/雙多)與當期開獎
-          一致就算「中」,即使號碼沒對到;其餘四個是選號策略,不判單雙中獎。每期只用
+          點開某一期,看熱號 / 冷號 / 歷史頻率押了哪些號碼(綠底=押中的號)。
+          <b>均衡只押單多 / 雙多</b>(不列號碼),與當期開獎一致就算「中」。每期只用
           「該期之前」的資料重新出號,不偷看答案。
         </p>
 
@@ -560,10 +559,12 @@ export const PredictionView: React.FC = () => {
         <div className="space-y-2">
           {(review.data?.rows ?? []).map(row => {
             const id = (row.issue ?? '') + '|' + (row.date ?? '');
-            const picks = strategies.map(s => ({ s, p: row.picks[s.key] }));
+            // 回顧不顯示隨機;均衡只看單多 / 雙多(不比號碼)→ 亮號與「最佳」只算熱/冷/歷史
+            const picks = strategies.filter(s => s.key !== 'random').map(s => ({ s, p: row.picks[s.key] }));
+            const numPicks = picks.filter(({ s }) => s.key !== 'balanced');
             const hitAny = new Set<number>();
-            picks.forEach(({ p }) => p?.matched.forEach(n => hitAny.add(n)));
-            const best = picks.reduce((m, { p }) => Math.max(m, p?.hits ?? 0), 0);
+            numPicks.forEach(({ p }) => p?.matched.forEach(n => hitAny.add(n)));
+            const best = numPicks.reduce((m, { p }) => Math.max(m, p?.hits ?? 0), 0);
             const expanded = open === id;
             return (
               <div
@@ -617,6 +618,9 @@ export const PredictionView: React.FC = () => {
                           <span className="w-24 shrink-0 text-[11px] font-semibold text-neutral-600 dark:text-neutral-300">
                             {s.label}
                           </span>
+                          {s.key === 'balanced' ? (
+                            <span className="text-xs font-bold text-neutral-900 dark:text-white">{p.lean}</span>
+                          ) : (
                           <div className="flex gap-1.5 flex-wrap">
                             {p.numbers.map(n => (
                               <Ball
@@ -627,12 +631,10 @@ export const PredictionView: React.FC = () => {
                               />
                             ))}
                           </div>
+                          )}
                           <div className="ml-auto flex items-center gap-2 shrink-0">
                             {p.oe_win !== null && (
                               <>
-                                <span className="text-[10px] text-neutral-400">
-                                  {p.odd}單{p.numbers.length - p.odd}雙·{p.lean}
-                                </span>
                                 <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${
                                   p.oe_win
                                     ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
@@ -642,11 +644,13 @@ export const PredictionView: React.FC = () => {
                                 </span>
                               </>
                             )}
+                            {s.key !== 'balanced' && (
                             <span className={`text-[10px] font-mono ${
                               p.hits > 0 ? 'text-neutral-500' : 'text-neutral-400'
                             }`}>
                               {p.hits} 顆
                             </span>
+                            )}
                           </div>
                         </div>
                       );
