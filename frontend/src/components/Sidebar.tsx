@@ -150,6 +150,7 @@ export const Sidebar: React.FC<Props> = ({
 
   const navItems: { id: NavItem; label: string; icon: React.ReactNode; tag?: string }[] = [
     { id: 'duo_bet', label: '紀錄下注', icon: <Dices className="w-4 h-4" />, tag: 'Core' },
+    { id: 'shared_bills', label: '佔比帳單', icon: <PieChart className="w-4 h-4" /> },
     { id: 'calculator', label: '連碰計算機', icon: <Calculator className="w-4 h-4" /> },
     { id: 'analysis', label: '統計分析', icon: <BarChart3 className="w-4 h-4" /> },
     { id: 'prediction', label: '五策略預測', icon: <Sparkles className="w-4 h-4" /> },
@@ -158,7 +159,6 @@ export const Sidebar: React.FC<Props> = ({
     { id: 'risk', label: '風險提醒', icon: <ShieldAlert className="w-4 h-4" /> },
     { id: 'audit', label: '操作歷史', icon: <History className="w-4 h-4" /> },
     { id: 'upload_history', label: '上傳歷史', icon: <ClipboardList className="w-4 h-4" /> },
-    { id: 'shared_bills', label: '佔比帳單', icon: <PieChart className="w-4 h-4" /> },
     { id: 'settings', label: '設定', icon: <Settings className="w-4 h-4" /> },
   ];
 
