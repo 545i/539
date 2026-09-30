@@ -23,9 +23,24 @@ class OddsIn(BaseModel):
     values: dict = Field(default_factory=dict)
 
 
+class ShareIn(BaseModel):
+    name: str = ""
+    pct: float = 0
+
+
+class SharesIn(BaseModel):
+    others: list[ShareIn] = Field(default_factory=list)
+
+
 @router.get("")
 def list_editions():
     return edition_store.list_editions()
+
+
+@router.get("/shares")
+def all_shares():
+    """全部版的損益佔比 {eid: [本人, ...其他人]}(每週總帳用)。"""
+    return edition_store.all_shares()
 
 
 @router.post("")
@@ -74,3 +89,21 @@ def set_odds(eid: int, body: OddsIn, user: str = Depends(current_user)):
 @router.delete("/{eid}/odds")
 def reset_odds(eid: int, game: str = Query(...), user: str = Depends(current_user)):
     return edition_store.reset_odds(eid, game)
+
+
+@router.get("/{eid}/shares")
+def get_shares(eid: int):
+    if not edition_store.edition_exists(eid):
+        raise HTTPException(status_code=404, detail="找不到這個版")
+    return edition_store.get_shares(eid)
+
+
+@router.put("/{eid}/shares")
+def set_shares(eid: int, body: SharesIn, user: str = Depends(current_user)):
+    """覆寫本人以外的分配;本人自動 = 100 − 其他人合計。"""
+    if not edition_store.edition_exists(eid):
+        raise HTTPException(status_code=404, detail="找不到這個版")
+    try:
+        return edition_store.set_shares(eid, [o.model_dump() for o in body.others])
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))

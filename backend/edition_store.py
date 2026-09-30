@@ -79,6 +79,17 @@ def _conn() -> sqlite3.Connection:
         )
         """
     )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS edition_shares (
+            eid   INTEGER NOT NULL,
+            pos   INTEGER NOT NULL,
+            name  TEXT NOT NULL,
+            bps   INTEGER NOT NULL,
+            PRIMARY KEY (eid, pos)
+        )
+        """
+    )
     # 舊表補上 simulated 欄位(模擬版:可下注/上傳,但不計總損益)
     cols = [r[1] for r in conn.execute("PRAGMA table_info(editions)")]
     if "simulated" not in cols:
@@ -139,6 +150,7 @@ def delete_edition(eid: int) -> bool:
         if sim and int(sim[0]) == 1:
             raise ValueError("模擬版不能刪除")
         c.execute("DELETE FROM edition_odds WHERE eid = ?", (int(eid),))
+        c.execute("DELETE FROM edition_shares WHERE eid = ?", (int(eid),))
         cur = c.execute("DELETE FROM editions WHERE eid = ?", (int(eid),))
     return bool(cur.rowcount)
 
@@ -260,3 +272,66 @@ def reset_odds(eid: int, game_key: str) -> dict:
 
 def edition_exists(eid: int) -> bool:
     return any(e["eid"] == int(eid) for e in list_editions())
+
+
+# ---------------------------------------------------------------------------
+# 損益佔比:每個版一組。「本人」初始 100%,往下分給其他人;本人 = 100 − 其他人合計,
+# 所以總和永遠剛好 100(守恆)。內部以萬分點 bps(0.01%)整數存,避免浮點誤差。
+# ---------------------------------------------------------------------------
+SELF_NAME = "本人"
+FULL_BPS = 10000
+
+
+def _pct_to_bps(v) -> int:
+    """百分比(最多兩位小數)→ 萬分點整數;超過兩位小數或非數字就擋。"""
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        raise ValueError("佔比要是數字")
+    bps = round(f * 100)
+    if abs(f * 100 - bps) > 1e-6:
+        raise ValueError("佔比最多到小數兩位")
+    return int(bps)
+
+
+def get_shares(eid: int) -> list[dict]:
+    """某版的佔比:第一筆一定是本人(= 100 − 其他人),其餘依設定順序。pct 為百分比。"""
+    with _conn() as c:
+        rows = c.execute(
+            "SELECT name, bps FROM edition_shares WHERE eid = ? ORDER BY pos",
+            (int(eid),)).fetchall()
+    others = [{"name": r[0], "pct": int(r[1]) / 100, "self": False} for r in rows]
+    self_bps = FULL_BPS - sum(int(r[1]) for r in rows)
+    return [{"name": SELF_NAME, "pct": self_bps / 100, "self": True}, *others]
+
+
+def all_shares() -> dict[int, list[dict]]:
+    """全部版的佔比(每週總帳一次拿齊)。"""
+    return {e["eid"]: get_shares(e["eid"]) for e in list_editions()}
+
+
+def set_shares(eid: int, others: list[dict]) -> list[dict]:
+    """覆寫某版「本人以外」的分配。每人佔比 > 0、名字不可重複 / 空白 / 叫本人;
+    合計不可超過 100(本人拿剩下的,可為 0)。"""
+    rows: list[tuple[int, int, str, int]] = []
+    seen: set[str] = set()
+    for i, o in enumerate(others or []):
+        name = str((o or {}).get("name", "")).strip()
+        if not name:
+            raise ValueError("分配對象名字不能空白")
+        if name == SELF_NAME:
+            raise ValueError("「本人」是保留名稱,不用另外加")
+        if name in seen:
+            raise ValueError(f"名字重複:{name}")
+        seen.add(name)
+        bps = _pct_to_bps((o or {}).get("pct"))
+        if bps <= 0:
+            raise ValueError(f"{name} 的佔比要大於 0")
+        rows.append((int(eid), i, name, bps))
+    if sum(r[3] for r in rows) > FULL_BPS:
+        raise ValueError("分出去的佔比合計超過 100%")
+    with _conn() as c:
+        c.execute("DELETE FROM edition_shares WHERE eid = ?", (int(eid),))
+        c.executemany(
+            "INSERT INTO edition_shares (eid, pos, name, bps) VALUES (?, ?, ?, ?)", rows)
+    return get_shares(eid)

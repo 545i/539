@@ -1,6 +1,7 @@
 import React, {useEffect, useState} from 'react';
-import {Layers, Plus, Save, RotateCcw, Trash2, Pencil} from 'lucide-react';
+import {Layers, Plus, Save, RotateCcw, Trash2, Pencil, PieChart} from 'lucide-react';
 import {api} from '../../api/client';
+import {allocatePnl, pctToBps, ShareDTO} from '../../shares';
 import {useAuth} from '../../api/useAuth';
 import {useGame} from '../../api/useGame';
 import {useEditions} from '../../api/useEditions';
@@ -20,6 +21,120 @@ const FIELD_GROUPS: {title: string; fields: [string, string][]}[] = [
     ['combo9000_cost', '每碰成本'], ['combo9000_prize', '中一碰可得'],
   ]},
 ];
+
+// 損益佔比(每版一組,不分遊戲):本人初始 100%,往下分給其他人;本人 = 100 − 其他人合計,
+// 總和永遠剛好 100。合計超過 100 / 佔比 ≤ 0 / 超過兩位小數 / 名字空白或重複都不給存。
+const SharesEditor: React.FC<{eid: number; edName: string; loggedIn: boolean}> = ({eid, edName, loggedIn}) => {
+  const [others, setOthers] = useState<{name: string; pct: string}[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [demo, setDemo] = useState('-10000');
+
+  useEffect(() => {
+    setMsg(null); setErr(null);
+    api.getShares(eid)
+      .then(rows => setOthers(rows.filter(r => !r.self).map(r => ({name: r.name, pct: String(r.pct)}))))
+      .catch(e => setErr((e as Error).message));
+  }, [eid]);
+
+  // 驗證(與後端同規則);bps 整數算,本人 = 10000 − 其他人
+  const parsed = others.map(o => ({name: o.name.trim(), pct: Number(o.pct)}));
+  const problem = (() => {
+    const seen = new Set<string>();
+    for (const o of parsed) {
+      if (!o.name) return '分配對象名字不能空白';
+      if (o.name === '本人') return '「本人」是保留名稱,不用另外加';
+      if (seen.has(o.name)) return `名字重複:${o.name}`;
+      seen.add(o.name);
+      if (!Number.isFinite(o.pct) || o.pct <= 0) return `${o.name} 的佔比要大於 0`;
+      if (Math.abs(o.pct * 100 - pctToBps(o.pct)) > 1e-6) return `${o.name} 的佔比最多到小數兩位`;
+    }
+    return null;
+  })();
+  const usedBps = parsed.reduce((a, o) => a + (Number.isFinite(o.pct) ? pctToBps(o.pct) : 0), 0);
+  const selfBps = 10000 - usedBps;
+  const over = selfBps < 0;
+  const shares: ShareDTO[] = [
+    {name: '本人', pct: Math.max(0, selfBps) / 100, self: true},
+    ...parsed.map(o => ({name: o.name || '?', pct: Number.isFinite(o.pct) ? o.pct : 0, self: false})),
+  ];
+  const demoRows = !problem && !over ? allocatePnl(Number(demo) || 0, shares) : [];
+
+  const setRow = (i: number, k: 'name' | 'pct', v: string) =>
+    setOthers(prev => prev.map((o, j) => (j === i ? {...o, [k]: v} : o)));
+  const save = async () => {
+    setBusy(true); setMsg(null); setErr(null);
+    try {
+      const rows = await api.setShares(eid, parsed);
+      setOthers(rows.filter(r => !r.self).map(r => ({name: r.name, pct: String(r.pct)})));
+      setMsg(`已儲存「${edName}」的損益佔比。`);
+    } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
+  };
+
+  const inputCls = 'px-2.5 py-1.5 text-xs rounded-lg border border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.03] text-neutral-900 dark:text-white focus:outline-hidden';
+  return (
+    <div className="space-y-2 pt-3 border-t border-black/[0.06] dark:border-white/[0.06]">
+      <div className="text-[10px] uppercase tracking-[0.2em] font-semibold text-neutral-400 flex items-center gap-1.5">
+        <PieChart className="w-3 h-3" />損益佔比({edName},不分遊戲)
+      </div>
+      <div className="text-[11px] text-neutral-500 dark:text-neutral-400">
+        本人初始 100%,往下分給其他人;本人自動 = 100 − 其他人合計,總和永遠剛好 100%。
+        每週總帳的損益依此分配,金額四捨五入後加總一定等於總損益(不會差 ±1)。
+      </div>
+      <div className="space-y-1.5 max-w-md">
+        <div className="flex items-center gap-2">
+          <div className={`${inputCls} flex-1 text-neutral-500`}>本人</div>
+          <div className={`w-24 text-right font-mono text-xs font-bold ${over ? 'text-rose-500' : 'text-neutral-800 dark:text-neutral-100'}`}>
+            {(selfBps / 100).toFixed(2)}%
+          </div>
+          <div className="w-7" />
+        </div>
+        {others.map((o, i) => (
+          <div key={i} className="flex items-center gap-2">
+            <input value={o.name} placeholder="名字" onChange={e => setRow(i, 'name', e.target.value)}
+              className={`${inputCls} flex-1`} />
+            <div className="w-24 flex items-center gap-1">
+              <input type="number" step="0.01" min="0" max="100" value={o.pct}
+                onChange={e => setRow(i, 'pct', e.target.value)}
+                className={`${inputCls} w-full text-right font-mono`} />
+              <span className="text-[11px] text-neutral-400">%</span>
+            </div>
+            <button type="button" onClick={() => setOthers(prev => prev.filter((_, j) => j !== i))}
+              className="w-7 h-7 flex items-center justify-center rounded-lg text-rose-500 hover:bg-rose-500/10">
+              <Trash2 className="w-3 h-3" />
+            </button>
+          </div>
+        ))}
+        <button type="button" onClick={() => setOthers(prev => [...prev, {name: '', pct: ''}])} disabled={!loggedIn}
+          className="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border border-black/10 dark:border-white/10 text-neutral-700 dark:text-neutral-200 hover:bg-black/5 dark:hover:bg-white/5 disabled:opacity-30 flex items-center gap-1">
+          <Plus className="w-3 h-3" />新增分配對象
+        </button>
+      </div>
+
+      {over && <div className="text-[11px] text-rose-500">分出去的佔比合計 {(usedBps / 100).toFixed(2)}%,超過 100%。</div>}
+      {problem && <div className="text-[11px] text-rose-500">{problem}</div>}
+
+      {demoRows.length > 0 && (
+        <div className="text-[11px] text-neutral-500 flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span>試算:損益</span>
+          <input type="number" value={demo} onChange={e => setDemo(e.target.value)} className={`${inputCls} w-28 font-mono`} />
+          <span>→</span>
+          {demoRows.map(r => (
+            <span key={r.name} className="font-mono">{r.name} <strong className="text-neutral-800 dark:text-neutral-100">{r.amount.toLocaleString()}</strong></span>
+          ))}
+        </div>
+      )}
+
+      {msg && <div className="text-[11px] text-emerald-600 dark:text-emerald-400">{msg}</div>}
+      {err && <div className="text-[11px] text-rose-500">{err}</div>}
+      <button type="button" onClick={save} disabled={busy || !loggedIn || over || !!problem}
+        className="px-6 py-2.5 rounded-full text-xs uppercase tracking-wider font-semibold bg-black text-white dark:bg-white dark:text-black hover:opacity-90 disabled:opacity-30 flex items-center gap-2 shadow-xs">
+        <Save className="w-3.5 h-3.5" />{busy ? '儲存中…' : loggedIn ? '儲存損益佔比' : '登入後才能改'}
+      </button>
+    </div>
+  );
+};
 
 export const EditionSettings: React.FC = () => {
   const {loggedIn} = useAuth();
@@ -158,6 +273,11 @@ export const EditionSettings: React.FC = () => {
           <RotateCcw className="w-3.5 h-3.5" />還原預設
         </button>
       </div>
+
+      {!editions.find(e => e.eid === editEid)?.simulated && (
+        <SharesEditor eid={editEid} loggedIn={loggedIn}
+          edName={editions.find(e => e.eid === editEid)?.name ?? String(editEid)} />
+      )}
     </div>
   );
 };

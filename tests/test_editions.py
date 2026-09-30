@@ -76,3 +76,42 @@ def test_pair_bet_cost_derives_cost_per_car():
     det = edition_store.get_odds_detail(e2, G.key)
     assert det["pair_bet_cost"]["value"] == 80 and det["pair_bet_cost"]["custom"] is True
     assert det["cost_per_car"]["value"] == 80 * notes             # 衍生唯讀
+
+
+def test_shares_default_self_100():
+    assert edition_store.get_shares(1) == [{"name": "本人", "pct": 100.0, "self": True}]
+
+
+def test_shares_conserve_to_100():
+    out = edition_store.set_shares(1, [{"name": "阿閔", "pct": 33.33}, {"name": "阿姨", "pct": 33.33}])
+    assert [s["name"] for s in out] == ["本人", "阿閔", "阿姨"]
+    assert out[0]["pct"] == 33.34
+    assert round(sum(s["pct"] for s in out) * 100) == 10000
+    # 全分出去 → 本人 0
+    out = edition_store.set_shares(1, [{"name": "A", "pct": 100}])
+    assert out[0]["pct"] == 0
+    # 清空 → 本人回 100
+    assert edition_store.set_shares(1, [])[0]["pct"] == 100
+
+
+@pytest.mark.parametrize("others", [
+    [{"name": "A", "pct": 60}, {"name": "B", "pct": 40.01}],   # 合計超過 100
+    [{"name": "A", "pct": 0}],                                  # 0%
+    [{"name": "A", "pct": -5}],
+    [{"name": "A", "pct": 1.234}],                              # 超過兩位小數
+    [{"name": "本人", "pct": 10}],
+    [{"name": "A", "pct": 10}, {"name": "A", "pct": 10}],
+    [{"name": " ", "pct": 10}],
+])
+def test_shares_reject(others):
+    edition_store.set_shares(1, [{"name": "keep", "pct": 20}])
+    with pytest.raises(ValueError):
+        edition_store.set_shares(1, others)
+    assert edition_store.get_shares(1)[1] == {"name": "keep", "pct": 20.0, "self": False}
+
+
+def test_delete_edition_clears_shares():
+    eid = edition_store.add_edition("X")["eid"]
+    edition_store.set_shares(eid, [{"name": "A", "pct": 50}])
+    edition_store.delete_edition(eid)
+    assert eid not in edition_store.all_shares()

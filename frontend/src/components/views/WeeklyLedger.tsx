@@ -11,6 +11,7 @@ import { useBillReuse } from '../BillReuse';
 import { api, LedgerMode } from '../../api/client';
 import { MODE_LABEL, money } from '../uploadHistory';
 import { weekAddDays, weekMonday } from '../../weeks';
+import { allocatePnl, ShareDTO } from '../../shares';
 
 const num = (v: unknown): number => {
   const n = typeof v === 'number' ? v : parseFloat(String(v ?? ''));
@@ -90,7 +91,7 @@ const winCombos = (r: BetRow): number => {
 type GameAgg = { cost: number; payout: number; pnl: number; count: number };
 interface Bucket { cost: number; payout: number; pnl: number; pendingCount: number; count: number; byGame: Map<string, GameAgg>; }
 interface DayGroup extends Bucket { ymd: string; rows: BetRow[]; }
-interface WeekGroup extends Bucket { monday: string; sunday: string; days: DayGroup[]; }
+interface WeekGroup extends Bucket { monday: string; sunday: string; days: DayGroup[]; pnlByEd: Map<number, number>; }
 
 const blank = (): Bucket => ({ cost: 0, payout: 0, pnl: 0, pendingCount: 0, count: 0, byGame: new Map() });
 const fold = (b: Bucket, cost: number, payout: number, pending: boolean, game: string) => {
@@ -712,10 +713,11 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
       };
       let w = wmap.get(monday);
       if (!w) {
-        w = { ...blank(), monday, sunday: monday ? weekAddDays(monday, 6) : '', days: [] };
+        w = { ...blank(), monday, sunday: monday ? weekAddDays(monday, 6) : '', days: [], pnlByEd: new Map() };
         wmap.set(monday, w);
       }
       fold(w, cost, payout, pending, gShort);
+      w.pnlByEd.set(row.edition, (w.pnlByEd.get(row.edition) ?? 0) + row.pnl);
       let day = w.days.find(d => d.ymd === ymd);
       if (!day) { day = { ...blank(), ymd, rows: [] }; w.days.push(day); }
       fold(day, cost, payout, pending, gShort);
@@ -732,6 +734,26 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
     }
     return list;
   }, [shown, games]);
+
+  // 損益佔比(每版一組,設定頁「下注版本」裡改):本週各版盈虧依佔比分給各人,金額守恆。
+  const [sharesByEid, setSharesByEid] = useState<Record<number, ShareDTO[]>>({});
+  React.useEffect(() => {
+    let alive = true;
+    api.getAllShares()
+      .then(m => { if (alive) setSharesByEid(Object.fromEntries(Object.entries(m).map(([k, v]) => [Number(k), v]))); })
+      .catch(() => { /* 讀不到就不顯示分配 */ });
+    return () => { alive = false; };
+  }, [editions]);
+  // 某週的分配:只列有「往下分」的版;多版時再依名字合計每個人(各版已守恆,合計也守恆)。
+  const weekSplit = (w: WeekGroup) => {
+    const eds = Array.from(w.pnlByEd.entries())
+      .filter(([ed]) => (sharesByEid[ed]?.length ?? 0) > 1)
+      .sort((a, b) => a[0] - b[0])
+      .map(([ed, pnl]) => ({ ed, name: edName(ed), pnl, rows: allocatePnl(pnl, sharesByEid[ed]) }));
+    const total = new Map<string, number>();
+    for (const e of eds) for (const r of e.rows) total.set(r.name, (total.get(r.name) ?? 0) + r.amount);
+    return { eds, total };
+  };
 
   const weekLabel = (w: WeekGroup) =>
     w.monday ? `${w.monday.replace(/-/g, '/')} ~ ${w.sunday.slice(5).replace('-', '/')}` : '(無日期)';
@@ -1431,6 +1453,38 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
                 <GameBreak byGame={w.byGame} />
               </div>
             )}
+
+            {/* 本週損益佔比:各版盈虧依佔比分給各人(四捨五入且加總 = 該版盈虧) */}
+            {wOpen && (() => {
+              const sp = weekSplit(w);
+              if (sp.eds.length === 0) return null;
+              return (
+                <div className="px-3 py-2 pl-8 border-t border-black/[0.06] dark:border-white/[0.06] bg-black/[0.015] dark:bg-white/[0.02] space-y-1">
+                  <div className="text-[9px] uppercase tracking-wider text-neutral-400">本週損益佔比</div>
+                  {sp.eds.map(e => (
+                    <div key={e.ed} className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10px] font-mono">
+                      <span className="px-1.5 py-0.5 rounded-full bg-violet-500/10 text-violet-600 dark:text-violet-400 text-[9px] font-sans">{e.name}</span>
+                      <span className={`font-bold ${pnlCls(e.pnl)}`}>{signedMoney(e.pnl)}</span>
+                      <span className="text-neutral-400">→</span>
+                      {e.rows.map(r => (
+                        <span key={r.name} className="text-neutral-500">
+                          {r.name}<span className="text-neutral-400">({r.pct}%)</span>{' '}
+                          <span className={`font-bold ${pnlCls(r.amount)}`}>{signedMoney(r.amount)}</span>
+                        </span>
+                      ))}
+                    </div>
+                  ))}
+                  {sp.eds.length > 1 && (
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10px] font-mono pt-1 border-t border-black/[0.05] dark:border-white/[0.05]">
+                      <span className="text-neutral-400 font-sans">各人合計</span>
+                      {Array.from(sp.total.entries()).map(([n, v]) => (
+                        <span key={n} className="text-neutral-500">{n} <span className={`font-bold ${pnlCls(v)}`}>{signedMoney(v)}</span></span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* 每日小計 */}
             {wOpen && (
