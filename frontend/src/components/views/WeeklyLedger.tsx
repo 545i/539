@@ -756,6 +756,7 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
   // 本週各版盈虧逐日套當天生效的佔比,整週一起湊整數,金額守恆。
   const [sharesByEid, setSharesByEid] = useState<Record<number, ShareVersionDTO[]>>({});
   const [shareEdit, setShareEdit] = useState<number | null>(null);   // 正在改佔比的版(彈窗)
+  const [openShare, setOpenShare] = useState<Set<string>>(new Set()); // 展開「另 N 人」的 週|版
   const loadShares = React.useCallback(() => {
     api.getAllShares()
       .then(m => setSharesByEid(Object.fromEntries(Object.entries(m).map(([k, v]) => [Number(k), v]))))
@@ -1497,46 +1498,91 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
               return (
                 <div className="px-3 py-2 pl-8 border-t border-black/[0.06] dark:border-white/[0.06] bg-black/[0.015] dark:bg-white/[0.02] space-y-1">
                   <div className="text-[9px] uppercase tracking-wider text-neutral-400">本週損益佔比</div>
-                  {sp.eds.map(e => (
-                    <div key={e.ed} className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10px] font-mono">
-                      <span className="px-1.5 py-0.5 rounded-full bg-violet-500/10 text-violet-600 dark:text-violet-400 text-[9px] font-sans">{e.name}</span>
-                      <span className={`font-bold ${pnlCls(e.net)}`}>{signedMoney(e.net)}</span>
-                      <span className="text-neutral-400">→</span>
-                      {e.rows.map(r => {
-                        // 本週只有一組佔比時直接標 %;跨生效日時 % 改列在下方分段說明
-                        const pct = e.segs.length === 1 ? e.segs[0].shares.find(x => x.name === r.name)?.pct : undefined;
-                        return (
-                          <span key={r.name} className="text-neutral-500">
-                            {r.name}{pct !== undefined && <span className="text-neutral-400">({pct}%)</span>}{' '}
-                            <span className={`font-bold ${pnlCls(r.net)}`}>{signedMoney(r.net)}</span>
-                          </span>
-                        );
-                      })}
-                      <button type="button" onClick={() => setShareEdit(e.ed)}
-                        className="px-2 py-0.5 rounded-md border border-violet-500/30 text-violet-600 dark:text-violet-400 hover:bg-violet-500/10 text-[10px] font-sans font-semibold">
-                        設定佔比
-                      </button>
-                      {e.segs.length > 1 && (
-                        <div className="w-full pl-1 text-[9px] text-neutral-400 font-sans space-y-0.5">
-                          {e.segs.map(sg => (
-                            <div key={sg.since || 'base'}>
-                              <span className="font-mono">{sg.from.slice(5).replace('-', '/')}{sg.to !== sg.from ? `~${sg.to.slice(5).replace('-', '/')}` : ''}</span>
-                              {' '}<span className={`font-mono ${pnlCls(sg.payout - sg.cost)}`}>{signedMoney(sg.payout - sg.cost)}</span>
-                              {' '}照 {sg.shares.filter(x => x.pct > 0).map(x => `${x.name}${x.pct}%`).join(' / ')}
-                            </div>
-                          ))}
+                  {/* 每版預設只一行(本人 + 另 N 人 ▸);點開才列其他人與分段 —— 人再多高度也不會暴增 */}
+                  {sp.eds.map(e => {
+                    const key = `${w.monday}|${e.ed}`;
+                    const open = openShare.has(key);
+                    const self = e.rows.find(r => r.self);
+                    const others = e.rows.filter(r => !r.self);
+                    // 本週只有一組佔比時直接標 %;跨生效日時 % 改列在展開的分段說明
+                    const pctOf = (name: string) =>
+                      e.segs.length === 1 ? e.segs[0].shares.find(x => x.name === name)?.pct : undefined;
+                    const person = (r: { name: string; net: number }) => {
+                      const pct = pctOf(r.name);
+                      return (
+                        <span key={r.name} className="text-neutral-500 whitespace-nowrap">
+                          {r.name}{pct !== undefined && <span className="text-neutral-400">({pct}%)</span>}{' '}
+                          <span className={`font-bold ${pnlCls(r.net)}`}>{signedMoney(r.net)}</span>
+                        </span>
+                      );
+                    };
+                    return (
+                      <div key={e.ed} className="text-[10px] font-mono">
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
+                          <span className="px-1.5 py-0.5 rounded-full bg-violet-500/10 text-violet-600 dark:text-violet-400 text-[9px] font-sans">{e.name}</span>
+                          <span className={`font-bold ${pnlCls(e.net)}`}>{signedMoney(e.net)}</span>
+                          <span className="text-neutral-400">→</span>
+                          {self && person(self)}
+                          {(others.length > 0 || e.segs.length > 1) && (
+                            <button type="button" onClick={() => toggle(openShare, key, setOpenShare)}
+                              className="text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200 font-sans whitespace-nowrap">
+                              {others.length > 0 ? `另 ${others.length} 人` : '分段'} {open ? '▾' : '▸'}
+                            </button>
+                          )}
+                          <button type="button" onClick={() => setShareEdit(e.ed)}
+                            className="px-2 py-0.5 rounded-md border border-violet-500/30 text-violet-600 dark:text-violet-400 hover:bg-violet-500/10 text-[10px] font-sans font-semibold">
+                            設定佔比
+                          </button>
                         </div>
-                      )}
-                    </div>
-                  ))}
-                  {sp.eds.length > 1 && (
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10px] font-mono pt-1 border-t border-black/[0.05] dark:border-white/[0.05]">
-                      <span className="text-neutral-400 font-sans">各人合計</span>
-                      {Array.from(sp.total.entries()).map(([n, t]) => (
-                        <span key={n} className="text-neutral-500">{n} <span className={`font-bold ${pnlCls(t.net)}`}>{signedMoney(t.net)}</span></span>
-                      ))}
-                    </div>
-                  )}
+                        {open && (
+                          <div className="pl-3 mt-0.5 space-y-0.5">
+                            {others.length > 0 && (
+                              <div className="flex flex-wrap gap-x-3 gap-y-0.5">{others.map(person)}</div>
+                            )}
+                            {e.segs.length > 1 && (
+                              <div className="text-[9px] text-neutral-400 font-sans space-y-0.5">
+                                {e.segs.map(sg => (
+                                  <div key={sg.since || 'base'}>
+                                    <span className="font-mono">{sg.from.slice(5).replace('-', '/')}{sg.to !== sg.from ? `~${sg.to.slice(5).replace('-', '/')}` : ''}</span>
+                                    {' '}<span className={`font-mono ${pnlCls(sg.payout - sg.cost)}`}>{signedMoney(sg.payout - sg.cost)}</span>
+                                    {' '}照 {sg.shares.filter(x => x.pct > 0).map(x => `${x.name}${x.pct}%`).join(' / ')}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                  {sp.eds.length > 1 && (() => {
+                    const key = `${w.monday}|total`;
+                    const open = openShare.has(key);
+                    const all = Array.from(sp.total.entries());
+                    const selfT = sp.total.get('本人');
+                    const rest = all.filter(([n]) => n !== '本人');
+                    return (
+                      <div className="text-[10px] font-mono pt-1 border-t border-black/[0.05] dark:border-white/[0.05]">
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
+                          <span className="text-neutral-400 font-sans">各人合計</span>
+                          {selfT && <span className="text-neutral-500">本人 <span className={`font-bold ${pnlCls(selfT.net)}`}>{signedMoney(selfT.net)}</span></span>}
+                          {rest.length > 0 && (
+                            <button type="button" onClick={() => toggle(openShare, key, setOpenShare)}
+                              className="text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200 font-sans">
+                              另 {rest.length} 人 {open ? '▾' : '▸'}
+                            </button>
+                          )}
+                        </div>
+                        {open && (
+                          <div className="pl-3 mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5">
+                            {rest.map(([n, t]) => (
+                              <span key={n} className="text-neutral-500 whitespace-nowrap">{n} <span className={`font-bold ${pnlCls(t.net)}`}>{signedMoney(t.net)}</span></span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
               );
             })()}
