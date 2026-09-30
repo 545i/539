@@ -9,6 +9,10 @@ const REVIEW_OPTIONS = [10, 20, 50] as const;
 const RANGE_PERIOD_OPTS = [30, 50, 100] as const;   // 依期數
 const RANGE_DAY_OPTS = [14, 30, 90] as const;        // 依日期
 const MEDALS = ['🥇', '🥈', '🥉'];
+// 策略累計戰績用的短名稱(隨機不列;均衡在這裡叫「單雙預測」)
+const RANK_LABEL: Record<string, string> = {
+  hot: '熱號', frequency: '歷史', cold: '冷號', balanced: '單雙預測',
+};
 
 // 號球依十位分色,跟統計分析頁一致(01~09 / 10~19 / … / 40~49)
 const BAND_BALL = [
@@ -478,14 +482,15 @@ export const PredictionView: React.FC = () => {
                     <th className="text-left font-semibold py-1.5 w-16">名次</th>
                     <th className="text-left font-semibold py-1.5">策略</th>
                     <th className="text-right font-semibold py-1.5">期數</th>
-                    <th className="text-right font-semibold py-1.5 text-neutral-700 dark:text-neutral-200">單雙中</th>
                     <th className="text-right font-semibold py-1.5">總命中</th>
                     <th className="text-right font-semibold py-1.5">平均每期</th>
                     <th className="text-right font-semibold py-1.5">單期最佳</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {[...review.data.ranking]
+                  {/* 熱號 / 歷史 / 冷號:依平均命中排名次;隨機不列 */}
+                  {review.data.ranking
+                    .filter(r => r.strategy in RANK_LABEL && r.strategy !== 'balanced')
                     .sort((a, b) => b.avg - a.avg)
                     .map((r, i) => (
                       <tr
@@ -500,22 +505,10 @@ export const PredictionView: React.FC = () => {
                           )}
                         </td>
                         <td className="py-2 text-neutral-800 dark:text-neutral-200 font-semibold">
-                          {r.label}
+                          {RANK_LABEL[r.strategy]}
                         </td>
                         <td className="py-2 text-right font-mono text-neutral-500">
                           {r.periods}
-                        </td>
-                        <td className="py-2 text-right font-mono">
-                          {r.strategy === 'balanced' ? (
-                            <span className="font-bold text-emerald-600 dark:text-emerald-400">
-                              {r.oe_wins}/{r.periods}
-                              <span className="text-neutral-400 font-normal ml-1">
-                                ({(r.oe_rate * 100).toFixed(0)}%)
-                              </span>
-                            </span>
-                          ) : (
-                            <span className="text-neutral-300 dark:text-neutral-600">—</span>
-                          )}
                         </td>
                         <td className="py-2 text-right font-mono text-neutral-500">
                           {r.total_hits} 顆
@@ -528,13 +521,33 @@ export const PredictionView: React.FC = () => {
                         </td>
                       </tr>
                     ))}
+                  {/* 單雙預測(均衡):不比號碼,只看單多 / 雙多中幾期 */}
+                  {review.data.ranking.filter(r => r.strategy === 'balanced').map(r => (
+                    <tr key={r.strategy} className="border-t border-black/[0.05] dark:border-white/[0.05]">
+                      <td className="py-2 text-neutral-400">—</td>
+                      <td className="py-2 text-neutral-800 dark:text-neutral-200 font-semibold">
+                        {RANK_LABEL[r.strategy]}
+                      </td>
+                      <td className="py-2 text-right font-mono text-neutral-500">
+                        {r.periods}
+                      </td>
+                      <td colSpan={3} className="py-2 text-right font-mono">
+                        <span className="font-bold text-neutral-900 dark:text-white">
+                          中 {r.oe_wins}/{r.periods} 期
+                        </span>
+                        <span className="text-neutral-400 ml-1">
+                          ({(r.oe_rate * 100).toFixed(0)}%)
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
             <p className="text-[11px] text-neutral-400">
               參考基準:每期開 {review.data.pick} 顆、{review.data.num_max} 選{' '}
               {review.data.pick},隨便選 {review.data.pick} 顆的期望命中是{' '}
-              {review.data.expected_avg.toFixed(2)} 顆。期數這麼少,誰在前面純屬偶然。
+              {review.data.expected_avg.toFixed(2)} 顆;單雙預測約 50%。期數這麼少,誰在前面純屬偶然。
             </p>
           </>
         )}
