@@ -56,7 +56,14 @@ const Ball: React.FC<{ n: number; tone?: BallTone; size?: 'sm' | 'md' }> = ({
   </span>
 );
 
-/** 本期預測:一個策略一列 —— 號球排開,底下附白話說明。 */
+// 一組號碼的單雙偏向(與後端 _oe_lean 同規則):奇數多→單多、偶數多→雙多、一樣→平
+const oeLean = (nums: number[]) => {
+  const odd = nums.filter(n => n % 2 === 1).length;
+  const even = nums.length - odd;
+  return odd > even ? '單多' : even > odd ? '雙多' : '平';
+};
+
+/** 本期預測:一個策略一列 —— 號球排開,底下附白話說明。均衡不列號碼,只顯示單多 / 雙多。 */
 const StrategyRow: React.FC<{ s: PredictStrategyDTO }> = ({ s }) => (
   <div className="py-3.5 first:pt-0 last:pb-0 border-b last:border-b-0 border-black/[0.06] dark:border-white/[0.06]">
     <div className="flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-4">
@@ -88,9 +95,11 @@ const StrategyRow: React.FC<{ s: PredictStrategyDTO }> = ({ s }) => (
                   #{i + 1}
                 </span>
               )}
-              {nums.map(n => (
-                <Ball key={n} n={n} />
-              ))}
+              {s.key === 'balanced' ? (
+                <span className="text-base font-bold text-neutral-900 dark:text-white">{oeLean(nums)}</span>
+              ) : (
+                nums.map(n => <Ball key={n} n={n} />)
+              )}
             </div>
           ))
         )}
@@ -389,12 +398,12 @@ export const PredictionView: React.FC = () => {
                 {pred.data?.target.label ?? '—'}
               </span>
               <span className="ml-2 text-neutral-400">
-                熱/冷/頻率=排名(對齊統計檢定);隨機/均衡=抽樣
+                熱/冷/頻率=排名(對齊統計檢定);均衡=抽樣後看單多 / 雙多
               </span>
             </p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-[10px] text-neutral-400">組數(只影響隨機/均衡)</span>
+            <span className="text-[10px] text-neutral-400">組數(只影響均衡)</span>
             <div className="inline-flex p-1 rounded-xl bg-black/[0.03] dark:bg-white/[0.04] border border-black/[0.06] dark:border-white/[0.06] gap-1">
               {SET_OPTIONS.map(n => (
                 <button
@@ -418,15 +427,16 @@ export const PredictionView: React.FC = () => {
         {pred.error && <div className="text-xs text-rose-500">{pred.error}</div>}
 
         <div>
-          {(pred.data?.strategies ?? []).map(s => (
+          {/* 隨機列不顯示(只留熱 / 冷 / 歷史頻率 / 均衡) */}
+          {(pred.data?.strategies ?? []).filter(s => s.key !== 'random').map(s => (
             <StrategyRow key={s.key} s={s} />
           ))}
         </div>
 
         {pred.data && (
           <p className="text-[11px] text-neutral-400 dark:text-neutral-500">
-            熱/冷/頻率為選定範圍內的確定性排名 —— 與統計檢定完全一致;隨機/均衡依期號推導的
-            固定種子出號(seed {pred.data.seed})。同一範圍、同一期永遠同一組,切走再切回都不變。
+            熱/冷/頻率為選定範圍內的確定性排名 —— 與統計檢定完全一致;均衡依期號推導的
+            固定種子抽樣後只看單多 / 雙多(seed {pred.data.seed})。同一範圍、同一期永遠同一組,切走再切回都不變。
           </p>
         )}
       </div>
