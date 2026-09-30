@@ -300,7 +300,7 @@ const OwnerDashboard: React.FC<{ reloadKey: number; onHasPartners: (v: boolean) 
       }
     }
     return { w, byP };
-  }), [weeks, sharesByEid, partnerEids]);
+  }).filter(x => x.byP.size > 0), [weeks, sharesByEid, partnerEids]);   // 只留有合夥人收支的週
 
   if (partnerEids.size === 0) return null;
 
@@ -318,7 +318,7 @@ const OwnerDashboard: React.FC<{ reloadKey: number; onHasPartners: (v: boolean) 
     return { accounts: [...acc], pcts };
   };
 
-  const weekKey = selWeek || weeks[0]?.monday || '';
+  const weekKey = selWeek || perWeek[0]?.w.monday || '';
   const scope = weekKey === 'all' ? perWeek : perWeek.filter(x => x.w.monday === weekKey);
   // 選定範圍內每位合夥人的合計 + 各版明細
   const partners = new Map<string, { total: Money3; cells: (Cell & { monday: string })[] }>();
@@ -338,7 +338,7 @@ const OwnerDashboard: React.FC<{ reloadKey: number; onHasPartners: (v: boolean) 
     <div className="space-y-4">
       {/* 週選擇 */}
       <div className="flex gap-4 overflow-x-auto text-[12px]">
-        {[...weeks.map(w => w.monday), 'all'].map(k => (
+        {[...perWeek.map(x => x.w.monday), ...(perWeek.length > 1 ? ['all'] : [])].map(k => (
           <button key={k} type="button" onClick={() => setSelWeek(k)}
             className={`shrink-0 pb-1 font-semibold font-mono ${weekKey === k ? 'text-neutral-900 dark:text-white border-b-2 border-current' : 'text-neutral-400'}`}>
             {k === 'all' ? '全部週' : `${md(k)}~${md(weekAddDays(k, 6))}`}
@@ -450,7 +450,7 @@ export const SharedBillsView: React.FC = () => {
   const cur = tab ?? (hasPartners ? 'owner' : 'partner');
 
   return (
-    <div className="space-y-4 animate-in fade-in duration-200 max-w-2xl">
+    <div className="space-y-4 animate-in fade-in duration-200">
       <div className="flex items-center gap-2">
         <PieChart className="w-4 h-4 text-neutral-400" />
         <div className="text-[12px] text-neutral-500 dark:text-neutral-400 min-w-0">
