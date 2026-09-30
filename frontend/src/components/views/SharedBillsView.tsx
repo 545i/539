@@ -1,19 +1,99 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { PieChart, RefreshCw } from 'lucide-react';
+import { ChevronDown, ChevronRight, PieChart, RefreshCw } from 'lucide-react';
 import { api, SharedBoardDTO } from '../../api/client';
 import { useAuth } from '../../api/useAuth';
 import { useGame } from '../../api/useGame';
 import { money } from '../uploadHistory';
-import { allocateSegments, daySegments } from '../../shares';
-import {
-  BillCards, buildDayBill, dayMd, GameBreak, groupWeeks, pnlCls, signedMoney, weekdayOf, WeekGroup,
-} from './WeeklyLedger';
+import { splitCostPayout } from '../../shares';
+import { AllocList, ShareBar, StatTile, fmtSigned, pnlTone } from '../ShareUI';
+import { BillCards, buildDayBill, dayMd, groupWeeks, weekdayOf, BetRow, DayGroup, WeekGroup } from './WeeklyLedger';
 
 // 佔比帳單(被連動者唯讀):版主設定損益佔比時把我「連動帳號」,我就能在這裡看那個版、
-// 我有佔比那些日子的帳單 —— 每週該版盈虧、我分到多少(與版主看到的同一套守恆分配),
-// 展開看每天的快捷帳單卡片(可複製)。其他合夥人名字已由後端遮成「其他N」。
+// 我有佔比那些日子的帳單。重點三件事一眼看清楚:
+//   ① 下注了什麼(每天逐筆:遊戲 / 下法 / 號碼 / 支數 / 成本 / 開獎結果 / 派彩)
+//   ② 我可以分到多少(派彩 × 我的佔比)
+//   ③ 我需要支付多少(成本 × 我的佔比);結算 = 分到 − 支付 → 「你需支付 / 你可收」
+// 成本、派彩各自守恆分配(與版主週期帳同一套),其他合夥人名字由後端遮成「其他N」。
 
 const sinceLabel = (since: string) => (since ? `${since.replace(/-/g, '/')} 起` : '從最早起');
+const md = (ymd: string) => ymd.slice(5).replace('-', '/');
+
+// 結算一句話:淨額 > 0 你可收、< 0 你需支付
+const Settle: React.FC<{ net: number; size?: 'lg' | 'sm' }> = ({ net, size = 'lg' }) => (
+  <div className={`font-bold ${size === 'lg' ? 'text-xl' : 'text-sm'} ${pnlTone(net)}`}>
+    {net < 0 ? '你需支付 ' : net > 0 ? '你可收 ' : '不用收付 '}
+    {net !== 0 && <span className="font-mono">${Math.abs(net).toLocaleString()}</span>}
+  </div>
+);
+
+// 一筆下注(唯讀):下了什麼 + 成本 + 結果
+const BetLine: React.FC<{ r: BetRow }> = ({ r }) => (
+  <div className="py-2 space-y-1">
+    <div className="flex items-center gap-1.5 flex-wrap">
+      <span className="px-1.5 py-0.5 rounded bg-sky-500/10 text-sky-600 dark:text-sky-400 text-[10px] font-bold">{r.gameShort}</span>
+      <span className="px-1.5 py-0.5 rounded bg-black/5 dark:bg-white/10 text-[10px] font-semibold text-neutral-700 dark:text-neutral-200">{r.modeLabel}</span>
+      {r.playType && <span className="text-[11px] text-neutral-500">{r.playType}</span>}
+      <span className="text-[11px] text-neutral-500 font-mono">{r.units}{r.unitLabel}</span>
+      <span className={`ml-auto text-[10px] px-1.5 py-0.5 rounded-full ${
+        r.pending ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
+          : r.payout > 0 ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+            : 'bg-black/5 dark:bg-white/10 text-neutral-500'}`}>{r.result || '待開獎'}</span>
+    </div>
+    {r.balls.length > 0 && (
+      <div className="flex flex-wrap gap-1">
+        {r.balls.map((n, i) => {
+          const hit = r.drawBalls.includes(n);
+          return (
+            <span key={`${n}-${i}`} className={`min-w-6 h-6 px-1 flex items-center justify-center rounded-full text-[11px] font-mono font-semibold ${
+              hit ? 'bg-emerald-500 text-white' : 'bg-black/[0.06] dark:bg-white/[0.08] text-neutral-800 dark:text-neutral-100'}`}>
+              {String(n).padStart(2, '0')}
+            </span>
+          );
+        })}
+      </div>
+    )}
+    <div className="flex justify-between text-[11px] font-mono">
+      <span className="text-neutral-500">成本 <span className="text-neutral-800 dark:text-neutral-100 font-semibold">{money(r.cost)}</span></span>
+      <span className="text-neutral-500">派彩 <span className={r.payout > 0 ? 'text-emerald-600 dark:text-emerald-400 font-bold' : 'text-neutral-400'}>{money(r.payout)}</span></span>
+    </div>
+  </div>
+);
+
+const DayCard: React.FC<{ day: DayGroup }> = ({ day }) => {
+  const [open, setOpen] = useState(false);
+  const [bill, setBill] = useState(false);
+  return (
+    <div className="rounded-xl border border-black/[0.08] dark:border-white/[0.08] bg-white dark:bg-[#161616]">
+      <button type="button" onClick={() => setOpen(o => !o)} className="w-full flex items-center gap-2 px-3 py-2.5 text-left">
+        {open ? <ChevronDown className="w-3.5 h-3.5 text-neutral-400" /> : <ChevronRight className="w-3.5 h-3.5 text-neutral-400" />}
+        <span className="text-[13px] font-semibold font-mono text-neutral-800 dark:text-neutral-100">{md(day.ymd)}({weekdayOf(day.ymd)})</span>
+        <span className="text-[10px] text-neutral-400">{day.count} 筆{day.pendingCount > 0 ? ` · ${day.pendingCount} 待開` : ''}</span>
+        <span className={`ml-auto font-mono text-[13px] font-bold ${pnlTone(day.pnl)}`}>{fmtSigned(day.pnl)}</span>
+      </button>
+      {open && (
+        <div className="px-3 pb-3 border-t border-black/[0.05] dark:border-white/[0.06]">
+          <div className="flex gap-1.5 pt-2">
+            {(['list', 'bill'] as const).map(v => (
+              <button key={v} type="button" onClick={() => setBill(v === 'bill')}
+                className={`px-2.5 py-1 rounded-md text-[11px] font-semibold ${bill === (v === 'bill')
+                  ? 'bg-black text-white dark:bg-white dark:text-black'
+                  : 'border border-black/10 dark:border-white/10 text-neutral-600 dark:text-neutral-300'}`}>
+                {v === 'list' ? '下注明細' : '帳單卡片'}
+              </button>
+            ))}
+          </div>
+          {bill ? (
+            <div className="pt-2"><BillCards bill={buildDayBill(day)} md={dayMd(day.ymd)} /></div>
+          ) : (
+            <div className="divide-y divide-black/[0.05] dark:divide-white/[0.06]">
+              {day.rows.map(r => <BetLine key={r.id} r={r} />)}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
 
 const BoardView: React.FC<{ b: SharedBoardDTO }> = ({ b }) => {
   const { games } = useGame();
@@ -21,123 +101,122 @@ const BoardView: React.FC<{ b: SharedBoardDTO }> = ({ b }) => {
     const f = games.find(x => x.key === g || x.name === g || x.short_name === g);
     return f?.short_name ?? f?.name ?? g ?? '其他';
   };
-  const weeks = useMemo(
-    () => groupWeeks(b.entries, gameShort, () => b.edition_name),
-    [b, games],
-  );
-  const [openWeeks, setOpenWeeks] = useState<Set<string>>(() => new Set(weeks[0] ? [weeks[0].monday] : []));
-  const [openDays, setOpenDays] = useState<Set<string>>(new Set());
-  const toggle = (set: Set<string>, k: string, setter: (s: Set<string>) => void) => {
-    const n = new Set(set); n.has(k) ? n.delete(k) : n.add(k); setter(n);
-  };
+  const weeks = useMemo(() => groupWeeks(b.entries, gameShort, () => b.edition_name), [b, games]);
+  const [openWeek, setOpenWeek] = useState<string | null>(() => weeks[0]?.monday ?? null);
+
   const ownerLabel = `${b.owner}(版主)`;
   const nameOf = (n: string) => (n === '本人' ? ownerLabel : n);
-
-  // 每週:依生效日切段 → 守恆分配 → 取「我」那一份
-  const split = (w: WeekGroup) => {
-    const days = w.pnlByEd.get(b.eid) ?? new Map<string, number>();
-    const segs = daySegments(days.entries(), b.versions);
-    const rows = allocateSegments(segs);
-    const meName = segs.flatMap(sg => sg.shares).find(x => x.me)?.name;
-    return { segs, rows, mine: rows.find(r => r.name === meName)?.amount ?? 0 };
-  };
-  const splits = weeks.map(split);
-  const myTotal = splits.reduce((a, x) => a + x.mine, 0);
   const latest = b.versions[b.versions.length - 1];
+  const meName = b.versions.flatMap(v => v.shares).find(x => x.me)?.name ?? '';
   const myPct = latest?.shares.find(x => x.me)?.pct;
 
+  const split = (w: WeekGroup) => {
+    const sp = splitCostPayout(w.moneyByEd.get(b.eid) ?? new Map(), b.versions);
+    const me = sp.rows.find(r => r.name === meName) ?? { cost: 0, payout: 0, net: 0 };
+    return { ...sp, me };
+  };
+  const splits = weeks.map(split);
+  const sum = splits.reduce((a, x) => ({ cost: a.cost + x.me.cost, payout: a.payout + x.me.payout, net: a.net + x.me.net }),
+    { cost: 0, payout: 0, net: 0 });
+  const cur = splits[0];
+
   return (
-    <div className="space-y-3">
-      <div className="p-4 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] space-y-1.5">
-        <div className="text-sm font-bold text-neutral-900 dark:text-white">
-          {b.owner} · <span className="text-violet-600 dark:text-violet-400">{b.edition_name}</span>
+    <div className="space-y-4">
+      {/* 總覽:我的佔比 + 最新一週要付/分到/結算 + 累計 */}
+      <div className="p-4 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] space-y-3">
+        <div className="flex items-start gap-2">
+          <div className="min-w-0">
+            <div className="text-[11px] text-neutral-500">{b.owner} 的</div>
+            <div className="text-lg font-bold text-neutral-900 dark:text-white">{b.edition_name}</div>
+          </div>
+          <div className="ml-auto text-right">
+            <div className="text-[11px] text-neutral-500">你的佔比</div>
+            <div className="text-2xl font-bold font-mono text-violet-600 dark:text-violet-400">{myPct !== undefined ? `${myPct}%` : '—'}</div>
+            {latest && <div className="text-[10px] text-neutral-400">{myPct !== undefined ? sinceLabel(latest.since) : '已停止分配'}</div>}
+          </div>
         </div>
-        <div className="text-[11px] text-neutral-500 flex flex-wrap gap-x-4 gap-y-1">
-          <span>目前我的佔比:<strong className="text-neutral-800 dark:text-neutral-100 font-mono">{myPct !== undefined ? `${myPct}%` : '已停止'}</strong>
-            {latest && <span className="ml-1 text-neutral-400">({sinceLabel(latest.since)})</span>}</span>
-          <span>累計我分到:<strong className={`font-mono ${pnlCls(myTotal)}`}>{signedMoney(myTotal)}</strong></span>
-        </div>
-        <div className="text-[10px] text-neutral-400 space-y-0.5">
-          {b.versions.filter(v => v.shares.some(x => x.me)).map(v => (
-            <div key={v.since || 'base'}>
-              {sinceLabel(v.since)}:{v.shares.filter(x => x.pct > 0).map(x => `${nameOf(x.name)} ${x.pct}%`).join(' / ')}
+        {latest && <ShareBar items={latest.shares} />}
+
+        {cur && (
+          <div className="space-y-2">
+            <div className="text-[11px] text-neutral-500">
+              最新一週 <span className="font-mono">{md(weeks[0].monday)} ~ {md(weeks[0].sunday)}</span>
+              {weeks[0].pendingCount > 0 && <span className="ml-1 text-amber-600 dark:text-amber-400">({weeks[0].pendingCount} 筆待開獎,派彩未計)</span>}
             </div>
-          ))}
-        </div>
+            <div className="grid grid-cols-2 gap-2">
+              <StatTile label="你要支付(成本)" value={money(cur.me.cost)} />
+              <StatTile label="你分到(派彩)" value={money(cur.me.payout)} tone={cur.me.payout > 0 ? 1 : undefined} />
+            </div>
+            <div className="rounded-xl px-3 py-2.5 bg-black/[0.03] dark:bg-white/[0.04]">
+              <div className="text-[10px] text-neutral-500">本週結算(分到 − 支付)</div>
+              <Settle net={cur.me.net} />
+            </div>
+          </div>
+        )}
+
+        {weeks.length > 1 && (
+          <div className="grid grid-cols-3 gap-2 pt-1 border-t border-black/[0.05] dark:border-white/[0.06] text-center">
+            <div><div className="text-[10px] text-neutral-500">累計支付</div><div className="font-mono text-[13px] font-bold">{money(sum.cost)}</div></div>
+            <div><div className="text-[10px] text-neutral-500">累計分到</div><div className="font-mono text-[13px] font-bold text-emerald-600 dark:text-emerald-400">{money(sum.payout)}</div></div>
+            <div><div className="text-[10px] text-neutral-500">累計結算</div><div className={`font-mono text-[13px] font-bold ${pnlTone(sum.net)}`}>{fmtSigned(sum.net)}</div></div>
+          </div>
+        )}
       </div>
 
       {weeks.length === 0 && (
-        <div className="text-[11px] text-neutral-400 p-3 rounded-xl border border-black/[0.06] dark:border-white/[0.06]">
+        <div className="text-[12px] text-neutral-400 p-4 rounded-xl border border-black/[0.06] dark:border-white/[0.06]">
           目前還沒有帳單(只顯示你有佔比那些日子的下注)。
         </div>
       )}
 
+      {/* 每週 */}
       {weeks.map((w, wi) => {
-        const wOpen = openWeeks.has(w.monday);
         const sp = splits[wi];
+        const open = openWeek === w.monday;
         return (
-          <div key={w.monday || 'nodate'} className="rounded-xl border border-black/15 dark:border-white/15 bg-white dark:bg-[#121212] overflow-hidden shadow-sm">
-            <button type="button" onClick={() => toggle(openWeeks, w.monday, setOpenWeeks)}
-              className="w-full flex items-center gap-2 px-3 py-2.5 text-left hover:bg-black/[0.02] dark:hover:bg-white/[0.03]">
-              <span className="text-[11px] w-3 shrink-0 text-center text-neutral-400">{wOpen ? '▾' : '▸'}</span>
-              <div className="min-w-0 flex-1 text-[12px] font-semibold text-neutral-800 dark:text-neutral-100 font-mono">
-                {w.monday.replace(/-/g, '/')} ~ {w.sunday.slice(5).replace('-', '/')}
-                <span className="ml-1.5 font-sans font-normal text-neutral-400 text-[10px]">{w.count} 筆</span>
-                {w.pendingCount > 0 && <span className="ml-1.5 text-amber-600 dark:text-amber-400 text-[9px] font-sans">{w.pendingCount} 待開</span>}
+          <div key={w.monday} className="rounded-2xl border border-black/[0.1] dark:border-white/[0.1] bg-white dark:bg-[#121212] overflow-hidden">
+            <button type="button" onClick={() => setOpenWeek(open ? null : w.monday)} className="w-full px-4 py-3 text-left space-y-1">
+              <div className="flex items-center gap-2">
+                {open ? <ChevronDown className="w-4 h-4 text-neutral-400" /> : <ChevronRight className="w-4 h-4 text-neutral-400" />}
+                <span className="text-[13px] font-semibold font-mono text-neutral-800 dark:text-neutral-100">{md(w.monday)} ~ {md(w.sunday)}</span>
+                <span className="text-[10px] text-neutral-400">{w.count} 筆</span>
+                {w.pendingCount > 0 && <span className="text-[10px] text-amber-600 dark:text-amber-400">{w.pendingCount} 待開</span>}
               </div>
-              <div className="flex items-center gap-3 text-[10px] font-mono shrink-0">
-                <span className="text-neutral-500">該版盈虧 <span className={`font-bold ${pnlCls(w.pnl)}`}>{signedMoney(w.pnl)}</span></span>
-                <span className="text-neutral-500">我分到 <span className={`font-bold ${pnlCls(sp.mine)}`}>{signedMoney(sp.mine)}</span></span>
+              <div className="flex items-end justify-between gap-2 pl-6">
+                <div className="text-[11px] text-neutral-500 font-mono">付 {money(sp.me.cost)} · 分 {money(sp.me.payout)}</div>
+                <Settle net={sp.me.net} size="sm" />
               </div>
             </button>
 
-            {wOpen && (
-              <div className="px-3 py-2 pl-8 border-t border-black/[0.06] dark:border-white/[0.06] bg-black/[0.015] dark:bg-white/[0.02] space-y-1 text-[10px] font-mono">
-                <div className="flex flex-wrap gap-x-3 gap-y-0.5">
-                  {sp.rows.map(r => (
-                    <span key={r.name} className="text-neutral-500">
-                      {nameOf(r.name)} <span className={`font-bold ${pnlCls(r.amount)}`}>{signedMoney(r.amount)}</span>
-                    </span>
-                  ))}
-                </div>
-                {sp.segs.map(sg => (
-                  <div key={sg.since || 'base'} className="text-[9px] text-neutral-400 font-sans">
-                    <span className="font-mono">{sg.from.slice(5).replace('-', '/')}{sg.to !== sg.from ? `~${sg.to.slice(5).replace('-', '/')}` : ''}</span>
-                    {' '}<span className={`font-mono ${pnlCls(sg.pnl)}`}>{signedMoney(sg.pnl)}</span>
-                    {' '}照 {sg.shares.filter(x => x.pct > 0).map(x => `${nameOf(x.name)}${x.pct}%`).join(' / ')}
-                  </div>
-                ))}
-                {w.byGame.size > 1 && <GameBreak byGame={w.byGame} />}
-              </div>
-            )}
-
-            {wOpen && (
-              <div className="border-t border-black/[0.06] dark:border-white/[0.06]">
-                {w.days.map(day => {
-                  const dOpen = openDays.has(day.ymd);
-                  return (
-                    <div key={day.ymd} className="border-b border-black/[0.04] dark:border-white/[0.04] last:border-b-0">
-                      <button type="button" onClick={() => toggle(openDays, day.ymd, setOpenDays)}
-                        className="w-full flex items-center gap-2 px-3 py-2 pl-6 text-left hover:bg-black/[0.02] dark:hover:bg-white/[0.03]">
-                        <span className="text-[10px] w-3 shrink-0 text-center text-neutral-400">{dOpen ? '▾' : '▸'}</span>
-                        <div className="min-w-0 flex-1 text-[11px] font-mono text-neutral-700 dark:text-neutral-300">
-                          {day.ymd.slice(5).replace('-', '/')}({weekdayOf(day.ymd)})
-                          <span className="ml-1.5 font-sans text-neutral-400 text-[10px]">{day.count} 筆</span>
+            {open && (
+              <div className="px-4 pb-4 space-y-3 border-t border-black/[0.05] dark:border-white/[0.06] pt-3">
+                <div>
+                  <div className="text-[10px] text-neutral-400 font-semibold mb-1">這週{b.edition_name}:成本 {money(sp.cost)} · 派彩 {money(sp.payout)} · 盈虧 <span className={pnlTone(sp.net)}>{fmtSigned(sp.net)}</span></div>
+                  <AllocList
+                    items={sp.rows.map(r => ({
+                      name: nameOf(r.name),
+                      pct: sp.segs.length === 1 ? sp.segs[0].shares.find(x => x.name === r.name)?.pct : undefined,
+                      amount: r.net,
+                      highlight: r.name === meName,
+                      sub: `付 ${money(r.cost)} · 分 ${money(r.payout)}`,
+                    }))}
+                    colorIndex={(_, i) => i}
+                  />
+                  {sp.segs.length > 1 && (
+                    <div className="text-[10px] text-neutral-400 space-y-0.5 mt-1">
+                      {sp.segs.map(sg => (
+                        <div key={sg.since || 'base'}>
+                          <span className="font-mono">{md(sg.from)}{sg.to !== sg.from ? `~${md(sg.to)}` : ''}</span>
+                          {' '}照 {sg.shares.filter(x => x.pct > 0).map(x => `${nameOf(x.name)} ${x.pct}%`).join(' / ')}
                         </div>
-                        <div className="flex items-center gap-3 text-[10px] font-mono shrink-0">
-                          <span className="text-neutral-500">{money(day.cost)}</span>
-                          <span className="text-emerald-600 dark:text-emerald-400">{money(day.payout)}</span>
-                          <span className={`font-bold ${pnlCls(day.pnl)}`}>{signedMoney(day.pnl)}</span>
-                        </div>
-                      </button>
-                      {dOpen && (
-                        <div className="px-3 pb-3 pl-9">
-                          <BillCards bill={buildDayBill(day)} md={dayMd(day.ymd)} />
-                        </div>
-                      )}
+                      ))}
                     </div>
-                  );
-                })}
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <div className="text-[10px] text-neutral-400 font-semibold">每天下注(點開看明細 / 帳單卡片)</div>
+                  {w.days.map(day => <DayCard key={day.ymd} day={day} />)}
+                </div>
               </div>
             )}
           </div>
@@ -168,32 +247,33 @@ export const SharedBillsView: React.FC = () => {
   }, [loggedIn, username, reloadKey]);
 
   return (
-    <div className="space-y-4 animate-in fade-in duration-200">
-      <div className="text-[11px] text-neutral-500 dark:text-neutral-400 flex items-start gap-1.5">
-        <PieChart className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-        <span>版主在「損益佔比」把你連動進去後,這裡會出現那個版、你有佔比那些日子的帳單(唯讀,隨時可看)。
-          點週展開看分配,點某天看快捷帳單卡片。</span>
+    <div className="space-y-4 animate-in fade-in duration-200 max-w-2xl">
+      <div className="flex items-center gap-2">
+        <PieChart className="w-4 h-4 text-violet-500" />
+        <div className="text-[12px] text-neutral-500 dark:text-neutral-400 min-w-0">
+          版主把你連動進佔比後,這裡看你要付多少、分到多少,和每天下了什麼。
+          {loggedIn && username && <span className="ml-1 text-neutral-400">(登入:<span className="font-mono">{username}</span>)</span>}
+        </div>
         {loggedIn && (
-          <button type="button" onClick={() => setReloadKey(k => k + 1)}
-            className="ml-auto shrink-0 px-2.5 py-1 rounded-lg text-[11px] font-semibold border border-black/10 dark:border-white/10 text-neutral-700 dark:text-neutral-200 hover:bg-black/5 dark:hover:bg-white/5 flex items-center gap-1">
-            <RefreshCw className="w-3 h-3" />重新整理
+          <button type="button" onClick={() => setReloadKey(k => k + 1)} title="重新整理"
+            className="ml-auto shrink-0 w-8 h-8 flex items-center justify-center rounded-lg border border-black/10 dark:border-white/10 text-neutral-600 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5">
+            <RefreshCw className="w-3.5 h-3.5" />
           </button>
         )}
       </div>
-      {loggedIn && username && <div className="text-[10px] text-neutral-400">目前登入:<span className="font-mono">{username}</span></div>}
-      {!loggedIn && <div className="text-[11px] text-neutral-400">請先登入。</div>}
-      {err && <div className="text-[11px] text-rose-500">{err}</div>}
-      {loggedIn && boards === null && !err && <div className="text-[11px] text-neutral-400">讀取中…</div>}
+      {!loggedIn && <div className="text-[12px] text-neutral-400">請先登入。</div>}
+      {err && <div className="text-[12px] text-rose-500">{err}</div>}
+      {loggedIn && boards === null && !err && <div className="text-[12px] text-neutral-400">讀取中…</div>}
       {loggedIn && boards?.length === 0 && (
-        <div className="text-[11px] text-neutral-400 p-3 rounded-xl border border-black/[0.06] dark:border-white/[0.06]">
+        <div className="text-[12px] text-neutral-400 p-4 rounded-xl border border-black/[0.06] dark:border-white/[0.06]">
           目前沒有版主把你的帳號連動進損益佔比。
         </div>
       )}
       {boards && boards.length > 1 && (
-        <div className="inline-flex p-1 rounded-xl bg-black/[0.03] dark:bg-white/[0.04] border border-black/[0.06] dark:border-white/[0.06] gap-1 flex-wrap">
+        <div className="flex gap-1.5 overflow-x-auto pb-1">
           {boards.map((b, i) => (
             <button key={`${b.owner}/${b.eid}`} type="button" onClick={() => setSel(i)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${sel === i ? 'bg-black text-white dark:bg-white dark:text-black' : 'text-neutral-600 dark:text-neutral-400'}`}>
+              className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold ${sel === i ? 'bg-black text-white dark:bg-white dark:text-black' : 'border border-black/10 dark:border-white/10 text-neutral-600 dark:text-neutral-400'}`}>
               {b.owner} · {b.edition_name}
             </button>
           ))}

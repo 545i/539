@@ -12,7 +12,8 @@ import { useBillReuse } from '../BillReuse';
 import { api, LedgerMode } from '../../api/client';
 import { MODE_LABEL, money } from '../uploadHistory';
 import { weekAddDays, weekMonday } from '../../weeks';
-import { allocateSegments, daySegments, ShareVersionDTO } from '../../shares';
+import { DayMoney, splitCostPayout, ShareVersionDTO } from '../../shares';
+import { AllocList, ShareBar, fmtSigned, pnlTone } from '../ShareUI';
 import { SharesEditor } from './EditionSettings';
 
 const num = (v: unknown): number => {
@@ -93,14 +94,16 @@ const winCombos = (r: BetRow): number => {
 export type GameAgg = { cost: number; payout: number; pnl: number; count: number };
 export interface Bucket { cost: number; payout: number; pnl: number; pendingCount: number; count: number; byGame: Map<string, GameAgg>; }
 export interface DayGroup extends Bucket { ymd: string; rows: BetRow[]; }
-export interface WeekGroup extends Bucket { monday: string; sunday: string; days: DayGroup[]; pnlByEd: Map<number, Map<string, number>>; }
+export interface WeekGroup extends Bucket { monday: string; sunday: string; days: DayGroup[]; moneyByEd: Map<number, Map<string, DayMoney>>; }
 
 const blank = (): Bucket => ({ cost: 0, payout: 0, pnl: 0, pendingCount: 0, count: 0, byGame: new Map() });
+// 金額累加到「分」就收斂(避免浮點把 x.5 累成 x.4999…,顯示四捨五入差 1 元,跟佔比分配對不上)
+const c2 = (v: number) => Math.round(v * 100) / 100;
 const fold = (b: Bucket, cost: number, payout: number, pending: boolean, game: string) => {
-  b.cost += cost; b.payout += payout; b.pnl += payout - cost;
+  b.cost = c2(b.cost + cost); b.payout = c2(b.payout + payout); b.pnl = c2(b.pnl + payout - cost);
   b.count += 1; if (pending) b.pendingCount += 1;
   const a = b.byGame.get(game) ?? { cost: 0, payout: 0, pnl: 0, count: 0 };
-  a.cost += cost; a.payout += payout; a.pnl += payout - cost; a.count += 1;
+  a.cost = c2(a.cost + cost); a.payout = c2(a.payout + payout); a.pnl = c2(a.pnl + payout - cost); a.count += 1;
   b.byGame.set(game, a);
 };
 // 下法對應的計數單位(顯示「N車 / N支」用)
@@ -665,14 +668,16 @@ export function groupWeeks(
     };
     let w = wmap.get(monday);
     if (!w) {
-      w = { ...blank(), monday, sunday: monday ? weekAddDays(monday, 6) : '', days: [], pnlByEd: new Map() };
+      w = { ...blank(), monday, sunday: monday ? weekAddDays(monday, 6) : '', days: [], moneyByEd: new Map() };
       wmap.set(monday, w);
     }
     fold(w, cost, payout, pending, gShort);
-    // 損益佔比要逐日套當天生效的那組 → 每版每天各記一份盈虧
-    const edDays = w.pnlByEd.get(row.edition) ?? new Map<string, number>();
-    edDays.set(ymd, (edDays.get(ymd) ?? 0) + row.pnl);
-    w.pnlByEd.set(row.edition, edDays);
+    // 損益佔比要逐日套當天生效的那組 → 每版每天各記一份成本 / 派彩
+    const edDays = w.moneyByEd.get(row.edition) ?? new Map<string, DayMoney>();
+    const m = edDays.get(ymd) ?? { cost: 0, payout: 0 };
+    m.cost = c2(m.cost + cost); m.payout = c2(m.payout + payout);
+    edDays.set(ymd, m);
+    w.moneyByEd.set(row.edition, edDays);
     let day = w.days.find(d => d.ymd === ymd);
     if (!day) { day = { ...blank(), ymd, rows: [] }; w.days.push(day); }
     fold(day, cost, payout, pending, gShort);
@@ -760,18 +765,19 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
   React.useEffect(() => { if (loggedIn) loadShares(); else setSharesByEid({}); }, [loadShares, editions, loggedIn, username]);
   // 某週的分配:列出本週有下注的每個版(模擬版除外;沒設定 = 本人 100%)。
   // 同一版本週若跨過生效日,依生效日切段(segs),各段各用自己的佔比,再整週一起分。
+  // 成本、派彩各自守恆分配,每人淨額 = 分到派彩 − 應付成本。
   // 多版時再依名字合計每個人(各版已守恆,合計也守恆)。
   const weekSplit = (w: WeekGroup) => {
-    const eds = Array.from(w.pnlByEd.entries())
+    const eds = Array.from(w.moneyByEd.entries())
       .filter(([ed]) => !simEids.has(ed))
       .sort((a, b) => a[0] - b[0])
-      .map(([ed, days]) => {
-        const segs = daySegments(days.entries(), sharesByEid[ed]);
-        const pnl = segs.reduce((a, x) => a + x.pnl, 0);
-        return { ed, name: edName(ed), pnl, segs, rows: allocateSegments(segs) };
-      });
-    const total = new Map<string, number>();
-    for (const e of eds) for (const r of e.rows) total.set(r.name, (total.get(r.name) ?? 0) + r.amount);
+      .map(([ed, days]) => ({ ed, name: edName(ed), ...splitCostPayout(days, sharesByEid[ed]) }));
+    const total = new Map<string, { cost: number; payout: number; net: number }>();
+    for (const e of eds) for (const r of e.rows) {
+      const t = total.get(r.name) ?? { cost: 0, payout: 0, net: 0 };
+      t.cost += r.cost; t.payout += r.payout; t.net += r.net;
+      total.set(r.name, t);
+    }
     return { eds, total };
   };
 
@@ -1297,10 +1303,11 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
       {/* 用 Portal 掛到 body:脫離 motion.div layout 的 transform 祖先,
           否則 position:fixed 會相對左欄(22rem)定位 → 先擠在側邊、動畫後才跳全畫面(卡頓) */}
       {shareEdit !== null && createPortal(
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150" onClick={() => setShareEdit(null)}>
-          <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto p-5 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] shadow-xl" onClick={e => e.stopPropagation()}>
-            <div className="flex justify-end -mb-2">
-              <button type="button" onClick={() => setShareEdit(null)} className="text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 text-sm px-2">✕</button>
+        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center sm:p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150" onClick={() => setShareEdit(null)}>
+          <div className="w-full sm:max-w-lg max-h-[92vh] overflow-y-auto px-4 pt-3 pb-0 sm:p-5 sm:pb-0 rounded-t-2xl sm:rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] shadow-xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between -mb-1">
+              <span className="sm:hidden mx-auto w-10 h-1 rounded-full bg-black/15 dark:bg-white/20" />
+              <button type="button" onClick={() => setShareEdit(null)} className="text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 text-base px-2 py-1">✕</button>
             </div>
             <SharesEditor eid={shareEdit} edName={edName(shareEdit)} loggedIn={loggedIn} onSaved={loadShares} />
           </div>
@@ -1485,51 +1492,62 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
               </div>
             )}
 
-            {/* 本週損益佔比:各版盈虧依佔比分給各人(四捨五入且加總 = 該版盈虧) */}
+            {/* 本週損益佔比:各版一張卡 —— 該版成本/派彩/盈虧、佔比長條、每人「付 / 分 / 淨」(各自守恆) */}
             {wOpen && (() => {
               const sp = weekSplit(w);
               if (sp.eds.length === 0) return null;
+              const md = (d: string) => d.slice(5).replace('-', '/');
               return (
-                <div className="px-3 py-2 pl-8 border-t border-black/[0.06] dark:border-white/[0.06] bg-black/[0.015] dark:bg-white/[0.02] space-y-1">
-                  <div className="text-[9px] uppercase tracking-wider text-neutral-400">本週損益佔比</div>
-                  {sp.eds.map(e => (
-                    <div key={e.ed} className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10px] font-mono">
-                      <span className="px-1.5 py-0.5 rounded-full bg-violet-500/10 text-violet-600 dark:text-violet-400 text-[9px] font-sans">{e.name}</span>
-                      <span className={`font-bold ${pnlCls(e.pnl)}`}>{signedMoney(e.pnl)}</span>
-                      <span className="text-neutral-400">→</span>
-                      {e.rows.map(r => {
-                        // 本週只有一組佔比時直接標 %;跨生效日時 % 改列在下方分段說明
-                        const pct = e.segs.length === 1 ? e.segs[0].shares.find(x => x.name === r.name)?.pct : undefined;
-                        return (
-                          <span key={r.name} className="text-neutral-500">
-                            {r.name}{pct !== undefined && <span className="text-neutral-400">({pct}%)</span>}{' '}
-                            <span className={`font-bold ${pnlCls(r.amount)}`}>{signedMoney(r.amount)}</span>
-                          </span>
-                        );
-                      })}
-                      <button type="button" onClick={() => setShareEdit(e.ed)}
-                        className="px-2 py-0.5 rounded-md border border-violet-500/30 text-violet-600 dark:text-violet-400 hover:bg-violet-500/10 text-[10px] font-sans font-semibold">
-                        設定佔比
-                      </button>
-                      {e.segs.length > 1 && (
-                        <div className="w-full pl-1 text-[9px] text-neutral-400 font-sans space-y-0.5">
-                          {e.segs.map(sg => (
-                            <div key={sg.since || 'base'}>
-                              <span className="font-mono">{sg.from.slice(5).replace('-', '/')}{sg.to !== sg.from ? `~${sg.to.slice(5).replace('-', '/')}` : ''}</span>
-                              {' '}<span className={`font-mono ${pnlCls(sg.pnl)}`}>{signedMoney(sg.pnl)}</span>
-                              {' '}照 {sg.shares.filter(x => x.pct > 0).map(x => `${x.name}${x.pct}%`).join(' / ')}
+                <div className="px-3 py-3 sm:pl-8 border-t border-black/[0.06] dark:border-white/[0.06] bg-black/[0.015] dark:bg-white/[0.02] space-y-2">
+                  <div className="text-[10px] uppercase tracking-wider text-neutral-400 font-semibold">本週損益佔比</div>
+                  <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                    {sp.eds.map(e => {
+                      const last = e.segs[e.segs.length - 1];
+                      const single = e.segs.length === 1;
+                      return (
+                        <div key={e.ed} className="rounded-xl bg-white dark:bg-[#161616] border border-black/[0.08] dark:border-white/[0.08] p-3 space-y-2">
+                          <div className="flex items-center gap-2">
+                            <span className="px-2 py-0.5 rounded-md bg-violet-500/10 text-violet-600 dark:text-violet-400 text-[11px] font-bold">{e.name}</span>
+                            <span className={`ml-auto font-mono text-base font-bold ${pnlTone(e.net)}`}>{fmtSigned(e.net)}</span>
+                          </div>
+                          <div className="flex gap-3 text-[10px] text-neutral-500 font-mono">
+                            <span>成本 <span className="text-neutral-800 dark:text-neutral-200 font-semibold">{money(e.cost)}</span></span>
+                            <span>派彩 <span className="text-emerald-600 dark:text-emerald-400 font-semibold">{money(e.payout)}</span></span>
+                          </div>
+                          {last && <ShareBar items={last.shares} />}
+                          <AllocList items={e.rows.map(r => {
+                            const sh = last?.shares.find(x => x.name === r.name);
+                            return {
+                              name: r.name,
+                              pct: single ? sh?.pct : undefined,
+                              amount: r.net,
+                              sub: `付 ${money(r.cost)} · 分 ${money(r.payout)}${sh?.account ? ` · 🔗${sh.account}` : ''}`,
+                            };
+                          })} colorIndex={n => Math.max(0, (last?.shares ?? []).findIndex(x => x.name === n))} />
+                          {!single && (
+                            <div className="text-[10px] text-neutral-400 space-y-0.5 pt-1 border-t border-black/[0.05] dark:border-white/[0.05]">
+                              {e.segs.map(sg => (
+                                <div key={sg.since || 'base'}>
+                                  <span className="font-mono">{md(sg.from)}{sg.to !== sg.from ? `~${md(sg.to)}` : ''}</span>
+                                  {' '}照 {sg.shares.filter(x => x.pct > 0).map(x => `${x.name} ${x.pct}%`).join(' / ')}
+                                </div>
+                              ))}
                             </div>
-                          ))}
+                          )}
+                          <button type="button" onClick={() => setShareEdit(e.ed)}
+                            className="w-full py-1.5 rounded-lg border border-violet-500/30 text-violet-600 dark:text-violet-400 hover:bg-violet-500/10 text-[11px] font-semibold">
+                            設定佔比
+                          </button>
                         </div>
-                      )}
-                    </div>
-                  ))}
+                      );
+                    })}
+                  </div>
                   {sp.eds.length > 1 && (
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10px] font-mono pt-1 border-t border-black/[0.05] dark:border-white/[0.05]">
-                      <span className="text-neutral-400 font-sans">各人合計</span>
-                      {Array.from(sp.total.entries()).map(([n, v]) => (
-                        <span key={n} className="text-neutral-500">{n} <span className={`font-bold ${pnlCls(v)}`}>{signedMoney(v)}</span></span>
-                      ))}
+                    <div className="rounded-xl bg-white dark:bg-[#161616] border border-black/[0.08] dark:border-white/[0.08] p-3">
+                      <div className="text-[10px] text-neutral-400 font-semibold mb-1">各人合計(全部版)</div>
+                      <AllocList items={Array.from(sp.total.entries()).map(([n, t]) => ({
+                        name: n, amount: t.net, sub: `付 ${money(t.cost)} · 分 ${money(t.payout)}`,
+                      }))} />
                     </div>
                   )}
                 </div>

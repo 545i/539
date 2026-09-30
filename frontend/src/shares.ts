@@ -50,8 +50,9 @@ export function daySegments(days: Iterable<[string, number]>, versions: ShareVer
 
 // 多段損益(每段各自一組佔比)合併分配;回傳依首次出現順序(本人一定第一)。
 export function allocateSegments(segs: { pnl: number; shares: ShareDTO[] }[]): AllocRow[] {
-  const total = segs.reduce((a, s) => a + s.pnl, 0);
-  const T = Math.round(total) || 0;
+  // 總額一律用「分」整數加總再四捨五入 —— 浮點直接加會把 x.5 算成 x.4999…,差 1 元
+  const totalCents = segs.reduce((a, s) => a + Math.round(s.pnl * 100), 0);
+  const T = Math.round(totalCents / 100) || 0;
   const order: string[] = ['本人'];
   const exact = new Map<string, number>([['本人', 0]]);   // 單位 1/SCALE 元
   for (const s of segs) {
@@ -82,4 +83,28 @@ export function allocateSegments(segs: { pnl: number; shares: ShareDTO[] }[]): A
 export function allocatePnl(total: number, shares: ShareDTO[]): (ShareDTO & { amount: number })[] {
   const rows = allocateSegments([{ pnl: total, shares }]);
   return shares.map(s => ({ ...s, amount: rows.find(r => r.name === s.name)?.amount ?? 0 }));
+}
+
+// 成本 / 派彩分開守恆分配:每人「應付成本」加總 = 該版成本、「應分派彩」加總 = 該版派彩,
+// 淨額 = 應分派彩 − 應付成本(加總 = 派彩 − 成本)。days = 逐日 {cost, payout}。
+// 佔比帳單要讓合夥人看清楚「要付多少、分到多少」,週期帳的分配也用這套,兩邊數字一致。
+export interface DayMoney { cost: number; payout: number; }
+export interface SplitRow { name: string; self: boolean; cost: number; payout: number; net: number; }
+export interface SplitSeg { since: string; shares: ShareDTO[]; from: string; to: string; cost: number; payout: number; }
+export function splitCostPayout(days: Map<string, DayMoney>, versions: ShareVersionDTO[] | undefined) {
+  const entries = Array.from(days.entries());
+  const costSegs = daySegments(entries.map(([d, m]) => [d, m.cost] as [string, number]), versions);
+  const paySegs = daySegments(entries.map(([d, m]) => [d, m.payout] as [string, number]), versions);
+  const costRows = allocateSegments(costSegs);
+  const payRows = allocateSegments(paySegs);
+  const rows: SplitRow[] = costRows.map(c => {
+    const payout = payRows.find(p => p.name === c.name)?.amount ?? 0;
+    return { name: c.name, self: c.self, cost: c.amount, payout, net: payout - c.amount };
+  });
+  const segs: SplitSeg[] = costSegs.map((s, i) => ({
+    since: s.since, shares: s.shares, from: s.from, to: s.to, cost: s.pnl, payout: paySegs[i]?.pnl ?? 0,
+  }));
+  const cost = rows.reduce((a, r) => a + r.cost, 0);
+  const payout = rows.reduce((a, r) => a + r.payout, 0);
+  return { rows, segs, cost, payout, net: payout - cost };
 }
