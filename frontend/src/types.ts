@@ -10,6 +10,7 @@ export type NavItem =
   | 'risk'         // 風險與數學期望值提醒(獨立頁)
   | 'audit'        // 操作歷史(可作廢=反轉)
   | 'upload_history' // 快速上傳歷史(每筆明細/派彩/盈虧)
+  | 'shared_bills' // 佔比帳單(被版主連動的帳號唯讀看自己有佔比的帳單)
   | 'settings';    // 設定
 
 // 紀錄下注分頁。現在 UI 只用 'cycle'(週期帳)與 'totals'(總損益);記帳一律走快速上傳,

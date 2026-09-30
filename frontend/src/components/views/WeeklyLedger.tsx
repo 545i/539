@@ -11,7 +11,7 @@ import { useBillReuse } from '../BillReuse';
 import { api, LedgerMode } from '../../api/client';
 import { MODE_LABEL, money } from '../uploadHistory';
 import { weekAddDays, weekMonday } from '../../weeks';
-import { allocateSegments, sharesOn, ShareVersionDTO } from '../../shares';
+import { allocateSegments, daySegments, ShareVersionDTO } from '../../shares';
 import { SharesEditor } from './EditionSettings';
 
 const num = (v: unknown): number => {
@@ -30,11 +30,11 @@ const P_PILLAR3 = 0.24490;     // 1800碰:中 3 碰機率
 const P_9000PASS = 0.27356;    // 9000碰:過關(四段各≥1)機率;過關固定中 2 碰
 
 // 帶正負號的金額(綠賺紅賠)
-const pnlCls = (v: number) =>
+export const pnlCls = (v: number) =>
   v > 0 ? 'text-emerald-600 dark:text-emerald-400'
     : v < 0 ? 'text-rose-600 dark:text-rose-400'
       : 'text-neutral-400';
-const signedMoney = (v: number) => (v >= 0 ? '+' : '') + money(v);
+export const signedMoney = (v: number) => (v >= 0 ? '+' : '') + money(v);
 
 // YYYY-MM-DD → 該週週一(以 UTC 計算避開時區位移);週日 = 週一 +6。
 const ymdOf = (raw: string): string => {
@@ -43,12 +43,12 @@ const ymdOf = (raw: string): string => {
 };
 // 週歸期(某日 → 該週週一)與日期加減共用 weeks.ts:weekMonday / weekAddDays。
 const WD = ['日', '一', '二', '三', '四', '五', '六'];
-const weekdayOf = (ymd: string): string => {
+export const weekdayOf = (ymd: string): string => {
   const [y, m, d] = ymd.split('-').map(Number);
   return WD[new Date(Date.UTC(y, m - 1, d)).getUTCDay()];
 };
 
-interface BetRow {
+export interface BetRow {
   id: string;          // ledger 紀錄 id(逐筆對獎/撤銷用)
   issue: string;       // 期號(IssuePicker 用)
   game: string;        // 原始遊戲名(histByGame 查該款期別用)
@@ -89,10 +89,10 @@ const winCombos = (r: BetRow): number => {
   const m = r.result.match(/中\s*([\d,]+)/);
   return m ? Number(m[1].replace(/,/g, '')) : 0;
 };
-type GameAgg = { cost: number; payout: number; pnl: number; count: number };
-interface Bucket { cost: number; payout: number; pnl: number; pendingCount: number; count: number; byGame: Map<string, GameAgg>; }
-interface DayGroup extends Bucket { ymd: string; rows: BetRow[]; }
-interface WeekGroup extends Bucket { monday: string; sunday: string; days: DayGroup[]; pnlByEd: Map<number, Map<string, number>>; }
+export type GameAgg = { cost: number; payout: number; pnl: number; count: number };
+export interface Bucket { cost: number; payout: number; pnl: number; pendingCount: number; count: number; byGame: Map<string, GameAgg>; }
+export interface DayGroup extends Bucket { ymd: string; rows: BetRow[]; }
+export interface WeekGroup extends Bucket { monday: string; sunday: string; days: DayGroup[]; pnlByEd: Map<number, Map<string, number>>; }
 
 const blank = (): Bucket => ({ cost: 0, payout: 0, pnl: 0, pendingCount: 0, count: 0, byGame: new Map() });
 const fold = (b: Bucket, cost: number, payout: number, pending: boolean, game: string) => {
@@ -112,10 +112,10 @@ interface BillWin { mode: string; combos: number; payout: number; }
 interface BillGameData { label: string; draw: number[]; cost: number; net: number; running: number; wins: BillWin[]; }
 interface BillEditionData { edition: string; games: BillGameData[]; }
 
-const dayMd = (ymd: string): string =>
+export const dayMd = (ymd: string): string =>
   ymd ? `${Number(ymd.slice(5, 7))}/${Number(ymd.slice(8, 10))}` : '';
 
-function buildDayBill(day: DayGroup): BillEditionData[] {
+export function buildDayBill(day: DayGroup): BillEditionData[] {
   const order = ['539', '天天', '六合'];
   const eds: string[] = [];
   const byEd = new Map<string, BetRow[]>();
@@ -167,7 +167,7 @@ function billGameText(g: BillGameData, md: string, editionLabel?: string): strin
 
 // 快捷帳單卡片:易讀版(獎號球 / 展收付上色 / 中獎綠字);每張卡各一顆「複製帳單」,
 // 複製的是該卡對應的對接人純文字帳單。
-const BillCards: React.FC<{ bill: BillEditionData[]; md: string }> = ({ bill, md }) => {
+export const BillCards: React.FC<{ bill: BillEditionData[]; md: string }> = ({ bill, md }) => {
   const [copiedKey, setCopiedKey] = useState('');            // 剛複製的卡(edition/label)
   const multi = bill.length > 1;
   const copyCard = async (key: string, text: string) => {
@@ -239,7 +239,7 @@ const BillCards: React.FC<{ bill: BillEditionData[]; md: string }> = ({ bill, md
 };
 
 // 各遊戲拆帳:539 / 天天樂 / 六合彩 各自的成本 / 派彩 / 盈虧(常駐顯示,不用展開)
-const GameBreak: React.FC<{ byGame: Map<string, GameAgg>; className?: string }> = ({ byGame, className }) => {
+export const GameBreak: React.FC<{ byGame: Map<string, GameAgg>; className?: string }> = ({ byGame, className }) => {
   const items = Array.from(byGame.entries()).sort((a, b) => a[0].localeCompare(b[0]));
   if (items.length === 0) return null;
   return (
@@ -626,6 +626,69 @@ const RecoverModal: React.FC<{
   );
 };
 
+// 分組:週(週一) → 日 → 逐筆。每週總帳與佔比帳單(被連動者唯讀)共用。
+export function groupWeeks(
+  entries: { id: number | string; record: Record<string, unknown> }[],
+  gameShort: (g: string) => string,
+  edName: (ed: number) => string,
+): WeekGroup[] {
+  const wmap = new Map<string, WeekGroup>();
+  for (const e of entries) {
+    const r = e.record as Record<string, unknown>;
+    const ymd = ymdOf(String(r.date ?? ''));
+    const monday = ymd ? weekMonday(ymd) : '';
+    const result = String(r.result ?? '');
+    const pending = isPending(result);
+    const cost = num(r.cost);
+    const payout = pending ? 0 : num(r.payout);
+    const mode = String(r.mode ?? '');
+    const gShort = gameShort(String(r.game ?? '')) || '其他';
+    const units = num(r.units);
+    const row: BetRow = {
+      id: String(e.id),
+      issue: String(r.issue ?? ''),
+      game: String(r.game ?? ''),
+      edition: num(r.edition) || 1,
+      gameShort: gShort,
+      editionName: edName(num(r.edition) || 1),
+      mode,
+      modeLabel: MODE_LABEL[r.mode as LedgerMode] ?? mode,
+      playType: String(r.playType ?? ''),
+      balls: (r.selectedBalls as number[]) ?? [],
+      drawBalls: (r.drawBalls as number[]) ?? [],
+      units,
+      cars: num(r.cars) || units,
+      unitLabel: UNIT_LABEL[mode] ?? '注',
+      perUnit: units ? Math.round(cost / units) : cost,
+      cost, payout, pnl: payout - cost, result, pending,
+    };
+    let w = wmap.get(monday);
+    if (!w) {
+      w = { ...blank(), monday, sunday: monday ? weekAddDays(monday, 6) : '', days: [], pnlByEd: new Map() };
+      wmap.set(monday, w);
+    }
+    fold(w, cost, payout, pending, gShort);
+    // 損益佔比要逐日套當天生效的那組 → 每版每天各記一份盈虧
+    const edDays = w.pnlByEd.get(row.edition) ?? new Map<string, number>();
+    edDays.set(ymd, (edDays.get(ymd) ?? 0) + row.pnl);
+    w.pnlByEd.set(row.edition, edDays);
+    let day = w.days.find(d => d.ymd === ymd);
+    if (!day) { day = { ...blank(), ymd, rows: [] }; w.days.push(day); }
+    fold(day, cost, payout, pending, gShort);
+    day.rows.push(row);
+  }
+  const list = Array.from(wmap.values());
+  // 週:新→舊(無日期擺最後);週內日:舊→新(週一→週日順讀);日內逐筆:遊戲→下法
+  list.sort((a, b) => (a.monday && b.monday ? b.monday.localeCompare(a.monday) : a.monday ? -1 : 1));
+  for (const w of list) {
+    w.days.sort((a, b) => a.ymd.localeCompare(b.ymd));
+    for (const d of w.days) {
+      d.rows.sort((a, b) => a.gameShort.localeCompare(b.gameShort) || a.modeLabel.localeCompare(b.modeLabel));
+    }
+  }
+  return list;
+}
+
 // 每週總帳:全部下注流水(排除模擬版)依開獎日期歸「週一~週日」的週,
 // 週 → 展開看每日小計 → 再展開看當天逐筆。派彩/盈虧直接取自各筆已結算紀錄。
 export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ initialMode }) => {
@@ -681,63 +744,7 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
   }), [entries, selEd, selMode, simEids]);
 
   // 分組:週(週一) → 日 → 逐筆
-  const weeks = useMemo(() => {
-    const wmap = new Map<string, WeekGroup>();
-    for (const e of shown) {
-      const r = e.record as Record<string, unknown>;
-      const ymd = ymdOf(String(r.date ?? ''));
-      const monday = ymd ? weekMonday(ymd) : '';
-      const result = String(r.result ?? '');
-      const pending = isPending(result);
-      const cost = num(r.cost);
-      const payout = pending ? 0 : num(r.payout);
-      const mode = String(r.mode ?? '');
-      const gShort = gameShort(String(r.game ?? '')) || '其他';
-      const units = num(r.units);
-      const row: BetRow = {
-        id: String(e.id),
-        issue: String(r.issue ?? ''),
-        game: String(r.game ?? ''),
-        edition: num(r.edition) || 1,
-        gameShort: gShort,
-        editionName: edName(num(r.edition) || 1),
-        mode,
-        modeLabel: MODE_LABEL[r.mode as LedgerMode] ?? mode,
-        playType: String(r.playType ?? ''),
-        balls: (r.selectedBalls as number[]) ?? [],
-        drawBalls: (r.drawBalls as number[]) ?? [],
-        units,
-        cars: num(r.cars) || units,
-        unitLabel: UNIT_LABEL[mode] ?? '注',
-        perUnit: units ? Math.round(cost / units) : cost,
-        cost, payout, pnl: payout - cost, result, pending,
-      };
-      let w = wmap.get(monday);
-      if (!w) {
-        w = { ...blank(), monday, sunday: monday ? weekAddDays(monday, 6) : '', days: [], pnlByEd: new Map() };
-        wmap.set(monday, w);
-      }
-      fold(w, cost, payout, pending, gShort);
-      // 損益佔比要逐日套當天生效的那組 → 每版每天各記一份盈虧
-      const edDays = w.pnlByEd.get(row.edition) ?? new Map<string, number>();
-      edDays.set(ymd, (edDays.get(ymd) ?? 0) + row.pnl);
-      w.pnlByEd.set(row.edition, edDays);
-      let day = w.days.find(d => d.ymd === ymd);
-      if (!day) { day = { ...blank(), ymd, rows: [] }; w.days.push(day); }
-      fold(day, cost, payout, pending, gShort);
-      day.rows.push(row);
-    }
-    const list = Array.from(wmap.values());
-    // 週:新→舊(無日期擺最後);週內日:舊→新(週一→週日順讀);日內逐筆:遊戲→下法
-    list.sort((a, b) => (a.monday && b.monday ? b.monday.localeCompare(a.monday) : a.monday ? -1 : 1));
-    for (const w of list) {
-      w.days.sort((a, b) => a.ymd.localeCompare(b.ymd));
-      for (const d of w.days) {
-        d.rows.sort((a, b) => a.gameShort.localeCompare(b.gameShort) || a.modeLabel.localeCompare(b.modeLabel));
-      }
-    }
-    return list;
-  }, [shown, games]);
+  const weeks = useMemo(() => groupWeeks(shown, gameShort, edName), [shown, games, editions]);
 
   // 損益佔比(每版可多組、各有生效日,設定頁「下注版本」或本頁「設定佔比」改):
   // 本週各版盈虧逐日套當天生效的佔比,整週一起湊整數,金額守恆。
@@ -748,7 +755,7 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
       .then(m => setSharesByEid(Object.fromEntries(Object.entries(m).map(([k, v]) => [Number(k), v]))))
       .catch(() => { /* 讀不到就當全部本人 100% */ });
   }, []);
-  React.useEffect(() => { loadShares(); }, [loadShares, editions]);
+  React.useEffect(() => { if (loggedIn) loadShares(); else setSharesByEid({}); }, [loadShares, editions, loggedIn]);
   // 某週的分配:列出本週有下注的每個版(模擬版除外;沒設定 = 本人 100%)。
   // 同一版本週若跨過生效日,依生效日切段(segs),各段各用自己的佔比,再整週一起分。
   // 多版時再依名字合計每個人(各版已守恆,合計也守恆)。
@@ -757,14 +764,7 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
       .filter(([ed]) => !simEids.has(ed))
       .sort((a, b) => a[0] - b[0])
       .map(([ed, days]) => {
-        const segMap = new Map<string, { since: string; shares: ShareVersionDTO['shares']; pnl: number; from: string; to: string }>();
-        for (const [ymd, pnl] of Array.from(days.entries()).sort((a, b) => a[0].localeCompare(b[0]))) {
-          const v = sharesOn(sharesByEid[ed], ymd);
-          const seg = segMap.get(v.since) ?? { since: v.since, shares: v.shares, pnl: 0, from: ymd, to: ymd };
-          seg.pnl += pnl; seg.to = ymd;
-          segMap.set(v.since, seg);
-        }
-        const segs = Array.from(segMap.values());
+        const segs = daySegments(days.entries(), sharesByEid[ed]);
         const pnl = segs.reduce((a, x) => a + x.pnl, 0);
         return { ed, name: edName(ed), pnl, segs, rows: allocateSegments(segs) };
       });

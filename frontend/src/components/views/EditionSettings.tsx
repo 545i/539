@@ -26,7 +26,7 @@ const FIELD_GROUPS: {title: string; fields: [string, string][]}[] = [
 // 總和永遠剛好 100。合計超過 100 / 佔比 ≤ 0 / 超過兩位小數 / 名字空白或重複都不給存。
 // 可中途加入:每組有「生效日」,某天的損益套用生效日 ≤ 當天的最新一組;
 // 「從最早起」那組 = 第一個生效日之前的所有日子(沒設 = 本人 100%)。
-const othersOf = (shares: ShareDTO[]) => shares.filter(r => !r.self).map(r => ({name: r.name, pct: String(r.pct)}));
+const othersOf = (shares: ShareDTO[]) => shares.filter(r => !r.self).map(r => ({name: r.name, pct: String(r.pct), account: r.account ?? ''}));
 const sinceLabel = (since: string) => (since ? `${since.replace(/-/g, '/')} 起` : '從最早起');
 const todayYmd = () => new Date().toLocaleDateString('sv-SE');   // 本機日期 YYYY-MM-DD
 
@@ -34,7 +34,7 @@ export const SharesEditor: React.FC<{eid: number; edName: string; loggedIn: bool
   const [versions, setVersions] = useState<ShareVersionDTO[]>([]);
   const [since, setSince] = useState('');              // 正在編輯的那組生效日
   const [newSince, setNewSince] = useState(todayYmd);  // 「新增生效日」的日期
-  const [others, setOthers] = useState<{name: string; pct: string}[]>([]);
+  const [others, setOthers] = useState<{name: string; pct: string; account: string}[]>([]);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -49,8 +49,9 @@ export const SharesEditor: React.FC<{eid: number; edName: string; loggedIn: bool
   };
   useEffect(() => {
     setMsg(null); setErr(null);
+    if (!loggedIn) { applyVersions([]); return; }   // 佔比跟著登入帳號(版主)走
     api.getShares(eid).then(vs => applyVersions(vs)).catch(e => setErr((e as Error).message));
-  }, [eid]);
+  }, [eid, loggedIn]);
   const pickVersion = (v: ShareVersionDTO) => { setSince(v.since); setOthers(othersOf(v.shares)); setMsg(null); setErr(null); };
   // 新增一組生效日:先帶入「那天原本適用」的佔比,改完再存
   const addVersion = () => {
@@ -64,7 +65,7 @@ export const SharesEditor: React.FC<{eid: number; edName: string; loggedIn: bool
   const isNew = !versions.some(v => v.since === since);
 
   // 驗證(與後端同規則);bps 整數算,本人 = 10000 − 其他人
-  const parsed = others.map(o => ({name: o.name.trim(), pct: Number(o.pct)}));
+  const parsed = others.map(o => ({name: o.name.trim(), pct: Number(o.pct), account: o.account.trim()}));
   const problem = (() => {
     const seen = new Set<string>();
     for (const o of parsed) {
@@ -86,7 +87,7 @@ export const SharesEditor: React.FC<{eid: number; edName: string; loggedIn: bool
   ];
   const demoRows = !problem && !over ? allocatePnl(Number(demo) || 0, shares) : [];
 
-  const setRow = (i: number, k: 'name' | 'pct', v: string) =>
+  const setRow = (i: number, k: 'name' | 'pct' | 'account', v: string) =>
     setOthers(prev => prev.map((o, j) => (j === i ? {...o, [k]: v} : o)));
   const save = async () => {
     setBusy(true); setMsg(null); setErr(null);
@@ -117,6 +118,7 @@ export const SharesEditor: React.FC<{eid: number; edName: string; loggedIn: bool
         本人初始 100%,往下分給其他人;本人自動 = 100 − 其他人合計,總和永遠剛好 100%。
         每週總帳的損益依此分配,金額四捨五入後加總一定等於總損益(不會差 ±1)。
         中途才開始分:按「新增生效日」選開始那天,那天(含)以後才照新佔比,之前仍照舊的。
+        填「連動帳號」後,對方登入可在「佔比帳單」唯讀看這個版、他有佔比那些日子的帳單(看不到其他合夥人名字)。
       </div>
 
       {/* 生效日版本 */}
@@ -148,7 +150,7 @@ export const SharesEditor: React.FC<{eid: number; edName: string; loggedIn: bool
       <div className="text-[11px] text-neutral-500">
         正在編輯:<strong className="text-neutral-800 dark:text-neutral-100">{sinceLabel(since)}</strong>
       </div>
-      <div className="space-y-1.5 max-w-md">
+      <div className="space-y-1.5 max-w-xl">
         <div className="flex items-center gap-2">
           <div className={`${inputCls} flex-1 text-neutral-500`}>本人</div>
           <div className={`w-24 text-right font-mono text-xs font-bold ${over ? 'text-rose-500' : 'text-neutral-800 dark:text-neutral-100'}`}>
@@ -159,7 +161,10 @@ export const SharesEditor: React.FC<{eid: number; edName: string; loggedIn: bool
         {others.map((o, i) => (
           <div key={i} className="flex items-center gap-2">
             <input value={o.name} placeholder="名字" onChange={e => setRow(i, 'name', e.target.value)}
-              className={`${inputCls} flex-1`} />
+              className={`${inputCls} flex-1 min-w-0`} />
+            <input value={o.account} placeholder="連動帳號(選填)" onChange={e => setRow(i, 'account', e.target.value)}
+              title="填對方登入用的帳號;對方登入後可在「佔比帳單」看這個版、他有佔比那些日子的帳單"
+              className={`${inputCls} w-32 font-mono`} />
             <div className="w-24 flex items-center gap-1">
               <input type="number" step="0.01" min="0" max="100" value={o.pct}
                 onChange={e => setRow(i, 'pct', e.target.value)}
@@ -172,7 +177,7 @@ export const SharesEditor: React.FC<{eid: number; edName: string; loggedIn: bool
             </button>
           </div>
         ))}
-        <button type="button" onClick={() => setOthers(prev => [...prev, {name: '', pct: ''}])} disabled={!loggedIn}
+        <button type="button" onClick={() => setOthers(prev => [...prev, {name: '', pct: '', account: ''}])} disabled={!loggedIn}
           className="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border border-black/10 dark:border-white/10 text-neutral-700 dark:text-neutral-200 hover:bg-black/5 dark:hover:bg-white/5 disabled:opacity-30 flex items-center gap-1">
           <Plus className="w-3 h-3" />新增分配對象
         </button>

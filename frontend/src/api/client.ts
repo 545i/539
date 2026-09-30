@@ -687,6 +687,15 @@ export interface CycleSummary {
 
 export type {ShareDTO, ShareVersionDTO} from '../shares';
 
+// 佔比帳單:版主把我連動進某版的佔比後,我看得到的那一塊
+export interface SharedBoardDTO {
+  owner: string;              // 版主帳號
+  eid: number;
+  edition_name: string;
+  versions: ShareVersionDTO[];   // 佔比版本(其他合夥人名字已遮成「其他N」,自己 me=true)
+  entries: {id: number; mode: LedgerMode; record: Record<string, unknown>}[];
+}
+
 // 版×遊戲的整套盤口(每欄位 value + custom=是否有自訂,否則吃預設)
 export interface EditionOddsField {
   value: number;
@@ -1213,10 +1222,12 @@ export const api = {
   // 損益佔比(每版可多組,依生效日 since 舊→新;每組第一筆一定是本人 = 100 − 其他人)
   getAllShares: () => get<Record<string, ShareVersionDTO[]>>('editions/shares'),
   getShares: (eid: number) => get<ShareVersionDTO[]>(`editions/${eid}/shares`),
-  setShares: (eid: number, since: string, others: {name: string; pct: number}[]) =>
+  setShares: (eid: number, since: string, others: {name: string; pct: number; account: string}[]) =>
     put<ShareVersionDTO[]>(`editions/${eid}/shares`, {since, others}),
   deleteShareVersion: (eid: number, since: string) =>
     del<ShareVersionDTO[]>(`editions/${eid}/shares?since=${encodeURIComponent(since)}`),
+  // 佔比帳單:我被連動的「版主 × 版」(唯讀;只含我有佔比那些日子的紀錄)
+  sharedBoards: () => get<SharedBoardDTO[]>('shared/boards'),
 
   // 週期性紀錄(需登入):列出 / 目前進行中 / 開新週期 / 結算 / 該週期損益彙總
   getCycles: () => get<CycleDTO[]>('cycles'),

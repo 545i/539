@@ -80,27 +80,32 @@ def _conn() -> sqlite3.Connection:
         )
         """
     )
-    # 損益佔比(版本化):since = 生效日 YYYY-MM-DD,'' = 從最早起。
-    # 舊版表沒有 since(PK 是 eid,pos)→ 搬成新表,舊資料當「從最早起」。
+    # 損益佔比:依「版主帳號 owner × 版 × 生效日 since」各一組('' = 從最早起);
+    # account = 該分配對象連動的帳號(可空)。舊表(沒有 owner)搬成新表,舊資料 owner=''
+    # (不屬於任何人,等於作廢 —— 上線前還沒人存過佔比)。
     share_cols = [r[1] for r in conn.execute("PRAGMA table_info(edition_shares)")]
-    if share_cols and "since" not in share_cols:
+    if share_cols and "owner" not in share_cols:
         conn.execute("ALTER TABLE edition_shares RENAME TO edition_shares_old")
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS edition_shares (
-            eid   INTEGER NOT NULL,
-            since TEXT NOT NULL DEFAULT '',
-            pos   INTEGER NOT NULL,
-            name  TEXT NOT NULL,
-            bps   INTEGER NOT NULL,
-            PRIMARY KEY (eid, since, pos)
+            owner   TEXT NOT NULL,
+            eid     INTEGER NOT NULL,
+            since   TEXT NOT NULL DEFAULT '',
+            pos     INTEGER NOT NULL,
+            name    TEXT NOT NULL,
+            bps     INTEGER NOT NULL,
+            account TEXT NOT NULL DEFAULT '',
+            PRIMARY KEY (owner, eid, since, pos)
         )
         """
     )
-    if share_cols and "since" not in share_cols:
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_shares_account ON edition_shares (account)")
+    if share_cols and "owner" not in share_cols:
+        since_col = "since" if "since" in share_cols else "''"
         conn.execute(
-            "INSERT INTO edition_shares (eid, since, pos, name, bps) "
-            "SELECT eid, '', pos, name, bps FROM edition_shares_old")
+            "INSERT INTO edition_shares (owner, eid, since, pos, name, bps) "
+            f"SELECT '', eid, {since_col}, pos, name, bps FROM edition_shares_old")
         conn.execute("DROP TABLE edition_shares_old")
     # 舊表補上 simulated 欄位(模擬版:可下注/上傳,但不計總損益)
     cols = [r[1] for r in conn.execute("PRAGMA table_info(editions)")]
@@ -287,8 +292,10 @@ def edition_exists(eid: int) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# 損益佔比:每個版一組。「本人」初始 100%,往下分給其他人;本人 = 100 − 其他人合計,
+# 損益佔比:每個版主(登入帳號)× 每個版各自一組以上(依生效日 since 版本化)。
+# 「本人」(版主自己)初始 100%,往下分給其他人;本人 = 100 − 其他人合計,
 # 所以總和永遠剛好 100(守恆)。內部以萬分點 bps(0.01%)整數存,避免浮點誤差。
+# 分配對象可「連動帳號」:被連動的帳號可唯讀看該版、自己佔比 > 0 那些日子的帳單。
 # ---------------------------------------------------------------------------
 SELF_NAME = "本人"
 FULL_BPS = 10000
@@ -307,10 +314,11 @@ def _pct_to_bps(v) -> int:
 
 
 def _self_first(rows) -> list[dict]:
-    """[(name, bps), ...] → [本人(= 100 − 其他人), ...其他人];pct 為百分比。"""
-    others = [{"name": r[0], "pct": int(r[1]) / 100, "self": False} for r in rows]
+    """[(name, bps, account), ...] → [本人(= 100 − 其他人), ...其他人];pct 為百分比。"""
+    others = [{"name": r[0], "pct": int(r[1]) / 100, "self": False, "account": r[2] or ""}
+              for r in rows]
     self_bps = FULL_BPS - sum(int(r[1]) for r in rows)
-    return [{"name": SELF_NAME, "pct": self_bps / 100, "self": True}, *others]
+    return [{"name": SELF_NAME, "pct": self_bps / 100, "self": True, "account": ""}, *others]
 
 
 def _norm_since(since) -> str:
@@ -324,33 +332,40 @@ def _norm_since(since) -> str:
         raise ValueError("生效日要是 YYYY-MM-DD")
 
 
-def get_share_versions(eid: int) -> list[dict]:
-    """某版全部佔比版本,依生效日舊→新:[{since, shares:[本人, ...]}]。
+def get_share_versions(owner: str, eid: int) -> list[dict]:
+    """某版主某版全部佔比版本,依生效日舊→新:[{since, shares:[本人, ...]}]。
     沒有「從最早起」那版時補一筆本人 100%(生效日之前的損益全歸本人)。"""
     with _conn() as c:
         rows = c.execute(
-            "SELECT since, name, bps FROM edition_shares WHERE eid = ? ORDER BY since, pos",
-            (int(eid),)).fetchall()
+            "SELECT since, name, bps, account FROM edition_shares "
+            "WHERE owner = ? AND eid = ? ORDER BY since, pos",
+            (owner, int(eid))).fetchall()
     by: dict[str, list] = {}
-    for since, name, bps in rows:
-        by.setdefault(since, []).append((name, bps))
+    for since, name, bps, account in rows:
+        lst = by.setdefault(since, [])
+        if name:                       # name='' 是 pos=-1 的「這天有一組」標記(可能沒分給人)
+            lst.append((name, bps, account))
     by.setdefault("", [])
     return [{"since": k, "shares": _self_first(by[k])} for k in sorted(by)]
 
 
-def all_shares() -> dict[int, list[dict]]:
-    """全部版的佔比版本(每週總帳一次拿齊)。"""
-    return {e["eid"]: get_share_versions(e["eid"]) for e in list_editions()}
+def all_shares(owner: str) -> dict[int, list[dict]]:
+    """某版主全部版的佔比版本(每週總帳一次拿齊)。"""
+    return {e["eid"]: get_share_versions(owner, e["eid"]) for e in list_editions()}
 
 
-def set_shares(eid: int, others: list[dict], since: str = "") -> list[dict]:
-    """覆寫某版某生效日「本人以外」的分配。每人佔比 > 0、名字不可重複 / 空白 / 叫本人;
-    合計不可超過 100(本人拿剩下的,可為 0)。回傳該版全部版本。"""
+def set_shares(owner: str, eid: int, others: list[dict], since: str = "",
+               account_exists=None) -> list[dict]:
+    """覆寫某版主某版某生效日「本人以外」的分配。每人佔比 > 0、名字不可重複 / 空白 / 叫本人;
+    合計不可超過 100(本人拿剩下的,可為 0)。連動帳號可空;有填要存在、不能是自己、
+    同一組不能重複。回傳該版全部版本。account_exists = 帳號存在檢查(注入,方便測試)。"""
     since = _norm_since(since)
-    rows: list[tuple[int, str, int, str, int]] = []
+    rows: list[tuple] = []
     seen: set[str] = set()
+    seen_acc: set[str] = set()
     for i, o in enumerate(others or []):
-        name = str((o or {}).get("name", "")).strip()
+        o = o or {}
+        name = str(o.get("name", "")).strip()
         if not name:
             raise ValueError("分配對象名字不能空白")
         if name == SELF_NAME:
@@ -358,22 +373,77 @@ def set_shares(eid: int, others: list[dict], since: str = "") -> list[dict]:
         if name in seen:
             raise ValueError(f"名字重複:{name}")
         seen.add(name)
-        bps = _pct_to_bps((o or {}).get("pct"))
+        bps = _pct_to_bps(o.get("pct"))
         if bps <= 0:
             raise ValueError(f"{name} 的佔比要大於 0")
-        rows.append((int(eid), since, i, name, bps))
-    if sum(r[4] for r in rows) > FULL_BPS:
+        account = str(o.get("account", "") or "").strip()
+        if account:
+            if account == owner:
+                raise ValueError("不能連動自己的帳號")
+            if account in seen_acc:
+                raise ValueError(f"連動帳號重複:{account}")
+            if account_exists is not None and not account_exists(account):
+                raise ValueError(f"找不到帳號:{account}")
+            seen_acc.add(account)
+        rows.append((owner, int(eid), since, i, name, bps, account))
+    if sum(r[5] for r in rows) > FULL_BPS:
         raise ValueError("分出去的佔比合計超過 100%")
+    # 生效日那組就算沒分給任何人(= 那天起回到本人 100%)也要留下來 → 寫一筆 pos=-1 標記
+    if since:
+        rows.append((owner, int(eid), since, -1, "", 0, ""))
     with _conn() as c:
-        c.execute("DELETE FROM edition_shares WHERE eid = ? AND since = ?", (int(eid), since))
+        c.execute("DELETE FROM edition_shares WHERE owner = ? AND eid = ? AND since = ?",
+                  (owner, int(eid), since))
         c.executemany(
-            "INSERT INTO edition_shares (eid, since, pos, name, bps) VALUES (?, ?, ?, ?, ?)", rows)
-    return get_share_versions(eid)
+            "INSERT INTO edition_shares (owner, eid, since, pos, name, bps, account) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)", rows)
+    return get_share_versions(owner, eid)
 
 
-def delete_share_version(eid: int, since: str) -> list[dict]:
+def delete_share_version(owner: str, eid: int, since: str) -> list[dict]:
     """刪掉某生效日那版(該段改回沿用前一版);'' 那版刪掉 = 從最早起回到本人 100%。"""
     since = _norm_since(since)
     with _conn() as c:
-        c.execute("DELETE FROM edition_shares WHERE eid = ? AND since = ?", (int(eid), since))
-    return get_share_versions(eid)
+        c.execute("DELETE FROM edition_shares WHERE owner = ? AND eid = ? AND since = ?",
+                  (owner, int(eid), since))
+    return get_share_versions(owner, eid)
+
+
+def shares_on(versions: list[dict], ymd: str) -> dict:
+    """某天適用的那組(since ≤ ymd 的最新一組);與前端 shares.ts sharesOn 同規則。"""
+    hit = {"since": "", "shares": _self_first([])}
+    for v in versions:
+        if v["since"] <= ymd:
+            hit = v
+    return hit
+
+
+def linked_boards(account: str) -> list[dict]:
+    """被連動的帳號看得到哪些「版主 × 版」:任一組把它連動進去就算(佔比 > 0 才會存)。"""
+    with _conn() as c:
+        rows = c.execute(
+            "SELECT DISTINCT owner, eid FROM edition_shares "
+            "WHERE account = ? AND owner <> '' ORDER BY owner, eid",
+            (account,)).fetchall()
+    return [{"owner": r[0], "eid": int(r[1])} for r in rows]
+
+
+def partner_view_versions(versions: list[dict], account: str) -> list[dict]:
+    """給被連動者看的佔比:本人 = 版主;自己保留名字;其他合夥人名字遮成「其他N」、
+    拿掉所有連動帳號。只換名字不併人,分配的四捨五入結果跟版主看到的一模一樣。"""
+    alias: dict[str, str] = {}
+    out = []
+    for v in versions:
+        shares = []
+        for s in v["shares"]:
+            if s["self"]:
+                name = SELF_NAME
+            elif s["account"] == account:
+                name = s["name"]
+            else:
+                alias.setdefault(s["name"], f"其他{len(alias) + 1}")
+                name = alias[s["name"]]
+            shares.append({"name": name, "pct": s["pct"], "self": s["self"],
+                           "me": (not s["self"]) and s["account"] == account})
+        out.append({"since": v["since"], "shares": shares})
+    return out

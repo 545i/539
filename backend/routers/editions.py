@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 
 from backend import edition_store
 from backend.deps import current_user
+from core import auth
 
 router = APIRouter(prefix="/editions", tags=["editions"])
 
@@ -26,6 +27,7 @@ class OddsIn(BaseModel):
 class ShareIn(BaseModel):
     name: str = ""
     pct: float = 0
+    account: str = ""    # 連動帳號(可空)
 
 
 class SharesIn(BaseModel):
@@ -39,9 +41,9 @@ def list_editions():
 
 
 @router.get("/shares")
-def all_shares():
-    """全部版的損益佔比版本 {eid: [{since, shares:[本人, ...]}]}(每週總帳用)。"""
-    return edition_store.all_shares()
+def all_shares(user: str = Depends(current_user)):
+    """自己(版主)全部版的損益佔比版本 {eid: [{since, shares:[本人, ...]}]}(每週總帳用)。"""
+    return edition_store.all_shares(user)
 
 
 @router.post("")
@@ -93,19 +95,21 @@ def reset_odds(eid: int, game: str = Query(...), user: str = Depends(current_use
 
 
 @router.get("/{eid}/shares")
-def get_shares(eid: int):
+def get_shares(eid: int, user: str = Depends(current_user)):
     if not edition_store.edition_exists(eid):
         raise HTTPException(status_code=404, detail="找不到這個版")
-    return edition_store.get_share_versions(eid)
+    return edition_store.get_share_versions(user, eid)
 
 
 @router.put("/{eid}/shares")
 def set_shares(eid: int, body: SharesIn, user: str = Depends(current_user)):
-    """覆寫某生效日本人以外的分配;本人自動 = 100 − 其他人合計。"""
+    """覆寫自己某版某生效日本人以外的分配;本人自動 = 100 − 其他人合計。"""
     if not edition_store.edition_exists(eid):
         raise HTTPException(status_code=404, detail="找不到這個版")
     try:
-        return edition_store.set_shares(eid, [o.model_dump() for o in body.others], body.since)
+        return edition_store.set_shares(
+            user, eid, [o.model_dump() for o in body.others], body.since,
+            account_exists=auth.user_exists)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -115,6 +119,6 @@ def delete_share_version(eid: int, since: str = Query(""), user: str = Depends(c
     if not edition_store.edition_exists(eid):
         raise HTTPException(status_code=404, detail="找不到這個版")
     try:
-        return edition_store.delete_share_version(eid, since)
+        return edition_store.delete_share_version(user, eid, since)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

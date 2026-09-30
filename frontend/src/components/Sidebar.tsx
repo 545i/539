@@ -17,7 +17,8 @@ import {
   Layers,
   LogIn,
   Sparkles,
-  Crosshair
+  Crosshair,
+  PieChart,
 } from 'lucide-react';
 import { NavItem, ThemeMode } from '../types';
 import { api } from '../api/client';
@@ -157,6 +158,7 @@ export const Sidebar: React.FC<Props> = ({
     { id: 'risk', label: '風險提醒', icon: <ShieldAlert className="w-4 h-4" /> },
     { id: 'audit', label: '操作歷史', icon: <History className="w-4 h-4" /> },
     { id: 'upload_history', label: '上傳歷史', icon: <ClipboardList className="w-4 h-4" /> },
+    { id: 'shared_bills', label: '佔比帳單', icon: <PieChart className="w-4 h-4" /> },
     { id: 'settings', label: '設定', icon: <Settings className="w-4 h-4" /> },
   ];
 

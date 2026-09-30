@@ -12,8 +12,10 @@
 
 export interface ShareDTO {
   name: string;
-  pct: number;     // 百分比,最多兩位小數
-  self: boolean;   // 本人
+  pct: number;       // 百分比,最多兩位小數
+  self: boolean;     // 本人(版主)
+  account?: string;  // 連動帳號(版主自己看才有;被連動者看不到)
+  me?: boolean;      // 佔比帳單:這一筆是「我」
 }
 export interface ShareVersionDTO {
   since: string;   // 生效日 YYYY-MM-DD;'' = 從最早起
@@ -23,7 +25,7 @@ export interface AllocRow { name: string; self: boolean; amount: number; }
 
 export const pctToBps = (pct: number): number => Math.round(pct * 100);
 
-const SELF_ONLY: ShareDTO[] = [{ name: '本人', pct: 100, self: true }];
+export const SELF_ONLY: ShareDTO[] = [{ name: '本人', pct: 100, self: true }];
 const SCALE = 100 * 10000;   // 分 × bps
 
 // 某天適用的佔比(since ≤ ymd 的最新一組);versions 需依 since 舊→新。
@@ -31,6 +33,19 @@ export function sharesOn(versions: ShareVersionDTO[] | undefined, ymd: string): 
   let hit: ShareVersionDTO = { since: '', shares: SELF_ONLY };
   for (const v of versions ?? []) if (v.since <= ymd) hit = v;
   return hit;
+}
+
+// 某版某段期間的逐日盈虧 → 依生效日切段(同一組佔比的日子併成一段,附起訖日)。
+export interface DaySegment { since: string; shares: ShareDTO[]; pnl: number; from: string; to: string; }
+export function daySegments(days: Iterable<[string, number]>, versions: ShareVersionDTO[] | undefined): DaySegment[] {
+  const segMap = new Map<string, DaySegment>();
+  for (const [ymd, pnl] of Array.from(days).sort((a, b) => a[0].localeCompare(b[0]))) {
+    const v = sharesOn(versions, ymd);
+    const seg = segMap.get(v.since) ?? { since: v.since, shares: v.shares, pnl: 0, from: ymd, to: ymd };
+    seg.pnl += pnl; seg.to = ymd;
+    segMap.set(v.since, seg);
+  }
+  return Array.from(segMap.values());
 }
 
 // 多段損益(每段各自一組佔比)合併分配;回傳依首次出現順序(本人一定第一)。

@@ -26,6 +26,7 @@ import { ExportView } from './components/views/ExportView';
 import { RiskView } from './components/views/RiskView';
 import { AuditView } from './components/views/AuditView';
 import { SettingsView } from './components/views/SettingsView';
+import { SharedBillsView } from './components/views/SharedBillsView';
 
 export default function App() {
   // Theme state
@@ -130,6 +131,7 @@ export default function App() {
       case 'risk': return '風險與數學期望值';
       case 'audit': return '操作歷史';
       case 'upload_history': return '快速上傳歷史';
+      case 'shared_bills': return '佔比帳單';
       case 'settings': return '系統設定';
       default: return '彩券統計分析';
     }
@@ -295,6 +297,7 @@ export default function App() {
               onChanged={refreshLedger}
             />
           )}
+          {activeNav === 'shared_bills' && <SharedBillsView />}
           {activeNav === 'settings' && <SettingsView theme={theme} onToggleTheme={toggleTheme} />}
         </main>
       </div>

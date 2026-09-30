@@ -78,47 +78,83 @@ def test_pair_bet_cost_derives_cost_per_car():
     assert det["cost_per_car"]["value"] == 80 * notes             # 衍生唯讀
 
 
-def _cur(eid=1, since=""):
-    return next(v["shares"] for v in edition_store.get_share_versions(eid) if v["since"] == since)
+O = "boss"
+
+
+def _cur(eid=1, since="", owner=O):
+    return next(v["shares"] for v in edition_store.get_share_versions(owner, eid) if v["since"] == since)
+
+
+def _set(others, since="", eid=1, owner=O, **kw):
+    return edition_store.set_shares(owner, eid, others, since, **kw)
 
 
 def test_shares_default_self_100():
-    assert edition_store.get_share_versions(1) == [
-        {"since": "", "shares": [{"name": "本人", "pct": 100.0, "self": True}]}]
+    assert edition_store.get_share_versions(O, 1) == [
+        {"since": "", "shares": [{"name": "本人", "pct": 100.0, "self": True, "account": ""}]}]
 
 
 def test_shares_conserve_to_100():
-    edition_store.set_shares(1, [{"name": "阿閔", "pct": 33.33}, {"name": "阿姨", "pct": 33.33}])
+    _set([{"name": "阿閔", "pct": 33.33}, {"name": "阿姨", "pct": 33.33}])
     out = _cur()
     assert [s["name"] for s in out] == ["本人", "阿閔", "阿姨"]
     assert out[0]["pct"] == 33.34
     assert round(sum(s["pct"] for s in out) * 100) == 10000
-    edition_store.set_shares(1, [{"name": "A", "pct": 100}])
+    _set([{"name": "A", "pct": 100}])
     assert _cur()[0]["pct"] == 0
-    edition_store.set_shares(1, [])
+    _set([])
     assert _cur()[0]["pct"] == 100
 
 
+def test_shares_per_owner():
+    _set([{"name": "A", "pct": 10}])
+    assert _cur(owner="other")[0]["pct"] == 100
+
+
 def test_shares_versions_by_since():
-    # 週三才開始分:最早起仍是本人 100%
-    vs = edition_store.set_shares(1, [{"name": "阿閔", "pct": 40}], since="2026-09-30")
+    vs = _set([{"name": "阿閔", "pct": 40}], since="2026-09-30")
     assert [v["since"] for v in vs] == ["", "2026-09-30"]
     assert vs[0]["shares"][0]["pct"] == 100
     assert vs[1]["shares"][0]["pct"] == 60
-    vs = edition_store.delete_share_version(1, "2026-09-30")
+    assert edition_store.shares_on(vs, "2026-09-29")["since"] == ""
+    assert edition_store.shares_on(vs, "2026-09-30")["since"] == "2026-09-30"
+    vs = edition_store.delete_share_version(O, 1, "2026-09-30")
     assert [v["since"] for v in vs] == [""]
     with pytest.raises(ValueError):
-        edition_store.set_shares(1, [], since="9/30")
+        _set([], since="9/30")
+
+
+def test_shares_link_account():
+    exists = {"amin", "ayi"}.__contains__
+    _set([{"name": "阿閔", "pct": 40, "account": "amin"}], since="2026-09-30", account_exists=exists)
+    assert _cur(since="2026-09-30")[1]["account"] == "amin"
+    assert edition_store.linked_boards("amin") == [{"owner": O, "eid": 1}]
+    assert edition_store.linked_boards("ayi") == []
+    for bad in ([{"name": "X", "pct": 1, "account": "nobody"}],
+                [{"name": "X", "pct": 1, "account": O}],
+                [{"name": "X", "pct": 1, "account": "amin"}, {"name": "Y", "pct": 1, "account": "amin"}]):
+        with pytest.raises(ValueError):
+            _set(bad, account_exists=exists)
+
+
+def test_partner_view_masks_others():
+    _set([{"name": "阿閔", "pct": 40, "account": "amin"}, {"name": "阿姨", "pct": 10, "account": "ayi"}])
+    pv = edition_store.partner_view_versions(edition_store.get_share_versions(O, 1), "amin")
+    names = [(s["name"], s.get("me")) for s in pv[0]["shares"]]
+    assert names == [("本人", False), ("阿閔", True), ("其他1", False)]
+    assert all("account" not in s for s in pv[0]["shares"])
 
 
 def test_shares_migrate_old_table(tmp_path):
     import sqlite3
     db = tmp_path / "edition.db"
     con = sqlite3.connect(db)
-    con.execute("CREATE TABLE edition_shares (eid INTEGER, pos INTEGER, name TEXT, bps INTEGER, PRIMARY KEY (eid, pos))")
-    con.execute("INSERT INTO edition_shares VALUES (1, 0, 'A', 2500)")
+    con.execute("CREATE TABLE edition_shares (eid INTEGER, since TEXT, pos INTEGER, name TEXT, bps INTEGER, PRIMARY KEY (eid, since, pos))")
+    con.execute("INSERT INTO edition_shares VALUES (1, '', 0, 'A', 2500)")
     con.commit(); con.close()
-    assert _cur()[1] == {"name": "A", "pct": 25.0, "self": False}
+    assert _cur()[0]["pct"] == 100          # 舊的全站資料不屬於任何版主
+    _set([{"name": "B", "pct": 5}])
+    assert _cur()[1]["name"] == "B"
 
 
 @pytest.mark.parametrize("others", [
@@ -131,14 +167,14 @@ def test_shares_migrate_old_table(tmp_path):
     [{"name": " ", "pct": 10}],
 ])
 def test_shares_reject(others):
-    edition_store.set_shares(1, [{"name": "keep", "pct": 20}])
+    _set([{"name": "keep", "pct": 20}])
     with pytest.raises(ValueError):
-        edition_store.set_shares(1, others)
-    assert _cur()[1] == {"name": "keep", "pct": 20.0, "self": False}
+        _set(others)
+    assert _cur()[1] == {"name": "keep", "pct": 20.0, "self": False, "account": ""}
 
 
 def test_delete_edition_clears_shares():
     eid = edition_store.add_edition("X")["eid"]
-    edition_store.set_shares(eid, [{"name": "A", "pct": 50}], since="2026-09-30")
+    _set([{"name": "A", "pct": 50}], since="2026-09-30", eid=eid)
     edition_store.delete_edition(eid)
-    assert eid not in edition_store.all_shares()
+    assert eid not in edition_store.all_shares(O)

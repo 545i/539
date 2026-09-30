@@ -26,7 +26,7 @@ from backend import autosettle, bot, reminders, star_cost_store, ws
 from backend.routers import (audit, auth, combo, cycles, editions, erhe, export,
                              games, groups, history, importer, ledger,
                              leaderboard, pillar, predict, settings, star_cost,
-                             stats, upload_history, yahong)
+                             shared, stats, upload_history, yahong)
 from core import autoupdate, notify
 
 PREFIX = os.environ.get("APP_PREFIX", "").rstrip("/")
@@ -136,7 +136,7 @@ for r in (auth.router, games.router, history.router, stats.router,
           leaderboard.router, export.router, settings.router,
           predict.router, importer.router, star_cost.router, audit.router,
           groups.router, editions.router, upload_history.router,
-          cycles.router, yahong.router):
+          cycles.router, yahong.router, shared.router):
     app.include_router(r, prefix=api_prefix)
 
 
