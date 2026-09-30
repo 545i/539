@@ -2,7 +2,6 @@ import React, {useEffect, useState} from 'react';
 import {Layers, Plus, Save, RotateCcw, Trash2, Pencil, PieChart} from 'lucide-react';
 import {api} from '../../api/client';
 import {allocatePnl, pctToBps, ShareDTO, ShareVersionDTO, sharesOn} from '../../shares';
-import {AllocList, ShareBar} from '../ShareUI';
 import {useAuth} from '../../api/useAuth';
 import {useGame} from '../../api/useGame';
 import {useEditions} from '../../api/useEditions';
@@ -109,134 +108,108 @@ export const SharesEditor: React.FC<{eid: number; edName: string; loggedIn: bool
     } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
   };
 
-  const inputCls = 'px-0.5 py-1.5 text-[13px] bg-transparent border-0 border-b border-black/15 dark:border-white/15 text-neutral-900 dark:text-white focus:outline-hidden focus:border-neutral-900 dark:focus:border-white';
-  const barItems = shares.map(x => ({name: x.name, pct: x.pct}));
+  const inputCls = 'px-2.5 py-1.5 text-xs rounded-lg border border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.03] text-neutral-900 dark:text-white focus:outline-hidden';
   return (
-    <div className="space-y-4 pt-3 border-t border-black/[0.06] dark:border-white/[0.06]">
-      {/* 標題 + 說明(收合) */}
-      <div className="space-y-1">
-        <div className="flex items-center gap-2">
-          <PieChart className="w-4 h-4 text-neutral-400" />
-          <span className="text-sm font-bold text-neutral-900 dark:text-white">損益佔比</span>
-          <span className="text-sm text-neutral-500">{edName}</span>
-        </div>
-        <details className="text-[11px] text-neutral-500 dark:text-neutral-400">
-          <summary className="cursor-pointer select-none text-neutral-400">怎麼算?</summary>
-          <div className="mt-1 space-y-1 leading-relaxed">
-            <p>本人初始 100%,往下分給其他人;本人自動 = 100 − 其他人合計,總和永遠剛好 100%(不分遊戲)。</p>
-            <p>成本、派彩各自依佔比分配,四捨五入後加總一定等於總額(不會差 ±1);每人淨額 = 分到派彩 − 應付成本。</p>
-            <p>中途才開始分:「新增生效日」選開始那天,那天(含)以後照新佔比,之前照舊。</p>
-            <p>填「連動帳號」後,對方登入可在「佔比帳單」看這個版、他有佔比那些日子要付多少、分到多少、下了什麼(看不到其他合夥人名字)。</p>
-          </div>
-        </details>
+    <div className="space-y-2 pt-3 border-t border-black/[0.06] dark:border-white/[0.06]">
+      <div className="text-[10px] uppercase tracking-[0.2em] font-semibold text-neutral-400 flex items-center gap-1.5">
+        <PieChart className="w-3 h-3" />損益佔比({edName},不分遊戲)
+      </div>
+      <div className="text-[11px] text-neutral-500 dark:text-neutral-400">
+        本人初始 100%,往下分給其他人;本人自動 = 100 − 其他人合計,總和永遠剛好 100%。
+        每週總帳的損益依此分配,金額四捨五入後加總一定等於總損益(不會差 ±1)。
+        中途才開始分:按「新增生效日」選開始那天,那天(含)以後才照新佔比,之前仍照舊的。
+        填「連動帳號」後,對方登入可在「佔比帳單」唯讀看這個版、他有佔比那些日子的帳單(看不到其他合夥人名字)。
       </div>
 
-      {/* 生效日 */}
-      <div className="space-y-2">
-        <div className="text-[11px] font-semibold text-neutral-500">生效日</div>
-        <div className="flex gap-5 overflow-x-auto">
-          {versions.map(v => (
-            <button key={v.since || 'base'} type="button" onClick={() => pickVersion(v)}
-              className={`shrink-0 pb-1 text-left text-[12px] font-semibold border-b-2 transition-colors ${
-                since === v.since ? 'text-neutral-900 dark:text-white border-current'
-                  : 'text-neutral-400 border-transparent hover:text-neutral-700 dark:hover:text-neutral-200'}`}>
-              {sinceLabel(v.since)}
-              <span className="block text-[10px] font-normal opacity-70 font-mono">
-                {v.shares.filter(x => x.pct > 0).map(x => `${x.name}${x.pct}%`).join(' / ')}
-              </span>
-            </button>
-          ))}
-          {isNew && (
-            <span className="shrink-0 pb-1 text-[12px] font-semibold text-neutral-900 dark:text-white border-b-2 border-dashed border-current">
-              {sinceLabel(since)}
-              <span className="block text-[10px] font-normal">新,未儲存</span>
+      {/* 生效日版本 */}
+      <div className="flex flex-wrap items-center gap-1.5">
+        {versions.map(v => (
+          <button key={v.since || 'base'} type="button" onClick={() => pickVersion(v)}
+            className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-all ${
+              since === v.since ? 'bg-black text-white dark:bg-white dark:text-black border-transparent'
+                : 'border-black/10 dark:border-white/10 text-neutral-600 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5'}`}>
+            {sinceLabel(v.since)}
+            <span className="ml-1 font-normal opacity-70">
+              {v.shares.filter(x => x.pct > 0).map(x => `${x.name}${x.pct}%`).join('/')}
             </span>
-          )}
-        </div>
-        <div className="flex gap-2">
-          <input type="date" value={newSince} onChange={e => setNewSince(e.target.value)} className={`${inputCls} font-mono flex-1 min-w-0`} />
-          <button type="button" onClick={addVersion} disabled={!loggedIn}
-            className="shrink-0 px-1 text-[12px] font-semibold text-neutral-700 dark:text-neutral-200 hover:underline disabled:opacity-30 flex items-center gap-1">
-            <Plus className="w-3.5 h-3.5" />新增生效日
           </button>
-        </div>
-      </div>
-
-      {/* 分配 */}
-      <div className="space-y-2">
-        <div className="flex items-baseline gap-2">
-          <span className="text-[11px] font-semibold text-neutral-500">分配</span>
-          <span className="text-[11px] text-neutral-400">正在編輯 <strong className="text-neutral-800 dark:text-neutral-100">{sinceLabel(since)}</strong></span>
-        </div>
-        <ShareBar items={barItems} className="h-3" />
-
-        {/* 本人 */}
-        <div className="flex items-center gap-2 py-2 border-b border-black/[0.06] dark:border-white/[0.06]">
-          <span className="text-[13px] font-semibold text-neutral-800 dark:text-neutral-100">本人</span>
-          <span className="text-[10px] text-neutral-400">自動 = 100 − 其他人</span>
-          <span className={`ml-auto font-mono text-xl font-bold ${over ? 'text-rose-500' : 'text-neutral-900 dark:text-white'}`}>
-            {(selfBps / 100).toFixed(2)}%
+        ))}
+        {isNew && (
+          <span className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-violet-500/15 text-violet-600 dark:text-violet-400">
+            {sinceLabel(since)}(新,未儲存)
           </span>
+        )}
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <input type="date" value={newSince} onChange={e => setNewSince(e.target.value)} className={`${inputCls} font-mono`} />
+        <button type="button" onClick={addVersion} disabled={!loggedIn}
+          className="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border border-violet-500/30 text-violet-600 dark:text-violet-400 hover:bg-violet-500/10 disabled:opacity-30 flex items-center gap-1">
+          <Plus className="w-3 h-3" />新增生效日
+        </button>
+      </div>
+      <div className="text-[11px] text-neutral-500">
+        正在編輯:<strong className="text-neutral-800 dark:text-neutral-100">{sinceLabel(since)}</strong>
+      </div>
+      <div className="space-y-1.5 max-w-xl">
+        <div className="flex items-center gap-2">
+          <div className={`${inputCls} flex-1 text-neutral-500`}>本人</div>
+          <div className={`w-24 text-right font-mono text-xs font-bold ${over ? 'text-rose-500' : 'text-neutral-800 dark:text-neutral-100'}`}>
+            {(selfBps / 100).toFixed(2)}%
+          </div>
+          <div className="w-7" />
         </div>
-
-        {/* 其他人:一人一列、手機兩行不擠;不加框,只用分隔線 */}
         {others.map((o, i) => (
-          <div key={i} className="py-2.5 space-y-2 border-b border-black/[0.06] dark:border-white/[0.06]">
-            <div className="flex items-center gap-2">
-              <input value={o.name} placeholder="名字" onChange={e => setRow(i, 'name', e.target.value)}
-                className={`${inputCls} flex-1 min-w-0`} />
-              <div className="relative w-28 shrink-0">
-                <input type="number" inputMode="decimal" step="0.01" min="0" max="100" value={o.pct}
-                  onChange={e => setRow(i, 'pct', e.target.value)}
-                  className={`${inputCls} w-full pr-7 text-right font-mono font-bold`} />
-                <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[12px] text-neutral-400">%</span>
-              </div>
+          <div key={i} className="flex items-center gap-2">
+            <input value={o.name} placeholder="名字" onChange={e => setRow(i, 'name', e.target.value)}
+              className={`${inputCls} flex-1 min-w-0`} />
+            <input value={o.account} placeholder="連動帳號(選填)" onChange={e => setRow(i, 'account', e.target.value)}
+              title="填對方登入用的帳號;對方登入後可在「佔比帳單」看這個版、他有佔比那些日子的帳單"
+              className={`${inputCls} w-32 font-mono`} />
+            <div className="w-24 flex items-center gap-1">
+              <input type="number" step="0.01" min="0" max="100" value={o.pct}
+                onChange={e => setRow(i, 'pct', e.target.value)}
+                className={`${inputCls} w-full text-right font-mono`} />
+              <span className="text-[11px] text-neutral-400">%</span>
             </div>
-            <div className="flex items-center gap-2">
-              <input value={o.account} placeholder="連動帳號(選填,對方登入用的帳號)" onChange={e => setRow(i, 'account', e.target.value)}
-                autoCapitalize="none" autoCorrect="off"
-                className={`${inputCls} flex-1 min-w-0 font-mono text-[12px]`} />
-              <button type="button" onClick={() => setOthers(prev => prev.filter((_, j) => j !== i))} title="移除"
-                className="shrink-0 w-9 h-9 flex items-center justify-center text-neutral-400 hover:text-rose-500">
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
-            </div>
+            <button type="button" onClick={() => setOthers(prev => prev.filter((_, j) => j !== i))}
+              className="w-7 h-7 flex items-center justify-center rounded-lg text-rose-500 hover:bg-rose-500/10">
+              <Trash2 className="w-3 h-3" />
+            </button>
           </div>
         ))}
         <button type="button" onClick={() => setOthers(prev => [...prev, {name: '', pct: '', account: ''}])} disabled={!loggedIn}
-          className="py-1 text-[12px] font-semibold text-neutral-700 dark:text-neutral-200 hover:underline disabled:opacity-30 flex items-center gap-1">
-          <Plus className="w-3.5 h-3.5" />新增分配對象
+          className="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border border-black/10 dark:border-white/10 text-neutral-700 dark:text-neutral-200 hover:bg-black/5 dark:hover:bg-white/5 disabled:opacity-30 flex items-center gap-1">
+          <Plus className="w-3 h-3" />新增分配對象
         </button>
-        {over && <div className="text-[12px] text-rose-500">分出去的佔比合計 {(usedBps / 100).toFixed(2)}%,超過 100%。</div>}
-        {problem && <div className="text-[12px] text-rose-500">{problem}</div>}
       </div>
 
-      {/* 試算 */}
+      {over && <div className="text-[11px] text-rose-500">分出去的佔比合計 {(usedBps / 100).toFixed(2)}%,超過 100%。</div>}
+      {problem && <div className="text-[11px] text-rose-500">{problem}</div>}
+
       {demoRows.length > 0 && (
-        <div className="space-y-1.5">
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] font-semibold text-neutral-500 shrink-0">試算損益</span>
-            <input type="number" inputMode="numeric" value={demo} onChange={e => setDemo(e.target.value)} className={`${inputCls} flex-1 min-w-0 font-mono`} />
-          </div>
-          <AllocList items={demoRows.map(r => ({name: r.name, pct: r.pct, amount: r.amount}))} />
+        <div className="text-[11px] text-neutral-500 flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span>試算:損益</span>
+          <input type="number" value={demo} onChange={e => setDemo(e.target.value)} className={`${inputCls} w-28 font-mono`} />
+          <span>→</span>
+          {demoRows.map(r => (
+            <span key={r.name} className="font-mono">{r.name} <strong className="text-neutral-800 dark:text-neutral-100">{r.amount.toLocaleString()}</strong></span>
+          ))}
         </div>
       )}
 
-      {msg && <div className="text-[12px] text-emerald-600 dark:text-emerald-400">{msg}</div>}
-      {err && <div className="text-[12px] text-rose-500">{err}</div>}
-
-      {/* 動作列:手機上黏在底部 */}
-      <div className="sticky bottom-0 -mx-1 px-1 py-2 bg-white/95 dark:bg-[#121212]/95 backdrop-blur-sm flex items-center gap-2">
-        <button type="button" onClick={save} disabled={busy || !loggedIn || over || !!problem}
-          className="flex-1 py-3 rounded-full text-[13px] font-bold bg-black text-white dark:bg-white dark:text-black hover:opacity-90 disabled:opacity-30 flex items-center justify-center gap-2">
-          <Save className="w-4 h-4" />{busy ? '儲存中…' : loggedIn ? `儲存(${sinceLabel(since)})` : '登入後才能改'}
+      {msg && <div className="text-[11px] text-emerald-600 dark:text-emerald-400">{msg}</div>}
+      {err && <div className="text-[11px] text-rose-500">{err}</div>}
+      <div className="flex flex-wrap items-center gap-2">
+      <button type="button" onClick={save} disabled={busy || !loggedIn || over || !!problem}
+        className="px-6 py-2.5 rounded-full text-xs uppercase tracking-wider font-semibold bg-black text-white dark:bg-white dark:text-black hover:opacity-90 disabled:opacity-30 flex items-center gap-2 shadow-xs">
+        <Save className="w-3.5 h-3.5" />{busy ? '儲存中…' : loggedIn ? `儲存(${sinceLabel(since)})` : '登入後才能改'}
+      </button>
+      {!isNew && (since !== '' || others.length > 0) && (
+        <button type="button" onClick={removeVersion} disabled={busy || !loggedIn}
+          className="px-3 py-1.5 rounded-lg text-[11px] font-semibold border border-rose-500/30 text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 disabled:opacity-30 flex items-center gap-1">
+          <Trash2 className="w-3 h-3" />刪除這組
         </button>
-        {!isNew && (since !== '' || others.length > 0) && (
-          <button type="button" onClick={removeVersion} disabled={busy || !loggedIn} title="刪除這組生效日"
-            className="shrink-0 px-2 py-3 text-[12px] font-semibold text-rose-600 dark:text-rose-400 hover:underline disabled:opacity-30 flex items-center gap-1">
-            <Trash2 className="w-3.5 h-3.5" />刪除這組
-          </button>
-        )}
+      )}
       </div>
     </div>
   );

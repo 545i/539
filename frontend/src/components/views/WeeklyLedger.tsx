@@ -1302,11 +1302,10 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
       {/* 用 Portal 掛到 body:脫離 motion.div layout 的 transform 祖先,
           否則 position:fixed 會相對左欄(22rem)定位 → 先擠在側邊、動畫後才跳全畫面(卡頓) */}
       {shareEdit !== null && createPortal(
-        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center sm:p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150" onClick={() => setShareEdit(null)}>
-          <div className="w-full sm:max-w-lg max-h-[92vh] overflow-y-auto px-4 pt-3 pb-0 sm:p-5 sm:pb-0 rounded-t-2xl sm:rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] shadow-xl" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between -mb-1">
-              <span className="sm:hidden mx-auto w-10 h-1 rounded-full bg-black/15 dark:bg-white/20" />
-              <button type="button" onClick={() => setShareEdit(null)} className="text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 text-base px-2 py-1">✕</button>
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150" onClick={() => setShareEdit(null)}>
+          <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto p-5 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] shadow-xl" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-end -mb-2">
+              <button type="button" onClick={() => setShareEdit(null)} className="text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 text-sm px-2">✕</button>
             </div>
             <SharesEditor eid={shareEdit} edName={edName(shareEdit)} loggedIn={loggedIn} onSaved={loadShares} />
           </div>
