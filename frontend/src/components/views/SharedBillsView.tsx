@@ -16,7 +16,7 @@ import { BillCards, buildDayBill, dayMd, groupWeeks, weekdayOf, BetRow, DayGroup
 //   ③ 我需要支付多少(成本 × 我的佔比);結算 = 分到 − 支付 → 「你需支付 / 你可收」
 // 成本、派彩各自守恆分配(與版主週期帳同一套),其他合夥人名字由後端遮成「其他N」。
 
-const sinceLabel = (since: string) => (since ? `${since.replace(/-/g, '/')} 起` : '從最早起');
+const slash = (ymd: string) => ymd.replace(/-/g, '/');
 const md = (ymd: string) => ymd.slice(5).replace('-', '/');
 
 // 結算一句話:淨額 > 0 你可收、< 0 你需支付
@@ -110,6 +110,18 @@ const BoardView: React.FC<{ b: SharedBoardDTO }> = ({ b }) => {
   const latest = b.versions[b.versions.length - 1];
   const meName = b.versions.flatMap(v => v.shares).find(x => x.me)?.name ?? '';
   const myPct = latest?.shares.find(x => x.me)?.pct;
+  // 這段參與從哪天開始:從最新一組往回找,連續都有我的那幾組裡最早的生效日;
+  // 已停止時,找出停止那天(最後一組有我的下一組生效日)。
+  const hasMe = (i: number) => b.versions[i].shares.some(x => x.me && x.pct > 0);
+  let startSince = '';
+  for (let i = b.versions.length - 1; i >= 0 && hasMe(i); i--) startSince = b.versions[i].since;
+  let stopSince = '';
+  if (myPct === undefined) {
+    for (let i = b.versions.length - 1; i > 0; i--) if (hasMe(i - 1)) { stopSince = b.versions[i].since; break; }
+  }
+  const pctNote = myPct !== undefined
+    ? `${startSince ? `自 ${slash(startSince)} 起生效` : '一開始就參與'}・與 ${b.owner} 合夥`
+    : `${stopSince ? `已於 ${slash(stopSince)} 起停止分配` : '目前未分配'}・與 ${b.owner} 合夥`;
 
   const split = (w: WeekGroup) => {
     const sp = splitCostPayout(w.moneyByEd.get(b.eid) ?? new Map(), b.versions);
@@ -125,16 +137,10 @@ const BoardView: React.FC<{ b: SharedBoardDTO }> = ({ b }) => {
     <div className="space-y-4">
       {/* 總覽:我的佔比 + 最新一週要付/分到/結算 + 累計 */}
       <div className="space-y-4 pb-4 border-b border-black/[0.08] dark:border-white/[0.08]">
-        <div className="flex items-start gap-2">
-          <div className="min-w-0">
-            <div className="text-[11px] text-neutral-500">{b.owner} 的</div>
-            <div className="text-lg font-bold text-neutral-900 dark:text-white">{b.edition_name}</div>
-          </div>
-          <div className="ml-auto text-right">
-            <div className="text-[11px] text-neutral-500">你的佔比</div>
-            <div className="text-2xl font-bold font-mono text-violet-600 dark:text-violet-400">{myPct !== undefined ? `${myPct}%` : '—'}</div>
-            {latest && <div className="text-[10px] text-neutral-400">{myPct !== undefined ? sinceLabel(latest.since) : '已停止分配'}</div>}
-          </div>
+        <div>
+          <div className="text-[11px] text-neutral-500">你的佔比</div>
+          <div className="text-4xl font-bold font-mono text-violet-600 dark:text-violet-400 leading-tight">{myPct !== undefined ? `${myPct}%` : '0%'}</div>
+          <div className="text-[11px] text-neutral-400 mt-0.5">{pctNote}</div>
         </div>
         {latest && <ShareBar items={latest.shares} />}
 
@@ -192,7 +198,7 @@ const BoardView: React.FC<{ b: SharedBoardDTO }> = ({ b }) => {
             {open && (
               <div className="pl-6 pb-4 space-y-4">
                 <div>
-                  <div className="text-[10px] text-neutral-400 font-semibold mb-1">這週{b.edition_name}:成本 {money(sp.cost)} · 派彩 {money(sp.payout)} · 盈虧 <span className={pnlTone(sp.net)}>{fmtSigned(sp.net)}</span></div>
+                  <div className="text-[10px] text-neutral-400 font-semibold mb-1">這週合計:成本 {money(sp.cost)} · 派彩 {money(sp.payout)} · 盈虧 <span className={pnlTone(sp.net)}>{fmtSigned(sp.net)}</span></div>
                   <AllocList
                     items={sp.rows.map(r => ({
                       name: nameOf(r.name),
@@ -275,7 +281,7 @@ export const SharedBillsView: React.FC = () => {
           {boards.map((b, i) => (
             <button key={`${b.owner}/${b.eid}`} type="button" onClick={() => setSel(i)}
               className={`shrink-0 pb-1 text-[13px] font-semibold ${sel === i ? 'text-neutral-900 dark:text-white border-b-2 border-current' : 'text-neutral-400'}`}>
-              {b.owner} · {b.edition_name}
+              {b.owner}{boards.slice(0, i).some(x => x.owner === b.owner) ? ` #${boards.slice(0, i + 1).filter(x => x.owner === b.owner).length}` : ''}
             </button>
           ))}
         </div>
