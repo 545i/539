@@ -13,7 +13,7 @@ import { api, LedgerMode } from '../../api/client';
 import { MODE_LABEL, money } from '../uploadHistory';
 import { weekAddDays, weekMonday } from '../../weeks';
 import { DayMoney, splitCostPayout, ShareVersionDTO } from '../../shares';
-import { AllocList, ShareBar, fmtSigned, pnlTone } from '../ShareUI';
+import { AllocList, ShareBar, fmtSigned } from '../ShareUI';
 import { SharesEditor } from './EditionSettings';
 
 const num = (v: unknown): number => {
@@ -1507,12 +1507,12 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
                       return (
                         <div key={e.ed} className="py-2.5 space-y-2">
                           <div className="flex items-center gap-2">
-                            <span className="text-[13px] font-bold text-violet-600 dark:text-violet-400">{e.name}</span>
-                            <span className={`ml-auto font-mono text-base font-bold ${pnlTone(e.net)}`}>{fmtSigned(e.net)}</span>
+                            <span className="text-[13px] font-bold text-neutral-900 dark:text-white">{e.name}</span>
+                            <span className="ml-auto font-mono text-base font-bold text-neutral-900 dark:text-white">{fmtSigned(e.net)}</span>
                           </div>
                           <div className="flex gap-3 text-[10px] text-neutral-500 font-mono">
                             <span>成本 <span className="text-neutral-800 dark:text-neutral-200 font-semibold">{money(e.cost)}</span></span>
-                            <span>派彩 <span className="text-emerald-600 dark:text-emerald-400 font-semibold">{money(e.payout)}</span></span>
+                            <span>派彩 <span className="text-neutral-800 dark:text-neutral-200 font-semibold">{money(e.payout)}</span></span>
                           </div>
                           {last && <ShareBar items={last.shares} />}
                           <AllocList items={e.rows.map(r => {
@@ -1523,7 +1523,7 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
                               amount: r.net,
                               sub: `付 ${money(r.cost)} · 分 ${money(r.payout)}${sh?.account ? ` · 🔗${sh.account}` : ''}`,
                             };
-                          })} colorIndex={n => Math.max(0, (last?.shares ?? []).findIndex(x => x.name === n))} />
+                          })} />
                           {!single && (
                             <div className="text-[10px] text-neutral-400 space-y-0.5">
                               {e.segs.map(sg => (
@@ -1535,7 +1535,7 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
                             </div>
                           )}
                           <button type="button" onClick={() => setShareEdit(e.ed)}
-                            className="text-violet-600 dark:text-violet-400 hover:underline text-[11px] font-semibold">
+                            className="text-neutral-500 hover:text-neutral-900 dark:hover:text-white underline underline-offset-2 text-[11px]">
                             設定佔比 ›
                           </button>
                         </div>

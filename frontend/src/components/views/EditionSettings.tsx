@@ -2,7 +2,7 @@ import React, {useEffect, useState} from 'react';
 import {Layers, Plus, Save, RotateCcw, Trash2, Pencil, PieChart} from 'lucide-react';
 import {api} from '../../api/client';
 import {allocatePnl, pctToBps, ShareDTO, ShareVersionDTO, sharesOn} from '../../shares';
-import {AllocList, ShareBar, shareColor} from '../ShareUI';
+import {AllocList, ShareBar} from '../ShareUI';
 import {useAuth} from '../../api/useAuth';
 import {useGame} from '../../api/useGame';
 import {useEditions} from '../../api/useEditions';
@@ -109,16 +109,16 @@ export const SharesEditor: React.FC<{eid: number; edName: string; loggedIn: bool
     } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
   };
 
-  const inputCls = 'px-0.5 py-1.5 text-[13px] bg-transparent border-0 border-b border-black/15 dark:border-white/15 text-neutral-900 dark:text-white focus:outline-hidden focus:border-violet-500';
+  const inputCls = 'px-0.5 py-1.5 text-[13px] bg-transparent border-0 border-b border-black/15 dark:border-white/15 text-neutral-900 dark:text-white focus:outline-hidden focus:border-neutral-900 dark:focus:border-white';
   const barItems = shares.map(x => ({name: x.name, pct: x.pct}));
   return (
     <div className="space-y-4 pt-3 border-t border-black/[0.06] dark:border-white/[0.06]">
       {/* 標題 + 說明(收合) */}
       <div className="space-y-1">
         <div className="flex items-center gap-2">
-          <PieChart className="w-4 h-4 text-violet-500" />
+          <PieChart className="w-4 h-4 text-neutral-400" />
           <span className="text-sm font-bold text-neutral-900 dark:text-white">損益佔比</span>
-          <span className="text-sm font-bold text-violet-600 dark:text-violet-400">{edName}</span>
+          <span className="text-sm text-neutral-500">{edName}</span>
         </div>
         <details className="text-[11px] text-neutral-500 dark:text-neutral-400">
           <summary className="cursor-pointer select-none text-neutral-400">怎麼算?</summary>
@@ -147,7 +147,7 @@ export const SharesEditor: React.FC<{eid: number; edName: string; loggedIn: bool
             </button>
           ))}
           {isNew && (
-            <span className="shrink-0 pb-1 text-[12px] font-semibold text-violet-600 dark:text-violet-400 border-b-2 border-current">
+            <span className="shrink-0 pb-1 text-[12px] font-semibold text-neutral-900 dark:text-white border-b-2 border-dashed border-current">
               {sinceLabel(since)}
               <span className="block text-[10px] font-normal">新,未儲存</span>
             </span>
@@ -156,7 +156,7 @@ export const SharesEditor: React.FC<{eid: number; edName: string; loggedIn: bool
         <div className="flex gap-2">
           <input type="date" value={newSince} onChange={e => setNewSince(e.target.value)} className={`${inputCls} font-mono flex-1 min-w-0`} />
           <button type="button" onClick={addVersion} disabled={!loggedIn}
-            className="shrink-0 px-1 text-[12px] font-semibold text-violet-600 dark:text-violet-400 hover:underline disabled:opacity-30 flex items-center gap-1">
+            className="shrink-0 px-1 text-[12px] font-semibold text-neutral-700 dark:text-neutral-200 hover:underline disabled:opacity-30 flex items-center gap-1">
             <Plus className="w-3.5 h-3.5" />新增生效日
           </button>
         </div>
@@ -172,10 +172,9 @@ export const SharesEditor: React.FC<{eid: number; edName: string; loggedIn: bool
 
         {/* 本人 */}
         <div className="flex items-center gap-2 py-2 border-b border-black/[0.06] dark:border-white/[0.06]">
-          <span className={`w-2.5 h-2.5 rounded-full ${shareColor(0)}`} />
           <span className="text-[13px] font-semibold text-neutral-800 dark:text-neutral-100">本人</span>
           <span className="text-[10px] text-neutral-400">自動 = 100 − 其他人</span>
-          <span className={`ml-auto font-mono text-xl font-bold ${over ? 'text-rose-500' : 'text-violet-600 dark:text-violet-400'}`}>
+          <span className={`ml-auto font-mono text-xl font-bold ${over ? 'text-rose-500' : 'text-neutral-900 dark:text-white'}`}>
             {(selfBps / 100).toFixed(2)}%
           </span>
         </div>
@@ -184,7 +183,6 @@ export const SharesEditor: React.FC<{eid: number; edName: string; loggedIn: bool
         {others.map((o, i) => (
           <div key={i} className="py-2.5 space-y-2 border-b border-black/[0.06] dark:border-white/[0.06]">
             <div className="flex items-center gap-2">
-              <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${shareColor(i + 1)}`} />
               <input value={o.name} placeholder="名字" onChange={e => setRow(i, 'name', e.target.value)}
                 className={`${inputCls} flex-1 min-w-0`} />
               <div className="relative w-28 shrink-0">
@@ -194,7 +192,7 @@ export const SharesEditor: React.FC<{eid: number; edName: string; loggedIn: bool
                 <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[12px] text-neutral-400">%</span>
               </div>
             </div>
-            <div className="flex items-center gap-2 pl-4.5">
+            <div className="flex items-center gap-2">
               <input value={o.account} placeholder="連動帳號(選填,對方登入用的帳號)" onChange={e => setRow(i, 'account', e.target.value)}
                 autoCapitalize="none" autoCorrect="off"
                 className={`${inputCls} flex-1 min-w-0 font-mono text-[12px]`} />
@@ -206,7 +204,7 @@ export const SharesEditor: React.FC<{eid: number; edName: string; loggedIn: bool
           </div>
         ))}
         <button type="button" onClick={() => setOthers(prev => [...prev, {name: '', pct: '', account: ''}])} disabled={!loggedIn}
-          className="py-1 text-[12px] font-semibold text-violet-600 dark:text-violet-400 hover:underline disabled:opacity-30 flex items-center gap-1">
+          className="py-1 text-[12px] font-semibold text-neutral-700 dark:text-neutral-200 hover:underline disabled:opacity-30 flex items-center gap-1">
           <Plus className="w-3.5 h-3.5" />新增分配對象
         </button>
         {over && <div className="text-[12px] text-rose-500">分出去的佔比合計 {(usedBps / 100).toFixed(2)}%,超過 100%。</div>}

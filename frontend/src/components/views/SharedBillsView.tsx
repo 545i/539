@@ -31,14 +31,12 @@ const Settle: React.FC<{ net: number; size?: 'lg' | 'sm' }> = ({ net, size = 'lg
 const BetLine: React.FC<{ r: BetRow }> = ({ r }) => (
   <div className="py-2 space-y-1">
     <div className="flex items-center gap-1.5 flex-wrap">
-      <span className="text-[12px] font-bold text-sky-600 dark:text-sky-400">{r.gameShort}</span>
+      <span className="text-[12px] font-bold text-neutral-900 dark:text-white">{r.gameShort}</span>
       <span className="text-[12px] font-semibold text-neutral-800 dark:text-neutral-100">{r.modeLabel}</span>
       {r.playType && <span className="text-[11px] text-neutral-500">{r.playType}</span>}
       <span className="text-[11px] text-neutral-500 font-mono">{r.units}{r.unitLabel}</span>
       <span className={`ml-auto text-[11px] ${
-        r.pending ? 'text-amber-600 dark:text-amber-400'
-          : r.payout > 0 ? 'text-emerald-600 dark:text-emerald-400 font-semibold'
-            : 'text-neutral-400'}`}>{r.result || '待開獎'}</span>
+        r.payout > 0 && !r.pending ? 'text-neutral-900 dark:text-white font-semibold' : 'text-neutral-400'}`}>{r.result || '待開獎'}</span>
     </div>
     {r.balls.length > 0 && (
       <div className="flex flex-wrap gap-x-2 gap-y-0.5">
@@ -46,7 +44,7 @@ const BetLine: React.FC<{ r: BetRow }> = ({ r }) => (
           const hit = r.drawBalls.includes(n);
           return (
             <span key={`${n}-${i}`} className={`text-[12px] font-mono font-semibold ${
-              hit ? 'text-emerald-600 dark:text-emerald-400 underline underline-offset-2' : 'text-neutral-800 dark:text-neutral-100'}`}>
+              hit ? 'text-neutral-900 dark:text-white font-bold underline underline-offset-2' : 'text-neutral-500 dark:text-neutral-400'}`}>
               {String(n).padStart(2, '0')}
             </span>
           );
@@ -55,7 +53,7 @@ const BetLine: React.FC<{ r: BetRow }> = ({ r }) => (
     )}
     <div className="flex justify-between text-[11px] font-mono">
       <span className="text-neutral-500">成本 <span className="text-neutral-800 dark:text-neutral-100 font-semibold">{money(r.cost)}</span></span>
-      <span className="text-neutral-500">派彩 <span className={r.payout > 0 ? 'text-emerald-600 dark:text-emerald-400 font-bold' : 'text-neutral-400'}>{money(r.payout)}</span></span>
+      <span className="text-neutral-500">派彩 <span className={r.payout > 0 ? 'text-neutral-900 dark:text-white font-bold' : 'text-neutral-400'}>{money(r.payout)}</span></span>
     </div>
   </div>
 );
@@ -69,7 +67,7 @@ const DayCard: React.FC<{ day: DayGroup }> = ({ day }) => {
         {open ? <ChevronDown className="w-3.5 h-3.5 text-neutral-400" /> : <ChevronRight className="w-3.5 h-3.5 text-neutral-400" />}
         <span className="text-[13px] font-semibold font-mono text-neutral-800 dark:text-neutral-100">{md(day.ymd)}({weekdayOf(day.ymd)})</span>
         <span className="text-[10px] text-neutral-400">{day.count} 筆{day.pendingCount > 0 ? ` · ${day.pendingCount} 待開` : ''}</span>
-        <span className={`ml-auto font-mono text-[13px] font-bold ${pnlTone(day.pnl)}`}>{fmtSigned(day.pnl)}</span>
+        <span className="ml-auto font-mono text-[13px] font-semibold text-neutral-700 dark:text-neutral-200">{fmtSigned(day.pnl)}</span>
       </button>
       {open && (
         <div className="pl-5 pb-3">
@@ -139,20 +137,20 @@ const BoardView: React.FC<{ b: SharedBoardDTO }> = ({ b }) => {
       <div className="space-y-4 pb-4 border-b border-black/[0.08] dark:border-white/[0.08]">
         <div>
           <div className="text-[11px] text-neutral-500">你的佔比</div>
-          <div className="text-4xl font-bold font-mono text-violet-600 dark:text-violet-400 leading-tight">{myPct !== undefined ? `${myPct}%` : '0%'}</div>
+          <div className="text-4xl font-bold font-mono text-neutral-900 dark:text-white leading-tight">{myPct !== undefined ? `${myPct}%` : '0%'}</div>
           <div className="text-[11px] text-neutral-400 mt-0.5">{pctNote}</div>
         </div>
-        {latest && <ShareBar items={latest.shares} />}
+        {latest && <ShareBar items={latest.shares} highlight={meName} />}
 
         {cur && (
           <div className="space-y-2">
             <div className="text-[11px] text-neutral-500">
               最新一週 <span className="font-mono">{md(weeks[0].monday)} ~ {md(weeks[0].sunday)}</span>
-              {weeks[0].pendingCount > 0 && <span className="ml-1 text-amber-600 dark:text-amber-400">({weeks[0].pendingCount} 筆待開獎,派彩未計)</span>}
+              {weeks[0].pendingCount > 0 && <span className="ml-1 text-neutral-400">({weeks[0].pendingCount} 筆待開獎,派彩未計)</span>}
             </div>
             <div className="grid grid-cols-2 gap-4">
               <StatTile label="你要支付(成本)" value={money(cur.me.cost)} />
-              <StatTile label="你分到(派彩)" value={money(cur.me.payout)} tone={cur.me.payout > 0 ? 1 : undefined} />
+              <StatTile label="你分到(派彩)" value={money(cur.me.payout)} />
             </div>
             <div>
               <div className="text-[10px] text-neutral-500">本週結算(分到 − 支付)</div>
@@ -164,7 +162,7 @@ const BoardView: React.FC<{ b: SharedBoardDTO }> = ({ b }) => {
         {weeks.length > 1 && (
           <div className="grid grid-cols-3 gap-4 pt-3 border-t border-black/[0.05] dark:border-white/[0.06]">
             <div><div className="text-[10px] text-neutral-500">累計支付</div><div className="font-mono text-[13px] font-bold">{money(sum.cost)}</div></div>
-            <div><div className="text-[10px] text-neutral-500">累計分到</div><div className="font-mono text-[13px] font-bold text-emerald-600 dark:text-emerald-400">{money(sum.payout)}</div></div>
+            <div><div className="text-[10px] text-neutral-500">累計分到</div><div className="font-mono text-[13px] font-bold">{money(sum.payout)}</div></div>
             <div><div className="text-[10px] text-neutral-500">累計結算</div><div className={`font-mono text-[13px] font-bold ${pnlTone(sum.net)}`}>{fmtSigned(sum.net)}</div></div>
           </div>
         )}
@@ -187,7 +185,7 @@ const BoardView: React.FC<{ b: SharedBoardDTO }> = ({ b }) => {
                 {open ? <ChevronDown className="w-4 h-4 text-neutral-400" /> : <ChevronRight className="w-4 h-4 text-neutral-400" />}
                 <span className="text-[13px] font-semibold font-mono text-neutral-800 dark:text-neutral-100">{md(w.monday)} ~ {md(w.sunday)}</span>
                 <span className="text-[10px] text-neutral-400">{w.count} 筆</span>
-                {w.pendingCount > 0 && <span className="text-[10px] text-amber-600 dark:text-amber-400">{w.pendingCount} 待開</span>}
+                {w.pendingCount > 0 && <span className="text-[10px] text-neutral-400">{w.pendingCount} 待開</span>}
               </div>
               <div className="flex items-end justify-between gap-2 pl-6">
                 <div className="text-[11px] text-neutral-500 font-mono">付 {money(sp.me.cost)} · 分 {money(sp.me.payout)}</div>
@@ -198,7 +196,7 @@ const BoardView: React.FC<{ b: SharedBoardDTO }> = ({ b }) => {
             {open && (
               <div className="pl-6 pb-4 space-y-4">
                 <div>
-                  <div className="text-[10px] text-neutral-400 font-semibold mb-1">這週合計:成本 {money(sp.cost)} · 派彩 {money(sp.payout)} · 盈虧 <span className={pnlTone(sp.net)}>{fmtSigned(sp.net)}</span></div>
+                  <div className="text-[10px] text-neutral-400 font-semibold mb-1">這週合計:成本 {money(sp.cost)} · 派彩 {money(sp.payout)} · 盈虧 {fmtSigned(sp.net)}</div>
                   <AllocList
                     items={sp.rows.map(r => ({
                       name: nameOf(r.name),
@@ -207,7 +205,6 @@ const BoardView: React.FC<{ b: SharedBoardDTO }> = ({ b }) => {
                       highlight: r.name === meName,
                       sub: `付 ${money(r.cost)} · 分 ${money(r.payout)}`,
                     }))}
-                    colorIndex={(_, i) => i}
                   />
                   {sp.segs.length > 1 && (
                     <div className="text-[10px] text-neutral-400 space-y-0.5 mt-1">
@@ -256,7 +253,7 @@ export const SharedBillsView: React.FC = () => {
   return (
     <div className="space-y-4 animate-in fade-in duration-200 max-w-2xl">
       <div className="flex items-center gap-2">
-        <PieChart className="w-4 h-4 text-violet-500" />
+        <PieChart className="w-4 h-4 text-neutral-400" />
         <div className="text-[12px] text-neutral-500 dark:text-neutral-400 min-w-0">
           版主把你連動進佔比後,這裡看你要付多少、分到多少,和每天下了什麼。
           {loggedIn && username && <span className="ml-1 text-neutral-400">(登入:<span className="font-mono">{username}</span>)</span>}
