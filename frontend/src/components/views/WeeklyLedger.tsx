@@ -12,6 +12,7 @@ import { api, LedgerMode } from '../../api/client';
 import { MODE_LABEL, money } from '../uploadHistory';
 import { weekAddDays, weekMonday } from '../../weeks';
 import { allocatePnl, ShareDTO } from '../../shares';
+import { SharesEditor } from './EditionSettings';
 
 const num = (v: unknown): number => {
   const n = typeof v === 'number' ? v : parseFloat(String(v ?? ''));
@@ -737,19 +738,21 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
 
   // 損益佔比(每版一組,設定頁「下注版本」裡改):本週各版盈虧依佔比分給各人,金額守恆。
   const [sharesByEid, setSharesByEid] = useState<Record<number, ShareDTO[]>>({});
-  React.useEffect(() => {
-    let alive = true;
+  const [shareEdit, setShareEdit] = useState<number | null>(null);   // 正在改佔比的版(彈窗)
+  const loadShares = React.useCallback(() => {
     api.getAllShares()
-      .then(m => { if (alive) setSharesByEid(Object.fromEntries(Object.entries(m).map(([k, v]) => [Number(k), v]))); })
-      .catch(() => { /* 讀不到就不顯示分配 */ });
-    return () => { alive = false; };
-  }, [editions]);
-  // 某週的分配:只列有「往下分」的版;多版時再依名字合計每個人(各版已守恆,合計也守恆)。
+      .then(m => setSharesByEid(Object.fromEntries(Object.entries(m).map(([k, v]) => [Number(k), v]))))
+      .catch(() => { /* 讀不到就當全部本人 100% */ });
+  }, []);
+  React.useEffect(() => { loadShares(); }, [loadShares, editions]);
+  const SELF_ONLY: ShareDTO[] = [{ name: '本人', pct: 100, self: true }];
+  // 某週的分配:列出本週有下注的每個版(模擬版除外;沒設定 = 本人 100%);
+  // 多版時再依名字合計每個人(各版已守恆,合計也守恆)。
   const weekSplit = (w: WeekGroup) => {
     const eds = Array.from(w.pnlByEd.entries())
-      .filter(([ed]) => (sharesByEid[ed]?.length ?? 0) > 1)
+      .filter(([ed]) => !simEids.has(ed))
       .sort((a, b) => a[0] - b[0])
-      .map(([ed, pnl]) => ({ ed, name: edName(ed), pnl, rows: allocatePnl(pnl, sharesByEid[ed]) }));
+      .map(([ed, pnl]) => ({ ed, name: edName(ed), pnl, rows: allocatePnl(pnl, sharesByEid[ed] ?? SELF_ONLY) }));
     const total = new Map<string, number>();
     for (const e of eds) for (const r of e.rows) total.set(r.name, (total.get(r.name) ?? 0) + r.amount);
     return { eds, total };
@@ -1276,6 +1279,17 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
       {/* 建議車數:點某列彈出的明細,逐筆勾選排除(不影響週期帳,只影響建議車數的赤字基準) */}
       {/* 用 Portal 掛到 body:脫離 motion.div layout 的 transform 祖先,
           否則 position:fixed 會相對左欄(22rem)定位 → 先擠在側邊、動畫後才跳全畫面(卡頓) */}
+      {shareEdit !== null && createPortal(
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150" onClick={() => setShareEdit(null)}>
+          <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto p-5 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] shadow-xl" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-end -mb-2">
+              <button type="button" onClick={() => setShareEdit(null)} className="text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 text-sm px-2">✕</button>
+            </div>
+            <SharesEditor eid={shareEdit} edName={edName(shareEdit)} loggedIn={loggedIn} onSaved={loadShares} />
+          </div>
+        </div>,
+        document.body,
+      )}
       {recoverModal && createPortal(
         <RecoverModal
           title={recoverModal.label}
@@ -1472,6 +1486,10 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
                           <span className={`font-bold ${pnlCls(r.amount)}`}>{signedMoney(r.amount)}</span>
                         </span>
                       ))}
+                      <button type="button" onClick={() => setShareEdit(e.ed)}
+                        className="px-2 py-0.5 rounded-md border border-violet-500/30 text-violet-600 dark:text-violet-400 hover:bg-violet-500/10 text-[10px] font-sans font-semibold">
+                        設定佔比
+                      </button>
                     </div>
                   ))}
                   {sp.eds.length > 1 && (

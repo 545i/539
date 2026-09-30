@@ -24,7 +24,7 @@ const FIELD_GROUPS: {title: string; fields: [string, string][]}[] = [
 
 // 損益佔比(每版一組,不分遊戲):本人初始 100%,往下分給其他人;本人 = 100 − 其他人合計,
 // 總和永遠剛好 100。合計超過 100 / 佔比 ≤ 0 / 超過兩位小數 / 名字空白或重複都不給存。
-const SharesEditor: React.FC<{eid: number; edName: string; loggedIn: boolean}> = ({eid, edName, loggedIn}) => {
+export const SharesEditor: React.FC<{eid: number; edName: string; loggedIn: boolean; onSaved?: () => void}> = ({eid, edName, loggedIn, onSaved}) => {
   const [others, setOthers] = useState<{name: string; pct: string}[]>([]);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -69,6 +69,7 @@ const SharesEditor: React.FC<{eid: number; edName: string; loggedIn: boolean}> =
       const rows = await api.setShares(eid, parsed);
       setOthers(rows.filter(r => !r.self).map(r => ({name: r.name, pct: String(r.pct)})));
       setMsg(`已儲存「${edName}」的損益佔比。`);
+      onSaved?.();
     } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
   };
 
