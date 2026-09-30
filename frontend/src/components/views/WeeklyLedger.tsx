@@ -11,7 +11,7 @@ import { useBillReuse } from '../BillReuse';
 import { api, LedgerMode } from '../../api/client';
 import { MODE_LABEL, money } from '../uploadHistory';
 import { weekAddDays, weekMonday } from '../../weeks';
-import { allocatePnl, ShareDTO } from '../../shares';
+import { allocateSegments, sharesOn, ShareVersionDTO } from '../../shares';
 import { SharesEditor } from './EditionSettings';
 
 const num = (v: unknown): number => {
@@ -92,7 +92,7 @@ const winCombos = (r: BetRow): number => {
 type GameAgg = { cost: number; payout: number; pnl: number; count: number };
 interface Bucket { cost: number; payout: number; pnl: number; pendingCount: number; count: number; byGame: Map<string, GameAgg>; }
 interface DayGroup extends Bucket { ymd: string; rows: BetRow[]; }
-interface WeekGroup extends Bucket { monday: string; sunday: string; days: DayGroup[]; pnlByEd: Map<number, number>; }
+interface WeekGroup extends Bucket { monday: string; sunday: string; days: DayGroup[]; pnlByEd: Map<number, Map<string, number>>; }
 
 const blank = (): Bucket => ({ cost: 0, payout: 0, pnl: 0, pendingCount: 0, count: 0, byGame: new Map() });
 const fold = (b: Bucket, cost: number, payout: number, pending: boolean, game: string) => {
@@ -718,7 +718,10 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
         wmap.set(monday, w);
       }
       fold(w, cost, payout, pending, gShort);
-      w.pnlByEd.set(row.edition, (w.pnlByEd.get(row.edition) ?? 0) + row.pnl);
+      // 損益佔比要逐日套當天生效的那組 → 每版每天各記一份盈虧
+      const edDays = w.pnlByEd.get(row.edition) ?? new Map<string, number>();
+      edDays.set(ymd, (edDays.get(ymd) ?? 0) + row.pnl);
+      w.pnlByEd.set(row.edition, edDays);
       let day = w.days.find(d => d.ymd === ymd);
       if (!day) { day = { ...blank(), ymd, rows: [] }; w.days.push(day); }
       fold(day, cost, payout, pending, gShort);
@@ -736,8 +739,9 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
     return list;
   }, [shown, games]);
 
-  // 損益佔比(每版一組,設定頁「下注版本」裡改):本週各版盈虧依佔比分給各人,金額守恆。
-  const [sharesByEid, setSharesByEid] = useState<Record<number, ShareDTO[]>>({});
+  // 損益佔比(每版可多組、各有生效日,設定頁「下注版本」或本頁「設定佔比」改):
+  // 本週各版盈虧逐日套當天生效的佔比,整週一起湊整數,金額守恆。
+  const [sharesByEid, setSharesByEid] = useState<Record<number, ShareVersionDTO[]>>({});
   const [shareEdit, setShareEdit] = useState<number | null>(null);   // 正在改佔比的版(彈窗)
   const loadShares = React.useCallback(() => {
     api.getAllShares()
@@ -745,14 +749,25 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
       .catch(() => { /* 讀不到就當全部本人 100% */ });
   }, []);
   React.useEffect(() => { loadShares(); }, [loadShares, editions]);
-  const SELF_ONLY: ShareDTO[] = [{ name: '本人', pct: 100, self: true }];
-  // 某週的分配:列出本週有下注的每個版(模擬版除外;沒設定 = 本人 100%);
+  // 某週的分配:列出本週有下注的每個版(模擬版除外;沒設定 = 本人 100%)。
+  // 同一版本週若跨過生效日,依生效日切段(segs),各段各用自己的佔比,再整週一起分。
   // 多版時再依名字合計每個人(各版已守恆,合計也守恆)。
   const weekSplit = (w: WeekGroup) => {
     const eds = Array.from(w.pnlByEd.entries())
       .filter(([ed]) => !simEids.has(ed))
       .sort((a, b) => a[0] - b[0])
-      .map(([ed, pnl]) => ({ ed, name: edName(ed), pnl, rows: allocatePnl(pnl, sharesByEid[ed] ?? SELF_ONLY) }));
+      .map(([ed, days]) => {
+        const segMap = new Map<string, { since: string; shares: ShareVersionDTO['shares']; pnl: number; from: string; to: string }>();
+        for (const [ymd, pnl] of Array.from(days.entries()).sort((a, b) => a[0].localeCompare(b[0]))) {
+          const v = sharesOn(sharesByEid[ed], ymd);
+          const seg = segMap.get(v.since) ?? { since: v.since, shares: v.shares, pnl: 0, from: ymd, to: ymd };
+          seg.pnl += pnl; seg.to = ymd;
+          segMap.set(v.since, seg);
+        }
+        const segs = Array.from(segMap.values());
+        const pnl = segs.reduce((a, x) => a + x.pnl, 0);
+        return { ed, name: edName(ed), pnl, segs, rows: allocateSegments(segs) };
+      });
     const total = new Map<string, number>();
     for (const e of eds) for (const r of e.rows) total.set(r.name, (total.get(r.name) ?? 0) + r.amount);
     return { eds, total };
@@ -1480,16 +1495,31 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
                       <span className="px-1.5 py-0.5 rounded-full bg-violet-500/10 text-violet-600 dark:text-violet-400 text-[9px] font-sans">{e.name}</span>
                       <span className={`font-bold ${pnlCls(e.pnl)}`}>{signedMoney(e.pnl)}</span>
                       <span className="text-neutral-400">→</span>
-                      {e.rows.map(r => (
-                        <span key={r.name} className="text-neutral-500">
-                          {r.name}<span className="text-neutral-400">({r.pct}%)</span>{' '}
-                          <span className={`font-bold ${pnlCls(r.amount)}`}>{signedMoney(r.amount)}</span>
-                        </span>
-                      ))}
+                      {e.rows.map(r => {
+                        // 本週只有一組佔比時直接標 %;跨生效日時 % 改列在下方分段說明
+                        const pct = e.segs.length === 1 ? e.segs[0].shares.find(x => x.name === r.name)?.pct : undefined;
+                        return (
+                          <span key={r.name} className="text-neutral-500">
+                            {r.name}{pct !== undefined && <span className="text-neutral-400">({pct}%)</span>}{' '}
+                            <span className={`font-bold ${pnlCls(r.amount)}`}>{signedMoney(r.amount)}</span>
+                          </span>
+                        );
+                      })}
                       <button type="button" onClick={() => setShareEdit(e.ed)}
                         className="px-2 py-0.5 rounded-md border border-violet-500/30 text-violet-600 dark:text-violet-400 hover:bg-violet-500/10 text-[10px] font-sans font-semibold">
                         設定佔比
                       </button>
+                      {e.segs.length > 1 && (
+                        <div className="w-full pl-1 text-[9px] text-neutral-400 font-sans space-y-0.5">
+                          {e.segs.map(sg => (
+                            <div key={sg.since || 'base'}>
+                              <span className="font-mono">{sg.from.slice(5).replace('-', '/')}{sg.to !== sg.from ? `~${sg.to.slice(5).replace('-', '/')}` : ''}</span>
+                              {' '}<span className={`font-mono ${pnlCls(sg.pnl)}`}>{signedMoney(sg.pnl)}</span>
+                              {' '}照 {sg.shares.filter(x => x.pct > 0).map(x => `${x.name}${x.pct}%`).join(' / ')}
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   ))}
                   {sp.eds.length > 1 && (

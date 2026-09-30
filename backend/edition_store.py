@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import sqlite3
 import sys
+from datetime import date
 from pathlib import Path
 
 from core import combo, combo9000
@@ -79,17 +80,28 @@ def _conn() -> sqlite3.Connection:
         )
         """
     )
+    # 損益佔比(版本化):since = 生效日 YYYY-MM-DD,'' = 從最早起。
+    # 舊版表沒有 since(PK 是 eid,pos)→ 搬成新表,舊資料當「從最早起」。
+    share_cols = [r[1] for r in conn.execute("PRAGMA table_info(edition_shares)")]
+    if share_cols and "since" not in share_cols:
+        conn.execute("ALTER TABLE edition_shares RENAME TO edition_shares_old")
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS edition_shares (
             eid   INTEGER NOT NULL,
+            since TEXT NOT NULL DEFAULT '',
             pos   INTEGER NOT NULL,
             name  TEXT NOT NULL,
             bps   INTEGER NOT NULL,
-            PRIMARY KEY (eid, pos)
+            PRIMARY KEY (eid, since, pos)
         )
         """
     )
+    if share_cols and "since" not in share_cols:
+        conn.execute(
+            "INSERT INTO edition_shares (eid, since, pos, name, bps) "
+            "SELECT eid, '', pos, name, bps FROM edition_shares_old")
+        conn.execute("DROP TABLE edition_shares_old")
     # 舊表補上 simulated 欄位(模擬版:可下注/上傳,但不計總損益)
     cols = [r[1] for r in conn.execute("PRAGMA table_info(editions)")]
     if "simulated" not in cols:
@@ -294,26 +306,48 @@ def _pct_to_bps(v) -> int:
     return int(bps)
 
 
-def get_shares(eid: int) -> list[dict]:
-    """某版的佔比:第一筆一定是本人(= 100 − 其他人),其餘依設定順序。pct 為百分比。"""
-    with _conn() as c:
-        rows = c.execute(
-            "SELECT name, bps FROM edition_shares WHERE eid = ? ORDER BY pos",
-            (int(eid),)).fetchall()
+def _self_first(rows) -> list[dict]:
+    """[(name, bps), ...] → [本人(= 100 − 其他人), ...其他人];pct 為百分比。"""
     others = [{"name": r[0], "pct": int(r[1]) / 100, "self": False} for r in rows]
     self_bps = FULL_BPS - sum(int(r[1]) for r in rows)
     return [{"name": SELF_NAME, "pct": self_bps / 100, "self": True}, *others]
 
 
+def _norm_since(since) -> str:
+    """生效日:'' = 從最早起;其餘要是 YYYY-MM-DD。"""
+    since = str(since or "").strip()
+    if not since:
+        return ""
+    try:
+        return date.fromisoformat(since).isoformat()
+    except ValueError:
+        raise ValueError("生效日要是 YYYY-MM-DD")
+
+
+def get_share_versions(eid: int) -> list[dict]:
+    """某版全部佔比版本,依生效日舊→新:[{since, shares:[本人, ...]}]。
+    沒有「從最早起」那版時補一筆本人 100%(生效日之前的損益全歸本人)。"""
+    with _conn() as c:
+        rows = c.execute(
+            "SELECT since, name, bps FROM edition_shares WHERE eid = ? ORDER BY since, pos",
+            (int(eid),)).fetchall()
+    by: dict[str, list] = {}
+    for since, name, bps in rows:
+        by.setdefault(since, []).append((name, bps))
+    by.setdefault("", [])
+    return [{"since": k, "shares": _self_first(by[k])} for k in sorted(by)]
+
+
 def all_shares() -> dict[int, list[dict]]:
-    """全部版的佔比(每週總帳一次拿齊)。"""
-    return {e["eid"]: get_shares(e["eid"]) for e in list_editions()}
+    """全部版的佔比版本(每週總帳一次拿齊)。"""
+    return {e["eid"]: get_share_versions(e["eid"]) for e in list_editions()}
 
 
-def set_shares(eid: int, others: list[dict]) -> list[dict]:
-    """覆寫某版「本人以外」的分配。每人佔比 > 0、名字不可重複 / 空白 / 叫本人;
-    合計不可超過 100(本人拿剩下的,可為 0)。"""
-    rows: list[tuple[int, int, str, int]] = []
+def set_shares(eid: int, others: list[dict], since: str = "") -> list[dict]:
+    """覆寫某版某生效日「本人以外」的分配。每人佔比 > 0、名字不可重複 / 空白 / 叫本人;
+    合計不可超過 100(本人拿剩下的,可為 0)。回傳該版全部版本。"""
+    since = _norm_since(since)
+    rows: list[tuple[int, str, int, str, int]] = []
     seen: set[str] = set()
     for i, o in enumerate(others or []):
         name = str((o or {}).get("name", "")).strip()
@@ -327,11 +361,19 @@ def set_shares(eid: int, others: list[dict]) -> list[dict]:
         bps = _pct_to_bps((o or {}).get("pct"))
         if bps <= 0:
             raise ValueError(f"{name} 的佔比要大於 0")
-        rows.append((int(eid), i, name, bps))
-    if sum(r[3] for r in rows) > FULL_BPS:
+        rows.append((int(eid), since, i, name, bps))
+    if sum(r[4] for r in rows) > FULL_BPS:
         raise ValueError("分出去的佔比合計超過 100%")
     with _conn() as c:
-        c.execute("DELETE FROM edition_shares WHERE eid = ?", (int(eid),))
+        c.execute("DELETE FROM edition_shares WHERE eid = ? AND since = ?", (int(eid), since))
         c.executemany(
-            "INSERT INTO edition_shares (eid, pos, name, bps) VALUES (?, ?, ?, ?)", rows)
-    return get_shares(eid)
+            "INSERT INTO edition_shares (eid, since, pos, name, bps) VALUES (?, ?, ?, ?, ?)", rows)
+    return get_share_versions(eid)
+
+
+def delete_share_version(eid: int, since: str) -> list[dict]:
+    """刪掉某生效日那版(該段改回沿用前一版);'' 那版刪掉 = 從最早起回到本人 100%。"""
+    since = _norm_since(since)
+    with _conn() as c:
+        c.execute("DELETE FROM edition_shares WHERE eid = ? AND since = ?", (int(eid), since))
+    return get_share_versions(eid)

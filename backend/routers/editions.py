@@ -29,6 +29,7 @@ class ShareIn(BaseModel):
 
 
 class SharesIn(BaseModel):
+    since: str = ""      # 生效日 YYYY-MM-DD;'' = 從最早起
     others: list[ShareIn] = Field(default_factory=list)
 
 
@@ -39,7 +40,7 @@ def list_editions():
 
 @router.get("/shares")
 def all_shares():
-    """全部版的損益佔比 {eid: [本人, ...其他人]}(每週總帳用)。"""
+    """全部版的損益佔比版本 {eid: [{since, shares:[本人, ...]}]}(每週總帳用)。"""
     return edition_store.all_shares()
 
 
@@ -95,15 +96,25 @@ def reset_odds(eid: int, game: str = Query(...), user: str = Depends(current_use
 def get_shares(eid: int):
     if not edition_store.edition_exists(eid):
         raise HTTPException(status_code=404, detail="找不到這個版")
-    return edition_store.get_shares(eid)
+    return edition_store.get_share_versions(eid)
 
 
 @router.put("/{eid}/shares")
 def set_shares(eid: int, body: SharesIn, user: str = Depends(current_user)):
-    """覆寫本人以外的分配;本人自動 = 100 − 其他人合計。"""
+    """覆寫某生效日本人以外的分配;本人自動 = 100 − 其他人合計。"""
     if not edition_store.edition_exists(eid):
         raise HTTPException(status_code=404, detail="找不到這個版")
     try:
-        return edition_store.set_shares(eid, [o.model_dump() for o in body.others])
+        return edition_store.set_shares(eid, [o.model_dump() for o in body.others], body.since)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.delete("/{eid}/shares")
+def delete_share_version(eid: int, since: str = Query(""), user: str = Depends(current_user)):
+    if not edition_store.edition_exists(eid):
+        raise HTTPException(status_code=404, detail="找不到這個版")
+    try:
+        return edition_store.delete_share_version(eid, since)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

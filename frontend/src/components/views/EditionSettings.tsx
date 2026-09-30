@@ -1,7 +1,7 @@
 import React, {useEffect, useState} from 'react';
 import {Layers, Plus, Save, RotateCcw, Trash2, Pencil, PieChart} from 'lucide-react';
 import {api} from '../../api/client';
-import {allocatePnl, pctToBps, ShareDTO} from '../../shares';
+import {allocatePnl, pctToBps, ShareDTO, ShareVersionDTO, sharesOn} from '../../shares';
 import {useAuth} from '../../api/useAuth';
 import {useGame} from '../../api/useGame';
 import {useEditions} from '../../api/useEditions';
@@ -22,21 +22,46 @@ const FIELD_GROUPS: {title: string; fields: [string, string][]}[] = [
   ]},
 ];
 
-// 損益佔比(每版一組,不分遊戲):本人初始 100%,往下分給其他人;本人 = 100 − 其他人合計,
+// 損益佔比(每版可多組,不分遊戲):本人初始 100%,往下分給其他人;本人 = 100 − 其他人合計,
 // 總和永遠剛好 100。合計超過 100 / 佔比 ≤ 0 / 超過兩位小數 / 名字空白或重複都不給存。
+// 可中途加入:每組有「生效日」,某天的損益套用生效日 ≤ 當天的最新一組;
+// 「從最早起」那組 = 第一個生效日之前的所有日子(沒設 = 本人 100%)。
+const othersOf = (shares: ShareDTO[]) => shares.filter(r => !r.self).map(r => ({name: r.name, pct: String(r.pct)}));
+const sinceLabel = (since: string) => (since ? `${since.replace(/-/g, '/')} 起` : '從最早起');
+const todayYmd = () => new Date().toLocaleDateString('sv-SE');   // 本機日期 YYYY-MM-DD
+
 export const SharesEditor: React.FC<{eid: number; edName: string; loggedIn: boolean; onSaved?: () => void}> = ({eid, edName, loggedIn, onSaved}) => {
+  const [versions, setVersions] = useState<ShareVersionDTO[]>([]);
+  const [since, setSince] = useState('');              // 正在編輯的那組生效日
+  const [newSince, setNewSince] = useState(todayYmd);  // 「新增生效日」的日期
   const [others, setOthers] = useState<{name: string; pct: string}[]>([]);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [demo, setDemo] = useState('-10000');
 
+  // 載入後預設編輯最新(生效日最晚)那組
+  const applyVersions = (vs: ShareVersionDTO[], pick?: string) => {
+    setVersions(vs);
+    const sel = vs.find(v => v.since === pick) ?? vs[vs.length - 1];
+    setSince(sel?.since ?? '');
+    setOthers(othersOf(sel?.shares ?? []));
+  };
   useEffect(() => {
     setMsg(null); setErr(null);
-    api.getShares(eid)
-      .then(rows => setOthers(rows.filter(r => !r.self).map(r => ({name: r.name, pct: String(r.pct)}))))
-      .catch(e => setErr((e as Error).message));
+    api.getShares(eid).then(vs => applyVersions(vs)).catch(e => setErr((e as Error).message));
   }, [eid]);
+  const pickVersion = (v: ShareVersionDTO) => { setSince(v.since); setOthers(othersOf(v.shares)); setMsg(null); setErr(null); };
+  // 新增一組生效日:先帶入「那天原本適用」的佔比,改完再存
+  const addVersion = () => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(newSince)) { setErr('請選生效日'); return; }
+    const exist = versions.find(v => v.since === newSince);
+    if (exist) { pickVersion(exist); return; }
+    setSince(newSince);
+    setOthers(othersOf(sharesOn(versions, newSince).shares));
+    setMsg(null); setErr(null);
+  };
+  const isNew = !versions.some(v => v.since === since);
 
   // 驗證(與後端同規則);bps 整數算,本人 = 10000 − 其他人
   const parsed = others.map(o => ({name: o.name.trim(), pct: Number(o.pct)}));
@@ -66,9 +91,18 @@ export const SharesEditor: React.FC<{eid: number; edName: string; loggedIn: bool
   const save = async () => {
     setBusy(true); setMsg(null); setErr(null);
     try {
-      const rows = await api.setShares(eid, parsed);
-      setOthers(rows.filter(r => !r.self).map(r => ({name: r.name, pct: String(r.pct)})));
-      setMsg(`已儲存「${edName}」的損益佔比。`);
+      applyVersions(await api.setShares(eid, since, parsed), since);
+      setMsg(`已儲存「${edName}」${sinceLabel(since)}的損益佔比。`);
+      onSaved?.();
+    } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
+  };
+  const removeVersion = async () => {
+    const what = since ? `${sinceLabel(since)}這組(該段改回沿用前一組)` : '從最早起這組(改回本人 100%)';
+    if (!window.confirm(`刪除「${edName}」${what}?`)) return;
+    setBusy(true); setMsg(null); setErr(null);
+    try {
+      applyVersions(await api.deleteShareVersion(eid, since));
+      setMsg('已刪除。');
       onSaved?.();
     } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
   };
@@ -82,6 +116,37 @@ export const SharesEditor: React.FC<{eid: number; edName: string; loggedIn: bool
       <div className="text-[11px] text-neutral-500 dark:text-neutral-400">
         本人初始 100%,往下分給其他人;本人自動 = 100 − 其他人合計,總和永遠剛好 100%。
         每週總帳的損益依此分配,金額四捨五入後加總一定等於總損益(不會差 ±1)。
+        中途才開始分:按「新增生效日」選開始那天,那天(含)以後才照新佔比,之前仍照舊的。
+      </div>
+
+      {/* 生效日版本 */}
+      <div className="flex flex-wrap items-center gap-1.5">
+        {versions.map(v => (
+          <button key={v.since || 'base'} type="button" onClick={() => pickVersion(v)}
+            className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-all ${
+              since === v.since ? 'bg-black text-white dark:bg-white dark:text-black border-transparent'
+                : 'border-black/10 dark:border-white/10 text-neutral-600 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5'}`}>
+            {sinceLabel(v.since)}
+            <span className="ml-1 font-normal opacity-70">
+              {v.shares.filter(x => x.pct > 0).map(x => `${x.name}${x.pct}%`).join('/')}
+            </span>
+          </button>
+        ))}
+        {isNew && (
+          <span className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-violet-500/15 text-violet-600 dark:text-violet-400">
+            {sinceLabel(since)}(新,未儲存)
+          </span>
+        )}
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <input type="date" value={newSince} onChange={e => setNewSince(e.target.value)} className={`${inputCls} font-mono`} />
+        <button type="button" onClick={addVersion} disabled={!loggedIn}
+          className="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border border-violet-500/30 text-violet-600 dark:text-violet-400 hover:bg-violet-500/10 disabled:opacity-30 flex items-center gap-1">
+          <Plus className="w-3 h-3" />新增生效日
+        </button>
+      </div>
+      <div className="text-[11px] text-neutral-500">
+        正在編輯:<strong className="text-neutral-800 dark:text-neutral-100">{sinceLabel(since)}</strong>
       </div>
       <div className="space-y-1.5 max-w-md">
         <div className="flex items-center gap-2">
@@ -129,10 +194,18 @@ export const SharesEditor: React.FC<{eid: number; edName: string; loggedIn: bool
 
       {msg && <div className="text-[11px] text-emerald-600 dark:text-emerald-400">{msg}</div>}
       {err && <div className="text-[11px] text-rose-500">{err}</div>}
+      <div className="flex flex-wrap items-center gap-2">
       <button type="button" onClick={save} disabled={busy || !loggedIn || over || !!problem}
         className="px-6 py-2.5 rounded-full text-xs uppercase tracking-wider font-semibold bg-black text-white dark:bg-white dark:text-black hover:opacity-90 disabled:opacity-30 flex items-center gap-2 shadow-xs">
-        <Save className="w-3.5 h-3.5" />{busy ? '儲存中…' : loggedIn ? '儲存損益佔比' : '登入後才能改'}
+        <Save className="w-3.5 h-3.5" />{busy ? '儲存中…' : loggedIn ? `儲存(${sinceLabel(since)})` : '登入後才能改'}
       </button>
+      {!isNew && (since !== '' || others.length > 0) && (
+        <button type="button" onClick={removeVersion} disabled={busy || !loggedIn}
+          className="px-3 py-1.5 rounded-lg text-[11px] font-semibold border border-rose-500/30 text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 disabled:opacity-30 flex items-center gap-1">
+          <Trash2 className="w-3 h-3" />刪除這組
+        </button>
+      )}
+      </div>
     </div>
   );
 };

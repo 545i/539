@@ -4,7 +4,7 @@
 // 網址前綴:import.meta.env.BASE_URL 由 vite base 決定(正式環境為 "/539/"),
 // 所以 apiUrl("games") → "/539/api/games";dev 由 vite proxy 轉給 8540 埠後端。
 
-import type {ShareDTO} from '../shares';
+import type {ShareVersionDTO} from '../shares';
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, ''); // "/539"
 
@@ -685,7 +685,7 @@ export interface CycleSummary {
   n: number;
 }
 
-export type {ShareDTO} from '../shares';
+export type {ShareDTO, ShareVersionDTO} from '../shares';
 
 // 版×遊戲的整套盤口(每欄位 value + custom=是否有自訂,否則吃預設)
 export interface EditionOddsField {
@@ -1210,11 +1210,13 @@ export const api = {
     put<Record<string, number>>(`editions/${eid}/odds`, {game, values}),
   resetEditionOdds: (eid: number, game: GameKey) =>
     del<Record<string, number>>(`editions/${eid}/odds?game=${game}`),
-  // 損益佔比(每版一組;第一筆一定是本人 = 100 − 其他人)
-  getAllShares: () => get<Record<string, ShareDTO[]>>('editions/shares'),
-  getShares: (eid: number) => get<ShareDTO[]>(`editions/${eid}/shares`),
-  setShares: (eid: number, others: {name: string; pct: number}[]) =>
-    put<ShareDTO[]>(`editions/${eid}/shares`, {others}),
+  // 損益佔比(每版可多組,依生效日 since 舊→新;每組第一筆一定是本人 = 100 − 其他人)
+  getAllShares: () => get<Record<string, ShareVersionDTO[]>>('editions/shares'),
+  getShares: (eid: number) => get<ShareVersionDTO[]>(`editions/${eid}/shares`),
+  setShares: (eid: number, since: string, others: {name: string; pct: number}[]) =>
+    put<ShareVersionDTO[]>(`editions/${eid}/shares`, {since, others}),
+  deleteShareVersion: (eid: number, since: string) =>
+    del<ShareVersionDTO[]>(`editions/${eid}/shares?since=${encodeURIComponent(since)}`),
 
   // 週期性紀錄(需登入):列出 / 目前進行中 / 開新週期 / 結算 / 該週期損益彙總
   getCycles: () => get<CycleDTO[]>('cycles'),

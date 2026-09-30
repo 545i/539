@@ -78,20 +78,47 @@ def test_pair_bet_cost_derives_cost_per_car():
     assert det["cost_per_car"]["value"] == 80 * notes             # 衍生唯讀
 
 
+def _cur(eid=1, since=""):
+    return next(v["shares"] for v in edition_store.get_share_versions(eid) if v["since"] == since)
+
+
 def test_shares_default_self_100():
-    assert edition_store.get_shares(1) == [{"name": "本人", "pct": 100.0, "self": True}]
+    assert edition_store.get_share_versions(1) == [
+        {"since": "", "shares": [{"name": "本人", "pct": 100.0, "self": True}]}]
 
 
 def test_shares_conserve_to_100():
-    out = edition_store.set_shares(1, [{"name": "阿閔", "pct": 33.33}, {"name": "阿姨", "pct": 33.33}])
+    edition_store.set_shares(1, [{"name": "阿閔", "pct": 33.33}, {"name": "阿姨", "pct": 33.33}])
+    out = _cur()
     assert [s["name"] for s in out] == ["本人", "阿閔", "阿姨"]
     assert out[0]["pct"] == 33.34
     assert round(sum(s["pct"] for s in out) * 100) == 10000
-    # 全分出去 → 本人 0
-    out = edition_store.set_shares(1, [{"name": "A", "pct": 100}])
-    assert out[0]["pct"] == 0
-    # 清空 → 本人回 100
-    assert edition_store.set_shares(1, [])[0]["pct"] == 100
+    edition_store.set_shares(1, [{"name": "A", "pct": 100}])
+    assert _cur()[0]["pct"] == 0
+    edition_store.set_shares(1, [])
+    assert _cur()[0]["pct"] == 100
+
+
+def test_shares_versions_by_since():
+    # 週三才開始分:最早起仍是本人 100%
+    vs = edition_store.set_shares(1, [{"name": "阿閔", "pct": 40}], since="2026-09-30")
+    assert [v["since"] for v in vs] == ["", "2026-09-30"]
+    assert vs[0]["shares"][0]["pct"] == 100
+    assert vs[1]["shares"][0]["pct"] == 60
+    vs = edition_store.delete_share_version(1, "2026-09-30")
+    assert [v["since"] for v in vs] == [""]
+    with pytest.raises(ValueError):
+        edition_store.set_shares(1, [], since="9/30")
+
+
+def test_shares_migrate_old_table(tmp_path):
+    import sqlite3
+    db = tmp_path / "edition.db"
+    con = sqlite3.connect(db)
+    con.execute("CREATE TABLE edition_shares (eid INTEGER, pos INTEGER, name TEXT, bps INTEGER, PRIMARY KEY (eid, pos))")
+    con.execute("INSERT INTO edition_shares VALUES (1, 0, 'A', 2500)")
+    con.commit(); con.close()
+    assert _cur()[1] == {"name": "A", "pct": 25.0, "self": False}
 
 
 @pytest.mark.parametrize("others", [
@@ -107,11 +134,11 @@ def test_shares_reject(others):
     edition_store.set_shares(1, [{"name": "keep", "pct": 20}])
     with pytest.raises(ValueError):
         edition_store.set_shares(1, others)
-    assert edition_store.get_shares(1)[1] == {"name": "keep", "pct": 20.0, "self": False}
+    assert _cur()[1] == {"name": "keep", "pct": 20.0, "self": False}
 
 
 def test_delete_edition_clears_shares():
     eid = edition_store.add_edition("X")["eid"]
-    edition_store.set_shares(eid, [{"name": "A", "pct": 50}])
+    edition_store.set_shares(eid, [{"name": "A", "pct": 50}], since="2026-09-30")
     edition_store.delete_edition(eid)
     assert eid not in edition_store.all_shares()
