@@ -1519,7 +1519,11 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
                     return (
                       <div key={e.ed} className="text-[10px] font-mono">
                         <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
-                          <span className="px-1.5 py-0.5 rounded-full bg-violet-500/10 text-violet-600 dark:text-violet-400 text-[9px] font-sans">{e.name}</span>
+                          {/* 版名標籤兼「設定佔比」入口(⚙),不另佔一顆按鈕 —— 手機上才擠得進一行 */}
+                          <button type="button" onClick={() => setShareEdit(e.ed)} title="設定佔比"
+                            className="px-1.5 py-0.5 rounded-full bg-violet-500/10 text-violet-600 dark:text-violet-400 hover:bg-violet-500/20 text-[9px] font-sans whitespace-nowrap">
+                            {e.name} ⚙
+                          </button>
                           <span className={`font-bold ${pnlCls(e.net)}`}>{signedMoney(e.net)}</span>
                           <span className="text-neutral-400">→</span>
                           {self && person(self)}
@@ -1529,10 +1533,6 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
                               {others.length > 0 ? `另 ${others.length} 人` : '分段'} {open ? '▾' : '▸'}
                             </button>
                           )}
-                          <button type="button" onClick={() => setShareEdit(e.ed)}
-                            className="px-2 py-0.5 rounded-md border border-violet-500/30 text-violet-600 dark:text-violet-400 hover:bg-violet-500/10 text-[10px] font-sans font-semibold">
-                            設定佔比
-                          </button>
                         </div>
                         {open && (
                           <div className="pl-3 mt-0.5 space-y-0.5">
