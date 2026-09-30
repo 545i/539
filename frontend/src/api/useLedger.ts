@@ -56,7 +56,7 @@ const LedgerCtx = createContext<LedgerCtxValue | null>(null);
 
 /** 包在 App 外層:登入時一次撈回全部 ledger,供 useAllLedger / useLedger 共用同一份。 */
 export function LedgerProvider({children}: {children: ReactNode}) {
-  const {loggedIn} = useAuth();
+  const {loggedIn, username} = useAuth();
   const [entries, setEntries] = useState<LedgerEntryDTO[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -86,7 +86,7 @@ export function LedgerProvider({children}: {children: ReactNode}) {
     return () => {
       alive = false;
     };
-  }, [loggedIn, reloadKey]);
+  }, [loggedIn, username, reloadKey]);   // 換帳號(沒先登出)也要重抓,別顯示上一個帳號的流水
 
   const value = useMemo<LedgerCtxValue>(
     () => ({entries, setEntries, loading, error, loggedIn, reload}),

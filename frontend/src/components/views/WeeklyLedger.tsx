@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { AlertTriangle, Trash2 } from 'lucide-react';
 import { useAllLedger, useLedgerActions } from '../../api/useLedger';
 import { useEditions } from '../../api/useEditions';
+import { useAuth } from '../../api/useAuth';
 import { useGame } from '../../api/useGame';
 import { useHistoriesByGame } from '../../api/useHistories';
 import { IssuePicker } from '../IssuePicker';
@@ -693,6 +694,7 @@ export function groupWeeks(
 // 週 → 展開看每日小計 → 再展開看當天逐筆。派彩/盈虧直接取自各筆已結算紀錄。
 export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ initialMode }) => {
   const { entries, loading, loggedIn } = useAllLedger();
+  const { username } = useAuth();
   const { resettle, deleteById } = useLedgerActions();   // 逐筆對獎 / 撤銷(共用 cache)
   const histByGame = useHistoriesByGame();               // 各款期別(IssuePicker 用)
   const { editions } = useEditions();
@@ -755,7 +757,7 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
       .then(m => setSharesByEid(Object.fromEntries(Object.entries(m).map(([k, v]) => [Number(k), v]))))
       .catch(() => { /* 讀不到就當全部本人 100% */ });
   }, []);
-  React.useEffect(() => { if (loggedIn) loadShares(); else setSharesByEid({}); }, [loadShares, editions, loggedIn]);
+  React.useEffect(() => { if (loggedIn) loadShares(); else setSharesByEid({}); }, [loadShares, editions, loggedIn, username]);
   // 某週的分配:列出本週有下注的每個版(模擬版除外;沒設定 = 本人 100%)。
   // 同一版本週若跨過生效日,依生效日切段(segs),各段各用自己的佔比,再整週一起分。
   // 多版時再依名字合計每個人(各版已守恆,合計也守恆)。

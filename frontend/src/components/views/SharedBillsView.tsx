@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { PieChart } from 'lucide-react';
+import { PieChart, RefreshCw } from 'lucide-react';
 import { api, SharedBoardDTO } from '../../api/client';
 import { useAuth } from '../../api/useAuth';
 import { useGame } from '../../api/useGame';
@@ -148,19 +148,24 @@ const BoardView: React.FC<{ b: SharedBoardDTO }> = ({ b }) => {
 };
 
 export const SharedBillsView: React.FC = () => {
-  const { loggedIn } = useAuth();
+  const { loggedIn, username } = useAuth();
   const [boards, setBoards] = useState<SharedBoardDTO[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [sel, setSel] = useState(0);
+  const [reloadKey, setReloadKey] = useState(0);
 
+  // 依「目前登入的帳號」抓:同一個瀏覽器直接換帳號登入(loggedIn 一直是 true)也要重抓,
+  // 否則會一直顯示上一個帳號的結果。
   useEffect(() => {
+    setErr(null);
     if (!loggedIn) { setBoards([]); return; }
+    setBoards(null);
     let alive = true;
     api.sharedBoards()
       .then(r => { if (alive) { setBoards(r); setSel(0); } })
       .catch(e => { if (alive) setErr((e as Error).message); });
     return () => { alive = false; };
-  }, [loggedIn]);
+  }, [loggedIn, username, reloadKey]);
 
   return (
     <div className="space-y-4 animate-in fade-in duration-200">
@@ -168,7 +173,14 @@ export const SharedBillsView: React.FC = () => {
         <PieChart className="w-3.5 h-3.5 mt-0.5 shrink-0" />
         <span>版主在「損益佔比」把你連動進去後,這裡會出現那個版、你有佔比那些日子的帳單(唯讀,隨時可看)。
           點週展開看分配,點某天看快捷帳單卡片。</span>
+        {loggedIn && (
+          <button type="button" onClick={() => setReloadKey(k => k + 1)}
+            className="ml-auto shrink-0 px-2.5 py-1 rounded-lg text-[11px] font-semibold border border-black/10 dark:border-white/10 text-neutral-700 dark:text-neutral-200 hover:bg-black/5 dark:hover:bg-white/5 flex items-center gap-1">
+            <RefreshCw className="w-3 h-3" />重新整理
+          </button>
+        )}
       </div>
+      {loggedIn && username && <div className="text-[10px] text-neutral-400">目前登入:<span className="font-mono">{username}</span></div>}
       {!loggedIn && <div className="text-[11px] text-neutral-400">請先登入。</div>}
       {err && <div className="text-[11px] text-rose-500">{err}</div>}
       {loggedIn && boards === null && !err && <div className="text-[11px] text-neutral-400">讀取中…</div>}
