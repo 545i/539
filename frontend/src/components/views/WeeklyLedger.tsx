@@ -13,7 +13,6 @@ import { api, LedgerMode } from '../../api/client';
 import { MODE_LABEL, money } from '../uploadHistory';
 import { weekAddDays, weekMonday } from '../../weeks';
 import { DayMoney, splitCostPayout, ShareVersionDTO } from '../../shares';
-import { AllocList, ShareBar, fmtSigned } from '../ShareUI';
 import { SharesEditor } from './EditionSettings';
 
 const num = (v: unknown): number => {
@@ -1492,62 +1491,51 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
               </div>
             )}
 
-            {/* 本週損益佔比:各版一張卡 —— 該版成本/派彩/盈虧、佔比長條、每人「付 / 分 / 淨」(各自守恆) */}
+            {/* 本週損益佔比:各版一行 —— 該版盈虧 → 各人分到多少(成本/派彩各自守恆,淨額加總 = 該版盈虧) */}
             {wOpen && (() => {
               const sp = weekSplit(w);
               if (sp.eds.length === 0) return null;
-              const md = (d: string) => d.slice(5).replace('-', '/');
               return (
-                <div className="px-3 py-3 sm:pl-8 border-t border-black/[0.06] dark:border-white/[0.06] space-y-1">
-                  <div className="text-[10px] uppercase tracking-wider text-neutral-400 font-semibold">本週損益佔比</div>
-                  <div className="grid gap-x-8 sm:grid-cols-2 xl:grid-cols-3 divide-y sm:divide-y-0 divide-black/[0.06] dark:divide-white/[0.06]">
-                    {sp.eds.map(e => {
-                      const last = e.segs[e.segs.length - 1];
-                      const single = e.segs.length === 1;
-                      return (
-                        <div key={e.ed} className="py-2.5 space-y-2">
-                          <div className="flex items-center gap-2">
-                            <span className="text-[13px] font-bold text-neutral-900 dark:text-white">{e.name}</span>
-                            <span className="ml-auto font-mono text-base font-bold text-neutral-900 dark:text-white">{fmtSigned(e.net)}</span>
-                          </div>
-                          <div className="flex gap-3 text-[10px] text-neutral-500 font-mono">
-                            <span>成本 <span className="text-neutral-800 dark:text-neutral-200 font-semibold">{money(e.cost)}</span></span>
-                            <span>派彩 <span className="text-neutral-800 dark:text-neutral-200 font-semibold">{money(e.payout)}</span></span>
-                          </div>
-                          {last && <ShareBar items={last.shares} />}
-                          <AllocList items={e.rows.map(r => {
-                            const sh = last?.shares.find(x => x.name === r.name);
-                            return {
-                              name: r.name,
-                              pct: single ? sh?.pct : undefined,
-                              amount: r.net,
-                              sub: `付 ${money(r.cost)} · 分 ${money(r.payout)}${sh?.account ? ` · 🔗${sh.account}` : ''}`,
-                            };
-                          })} />
-                          {!single && (
-                            <div className="text-[10px] text-neutral-400 space-y-0.5">
-                              {e.segs.map(sg => (
-                                <div key={sg.since || 'base'}>
-                                  <span className="font-mono">{md(sg.from)}{sg.to !== sg.from ? `~${md(sg.to)}` : ''}</span>
-                                  {' '}照 {sg.shares.filter(x => x.pct > 0).map(x => `${x.name} ${x.pct}%`).join(' / ')}
-                                </div>
-                              ))}
+                <div className="px-3 py-2 pl-8 border-t border-black/[0.06] dark:border-white/[0.06] bg-black/[0.015] dark:bg-white/[0.02] space-y-1">
+                  <div className="text-[9px] uppercase tracking-wider text-neutral-400">本週損益佔比</div>
+                  {sp.eds.map(e => (
+                    <div key={e.ed} className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10px] font-mono">
+                      <span className="px-1.5 py-0.5 rounded-full bg-violet-500/10 text-violet-600 dark:text-violet-400 text-[9px] font-sans">{e.name}</span>
+                      <span className={`font-bold ${pnlCls(e.net)}`}>{signedMoney(e.net)}</span>
+                      <span className="text-neutral-400">→</span>
+                      {e.rows.map(r => {
+                        // 本週只有一組佔比時直接標 %;跨生效日時 % 改列在下方分段說明
+                        const pct = e.segs.length === 1 ? e.segs[0].shares.find(x => x.name === r.name)?.pct : undefined;
+                        return (
+                          <span key={r.name} className="text-neutral-500">
+                            {r.name}{pct !== undefined && <span className="text-neutral-400">({pct}%)</span>}{' '}
+                            <span className={`font-bold ${pnlCls(r.net)}`}>{signedMoney(r.net)}</span>
+                          </span>
+                        );
+                      })}
+                      <button type="button" onClick={() => setShareEdit(e.ed)}
+                        className="px-2 py-0.5 rounded-md border border-violet-500/30 text-violet-600 dark:text-violet-400 hover:bg-violet-500/10 text-[10px] font-sans font-semibold">
+                        設定佔比
+                      </button>
+                      {e.segs.length > 1 && (
+                        <div className="w-full pl-1 text-[9px] text-neutral-400 font-sans space-y-0.5">
+                          {e.segs.map(sg => (
+                            <div key={sg.since || 'base'}>
+                              <span className="font-mono">{sg.from.slice(5).replace('-', '/')}{sg.to !== sg.from ? `~${sg.to.slice(5).replace('-', '/')}` : ''}</span>
+                              {' '}<span className={`font-mono ${pnlCls(sg.payout - sg.cost)}`}>{signedMoney(sg.payout - sg.cost)}</span>
+                              {' '}照 {sg.shares.filter(x => x.pct > 0).map(x => `${x.name}${x.pct}%`).join(' / ')}
                             </div>
-                          )}
-                          <button type="button" onClick={() => setShareEdit(e.ed)}
-                            className="text-neutral-500 hover:text-neutral-900 dark:hover:text-white underline underline-offset-2 text-[11px]">
-                            設定佔比 ›
-                          </button>
+                          ))}
                         </div>
-                      );
-                    })}
-                  </div>
+                      )}
+                    </div>
+                  ))}
                   {sp.eds.length > 1 && (
-                    <div className="pt-2.5 border-t border-black/[0.08] dark:border-white/[0.08]">
-                      <div className="text-[10px] text-neutral-400 font-semibold mb-1">各人合計(全部版)</div>
-                      <AllocList items={Array.from(sp.total.entries()).map(([n, t]) => ({
-                        name: n, amount: t.net, sub: `付 ${money(t.cost)} · 分 ${money(t.payout)}`,
-                      }))} />
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10px] font-mono pt-1 border-t border-black/[0.05] dark:border-white/[0.05]">
+                      <span className="text-neutral-400 font-sans">各人合計</span>
+                      {Array.from(sp.total.entries()).map(([n, t]) => (
+                        <span key={n} className="text-neutral-500">{n} <span className={`font-bold ${pnlCls(t.net)}`}>{signedMoney(t.net)}</span></span>
+                      ))}
                     </div>
                   )}
                 </div>
