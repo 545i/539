@@ -48,14 +48,16 @@ function deltasPayload(d: DraftItem): Record<string, number> {
   return out;
 }
 
-// 號碼加價(取代手打「15:2」):點號碼選取(可多選)→ 按加價按鈕;有加價的號碼右上角標 +N。
+// 號碼加價(取代手打「15:2」):點號碼選取(可多選)→ 按加價按鈕,或直接輸入「每注成本」
+// (手機跳數字鍵盤;輸入 74.5 → 自動換算成 +2 = 74.5 − 這筆基礎成本)。有加價的號碼右上角標 +N。
 const QUICK_DELTAS = [1, 2, 3, 3.5, 5];
 const fmtD = (v: number) => String(Math.round(v * 100) / 100);
 const BallDeltaPicker: React.FC<{
   balls: number[];
   deltas: Record<number, number>;
+  base: number;      // 這筆的每注基礎成本(輸入「每注成本」時換算加價用)
   onChange: (next: Record<number, number>) => void;
-}> = ({balls, deltas, onChange}) => {
+}> = ({balls, deltas, base, onChange}) => {
   const [sel, setSel] = useState<Set<number>>(new Set());
   const picked = [...sel].filter(n => balls.includes(n));
   const toggleBall = (n: number) => setSel(prev => {
@@ -71,6 +73,18 @@ const BallDeltaPicker: React.FC<{
   };
   const cur = picked.length && picked.every(n => (deltas[n] || 0) === (deltas[picked[0]] || 0))
     ? (deltas[picked[0]] || 0) : null;
+  // 「每注成本」輸入框:選取或加價變了(按鈕改的)就同步顯示;打字時不覆蓋使用者正在輸入的內容
+  const [costText, setCostText] = useState('');
+  const pickedKey = [...picked].sort((a, b) => a - b).join(',');
+  useEffect(() => {
+    setCostText(cur === null ? '' : fmtD(base + cur));
+  }, [pickedKey, cur, base]);
+  // 打字時只改輸入框;按 Enter 或離開才套用(否則打「74.5」打到「7」就被當成每注 7 元)
+  const commitCost = () => {
+    const v = Number(costText);
+    if (costText.trim() !== '' && Number.isFinite(v) && v > 0) apply(() => v - base);
+    else setCostText(cur === null ? '' : fmtD(base + cur));   // 空白 / 亂打 → 還原
+  };
   const btn = 'px-2 py-0.5 rounded-md text-[11px] font-mono font-semibold border transition-colors';
   const idle = 'border-black/15 dark:border-white/15 text-neutral-700 dark:text-neutral-200 hover:bg-black/5 dark:hover:bg-white/5';
   const on = 'bg-neutral-900 text-white border-neutral-900 dark:bg-white dark:text-black dark:border-white';
@@ -110,9 +124,26 @@ const BallDeltaPicker: React.FC<{
       {picked.length > 0 && (
         <div className="mt-1.5 flex flex-wrap items-center gap-1">
           <button type="button" className={`${btn} ${idle}`} onClick={() => apply(c => c - 0.5)}>−0.5</button>
-          <span className="w-10 text-center text-[11px] font-mono font-bold text-neutral-900 dark:text-white">
-            {cur === null ? '不一' : `${cur > 0 ? '+' : ''}${fmtD(cur)}`}
-          </span>
+          {/* 直接輸入每注成本(數字鍵盤);下方小字顯示換算後的加價 */}
+          <label className="flex flex-col items-center leading-none">
+            <input
+              type="number"
+              inputMode="decimal"
+              step="0.1"
+              min={0}
+              value={costText}
+              placeholder={cur === null ? '不一' : ''}
+              onFocus={e => e.target.select()}
+              onChange={e => setCostText(e.target.value)}
+              onBlur={commitCost}
+              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); commitCost(); } }}
+              title={`每注成本(基礎 ${fmtD(base)});直接輸入,例 ${fmtD(base + 2)} = +2`}
+              className="w-16 px-1.5 py-0.5 rounded-md border border-black/20 dark:border-white/20 bg-white dark:bg-[#161616] text-[12px] font-mono font-bold text-center text-neutral-900 dark:text-white outline-hidden focus:border-neutral-900 dark:focus:border-white"
+            />
+            <span className="mt-0.5 text-[9px] font-mono text-neutral-400">
+              {cur === null ? '每注' : `每注 ${cur > 0 ? '+' : cur < 0 ? '' : '±'}${fmtD(cur)}`}
+            </span>
+          </label>
           <button type="button" className={`${btn} ${idle}`} onClick={() => apply(c => c + 0.5)}>+0.5</button>
           <span className="w-px h-4 bg-black/10 dark:bg-white/10 mx-0.5" />
           {QUICK_DELTAS.map(q => (
@@ -737,6 +768,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
                               <BallDeltaPicker
                                 balls={parseBalls(d.balls)}
                                 deltas={d.deltas}
+                                base={d.base}
                                 onChange={next => setDraft(i, {deltas: next})}
                               />
                             )}
