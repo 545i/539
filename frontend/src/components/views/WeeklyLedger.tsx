@@ -13,6 +13,7 @@ import { api, LedgerMode } from '../../api/client';
 import { MODE_LABEL, money } from '../uploadHistory';
 import { weekAddDays, weekMonday } from '../../weeks';
 import { DayMoney, splitCostPayout, ShareVersionDTO } from '../../shares';
+import { copyText } from '../../clipboard';
 import { SharesEditor } from './EditionSettings';
 
 const num = (v: unknown): number => {
@@ -174,13 +175,13 @@ function billGameText(g: BillGameData, md: string, editionLabel?: string): strin
 // 複製的是該卡對應的對接人純文字帳單。
 export const BillCards: React.FC<{ bill: BillEditionData[]; md: string }> = ({ bill, md }) => {
   const [copiedKey, setCopiedKey] = useState('');            // 剛複製的卡(edition/label)
+  const [copyFail, setCopyFail] = useState('');              // 複製失敗的卡(給回饋,不再默默沒反應)
   const multi = bill.length > 1;
   const copyCard = async (key: string, text: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopiedKey(key);
-      setTimeout(() => setCopiedKey(''), 1500);
-    } catch { /* ignore */ }
+    // http 連線下 navigator.clipboard 不能用 → copyText 會退回舊式複製
+    const ok = await copyText(text);
+    if (ok) { setCopiedKey(key); setCopyFail(''); setTimeout(() => setCopiedKey(''), 1500); }
+    else { setCopyFail(key); setTimeout(() => setCopyFail(''), 2500); }
   };
   return (
   <div className="space-y-3">
@@ -231,7 +232,7 @@ export const BillCards: React.FC<{ bill: BillEditionData[]; md: string }> = ({ b
                 onClick={() => copyCard(key, billGameText(g, md, multi ? e.edition : undefined))}
                 className="w-full mt-1 px-2 py-1 rounded-md text-[10px] font-semibold border border-emerald-500/40 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/10 transition-colors"
               >
-                {copiedKey === key ? '已複製' : '複製帳單'}
+                {copiedKey === key ? '已複製' : copyFail === key ? '複製失敗,請長按文字手動複製' : '複製帳單'}
               </button>
             </div>
             );
