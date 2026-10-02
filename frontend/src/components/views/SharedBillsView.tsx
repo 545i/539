@@ -49,6 +49,7 @@ const BetLine: React.FC<{ r: BetRow }> = ({ r }) => (
             <span key={`${n}-${i}`} className={`text-[12px] font-mono font-semibold ${
               hit ? 'text-neutral-900 dark:text-white font-bold underline underline-offset-2' : 'text-neutral-500 dark:text-neutral-400'}`}>
               {String(n).padStart(2, '0')}
+              {r.deltas[n] ? <sup className="ml-0.5 text-[9px] font-bold">+{r.deltas[n]}</sup> : null}
             </span>
           );
         })}

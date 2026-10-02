@@ -151,6 +151,7 @@ class _Item:
     cost_expr: str = ""   # 成本怎麼算出來的(給前端顯示計算式)
     base_cost: float = 0.0  # 這筆用的「每單位基礎成本」(二合每注/1800每注/連碰每碰/
                             # 9000每碰);逐筆可覆蓋,前端顯示+可改,改了就重算成本
+    ball_deltas: dict = field(default_factory=dict)  # 二合個別號碼加價 {"15": 2.0}(只存非 0)
 
 
 @dataclass
@@ -429,6 +430,7 @@ def to_record(item: _Item, g: GameConfig, bet_date: str, issue: str,
         "cost": round(item.cost),
         "costExpr": item.cost_expr,   # 成本計算式(給前端顯示「怎麼算的」)
         "baseCost": round(item.base_cost, 4),   # 每單位基礎成本(逐筆可改)
+        "ballDeltas": item.ball_deltas,         # 二合個別號碼加價 {"15": 2.0};沒有就 {}
         "payout": 0,
         "pnl": 0,
     }
@@ -527,6 +529,9 @@ def _recost(g: GameConfig, odds: dict, mode: str, balls: list[int], units: float
             line="",
             cost_expr=expr,
             base_cost=default_base,
+            # 存進紀錄,週期帳明細才看得到哪顆號碼加了多少
+            ball_deltas=({str(n): float(deltas[str(n)]) for n in balls
+                          if float(deltas.get(str(n), 0) or 0)} if use_pn else {}),
         )
     raise ValueError(f"未知的下注模式:{mode}")
 

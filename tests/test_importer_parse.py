@@ -138,3 +138,18 @@ def test_recost_base_none_uses_edition(env):
     it = importer._recost(g, odds, "combo9000", [], 1, 0)
     rec = importer.to_record(it, g, "2026-08-29", "", 1)
     assert rec["baseCost"] == odds["combo_cost4"]
+
+
+def test_recost_ball_deltas_saved_to_record(env):
+    """個別號碼加價:成本逐顆算,且加價存進紀錄 ballDeltas(週期帳明細要顯示)。"""
+    g, odds = env
+    notes = g.num_max - 1
+    it = importer._recost(g, odds, "multi", [9, 15, 19, 20], 20, 0,
+                          ball_deltas={"15": 2, "19": 0})
+    assert it.cost == 20 * ((72.5 * 3 + 74.5) * notes)
+    assert it.ball_deltas == {"15": 2.0}           # 0 不存
+    rec = importer.to_record(it, g, "2026-10-02", "")
+    assert rec["ballDeltas"] == {"15": 2.0}
+    # 沒加價 → 空 dict
+    rec0 = importer.to_record(importer._recost(g, odds, "single", [2], 50, 0), g, "2026-10-02", "")
+    assert rec0["ballDeltas"] == {}

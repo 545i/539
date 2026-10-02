@@ -65,6 +65,8 @@ export interface BetRow {
   cars: number;        // 車數(二合碰數 = 中幾顆 × 車數 × 4)
   unitLabel: string;   // 「車」或「支」
   perUnit: number;     // 每注/每車/每支成本 = cost / units
+  deltas: Record<number, number>; // 二合個別號碼加價(號→每注 +N);沒有就 {}
+  costExpr: string;    // 上傳時後端給的成本算式(有加價時顯示這個,平均每車會誤導)
   cost: number;
   payout: number;
   pnl: number;
@@ -629,6 +631,20 @@ const RecoverModal: React.FC<{
   );
 };
 
+// 二合個別號碼加價:新紀錄存在 ballDeltas;舊紀錄(還沒有這欄)從成本算式「15號+2」解析回來
+export function ballDeltasOf(r: Record<string, unknown>): Record<number, number> {
+  const out: Record<number, number> = {};
+  const bd = r.ballDeltas as Record<string, unknown> | undefined;
+  if (bd && typeof bd === 'object') {
+    for (const [k, v] of Object.entries(bd)) { const d = num(v); if (d) out[Number(k)] = d; }
+    return out;
+  }
+  for (const m of String(r.costExpr ?? '').matchAll(/(\d{1,2})號\+(-?\d+(?:\.\d+)?)/g)) {
+    const d = Number(m[2]); if (d) out[Number(m[1])] = d;
+  }
+  return out;
+}
+
 // 分組:週(週一) → 日 → 逐筆。每週總帳與佔比帳單(被連動者唯讀)共用。
 export function groupWeeks(
   entries: { id: number | string; record: Record<string, unknown> }[],
@@ -647,6 +663,7 @@ export function groupWeeks(
     const mode = String(r.mode ?? '');
     const gShort = gameShort(String(r.game ?? '')) || '其他';
     const units = num(r.units);
+    const deltas = ballDeltasOf(r);
     const row: BetRow = {
       id: String(e.id),
       issue: String(r.issue ?? ''),
@@ -663,6 +680,8 @@ export function groupWeeks(
       cars: num(r.cars) || units,
       unitLabel: UNIT_LABEL[mode] ?? '注',
       perUnit: units ? Math.round(cost / units) : cost,
+      deltas,
+      costExpr: String(r.costExpr ?? ''),
       cost, payout, pnl: payout - cost, result, pending,
     };
     let w = wmap.get(monday);
@@ -1692,7 +1711,12 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
                                   />
                                 </td>
                                 <td className="px-3 pt-1.5 pb-0 align-top text-neutral-700 dark:text-neutral-300">
-                                  {v.balls.length > 0 ? v.balls.map(n => String(n).padStart(2, '0')).join(' ') : '—'}
+                                  {v.balls.length > 0 ? v.balls.map(n => (
+                                    <span key={n} className="mr-1.5 whitespace-nowrap">
+                                      {String(n).padStart(2, '0')}
+                                      {v.deltas[n] ? <sup className="ml-0.5 text-[9px] font-bold text-amber-600 dark:text-amber-400">+{v.deltas[n]}</sup> : null}
+                                    </span>
+                                  )) : '—'}
                                 </td>
                                 <td className="px-3 pt-1.5 pb-0 align-top text-right font-bold text-neutral-900 dark:text-white">{money(v.cost)}</td>
                                 <td className="px-3 pt-1.5 pb-0 align-top text-right text-emerald-600 dark:text-emerald-400">
@@ -1725,7 +1749,10 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
                               {v.units > 0 && (
                                 <tr>
                                   <td colSpan={7} className="px-3 pt-0 pb-1.5 pl-9 text-[10px] text-neutral-400 dark:text-neutral-500">
-                                    {v.units.toLocaleString()} {v.unitLabel} × ${v.perUnit.toLocaleString()}/{v.unitLabel} = ${v.cost.toLocaleString()}
+                                    {Object.keys(v.deltas).length > 0 && v.costExpr
+                                      // 有號碼加價:每車成本不一樣,改顯示上傳時的實際算式(含「15號+2」)
+                                      ? v.costExpr
+                                      : <>{v.units.toLocaleString()} {v.unitLabel} × ${v.perUnit.toLocaleString()}/{v.unitLabel} = ${v.cost.toLocaleString()}</>}
                                   </td>
                                 </tr>
                               )}

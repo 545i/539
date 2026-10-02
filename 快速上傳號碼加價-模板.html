@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>快速上傳 · 號碼加價改按鈕(模板)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: ui-sans-serif, system-ui, "Noto Sans TC", sans-serif; }
+  .mono { font-family: ui-monospace, "SFMono-Regular", Menlo, monospace; }
+  .ball { position: relative; }
+  .ball .badge { position: absolute; top: -7px; right: -9px; }
+</style>
+</head>
+<body class="bg-neutral-200 min-h-screen p-4 sm:p-8 text-neutral-800">
+
+<div class="max-w-4xl mx-auto mb-4">
+  <h1 class="text-lg font-bold text-neutral-900">快速上傳 · 號碼加價改成按鈕(模板)</h1>
+  <p class="text-xs text-neutral-500 mt-1 leading-relaxed">
+    取代原本要手打的 <code class="mono bg-white px-1 rounded">15:2</code>(15 號每注 +2)。
+    <b>點號碼選取(可多選)→ 按加價按鈕</b>,有加價的號碼右上角標 <span class="mono">+2</span>,成本即時重算。
+    下方兩列為預覽表裡的 1組 / 2組,可實際點按。
+  </p>
+</div>
+
+<!-- ===== 快速上傳彈窗(預覽區)===== -->
+<div class="max-w-4xl mx-auto bg-white rounded-2xl border border-black/10 shadow-2xl overflow-hidden">
+  <div class="flex items-center justify-between gap-2 px-4 py-3 border-b border-black/[0.07]">
+    <div class="text-sm font-bold text-neutral-900">快速上傳 · 解析出 2 筆</div>
+    <div class="text-[11px] text-neutral-400">每注基礎 <span class="mono">72.5</span> · 一車 <span class="mono">38</span> 注(39 選,拖 1 膽)</div>
+  </div>
+
+  <div id="rows" class="divide-y divide-black/[0.06]"></div>
+
+  <div class="px-4 py-3 border-t border-black/[0.07] flex items-center justify-between">
+    <div class="text-[11px] text-neutral-500">合計成本 <span id="grand" class="mono font-bold text-neutral-900 text-sm"></span></div>
+    <button class="px-5 py-2 rounded-full text-xs font-bold bg-neutral-900 text-white">確認上傳</button>
+  </div>
+</div>
+
+<!-- 對照:舊版輸入 -->
+<div class="max-w-4xl mx-auto mt-6 text-[11px] text-neutral-500 leading-relaxed">
+  <div class="font-semibold text-neutral-700 mb-1">對照:目前的做法</div>
+  號碼欄下方一格文字框,要自己打 <code class="mono bg-white px-1 rounded">15:2, 22:3.5</code>;
+  格式打錯會被默默略過,看不出哪顆有加價。新版改成點號碼 + 按鈕,
+  加價直接標在號碼上,送出時仍轉成同樣的 <code class="mono bg-white px-1 rounded">ball_deltas</code>(後端不用改)。
+</div>
+
+<script>
+const BASE = 72.5, NOTES = 38;
+const QUICK = [1, 2, 3, 3.5, 5];
+// 兩筆示範:1組 02 ×50 車;2組 09 15 19 20 ×20 車(15 號先帶 +2 示範)
+const rows = [
+  { label: '1組', play: '單顆', balls: [2],            cars: 50, deltas: {} },
+  { label: '2組', play: '多顆', balls: [9, 15, 19, 20], cars: 20, deltas: { 15: 2 } },
+];
+const sel = rows.map(() => new Set());
+
+const pad = n => String(n).padStart(2, '0');
+const fmt = v => (Math.round(v * 100) / 100).toLocaleString();
+const money = v => '$' + Math.round(v).toLocaleString();
+// 成本 = 車數 × Σ((每注基礎 + 該號加價) × 38)  —— 與後端 _recost 同一套
+const cost = r => r.cars * r.balls.reduce((a, b) => a + (BASE + (r.deltas[b] || 0)) * NOTES, 0);
+function expr(r) {
+  const groups = {};
+  r.balls.forEach(b => { const d = r.deltas[b] || 0; groups[d] = (groups[d] || 0) + 1; });
+  const parts = Object.entries(groups).sort((a, b) => a[0] - b[0]).map(([d, k]) => {
+    const per = `${fmt(BASE + Number(d))}×${NOTES}`;
+    return k > 1 ? `${per}×${k}顆` : per;
+  });
+  return `${r.cars}車 × (${parts.join(' + ')})`;
+}
+
+function render() {
+  const box = document.getElementById('rows');
+  box.innerHTML = '';
+  rows.forEach((r, i) => {
+    const s = sel[i];
+    const el = document.createElement('div');
+    el.className = 'px-4 py-3';
+    const anyDelta = Object.keys(r.deltas).length > 0;
+    el.innerHTML = `
+      <div class="flex items-start gap-4">
+        <div class="w-20 shrink-0 pt-1.5">
+          <div class="text-[12px] font-bold text-neutral-900">${r.label}</div>
+          <div class="text-[10px] text-neutral-400">${r.play}</div>
+        </div>
+        <div class="flex-1 min-w-0">
+          <div class="flex flex-wrap items-center gap-2.5" data-balls></div>
+          <div class="mt-1 text-[10px] text-neutral-400" data-hint></div>
+          <div data-tool></div>
+        </div>
+        <div class="shrink-0 text-right pt-1">
+          <div class="text-[10px] text-neutral-400">車數</div>
+          <div class="mono text-[13px] font-semibold">${r.cars}</div>
+        </div>
+      </div>
+      <div class="mt-2 pl-24 flex items-baseline justify-between gap-2 text-[10px] text-neutral-500">
+        <span class="mono">${expr(r)}</span>
+        <span class="mono font-bold text-neutral-900 text-[12px]">${money(cost(r))}</span>
+      </div>`;
+
+    // 號碼按鈕
+    const balls = el.querySelector('[data-balls]');
+    r.balls.forEach(b => {
+      const d = r.deltas[b] || 0;
+      const on = s.has(b);
+      const btn = document.createElement('button');
+      btn.className = 'ball mono w-9 h-9 rounded-full text-[13px] font-bold transition-all ' + (
+        on ? 'bg-neutral-900 text-white ring-2 ring-offset-2 ring-neutral-900'
+          : d ? 'bg-neutral-900 text-white'
+            : 'bg-neutral-100 text-neutral-800 hover:bg-neutral-200');
+      btn.innerHTML = pad(b) + (d ? `<span class="badge mono text-[9px] px-1 rounded-full bg-white text-neutral-900 border border-neutral-900 font-bold">${d > 0 ? '+' : ''}${fmt(d)}</span>` : '');
+      btn.title = d ? `${pad(b)} 號每注 ${d > 0 ? '+' : ''}${fmt(d)}` : `點選後設定 ${pad(b)} 號加價`;
+      btn.onclick = () => { s.has(b) ? s.delete(b) : s.add(b); render(); };
+      balls.appendChild(btn);
+    });
+    if (r.balls.length > 1) {
+      const all = document.createElement('button');
+      all.className = 'text-[11px] text-neutral-500 underline underline-offset-2 ml-1';
+      all.textContent = s.size === r.balls.length ? '取消全選' : '全選';
+      all.onclick = () => { if (s.size === r.balls.length) s.clear(); else r.balls.forEach(b => s.add(b)); render(); };
+      balls.appendChild(all);
+    }
+
+    el.querySelector('[data-hint]').textContent = s.size
+      ? `已選 ${[...s].sort((a, b) => a - b).map(pad).join('、')} 號 —— 按下方按鈕設定每注加價`
+      : (anyDelta ? '' : '點號碼可個別加價(每注基礎 +N)');
+
+    // 選取後才出現的加價工具列(一行,不拉高)
+    if (s.size) {
+      const picked = [...s];
+      const cur = picked.every(b => (r.deltas[b] || 0) === (r.deltas[picked[0]] || 0)) ? (r.deltas[picked[0]] || 0) : null;
+      const tool = el.querySelector('[data-tool]');
+      tool.className = 'mt-2 flex flex-wrap items-center gap-1.5';
+      const mk = (txt, fn, active = false, extra = '') => {
+        const b = document.createElement('button');
+        b.className = 'mono px-2.5 py-1 rounded-lg text-[12px] font-semibold border transition-colors ' + (active
+          ? 'bg-neutral-900 text-white border-neutral-900'
+          : 'border-black/15 text-neutral-700 hover:bg-neutral-100') + ' ' + extra;
+        b.textContent = txt; b.onclick = fn; tool.appendChild(b);
+      };
+      const set = v => { picked.forEach(b => { if (v) r.deltas[b] = v; else delete r.deltas[b]; }); render(); };
+      const bump = dv => { picked.forEach(b => { const v = Math.round(((r.deltas[b] || 0) + dv) * 100) / 100; if (v) r.deltas[b] = v; else delete r.deltas[b]; }); render(); };
+      mk('−0.5', () => bump(-0.5));
+      const cv = document.createElement('span');
+      cv.className = 'mono text-[12px] font-bold w-14 text-center text-neutral-900';
+      cv.textContent = cur === null ? '不一' : (cur > 0 ? '+' : '') + fmt(cur);
+      tool.appendChild(cv);
+      mk('+0.5', () => bump(0.5));
+      const sep = document.createElement('span'); sep.className = 'w-px h-5 bg-black/10 mx-1'; tool.appendChild(sep);
+      QUICK.forEach(q => mk('+' + fmt(q), () => set(q), cur === q));
+      mk('清除', () => set(0), false, 'text-neutral-500');
+      mk('完成', () => { s.clear(); render(); }, false, 'ml-auto');
+    }
+    box.appendChild(el);
+  });
+  document.getElementById('grand').textContent = money(rows.reduce((a, r) => a + cost(r), 0));
+}
+render();
+</script>
+</body>
+</html>

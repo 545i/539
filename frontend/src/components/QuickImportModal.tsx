@@ -37,21 +37,94 @@ interface DraftItem {
   incomplete: boolean;
   hit: string; // 中獎顆數(忘記期數時直接填);空 = 待開獎
   base: number; // 每單位基礎成本(二合每注/連碰每碰…);預設帶版盤口,可逐筆改
-  deltas: string; // 二合(1組/2組)個別號碼加價,如「15:3.5, 22:2」(每注基礎 +N);空=無
+  deltas: Record<number, number>; // 二合(1組/2組)個別號碼加價 {15: 2}(每注基礎 +N);用號碼按鈕設定
 }
 
-// 「15:3.5, 22:2」→ {15:3.5, 22:2}(二合個別號碼每注基礎加價);認不得的略過
-function parseDeltas(s: string): Record<string, number> {
+// 送後端的 ball_deltas:只有二合帶,且只帶「目前號碼裡還有」且非 0 的
+function deltasPayload(d: DraftItem): Record<string, number> {
+  if (d.mode !== 'single' && d.mode !== 'multi') return {};
   const out: Record<string, number> = {};
-  for (const part of (s || '').split(/[,,;\s]+/)) {
-    const m = part.match(/^(\d{1,2})[:：]([+-]?\d+(?:\.\d+)?)$/);
-    if (m) {
-      const n = Number(m[1]); const v = Number(m[2]);
-      if (n > 0 && v) out[String(n)] = v;
-    }
-  }
+  for (const n of parseBalls(d.balls)) if (d.deltas[n]) out[String(n)] = d.deltas[n];
   return out;
 }
+
+// 號碼加價(取代手打「15:2」):點號碼選取(可多選)→ 按加價按鈕;有加價的號碼右上角標 +N。
+const QUICK_DELTAS = [1, 2, 3, 3.5, 5];
+const fmtD = (v: number) => String(Math.round(v * 100) / 100);
+const BallDeltaPicker: React.FC<{
+  balls: number[];
+  deltas: Record<number, number>;
+  onChange: (next: Record<number, number>) => void;
+}> = ({balls, deltas, onChange}) => {
+  const [sel, setSel] = useState<Set<number>>(new Set());
+  const picked = [...sel].filter(n => balls.includes(n));
+  const toggleBall = (n: number) => setSel(prev => {
+    const s2 = new Set(prev); s2.has(n) ? s2.delete(n) : s2.add(n); return s2;
+  });
+  const apply = (fn: (cur: number) => number) => {
+    const next = {...deltas};
+    for (const n of picked) {
+      const v = Math.round(fn(deltas[n] || 0) * 100) / 100;
+      if (v) next[n] = v; else delete next[n];
+    }
+    onChange(next);
+  };
+  const cur = picked.length && picked.every(n => (deltas[n] || 0) === (deltas[picked[0]] || 0))
+    ? (deltas[picked[0]] || 0) : null;
+  const btn = 'px-2 py-0.5 rounded-md text-[11px] font-mono font-semibold border transition-colors';
+  const idle = 'border-black/15 dark:border-white/15 text-neutral-700 dark:text-neutral-200 hover:bg-black/5 dark:hover:bg-white/5';
+  const on = 'bg-neutral-900 text-white border-neutral-900 dark:bg-white dark:text-black dark:border-white';
+  if (balls.length === 0) return null;
+  return (
+    <div className="mt-1.5 font-sans">
+      <div className="flex flex-wrap items-center gap-2">
+        {balls.map(n => {
+          const d = deltas[n] || 0;
+          const s1 = sel.has(n);
+          return (
+            <button key={n} type="button" onClick={() => toggleBall(n)}
+              title={d ? `${n} 號每注 +${fmtD(d)}` : `點選後設定 ${n} 號加價`}
+              className={`relative w-7 h-7 rounded-full text-[11px] font-mono font-bold transition-all ${
+                s1 ? `${on} ring-2 ring-offset-1 ring-neutral-900 dark:ring-white dark:ring-offset-[#161616]`
+                  : d ? on
+                    : 'bg-black/[0.05] dark:bg-white/[0.08] text-neutral-800 dark:text-neutral-100 hover:bg-black/10 dark:hover:bg-white/15'}`}>
+              {String(n).padStart(2, '0')}
+              {d ? (
+                <span className="absolute -top-2 -right-2.5 px-1 rounded-full text-[8px] leading-[14px] font-bold bg-white text-neutral-900 border border-neutral-900 dark:bg-[#161616] dark:text-white dark:border-white">
+                  {d > 0 ? '+' : ''}{fmtD(d)}
+                </span>
+              ) : null}
+            </button>
+          );
+        })}
+        {balls.length > 1 && (
+          <button type="button" className="text-[10px] text-neutral-500 underline underline-offset-2"
+            onClick={() => setSel(picked.length === balls.length ? new Set() : new Set(balls))}>
+            {picked.length === balls.length ? '取消全選' : '全選'}
+          </button>
+        )}
+        {picked.length === 0 && Object.keys(deltas).length === 0 && (
+          <span className="text-[10px] text-neutral-400">點號碼可個別加價(每注 +N)</span>
+        )}
+      </div>
+      {picked.length > 0 && (
+        <div className="mt-1.5 flex flex-wrap items-center gap-1">
+          <button type="button" className={`${btn} ${idle}`} onClick={() => apply(c => c - 0.5)}>−0.5</button>
+          <span className="w-10 text-center text-[11px] font-mono font-bold text-neutral-900 dark:text-white">
+            {cur === null ? '不一' : `${cur > 0 ? '+' : ''}${fmtD(cur)}`}
+          </span>
+          <button type="button" className={`${btn} ${idle}`} onClick={() => apply(c => c + 0.5)}>+0.5</button>
+          <span className="w-px h-4 bg-black/10 dark:bg-white/10 mx-0.5" />
+          {QUICK_DELTAS.map(q => (
+            <button key={q} type="button" className={`${btn} ${cur === q ? on : idle}`} onClick={() => apply(() => q)}>+{fmtD(q)}</button>
+          ))}
+          <button type="button" className={`${btn} ${idle} text-neutral-500`} onClick={() => apply(() => 0)}>清除</button>
+          <button type="button" className={`${btn} ${idle} ml-auto`} onClick={() => setSel(new Set())}>完成</button>
+        </div>
+      )}
+    </div>
+  );
+};
 
 function parseBalls(s: string): number[] {
   return (s.match(/\d{1,2}/g) ?? []).map(Number).filter(n => n > 0);
@@ -226,7 +299,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
           stars: d.stars,
           hit_count: d.hit.trim() === '' ? null : Math.max(0, Math.floor(Number(d.hit) || 0)),
           base_cost: d.base > 0 ? d.base : null,
-          ball_deltas: (d.mode === 'single' || d.mode === 'multi') ? parseDeltas(d.deltas) : {},
+          ball_deltas: deltasPayload(d),
         }));
         const res = await api.quickImportCommit(selGame, items, {issue, edition: selEid, date: selDate, dryRun: true});
         if (cancelled) return;
@@ -296,7 +369,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
           incomplete: Boolean(it.record.incomplete),
           hit: '',
           base: num(it.record.baseCost),
-          deltas: '',
+          deltas: {},
         })),
       );
     } catch (e) {
@@ -327,7 +400,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
           stars: d.stars,
           hit_count: d.hit.trim() === '' ? null : Math.max(0, Math.floor(Number(d.hit) || 0)),
           base_cost: d.base > 0 ? d.base : null,
-          ball_deltas: (d.mode === 'single' || d.mode === 'multi') ? parseDeltas(d.deltas) : {},
+          ball_deltas: deltasPayload(d),
         })),
         {issue, edition: selEid, date: selDate},
       );
@@ -661,13 +734,10 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
                               {parseBalls(d.balls).length} 顆
                             </span>
                             {(d.mode === 'single' || d.mode === 'multi') && (
-                              <input
-                                value={d.deltas}
-                                onChange={e => setDraft(i, {deltas: e.target.value})}
-                                spellCheck={false}
-                                placeholder="號碼加價 例:15:3.5"
-                                title="二合(1組/2組)個別號碼的每注基礎加價,格式「號:加價」,多個用逗號。例:15號每注+3.5 → 15:3.5"
-                                className="mt-1 w-full px-2 py-1 rounded-lg border border-amber-400/40 dark:border-amber-500/30 bg-amber-50/40 dark:bg-amber-500/[0.06] text-[10px] font-mono text-neutral-900 dark:text-white outline-hidden focus:border-amber-500/70"
+                              <BallDeltaPicker
+                                balls={parseBalls(d.balls)}
+                                deltas={d.deltas}
+                                onChange={next => setDraft(i, {deltas: next})}
                               />
                             )}
                           </td>
