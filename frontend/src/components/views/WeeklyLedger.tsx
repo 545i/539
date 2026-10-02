@@ -1671,7 +1671,6 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
                               <th className="px-3 py-1 pl-9 text-left font-semibold">下注方式</th>
                               <th className="px-3 py-1 text-left font-semibold">期號 / 核對</th>
                               <th className="px-3 py-1 text-left font-semibold">下注組合</th>
-                              <th className="px-3 py-1 text-right font-semibold">車 / 支</th>
                               <th className="px-3 py-1 text-right font-semibold">成本</th>
                               <th className="px-3 py-1 text-right font-semibold">派彩</th>
                               <th className="px-3 py-1 text-right font-semibold">盈虧</th>
@@ -1689,6 +1688,12 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
                                   <span className="px-1.5 py-0.5 rounded-full bg-violet-500/10 text-violet-600 dark:text-violet-400 text-[9px] mr-1 font-sans">{v.editionName}</span>
                                   <span className="px-1.5 py-0.5 rounded-full bg-black/5 dark:bg-white/10 text-[10px] mr-1.5 font-sans">{v.modeLabel}</span>
                                   <span className="font-sans text-neutral-600 dark:text-neutral-400">{v.playType}</span>
+                                  {/* 車 / 支數接在下注方式後面,粗體(原本只藏在下方算式裡) */}
+                                  {v.units > 0 && (
+                                    <span className="ml-1.5 font-bold text-neutral-900 dark:text-white">
+                                      {v.units.toLocaleString()}<span className="font-sans">{v.unitLabel}</span>
+                                    </span>
+                                  )}
                                   {v.result && (
                                     <span className={`ml-1.5 font-sans text-[9px] px-1.5 py-0.5 rounded-full ${
                                       v.pending
@@ -1718,15 +1723,6 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
                                       {v.deltas[n] ? <sup className="ml-0.5 text-[9px] font-bold text-amber-600 dark:text-amber-400">+{v.deltas[n]}</sup> : null}
                                     </span>
                                   )) : '—'}
-                                </td>
-                                {/* 車 / 支數獨立一欄(原本只藏在下方算式裡) */}
-                                <td className="px-3 pt-1.5 pb-0 align-top text-right whitespace-nowrap">
-                                  {v.units > 0 ? (
-                                    <>
-                                      <span className="font-bold text-[12px] text-neutral-900 dark:text-white">{v.units.toLocaleString()}</span>
-                                      <span className="ml-0.5 font-sans text-[10px] text-neutral-500">{v.unitLabel}</span>
-                                    </>
-                                  ) : <span className="text-neutral-400">—</span>}
                                 </td>
                                 <td className="px-3 pt-1.5 pb-0 align-top text-right font-bold text-neutral-900 dark:text-white">{money(v.cost)}</td>
                                 <td className="px-3 pt-1.5 pb-0 align-top text-right text-emerald-600 dark:text-emerald-400">
@@ -1758,7 +1754,7 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
                               </tr>
                               {v.units > 0 && (
                                 <tr>
-                                  <td colSpan={8} className="px-3 pt-0 pb-1.5 pl-9 text-[10px] text-neutral-400 dark:text-neutral-500">
+                                  <td colSpan={7} className="px-3 pt-0 pb-1.5 pl-9 text-[10px] text-neutral-400 dark:text-neutral-500">
                                     {Object.keys(v.deltas).length > 0 && v.costExpr
                                       // 有號碼加價:每車成本不一樣,改顯示上傳時的實際算式(含「15號+2」)
                                       ? v.costExpr
