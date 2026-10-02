@@ -108,3 +108,15 @@ export function splitCostPayout(days: Map<string, DayMoney>, versions: ShareVers
   const payout = rows.reduce((a, r) => a + r.payout, 0);
   return { rows, segs, cost, payout, net: payout - cost };
 }
+
+// 把一個整數總額 target 依各項精確值 exacts 拆成整數(最大餘數法),加總剛好 = target。
+// 用在「整週你分到 X」拆回每天:每天各自四捨五入相加可能差 1,這樣拆就不會。
+export function apportion(target: number, exacts: number[]): number[] {
+  const parts = exacts.map((v, i) => ({ i, floor: Math.floor(v), rem: v - Math.floor(v) }));
+  let left = target - parts.reduce((a, p) => a + p.floor, 0);
+  const byRem = [...parts].sort((a, b) => b.rem - a.rem || a.i - b.i);
+  for (let k = 0; left > 0 && parts.length; k = (k + 1) % parts.length, left--) byRem[k].floor += 1;
+  const byRemAsc = [...parts].sort((a, b) => a.rem - b.rem || b.i - a.i);
+  for (let k = 0; left < 0 && parts.length; k = (k + 1) % parts.length, left++) byRemAsc[k].floor -= 1;
+  return parts.map(p => p.floor || 0);
+}

@@ -4,7 +4,7 @@ import { api, SharedBoardDTO } from '../../api/client';
 import { useAuth } from '../../api/useAuth';
 import { useGame } from '../../api/useGame';
 import { money } from '../uploadHistory';
-import { splitCostPayout, ShareVersionDTO } from '../../shares';
+import { apportion, sharesOn, splitCostPayout, ShareVersionDTO } from '../../shares';
 import { useAllLedger } from '../../api/useLedger';
 import { useEditions } from '../../api/useEditions';
 import { weekAddDays } from '../../weeks';
@@ -62,7 +62,8 @@ const BetLine: React.FC<{ r: BetRow }> = ({ r }) => (
   </div>
 );
 
-const DayCard: React.FC<{ day: DayGroup }> = ({ day }) => {
+// 每天一列:收合時右側只顯示「你分到的損益」;點開才看當天該版總損益 + 下注明細 / 帳單卡片
+const DayCard: React.FC<{ day: DayGroup; mine: number }> = ({ day, mine }) => {
   const [open, setOpen] = useState(false);
   const [bill, setBill] = useState(false);
   return (
@@ -71,10 +72,15 @@ const DayCard: React.FC<{ day: DayGroup }> = ({ day }) => {
         {open ? <ChevronDown className="w-3.5 h-3.5 text-neutral-400" /> : <ChevronRight className="w-3.5 h-3.5 text-neutral-400" />}
         <span className="text-[13px] font-semibold font-mono text-neutral-800 dark:text-neutral-100">{md(day.ymd)}({weekdayOf(day.ymd)})</span>
         <span className="text-[10px] text-neutral-400">{day.count} 筆{day.pendingCount > 0 ? ` · ${day.pendingCount} 待開` : ''}</span>
-        <span className="ml-auto font-mono text-[13px] font-semibold text-neutral-700 dark:text-neutral-200">{fmtSigned(day.pnl)}</span>
+        <span className="ml-auto text-[10px] text-neutral-400">你分到</span>
+        <span className="font-mono text-[13px] font-bold text-neutral-900 dark:text-white">{fmtSigned(mine)}</span>
       </button>
       {open && (
         <div className="pl-5 pb-3">
+          <div className="pb-2 text-[11px] font-mono text-neutral-500">
+            當日總損益 <span className="font-semibold text-neutral-800 dark:text-neutral-100">{fmtSigned(day.pnl)}</span>
+            <span className="ml-2">成本 {money(day.cost)} · 派彩 {money(day.payout)}</span>
+          </div>
           <div className="flex gap-4 text-[12px]">
             {(['list', 'bill'] as const).map(v => (
               <button key={v} type="button" onClick={() => setBill(v === 'bill')}
@@ -128,7 +134,14 @@ const BoardView: React.FC<{ b: SharedBoardDTO }> = ({ b }) => {
   const split = (w: WeekGroup) => {
     const sp = splitCostPayout(w.moneyByEd.get(b.eid) ?? new Map(), b.versions);
     const me = sp.rows.find(r => r.name === meName) ?? { cost: 0, payout: 0, net: 0 };
-    return { ...sp, me };
+    // 每天你分到:用當天精確份額把「整週你分到」拆回各天(加總 = 整週,不會差 1)
+    const exacts = w.days.map(d => {
+      const m = w.moneyByEd.get(b.eid)?.get(d.ymd) ?? { cost: 0, payout: 0 };
+      const pct = sharesOn(b.versions, d.ymd).shares.find(x => x.name === meName)?.pct ?? 0;
+      return (m.payout - m.cost) * pct / 100;
+    });
+    const dayMine = apportion(me.net, exacts);
+    return { ...sp, me, dayMine };
   };
   const splits = weeks.map(split);
   const sum = splits.reduce((a, x) => ({ cost: a.cost + x.me.cost, payout: a.payout + x.me.payout, net: a.net + x.me.net }),
@@ -223,7 +236,7 @@ const BoardView: React.FC<{ b: SharedBoardDTO }> = ({ b }) => {
                 </div>
                 <div className="divide-y divide-black/[0.05] dark:divide-white/[0.06]">
                   <div className="text-[10px] text-neutral-400 font-semibold pb-1">每天下注(點開看明細 / 帳單卡片)</div>
-                  {w.days.map(day => <DayCard key={day.ymd} day={day} />)}
+                  {w.days.map((day, di) => <DayCard key={day.ymd} day={day} mine={sp.dayMine[di] ?? 0} />)}
                 </div>
               </div>
             )}
