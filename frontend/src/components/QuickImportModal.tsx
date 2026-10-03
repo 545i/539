@@ -1,6 +1,6 @@
 import React, {useEffect, useState} from 'react';
 import {X, ClipboardPaste, ListChecks, Upload, AlertTriangle, CheckCircle2} from 'lucide-react';
-import {api, QuickImportDTO, QuickImportWarningDTO, LedgerMode, TensPairDTO, GameKey} from '../api/client';
+import {api, QuickImportDTO, QuickImportErrorDTO, QuickImportWarningDTO, LedgerMode, TensPairDTO, GameKey} from '../api/client';
 import {useAsync} from '../api/useAsync';
 import {useAuth} from '../api/useAuth';
 import {useGame} from '../api/useGame';
@@ -38,6 +38,33 @@ interface DraftItem {
   hit: string; // 中獎顆數(忘記期數時直接填);空 = 待開獎
   base: number; // 每單位基礎成本(二合每注/連碰每碰…);預設帶版盤口,可逐筆改
   deltas: Record<number, number>; // 二合(1組/2組)個別號碼加價 {15: 2}(每注基礎 +N);用號碼按鈕設定
+  pillars: number[][]; // 1800碰自訂分柱(後端解析出來,原樣送回);空 = 標準三柱
+}
+
+// 與後端 importer._norm 對齊:全形數字 / 全形底線攤平,比對柱別行原文用
+function normLine(s: string): string {
+  return s
+    .replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xfee0))
+    .replace(/＿/g, '_')
+    .trim();
+}
+
+// 1800碰 去除號碼:把使用者點選的號碼補進對應柱別行 → 20_29(去除24)。
+// 找不到那一行(原文被改過)回 null,讓呼叫端提示改手動輸入。
+function applyPillarExclusions(
+  text: string,
+  lines: {line: string; numbers: number[]}[],
+  picked: Set<number>,
+): string | null {
+  const rows = text.split(/\r?\n/);
+  for (const pl of lines) {
+    const ex = pl.numbers.filter(n => picked.has(n));
+    if (ex.length === 0) continue;
+    const idx = rows.findIndex(r => normLine(r) === pl.line);
+    if (idx < 0) return null;
+    rows[idx] = `${rows[idx].trim()}(去除${ex.map(n => String(n).padStart(2, '0')).join('_')})`;
+  }
+  return rows.join('\n');
 }
 
 // 送後端的 ball_deltas:只有二合帶,且只帶「目前號碼裡還有」且非 0 的
@@ -187,6 +214,9 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
   const [costBusy, setCostBusy] = useState(false);
   // 🟡 防呆提醒(期號格式 / 大車支 / 舊日期 / 重複):黃色列出、不阻斷上傳
   const [warnings, setWarnings] = useState<QuickImportWarningDTO[]>([]);
+  // 1800碰 前兩柱超過上限(沒寫去除)→ 彈窗讓使用者點選要去除的號碼
+  const [excludePrompt, setExcludePrompt] = useState<QuickImportErrorDTO | null>(null);
+  const [excludePicked, setExcludePicked] = useState<Set<number>>(new Set());
 
   // 上傳目標的三要件:全部改成 modal 內部狀態,不再沿用全域 gameKey / 預設 eid。
   // 每次開啟、每次上傳成功後都回到「尚未選擇」,強迫重新確認,避免連續上傳傳錯地方。
@@ -228,6 +258,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
     setOverwriteTarget(null);
     setFuturePrompt(false);
     setWarnings([]);
+    setExcludePrompt(null);
   }, [isOpen]);
   // 從上傳歷史「填回」:預填整批(日期/遊戲/版/文本)並記住原批次 ts。在重置 effect
   // 之後跑,覆蓋「尚未選擇」;上傳成功時作廢原批次 = 編輯取代,不會留下舊的重複批。
@@ -331,6 +362,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
           hit_count: d.hit.trim() === '' ? null : Math.max(0, Math.floor(Number(d.hit) || 0)),
           base_cost: d.base > 0 ? d.base : null,
           ball_deltas: deltasPayload(d),
+          pillars: d.pillars,
         }));
         const res = await api.quickImportCommit(selGame, items, {issue, edition: selEid, date: selDate, dryRun: true});
         if (cancelled) return;
@@ -380,13 +412,17 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
   const num = (v: unknown) => (typeof v === 'number' ? v : 0);
 
   // 解析預覽:把文字丟後端 dry_run,回來的每筆變成一列可編輯的 draft
-  const runPreview = async () => {
+  const runPreview = async (textOverride?: string) => {
     if (!selGame || selEid == null || !selDate || !canTarget) return; // 三要件 + 期號就緒(或合法開獎日待開)才給預覽
     setBusy(true);
     setError(null);
     try {
-      const res = await api.quickImport(selGame, text, true, {issue, edition: selEid, date: selDate});
+      const res = await api.quickImport(selGame, textOverride ?? text, true, {issue, edition: selEid, date: selDate});
       setPreview(res);
+      // 1800碰 前兩柱合計超過上限 → 彈窗要求點選去除號碼(一次處理一組)
+      const need = res.errors.find(e => e.code === 'pillar_exclude_required') ?? null;
+      setExcludePrompt(need);
+      setExcludePicked(new Set());
       setWarnings(res.warnings ?? []);
       setDraftItems(
         res.items.map(it => ({
@@ -401,6 +437,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
           hit: '',
           base: num(it.record.baseCost),
           deltas: {},
+          pillars: (it.record.pillars as number[][] | undefined) ?? [],
         })),
       );
     } catch (e) {
@@ -432,6 +469,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
           hit_count: d.hit.trim() === '' ? null : Math.max(0, Math.floor(Number(d.hit) || 0)),
           base_cost: d.base > 0 ? d.base : null,
           ball_deltas: deltasPayload(d),
+          pillars: d.pillars,
         })),
         {issue, edition: selEid, date: selDate},
       );
@@ -700,6 +738,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
               <div>下注行<strong>依出現順序</strong>歸組:第 1 行 → 1組、第 2 行 → 2組。<code>21_24x20車</code> = 20 車(<strong>車字可省略</strong>,<code>21_24x20</code> 也認)</div>
               <div>一行選號 + <code>八顆三星1200</code> = 星碰三星(不足八顆會自動往上補足,可在預覽手改)</div>
               <div><code>10_18</code> / <code>20_29</code> / <code>其他400</code> 三行 = 1800碰 4 支</div>
+              <div>自訂分柱:<code>20_29(去除24)</code> / <code>30_39</code> / <code>其他100</code> —— 前兩行合計最多 19 顆,去除的號碼併入「其他」</div>
             </div>
           </div>
 
@@ -949,6 +988,77 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
           </div>
         )}
 
+        {/* 1800碰 去除號碼彈窗:前兩柱合計超過上限 → 點選要去除的號碼(併入「其他」),
+            確定後自動補進原文 20_29(去除24) 並重新解析 */}
+        {excludePrompt && (() => {
+          const lines = excludePrompt.pillar_lines ?? [];
+          const max = excludePrompt.pillar_max ?? 19;
+          const front = (excludePrompt.pillar_count ?? 0) - excludePicked.size;
+          const ok = excludePicked.size > 0 && front <= max;
+          const toggle = (n: number) => setExcludePicked(prev => {
+            const s2 = new Set(prev); s2.has(n) ? s2.delete(n) : s2.add(n); return s2;
+          });
+          const apply = () => {
+            const next = applyPillarExclusions(text, lines, excludePicked);
+            if (next == null) {
+              setError('找不到柱別行原文,請直接在文字裡補上 (去除XX) 後重新解析');
+              setExcludePrompt(null);
+              return;
+            }
+            setText(next);
+            setExcludePrompt(null);
+            runPreview(next);
+          };
+          return (
+            <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50">
+              <div className="w-full max-w-md bg-white dark:bg-[#121212] border border-black/10 dark:border-white/10 rounded-2xl shadow-2xl">
+                <div className="flex items-center gap-2 px-6 py-4 border-b border-black/[0.08] dark:border-white/[0.08] text-amber-800 dark:text-amber-300">
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                  <span className="font-display font-bold text-sm">1800碰 需要去除號碼</span>
+                </div>
+                <div className="px-6 py-5 space-y-4">
+                  <p className="text-[12px] text-neutral-700 dark:text-neutral-300 leading-relaxed">
+                    前兩柱合計 <strong>{excludePrompt.pillar_count}</strong> 顆,最多 <strong>{max}</strong> 顆。
+                    請點選要去除的號碼,去除的號碼會併入「其他」柱。
+                  </p>
+                  {lines.map(pl => (
+                    <div key={pl.line_no}>
+                      <div className="mb-1.5 text-[11px] font-mono text-neutral-500">第 {pl.line_no} 行「{pl.line}」</div>
+                      <div className="flex flex-wrap gap-2">
+                        {pl.numbers.map(n => {
+                          const on = excludePicked.has(n);
+                          return (
+                            <button key={n} type="button" onClick={() => toggle(n)}
+                              title={on ? `取消去除 ${n} 號` : `去除 ${n} 號`}
+                              className={`w-8 h-8 rounded-full text-[12px] font-mono font-bold transition-all ${
+                                on ? 'bg-rose-600 text-white line-through'
+                                  : 'bg-black/[0.05] dark:bg-white/[0.08] text-neutral-800 dark:text-neutral-100 hover:bg-black/10 dark:hover:bg-white/15'}`}>
+                              {String(n).padStart(2, '0')}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                  <div className={`text-[11px] font-mono text-right ${front <= max ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                    前兩柱 {front} / {max} 顆
+                  </div>
+                </div>
+                <div className="flex items-center justify-end gap-2 px-6 py-3 border-t border-black/[0.08] dark:border-white/[0.08]">
+                  <button type="button" onClick={() => setExcludePrompt(null)}
+                    className="py-1.5 px-3 rounded-lg text-[11px] font-semibold border border-black/10 dark:border-white/10 text-neutral-700 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
+                    稍後手動修改
+                  </button>
+                  <button type="button" disabled={!ok || busy} onClick={apply}
+                    className="py-1.5 px-3 rounded-lg text-[11px] font-semibold bg-black text-white dark:bg-white dark:text-black hover:opacity-90 disabled:opacity-30 transition-opacity">
+                    去除並重新解析
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
         {/* Modal Footer */}
         <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-black/[0.08] dark:border-white/[0.08] shrink-0">
           {!targetReady && (
@@ -960,7 +1070,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
             type="button"
             id="quick-import-preview-btn"
             disabled={busy || !text.trim() || !loggedIn || !targetReady}
-            onClick={runPreview}
+            onClick={() => runPreview()}
             className="py-2.5 px-4 rounded-xl text-xs uppercase tracking-wider font-semibold bg-white dark:bg-[#161616] border border-black/[0.08] dark:border-white/[0.08] text-neutral-700 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5 disabled:opacity-30 transition-colors flex items-center gap-2"
           >
             <ListChecks className="w-4 h-4" />

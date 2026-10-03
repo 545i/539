@@ -615,6 +615,11 @@ export interface QuickImportErrorDTO {
   line_no: number;
   line: string;
   message: string;
+  // 1800碰 前兩柱合計超過上限(沒寫去除)→ 前端彈窗讓使用者點選要去除的號碼
+  code?: 'pillar_exclude_required';
+  pillar_count?: number;
+  pillar_max?: number;
+  pillar_lines?: {line_no: number; line: string; numbers: number[]}[];
 }
 
 // 🟡 防呆提醒(不阻斷上傳):期號格式 / 大車支 / 舊日期 / 重複。
@@ -647,6 +652,7 @@ export interface QuickImportCommitItem {
   hit_count?: number | null; // 忘記期數但記得中幾顆:直接手填結算
   base_cost?: number | null; // 逐筆基礎成本覆蓋(每注/每碰);null/省略=吃版盤口
   ball_deltas?: Record<string, number>; // 1組專用:個別號碼的每注基礎加價(號→+N)
+  pillars?: number[][]; // 1800碰自訂分柱 [[柱1],[柱2],[其他]];空 = 標準三柱
 }
 
 // 二合下注「組」設定(全站共用):固定顆數 + 是否啟用。

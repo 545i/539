@@ -11,6 +11,8 @@
     八顆三星1200                   星碰(combo):用上面那組選號,三星、12 支
     八顆四星1200                   星碰(combo):同一組選號,四星、12 支
     10_18 / 20_29 / 其他400        1800碰(pillar1800):三行一整組 = 一筆、4 支
+    20_29(去除24) / 30_39 / 其他100 1800碰 自訂分柱:前兩行是柱(起訖範圍,可去除號碼),
+                                   其他 = 剩下全部(含被去除的);前兩行合計最多 19 顆
 
 規則兩條就講完:**支數 = 金額 ÷ 100**(1200 → 12 支、400 → 4 支);
 **車數 = 「車」前面那個數字**(直接用,不再換算)。中文顆數(「八顆」)不解析
@@ -69,6 +71,14 @@ _PICK_RE = re.compile(r"^[_\s]*[0-9]{1,2}(?:[_\s]+[0-9]{1,2})+[_\s]*$")
 # 八顆三星1200 / 三星1200 / 8顆3星1200 —— 第一個 group 是宣告顆數(可省略)
 _STAR_RE = re.compile(
     r"^(?:([一二三四五六七八九十0-9]+)\s*顆)?\s*([二三四234])\s*星\s*([0-9]+)$")
+# 1800碰 柱別行:起訖範圍 20_29,可帶去除號碼 20_29(去除24) / 20_29(去除24_25)。
+# 多個去除號碼用底線或空白分隔(頓號、逗號會被 _SPLIT_RE 當換行切掉)。
+_PILLAR_RANGE_RE = re.compile(
+    r"^([0-9]{1,2})\s*_\s*([0-9]{1,2})\s*"
+    r"(?:[(（]\s*(?:去除|排除|除去|去掉|扣除)\s*([0-9][0-9_\s]*)\s*[)）])?$")
+# 1800碰 前兩柱合計上限:39 選 5 的三柱結構是 9 + 10 + 20,前兩柱超過 19 顆
+# 「其他」就不足 20 顆,不再是 1800 注的結構 → 要求使用者去除號碼。
+PILLAR_FRONT_MAX = 19
 # 其他400 —— 1800碰 那一組的收尾行,金額在這裡
 _OTHER_RE = re.compile(r"^其[他它餘余]\s*([0-9]+)$")
 # 9000碰x10 —— 9000碰(四段全包)下注,不需選號。x 後面的數字換算支數:
@@ -152,6 +162,7 @@ class _Item:
     base_cost: float = 0.0  # 這筆用的「每單位基礎成本」(二合每注/1800每注/連碰每碰/
                             # 9000每碰);逐筆可覆蓋,前端顯示+可改,改了就重算成本
     ball_deltas: dict = field(default_factory=dict)  # 二合個別號碼加價 {"15": 2.0}(只存非 0)
+    pillars: list = field(default_factory=list)  # 1800碰自訂分柱 [[柱1],[柱2],[其他]];標準分柱為 []
 
 
 @dataclass
@@ -162,6 +173,7 @@ class _State:
     picks: list[int] = field(default_factory=list)      # 最近一行選號
     pick_line: str = ""
     pending: list[str] = field(default_factory=list)    # 還沒被用掉的純號碼行
+    pending_no: list[int] = field(default_factory=list)  # pending 各行的行號(1800碰提醒定位用)
     # 上方出現過的所有號碼行(1組/2組下注號 + 純選號),依先後 —— 星碰向上補足用
     number_lines: list[list[int]] = field(default_factory=list)
     erhe_n: int = 0       # 已出現幾個二合下注行(決定歸到第幾組)
@@ -224,24 +236,89 @@ def _star_item(odds: dict, stars: int, picks: list[int], units: float,
     )
 
 
-def _pillar_item(odds: dict, g: GameConfig, units: float, line: str) -> _Item:
-    """1800碰:注數 = total_bets × 支數,每注成本取該版盤口的 bet_cost。"""
+def _normalize_pillars(g: GameConfig, pillars) -> list[list[int]]:
+    """驗證 1800碰 自訂分柱並正規化;與標準分柱相同時回 [](結算走固定分柱)。
+
+    pillars = [柱1, 柱2, 其他]:三柱互斥、窮盡 1~num_max、各柱非空,
+    前兩柱合計不得超過 PILLAR_FRONT_MAX 顆。違反就丟 ValueError。
+    """
+    if not pillars:
+        return []
+    if len(pillars) != 3:
+        raise ValueError("1800碰 自訂分柱要剛好三柱(兩行柱 + 其他)")
+    groups = [sorted({int(n) for n in p}) for p in pillars]
+    if any(not p for p in groups):
+        raise ValueError("1800碰 每一柱至少要有 1 顆號碼")
+    seen: set[int] = set()
+    for p in groups:
+        bad = [n for n in p if not 1 <= n <= g.num_max]
+        if bad:
+            raise ValueError(f"{g.name} 只有 1~{g.num_max} 號,不認得 {bad}")
+        dup = seen & set(p)
+        if dup:
+            raise ValueError(f"1800碰 各柱號碼重疊:{sorted(dup)}")
+        seen |= set(p)
+    if seen != set(range(1, g.num_max + 1)):
+        raise ValueError("1800碰 三柱合起來要涵蓋全部號碼")
+    front = len(groups[0]) + len(groups[1])
+    if front > PILLAR_FRONT_MAX:
+        raise ValueError(f"1800碰 前兩柱合計 {front} 顆,最多 {PILLAR_FRONT_MAX} 顆,請去除號碼")
+    std = [sorted(p) for p in pillar_mod.pillars(g.num_max)]
+    return [] if groups == std else groups
+
+
+def _pillar_item(odds: dict, g: GameConfig, units: float, line: str,
+                 pillars=None) -> _Item:
+    """1800碰:注數 = 三柱顆數相乘 × 支數,每注成本取該版盤口的 bet_cost。
+
+    pillars 為自訂分柱(見 _normalize_pillars);空的就是標準三柱(9 × 10 × 20)。
+    自訂分柱存進紀錄,對獎時 backend.settle 依各柱 ∩ 開獎相乘。
+    """
     if not pillar_mod.supports(g):
         raise ValueError(f"{g.name}不適用 1800碰(三柱結構綁定 39 選 5)")
-    total = pillar_mod.total_bets(g.num_max)
+    groups = _normalize_pillars(g, pillars)
     bet_cost = float(odds["bet_cost"])
-    cost = pillar_mod.round_cost(bet_cost, 1, g.num_max) * units
+    if groups:
+        sizes = [len(p) for p in groups]
+        total = sizes[0] * sizes[1] * sizes[2]
+        shape = f"{' × '.join(str(n) for n in sizes)} = "
+        tag = "・自訂柱"
+    else:
+        total, shape, tag = pillar_mod.total_bets(g.num_max), "", ""
+    cost = total * bet_cost * units
     return _Item(
         mode="pillar1800",
-        play_type=f"1800碰({total:,} 注)",
+        play_type=f"1800碰({total:,} 注{tag})",
         balls=[],
         units=units,
         bets_count=int(round(units * total)),
         cost=cost,
         line=line,
-        cost_expr=f"{total:,} 注 × {_money(bet_cost)}/注 × {_g(units)} 支 = {_money(cost)}",
+        cost_expr=f"{shape}{total:,} 注 × {_money(bet_cost)}/注 × {_g(units)} 支 = {_money(cost)}",
         base_cost=bet_cost,
+        pillars=groups,
     )
+
+
+def _range_pillar(g: GameConfig, line: str) -> list[int] | None:
+    """`20_29(去除24)` → [20,21,22,23,25,…,29];不是起訖格式回 None。
+
+    起訖反寫(29_20)、超出號碼範圍、去除的號碼不在範圍內都丟 ValueError。
+    """
+    m = _PILLAR_RANGE_RE.match(line)
+    if not m:
+        return None
+    lo, hi = int(m.group(1)), int(m.group(2))
+    if lo > hi:
+        raise ValueError(f"柱別 {line}:起號要小於迄號")
+    if lo < 1 or hi > g.num_max:
+        raise ValueError(f"柱別 {line}:{g.name} 只有 1~{g.num_max} 號")
+    nums = list(range(lo, hi + 1))
+    excl = _nums(m.group(3) or "")
+    outside = [n for n in excl if n not in nums]
+    if outside:
+        raise ValueError(f"柱別 {line}:去除的號碼 {outside} 不在 {lo:02d}~{hi:02d} 範圍內")
+    return [n for n in nums if n not in excl]
 
 
 def _combo9000_item(odds: dict, g: GameConfig, units: float, line: str) -> _Item:
@@ -341,14 +418,38 @@ def parse(text: str, g: GameConfig, odds: dict) -> tuple[list[_Item], list[dict]
         if m:
             # 1800碰 一整組(10_18 / 20_29 / 其他400)算一筆;柱別行只是標示,
             # 不是選號,所以這裡把 pending 清掉不讓它被後面的星碰行撿去用。
-            whole = " / ".join(st.pending[-2:] + [line])   # 只取緊鄰的兩行柱別
-            st.pending, st.picks, st.pick_line = [], [], ""
+            labels, label_nos = st.pending[-2:], st.pending_no[-2:]   # 只取緊鄰的兩行柱別
+            whole = " / ".join(labels + [line])
+            st.pending, st.pending_no, st.picks, st.pick_line = [], [], [], ""
             rej = _reject_game_mode(g, "pillar1800")
             if rej:                       # 六合彩不支援三柱 → 🔴 拒絕這筆
                 st.fail(line_no, whole, rej)
                 continue
             try:
-                st.items.append(_pillar_item(odds, g, _units(int(m.group(1))), whole))
+                # 兩行柱別都是起訖格式(20_29 / 20_29(去除24))→ 依它分柱,其他 = 剩下全部;
+                # 不是起訖格式(舊單子只當標示)→ 標準三柱。
+                ranges = [_range_pillar(g, lb) for lb in labels] if len(labels) == 2 else []
+                pillars = None
+                if len(ranges) == 2 and all(r is not None for r in ranges):
+                    front = len(ranges[0]) + len(ranges[1])
+                    if front > PILLAR_FRONT_MAX and not set(ranges[0]) & set(ranges[1]):
+                        # 🔴 前兩柱超過上限 → 帶結構化資料讓前端彈窗選要去除的號碼
+                        st.errors.append({
+                            "line_no": line_no, "line": whole,
+                            "code": "pillar_exclude_required",
+                            "pillar_count": front,
+                            "pillar_max": PILLAR_FRONT_MAX,
+                            "pillar_lines": [{"line_no": no, "line": lb, "numbers": r}
+                                             for no, lb, r in zip(label_nos, labels, ranges)],
+                            "message": (f"1800碰 前兩柱合計 {front} 顆,最多 {PILLAR_FRONT_MAX} 顆,"
+                                        f"請指定去除號碼,例如 {labels[0]}(去除{ranges[0][0]:02d})"),
+                        })
+                        continue
+                    used = set(ranges[0]) | set(ranges[1])
+                    other = [n for n in range(1, g.num_max + 1) if n not in used]
+                    pillars = [ranges[0], ranges[1], other]
+                st.items.append(_pillar_item(odds, g, _units(int(m.group(1))), whole,
+                                             pillars=pillars))
             except ValueError as e:
                 st.fail(line_no, whole, str(e))
             continue
@@ -386,7 +487,16 @@ def parse(text: str, g: GameConfig, odds: dict) -> tuple[list[_Item], list[dict]
                 continue
             st.picks, st.pick_line = picks, line
             st.pending.append(line)
+            st.pending_no.append(line_no)
             st.number_lines.append(picks)
+            continue
+
+        # 1800碰 帶去除號碼的柱別行 20_29(去除24):只當柱別,不是選號,
+        # 等「其他N」收尾行再一起成一筆(見上方 _OTHER_RE)。
+        m = _PILLAR_RANGE_RE.match(line)
+        if m and m.group(3):
+            st.pending.append(line)
+            st.pending_no.append(line_no)
             continue
 
         st.fail(line_no, line, "看不懂這一行")
@@ -431,6 +541,7 @@ def to_record(item: _Item, g: GameConfig, bet_date: str, issue: str,
         "costExpr": item.cost_expr,   # 成本計算式(給前端顯示「怎麼算的」)
         "baseCost": round(item.base_cost, 4),   # 每單位基礎成本(逐筆可改)
         "ballDeltas": item.ball_deltas,         # 二合個別號碼加價 {"15": 2.0};沒有就 {}
+        "pillars": item.pillars,                # 1800碰自訂分柱(對獎依各柱 ∩ 開獎相乘);標準分柱 []
         "payout": 0,
         "pnl": 0,
     }
@@ -470,7 +581,8 @@ def _apply_base(g: GameConfig, odds: dict, mode: str, stars: int,
 
 def _recost(g: GameConfig, odds: dict, mode: str, balls: list[int], units: float,
             stars: int, base: float | None = None,
-            ball_deltas: dict[str, float] | None = None) -> _Item:
+            ball_deltas: dict[str, float] | None = None,
+            pillars: list[list[int]] | None = None) -> _Item:
     """依(可能被前端編輯過的)mode / 號碼 / 支或車 / 星數 + 該版盤口重算一筆成本。
 
     money 一律後端算 —— 前端只送使用者改完的號碼、支/車、以及**逐筆基礎成本 base**
@@ -494,7 +606,7 @@ def _recost(g: GameConfig, odds: dict, mode: str, balls: list[int], units: float
     if mode == "combo":
         return _star_item(odds, int(stars), balls, units, "", incomplete=False)
     if mode == "pillar1800":
-        return _pillar_item(odds, g, units, "")
+        return _pillar_item(odds, g, units, "", pillars=pillars)
     if mode == "combo9000":
         return _combo9000_item(odds, g, units, "")
     if mode in group_store.MODE_TO_GID:
@@ -629,6 +741,7 @@ def _sig(record: dict) -> tuple:
         str(record.get("mode") or ""),
         balls,
         float(record.get("units") or 0),
+        tuple(tuple(int(n) for n in p) for p in (record.get("pillars") or [])),
     )
 
 
@@ -738,6 +851,8 @@ class CommitItemIn(BaseModel):
     ball_deltas: dict[str, float] = Field(   # 1組專用:個別號碼的「每注基礎」加價(號→+N)
         default_factory=dict,
         description="1組(single)每個號碼的每注基礎加價,鍵為號碼字串。其餘下法忽略")
+    pillars: list[list[int]] = Field(   # 1800碰自訂分柱 [[柱1],[柱2],[其他]];空 = 標準三柱
+        default_factory=list, description="1800碰自訂分柱;其餘下法忽略")
 
 
 class QuickImportCommitIn(BaseModel):
@@ -772,7 +887,8 @@ def quick_import_commit(body: QuickImportCommitIn, user: str = Depends(current_u
     for i, it in enumerate(body.items, start=1):
         try:
             item = _recost(g, odds, it.mode, it.selectedBalls, it.units, it.stars,
-                           base=it.base_cost, ball_deltas=it.ball_deltas)
+                           base=it.base_cost, ball_deltas=it.ball_deltas,
+                           pillars=it.pillars)
         except ValueError as e:
             errors.append({"line_no": i, "line": "", "message": str(e)})
             continue
