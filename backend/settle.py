@@ -8,6 +8,8 @@
 各下法的對獎與派彩:
 - single / multi  二合買牌的兩個「組」(1組 / 2組),派彩公式統一:命中幾顆 ×
                   車數 × 每車中獎可得(成本 2755 / 車 → 中一顆得 21200 / 車,不除以 4)。
+                  有 ballDetail(編輯器逐顆車數)時改逐顆:Σ 中獎號碼各自車數 × 每車中獎;
+                  逐顆紀錄不能手填中獎數(不知道哪顆中,派彩不唯一)。
                   (single 是舊「單顆」的 mode key,如今就是 1組;不再特例。)
 - pillar1800  三柱全包,命中注數只可能是 4 / 3 / 0(見 core.pillar),
               回收 = 支數 × 命中注數 × 每注可得。
@@ -104,6 +106,9 @@ def _manual(record: dict, hit_count: int, g: GameConfig) -> dict:
         payout = k * cars * prize9000
         result = f"中 {k} 碰(手填)" if k > 0 else "槓龜(手填)"
     else:  # single / multi 二合組:每中一顆 = 車數 × 每車中獎(不除以 4)
+        if record.get("ballDetail"):
+            # 逐顆車數不同:只知道中幾顆、不知道哪幾顆,派彩不唯一 → 不能手填
+            raise ValueError("這筆各顆車數不同,不能手填中獎數,請選期號對獎")
         payout = k * cars * odds["win_payout"]
         result = f"中 {k} 顆(手填)" if k > 0 else "槓龜(手填)"
 
@@ -143,8 +148,15 @@ def settle(record: dict, draw: list[int] | None, g: GameConfig,
 
     if mode in ("single", "multi"):
         # 二合兩組(1組/2組)派彩統一:命中幾顆 × 車數 × 每車中獎(不除以 4)
-        matched = len(set(selected) & set(draw))
-        payout = matched * cars * odds["win_payout"]
+        detail = record.get("ballDetail") or []
+        if detail:
+            # 逐顆車數:派彩 = Σ 中獎號碼各自的車數 × 每車中獎
+            hit = [d for d in detail if int(d.get("n") or 0) in set(draw)]
+            matched = len(hit)
+            payout = sum(_f(d, "cars") for d in hit) * odds["win_payout"]
+        else:
+            matched = len(set(selected) & set(draw))
+            payout = matched * cars * odds["win_payout"]
         result = f"中 {matched} 顆" if matched > 0 else "槓龜"
 
     elif mode == "pillar1800":

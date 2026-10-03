@@ -662,6 +662,7 @@ export interface BatchEditItem {
   units: number;
   base_cost?: number | null; // 每單位基礎成本(二合每注 / 1800每注 / 連碰每碰…);null = 吃版盤口
   ball_deltas?: Record<string, number>; // 1組/2組 個別號碼的每注基礎加價(號→+N)
+  ball_detail?: {n: number; cars: number; base: number | null}[]; // 1組/2組 逐顆車數 + 每注成本(絕對值)
 }
 // 後端試算 / 儲存的每筆結果:舊 / 新整筆 + 差額(金額一律後端算)
 export interface BatchEditResultItem {

@@ -68,6 +68,7 @@ export interface BetRow {
   unitLabel: string;   // 「車」或「支」
   perUnit: number;     // 每注/每車/每支成本 = cost / units
   deltas: Record<number, number>; // 二合個別號碼加價(號→每注 +N);沒有就 {}
+  detail: { n: number; cars: number }[]; // 二合逐顆車數(編輯器改成各顆不同時才有);沒有就 []
   costExpr: string;    // 上傳時後端給的成本算式(有加價時顯示這個,平均每車會誤導)
   cost: number;
   payout: number;
@@ -88,6 +89,10 @@ const billMode: Record<string, string> = {
 // 某筆中獎的「碰數」:二合 = 中幾顆 × 車數 × 4;其餘(1800/連碰/9000)直接讀 result「中 X 碰」
 const winCombos = (r: BetRow): number => {
   if (r.mode === 'single' || r.mode === 'multi') {
+    // 逐顆車數(編輯器改過):Σ 中獎號碼各自車數 × 4
+    if (r.detail.length > 0) {
+      return r.detail.filter(d => r.drawBalls.includes(d.n)).reduce((a, d) => a + d.cars, 0) * 4;
+    }
     const m = r.result.match(/中\s*(\d+)\s*顆/);
     return m ? Number(m[1]) * r.cars * 4 : 0;
   }
@@ -683,6 +688,7 @@ export function groupWeeks(
       unitLabel: UNIT_LABEL[mode] ?? '注',
       perUnit: units ? Math.round(cost / units) : cost,
       deltas,
+      detail: ((r.ballDetail as { n: number; cars: number }[] | undefined) ?? []).map(d => ({ n: num(d.n), cars: num(d.cars) })),
       costExpr: String(r.costExpr ?? ''),
       cost, payout, pnl: payout - cost, result, pending,
     };
@@ -720,7 +726,7 @@ export function groupWeeks(
 export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ initialMode }) => {
   const { entries, loading, loggedIn } = useAllLedger();
   const { username } = useAuth();
-  const { resettle, deleteById } = useLedgerActions();   // 逐筆對獎 / 撤銷(共用 cache)
+  const { resettle, deleteById, error: actionError } = useLedgerActions();   // 逐筆對獎 / 撤銷(共用 cache)
   const histByGame = useHistoriesByGame();               // 各款期別(IssuePicker 用)
   const { editions } = useEditions();
   const { games } = useGame();
@@ -767,6 +773,7 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
         return {
           id: String(e.id), mode: e.mode, record: r, deltas: ballDeltasOf(r),
           gameShort: gameShort(String(r.game ?? '')), editionName: edName(num(r.edition) || 1),
+          numMax: games.find(x => x.name === r.game || x.key === r.game)?.num_max ?? 0,
         };
       });
     if (targets.length) setEditTargets(targets);
@@ -1728,7 +1735,7 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
                                   <span className="px-1.5 py-0.5 rounded-full bg-black/5 dark:bg-white/10 text-[10px] mr-1.5 font-sans">{v.modeLabel}</span>
                                   <span className="font-sans text-neutral-600 dark:text-neutral-400">{v.playType}</span>
                                   {/* 車 / 支數接在下注方式後面,粗體(原本只藏在下方算式裡) */}
-                                  {v.units > 0 && (
+                                  {v.units > 0 && v.detail.length === 0 && (
                                     <span className="ml-1.5 font-bold text-neutral-900 dark:text-white">
                                       {v.units.toLocaleString()}<span className="font-sans">{v.unitLabel}</span>
                                     </span>
@@ -1759,6 +1766,7 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
                                   {v.balls.length > 0 ? v.balls.map(n => (
                                     <span key={n} className="mr-1.5 whitespace-nowrap">
                                       {String(n).padStart(2, '0')}
+                                      {v.detail.length > 0 && <span className="font-bold text-neutral-900 dark:text-white">×{v.detail.find(d => d.n === n)?.cars ?? ''}</span>}
                                       {v.deltas[n] ? <sup className="ml-0.5 text-[9px] font-bold text-amber-600 dark:text-amber-400">+{v.deltas[n]}</sup> : null}
                                     </span>
                                   )) : '—'}
@@ -1794,7 +1802,7 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
                               {v.units > 0 && (
                                 <tr className="cursor-pointer" onClick={() => openEditor([v.id])}>
                                   <td colSpan={7} className="px-3 pt-0 pb-1.5 pl-9 text-[10px] text-neutral-400 dark:text-neutral-500">
-                                    {Object.keys(v.deltas).length > 0 && v.costExpr
+                                    {(Object.keys(v.deltas).length > 0 || v.detail.length > 0) && v.costExpr
                                       // 有號碼加價:每車成本不一樣,改顯示上傳時的實際算式(含「15號+2」)
                                       ? v.costExpr
                                       : <>{v.units.toLocaleString()} {v.unitLabel} × ${v.perUnit.toLocaleString()}/{v.unitLabel} = ${v.cost.toLocaleString()}</>}
@@ -1831,8 +1839,8 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
       </div>{/* /雙欄 */}
 
       {/* 底部操作列是 fixed,留一段空白免得蓋住最後幾列 */}
-      {(editSel.size > 0 || editSaved !== null) && <div className="h-16" />}
-      {(editSel.size > 0 || editSaved !== null) && (
+      {(editSel.size > 0 || editSaved !== null || actionError) && <div className="h-16" />}
+      {(editSel.size > 0 || editSaved !== null || actionError) && (
         <div className="fixed inset-x-0 bottom-0 z-40 border-t border-black/10 dark:border-white/10 bg-white/95 dark:bg-[#121212]/95 backdrop-blur-sm px-4 py-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))]">
           <div className="max-w-3xl mx-auto flex items-center justify-between gap-3 text-[12px]">
             {editSel.size > 0 ? (
@@ -1845,6 +1853,9 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
                     className="px-3.5 py-1.5 rounded-lg font-semibold bg-neutral-900 text-white dark:bg-white dark:text-black">編輯 {editSel.size} 筆</button>
                 </div>
               </>
+            ) : editSaved === null ? (
+              // 逐筆對獎 / 撤銷失敗(例:逐顆車數紀錄不能手填中獎數)
+              <span className="text-rose-600 dark:text-rose-400">{actionError}</span>
             ) : (
               <span className="text-neutral-600 dark:text-neutral-300">已儲存 {editSaved} 筆,成本已重算並重新對獎(可在操作歷史作廢還原)</span>
             )}

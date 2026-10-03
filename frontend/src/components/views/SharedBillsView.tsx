@@ -37,7 +37,7 @@ const BetLine: React.FC<{ r: BetRow }> = ({ r }) => (
       <span className="text-[12px] font-bold text-neutral-900 dark:text-white">{r.gameShort}</span>
       <span className="text-[12px] font-semibold text-neutral-800 dark:text-neutral-100">{r.modeLabel}</span>
       {r.playType && <span className="text-[11px] text-neutral-500">{r.playType}</span>}
-      <span className="text-[11px] text-neutral-500 font-mono">{r.units}{r.unitLabel}</span>
+      {r.detail.length === 0 && <span className="text-[11px] text-neutral-500 font-mono">{r.units}{r.unitLabel}</span>}
       <span className={`ml-auto text-[11px] ${
         r.payout > 0 && !r.pending ? 'text-neutral-900 dark:text-white font-semibold' : 'text-neutral-400'}`}>{r.result || '待開獎'}</span>
     </div>

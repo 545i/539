@@ -80,7 +80,7 @@ function deltasPayload(d: DraftItem): Record<string, number> {
 // (手機跳數字鍵盤;輸入 74.5 → 自動換算成 +2 = 74.5 − 這筆基礎成本)。有加價的號碼右上角標 +N。
 const QUICK_DELTAS = [1, 2, 3, 3.5, 5];
 const fmtD = (v: number) => String(Math.round(v * 100) / 100);
-export const BallDeltaPicker: React.FC<{
+const BallDeltaPicker: React.FC<{
   balls: number[];
   deltas: Record<number, number>;
   base: number;      // 這筆的每注基礎成本(輸入「每注成本」時換算加價用)

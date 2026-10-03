@@ -241,7 +241,10 @@ def settle_preview(body: PreviewIn):
     未登入沒有後端流水,紀錄只活在瀏覽器;這裡只回「對過獎的那筆」讓前端更新
     自己的暫存,不需要登入也不動任何人的資料。
     """
-    return _resettle(body.record, body.issue, body.hit_count)
+    try:
+        return _resettle(body.record, body.issue, body.hit_count)
+    except ValueError as e:     # 例:逐顆車數紀錄不能手填
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 @router.put("/{entry_id:int}")   # :int 限定只匹配數字,才不會攔截 /recover-exclude 等靜態路徑
@@ -255,7 +258,10 @@ def resettle_entry(entry_id: int, body: SettleIn, user: str = Depends(current_us
     if cur is None:
         raise HTTPException(status_code=404, detail="找不到這筆紀錄")
 
-    updated_record = _resettle(cur["record"], body.issue, body.hit_count)
+    try:
+        updated_record = _resettle(cur["record"], body.issue, body.hit_count)
+    except ValueError as e:     # 例:逐顆車數紀錄不能手填
+        raise HTTPException(status_code=400, detail=str(e)) from e
     res = ledger_store.update_entry(user, entry_id, updated_record)
     if res is None:
         raise HTTPException(status_code=404, detail="找不到這筆紀錄")

@@ -222,6 +222,9 @@ def _total_carry(rec: dict, num_max: int = 39) -> int:
     if mode == "combo":
         return int(round(bc * _cars(rec)))
     if mode in ("single", "multi"):
+        detail = rec.get("ballDetail") or []
+        if detail:   # 逐顆車數:Σ 各顆車數 × (num_max−1)
+            return int(round(sum(float(d.get("cars") or 0) for d in detail) * max(1, num_max - 1)))
         return int(round(bc * _cars(rec) * max(1, num_max - 1)))
     return bc
 

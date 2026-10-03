@@ -164,6 +164,7 @@ class _Item:
                             # 9000每碰);逐筆可覆蓋,前端顯示+可改,改了就重算成本
     ball_deltas: dict = field(default_factory=dict)  # 二合個別號碼加價 {"15": 2.0}(只存非 0)
     pillars: list = field(default_factory=list)  # 1800碰自訂分柱 [[柱1],[柱2],[其他]];標準分柱為 []
+    ball_detail: list = field(default_factory=list)  # 二合逐顆 [{n, cars, base}](各顆車數/每注不一時才有)
 
 
 @dataclass
@@ -543,6 +544,7 @@ def to_record(item: _Item, g: GameConfig, bet_date: str, issue: str,
         "baseCost": round(item.base_cost, 4),   # 每單位基礎成本(逐筆可改)
         "ballDeltas": item.ball_deltas,         # 二合個別號碼加價 {"15": 2.0};沒有就 {}
         "pillars": item.pillars,                # 1800碰自訂分柱(對獎依各柱 ∩ 開獎相乘);標準分柱 []
+        "ballDetail": item.ball_detail,         # 二合逐顆車數/每注 [{n, cars, base}];一般紀錄 []
         "payout": 0,
         "pnl": 0,
     }
@@ -583,7 +585,8 @@ def _apply_base(g: GameConfig, odds: dict, mode: str, stars: int,
 def _recost(g: GameConfig, odds: dict, mode: str, balls: list[int], units: float,
             stars: int, base: float | None = None,
             ball_deltas: dict[str, float] | None = None,
-            pillars: list[list[int]] | None = None) -> _Item:
+            pillars: list[list[int]] | None = None,
+            ball_detail: list[dict] | None = None) -> _Item:
     """依(可能被前端編輯過的)mode / 號碼 / 支或車 / 星數 + 該版盤口重算一筆成本。
 
     money 一律後端算 —— 前端只送使用者改完的號碼、支/車、以及**逐筆基礎成本 base**
@@ -595,6 +598,8 @@ def _recost(g: GameConfig, odds: dict, mode: str, balls: list[int], units: float
     rej = _reject_game_mode(g, mode)
     if rej:                               # 六合彩×星碰/三柱/9000碰 → 🔴 拒絕這筆
         raise ValueError(rej)
+    if ball_detail and mode in ("single", "multi"):
+        return _per_ball_item(g, odds, mode, ball_detail)
     balls = [int(b) for b in balls]
     bad = [n for n in balls if not 1 <= n <= g.num_max]
     if bad:
@@ -647,6 +652,49 @@ def _recost(g: GameConfig, odds: dict, mode: str, balls: list[int], units: float
                           if float(deltas.get(str(n), 0) or 0)} if use_pn else {}),
         )
     raise ValueError(f"未知的下注模式:{mode}")
+
+
+def _per_ball_item(g: GameConfig, odds: dict, mode: str, detail: list[dict]) -> _Item:
+    """二合逐顆:每顆號碼各自的車數與每注成本(絕對值;base 為 None/<=0 = 版盤口每注)。
+
+    成本 = Σ 車數 × 每注 × (num_max−1)。各顆車數與每注都相同 → 收斂成一般紀錄
+    (走原本 _recost 路徑、不存 ballDetail),舊紀錄與快速上傳格式不受影響。
+    """
+    notes = max(1, g.num_max - 1)
+    default_base = float(odds["cost_per_car"]) / notes
+    rows: list[dict] = []
+    for d in detail:
+        n, cars = int(d.get("n") or 0), float(d.get("cars") or 0)
+        base = float(d.get("base") or 0) or default_base
+        if not 1 <= n <= g.num_max:
+            raise ValueError(f"{g.name} 只有 1~{g.num_max} 號,不認得 {n}")
+        if any(r["n"] == n for r in rows):
+            raise ValueError(f"號碼 {n:02d} 重複")
+        if cars <= 0:
+            raise ValueError(f"{n:02d} 號的車數要大於 0")
+        rows.append({"n": n, "cars": cars, "base": base})
+    if not rows:
+        raise ValueError("這一組至少要選 1 顆號碼")
+    balls = [r["n"] for r in rows]
+    if len({r["cars"] for r in rows}) == 1 and len({r["base"] for r in rows}) == 1:
+        return _recost(g, odds, mode, balls, rows[0]["cars"], 0, base=rows[0]["base"])
+    grp = group_store.get_group(group_store.MODE_TO_GID[mode])
+    name = grp["name"] if grp else mode
+    cost = sum(r["cars"] * r["base"] * notes for r in rows)
+    parts = [f"{r['n']:02d}號 {_g(r['cars'])} 車 × {_money(r['base'] * notes)}/車" for r in rows]
+    each = " ".join(f"{r['n']:02d}×{_g(r['cars'])}車" for r in rows)
+    return _Item(
+        mode=mode,
+        play_type=f"{name} {each}({len(rows)} 顆)",
+        balls=balls,
+        units=max(r["cars"] for r in rows),   # 代表值(上限提醒用);對獎 / 成本一律看 ballDetail
+        bets_count=len(rows),
+        cost=cost,
+        line="",
+        cost_expr=f"{' + '.join(parts)} = {_money(cost)}",
+        base_cost=default_base,
+        ball_detail=[{**r, "base": round(r["base"], 4)} for r in rows],
+    )
 
 
 # ── 防呆邊界檢查 ────────────────────────────────────────────
@@ -743,6 +791,8 @@ def _sig(record: dict) -> tuple:
         balls,
         float(record.get("units") or 0),
         tuple(tuple(int(n) for n in p) for p in (record.get("pillars") or [])),
+        tuple((int(d.get("n") or 0), float(d.get("cars") or 0), float(d.get("base") or 0))
+              for d in (record.get("ballDetail") or [])),
     )
 
 
@@ -932,8 +982,14 @@ def quick_import_commit(body: QuickImportCommitIn, user: str = Depends(current_u
 # 只開放這幾欄;日期 / 期號 / 版 / 下法不動。成本照樣走 _recost(後端權威),
 # 1800碰 的自訂分柱原樣沿用紀錄裡的 pillars(編輯器不改柱)。
 _EDIT_KEYS = ("playType", "units", "cars", "betsCount", "selectedBalls", "stars",
-              "incomplete", "cost", "costExpr", "baseCost", "ballDeltas", "pillars")
+              "incomplete", "cost", "costExpr", "baseCost", "ballDeltas", "pillars", "ballDetail")
 _MANUAL_HIT_RE = re.compile(r"中 (\d+)")
+
+
+class BallDetailIn(BaseModel):
+    n: int
+    cars: float
+    base: float | None = None   # 每注成本(絕對值);None = 版盤口
 
 
 class BatchEditItemIn(BaseModel):
@@ -944,6 +1000,8 @@ class BatchEditItemIn(BaseModel):
         default=None, description="這筆的每單位基礎成本,覆蓋版盤口")
     ball_deltas: dict[str, float] = Field(   # 1組/2組 個別號碼的每注基礎加價(號→+N)
         default_factory=dict, description="二合每個號碼的每注基礎加價;其餘下法忽略")
+    ball_detail: list[BallDetailIn] = Field(   # 1組/2組 逐顆車數 + 每注成本;有給就取代 selectedBalls/units
+        default_factory=list, description="二合逐顆 [{n, cars, base}];其餘下法忽略")
 
 
 class BatchEditIn(BaseModel):
@@ -980,7 +1038,8 @@ def _edited_record(old: dict, mode: str, it: BatchEditItemIn) -> dict:
     odds = edition_store.get_odds(settle._edition(old), g.key)
     item = _recost(g, odds, mode, it.selectedBalls, it.units, stars,
                    base=it.base_cost, ball_deltas=it.ball_deltas,
-                   pillars=old.get("pillars") or [])
+                   pillars=old.get("pillars") or [],
+                   ball_detail=[d.model_dump() for d in it.ball_detail])
     fresh = to_record(item, g, str(old.get("date") or ""), str(old.get("issue") or ""),
                       edition=settle._edition(old))
     new = {**old, **{k: fresh[k] for k in _EDIT_KEYS}}

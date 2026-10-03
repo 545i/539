@@ -3,11 +3,10 @@ import {createPortal} from 'react-dom';
 import {X, AlertTriangle} from 'lucide-react';
 import {api, BatchEditItem, BatchEditResultItem, LedgerMode} from '../api/client';
 import {useLedgerActions} from '../api/useLedger';
-import {BallDeltaPicker} from './QuickImportModal';
 import {MODE_LABEL, money} from './uploadHistory';
 
 // 週期帳「下注紀錄編輯器」:逐筆列出勾選的紀錄(可混合下法),每筆可改號碼 / 車支數 /
-// 成本(每單位基礎成本 + 二合個別號碼加價),最後一起儲存。金額一律後端試算
+// 成本,最後一起儲存。1組/2組 每顆號碼各自一列:自己的車數與每注成本(絕對值)。金額一律後端試算
 // (POST /ledger/batch-edit dry_run),前端只顯示原成本 / 新成本 / 差額;
 // 儲存後後端重新對獎、整批記一筆操作歷史(可作廢還原)。日期 / 期號 / 版不改。
 
@@ -18,13 +17,16 @@ export interface EditTarget {
   deltas: Record<number, number>;   // 二合個別號碼加價(舊紀錄由 costExpr 解析)
   gameShort: string;
   editionName: string;
+  numMax: number;   // 該遊戲號碼上限(舊紀錄由成本反推每注基礎用:每車 = 每注 × (numMax−1))
 }
+
+interface BallRow { n: number; cars: number; base: number }   // base 0 = 版盤口每注
 
 interface Draft {
   balls: string;
   units: number;
   base: number;      // 0 = 沿用版盤口(送 null)
-  deltas: Record<number, number>;
+  rows: BallRow[];   // 1組/2組 逐顆(號碼字串改了就跟著增減)
 }
 
 const num = (v: unknown): number => {
@@ -41,21 +43,48 @@ const pnlCls = (v: number) =>
   v > 0 ? 'text-emerald-600 dark:text-emerald-400' : v < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-neutral-400';
 const isPending = (r: Record<string, unknown>) => String(r.result ?? '').includes('待開');
 
+// 二合逐顆初值:有 ballDetail 直接用;舊紀錄 → 每顆車數 = 整筆車數、每注 = 基礎 + 加價
+// (沒存 baseCost 的舊紀錄由成本反推:基礎 =(成本 ÷ 車數 ÷ (num_max−1) − Σ加價)÷ 顆數)
+function initRows(t: EditTarget): BallRow[] {
+  const r = t.record;
+  const detail = (r.ballDetail as {n: number; cars: number; base: number}[] | undefined) ?? [];
+  if (detail.length) return detail.map(d => ({n: num(d.n), cars: num(d.cars), base: num(d.base)}));
+  const balls = (r.selectedBalls as number[]) ?? [];
+  const units = num(r.units) || num(r.cars);
+  const sumD = balls.reduce((a, n) => a + (t.deltas[n] || 0), 0);
+  let base = num(r.baseCost);
+  if (base <= 0 && units > 0 && balls.length > 0 && t.numMax > 1) {
+    base = Math.round(((num(r.cost) / units / Math.max(1, t.numMax - 1) - sumD) / balls.length) * 10000) / 10000;
+  }
+  return balls.map(n => ({n, cars: units, base: base > 0 ? Math.round((base + (t.deltas[n] || 0)) * 10000) / 10000 : 0}));
+}
+
 function initDraft(t: EditTarget): Draft {
   const r = t.record;
+  const rows = isErhe(t.mode) ? initRows(t) : [];
   return {
-    balls: ((r.selectedBalls as number[]) ?? []).map(pad).join(' '),
+    balls: (rows.length ? rows.map(x => x.n) : ((r.selectedBalls as number[]) ?? [])).map(pad).join(' '),
     units: num(r.units) || num(r.cars),
     base: num(r.baseCost),
-    deltas: {...t.deltas},
+    rows,
   };
 }
 
+// 號碼字串改了 → 逐顆列跟著增減;既有號碼保留原車數 / 每注,新號碼沿用第一列
+function syncRows(rows: BallRow[], balls: number[]): BallRow[] {
+  const tpl = rows[0] ?? {n: 0, cars: 1, base: 0};
+  return [...new Set(balls)].map(n => rows.find(x => x.n === n) ?? {n, cars: tpl.cars, base: tpl.base});
+}
+
 function toItem(t: EditTarget, d: Draft): BatchEditItem {
+  if (isErhe(t.mode)) {
+    return {
+      id: Number(t.id), selectedBalls: d.rows.map(x => x.n), units: d.rows[0]?.cars ?? 0,
+      ball_detail: d.rows.map(x => ({n: x.n, cars: x.cars, base: x.base > 0 ? x.base : null})),
+    };
+  }
   const balls = hasBalls(t.mode) ? parseBalls(d.balls) : [];
-  const deltas: Record<string, number> = {};
-  if (isErhe(t.mode)) for (const n of balls) if (d.deltas[n]) deltas[String(n)] = d.deltas[n];
-  return {id: Number(t.id), selectedBalls: balls, units: d.units, base_cost: d.base > 0 ? d.base : null, ball_deltas: deltas};
+  return {id: Number(t.id), selectedBalls: balls, units: d.units, base_cost: d.base > 0 ? d.base : null};
 }
 
 export const BetEditModal: React.FC<{
@@ -73,6 +102,10 @@ export const BetEditModal: React.FC<{
 
   const setDraft = (i: number, patch: Partial<Draft>) =>
     setDrafts(prev => prev.map((d, k) => (k === i ? {...d, ...patch} : d)));
+  const setBalls = (i: number, text: string) =>
+    setDrafts(prev => prev.map((d, k) => (k === i ? {...d, balls: text, rows: syncRows(d.rows, parseBalls(text))} : d)));
+  const setRow = (i: number, n: number, patch: Partial<BallRow>) =>
+    setDrafts(prev => prev.map((d, k) => (k === i ? {...d, rows: d.rows.map(x => (x.n === n ? {...x, ...patch} : x))} : d)));
 
   const items = useMemo(() => targets.map((t, i) => toItem(t, drafts[i])), [targets, drafts]);
 
@@ -157,18 +190,34 @@ export const BetEditModal: React.FC<{
       );
     }
     if (t.mode === 'combo9000') return <div className="text-[11px] text-neutral-500">9000碰 四段全包(無選號)</div>;
+    const defBase = num(preview.get(t.id)?.new.baseCost);
     return (
       <>
-        <input value={d.balls} onChange={e => setDraft(i, {balls: e.target.value})} spellCheck={false}
-          inputMode="numeric" className={`w-full ${inputCls} text-sm sm:text-[12px]`} />
-        <span className="text-[10px] text-neutral-400">{parseBalls(d.balls).length} 顆</span>
-        {isErhe(t.mode) && (
-          <BallDeltaPicker
-            balls={parseBalls(d.balls)}
-            deltas={d.deltas}
-            base={d.base > 0 ? d.base : num(preview.get(t.id)?.new.baseCost)}
-            onChange={next => setDraft(i, {deltas: next})}
-          />
+        <input value={d.balls} onChange={e => (isErhe(t.mode) ? setBalls(i, e.target.value) : setDraft(i, {balls: e.target.value}))}
+          spellCheck={false} inputMode="numeric" className={`w-full ${inputCls} text-sm sm:text-[12px]`} />
+        <span className="text-[10px] text-neutral-400">{parseBalls(d.balls).length} 顆{isErhe(t.mode) ? ',每顆各自車數 / 每注成本' : ''}</span>
+        {isErhe(t.mode) && d.rows.length > 0 && (
+          // 逐顆一列:號碼 | 車數 | 每注成本(絕對值)
+          <div className="mt-1.5 divide-y divide-black/[0.05] dark:divide-white/[0.06]">
+            {d.rows.map(x => (
+              <div key={x.n} className="grid grid-cols-[2.5rem_1fr_1fr] items-end gap-3 py-1.5">
+                <span className="font-mono font-bold text-[13px] text-neutral-900 dark:text-white pb-1">{pad(x.n)}</span>
+                <label className="block">
+                  <span className="block text-[9px] text-neutral-400">車數</span>
+                  <input type="number" inputMode="decimal" min={0} step="0.5" value={x.cars || ''}
+                    onChange={e => setRow(i, x.n, {cars: Number(e.target.value)})}
+                    className={`w-full ${inputCls} text-right text-sm sm:text-[12px]`} />
+                </label>
+                <label className="block">
+                  <span className="block text-[9px] text-neutral-400">每注成本</span>
+                  <input type="number" inputMode="decimal" min={0} step="0.5" value={x.base > 0 ? x.base : ''}
+                    placeholder={defBase ? String(defBase) : '盤口'}
+                    onChange={e => setRow(i, x.n, {base: Number(e.target.value)})}
+                    className={`w-full ${inputCls} text-right text-sm sm:text-[12px]`} />
+                </label>
+              </div>
+            ))}
+          </div>
         )}
       </>
     );
@@ -183,7 +232,7 @@ export const BetEditModal: React.FC<{
       value={drafts[i].base > 0 ? drafts[i].base : ''}
       placeholder={String(num(preview.get(t.id)?.new.baseCost) || '盤口')}
       onChange={e => setDraft(i, {base: Number(e.target.value)})}
-      title={t.mode === 'pillar1800' ? '每注成本' : isErhe(t.mode) ? '每注基礎成本(個別號碼加價另計)' : '每碰成本'}
+      title={t.mode === 'pillar1800' ? '每注成本' : '每碰成本'}
       className={`${cls} ${inputCls} text-right`} />
   );
   // 審計:原成本 / 新成本 / 差額(全部後端試算結果)+ 損益變化
@@ -256,16 +305,16 @@ export const BetEditModal: React.FC<{
               <div key={t.id} className="px-4 py-3 space-y-2.5">
                 {head(t)}
                 <div>{ballsField(t, i)}</div>
-                <div className="grid grid-cols-2 gap-3">
+                {!isErhe(t.mode) && <div className="grid grid-cols-2 gap-3">
                   <label className="block">
                     <span className="block text-[10px] text-neutral-500">{unitLabel(t.mode)}數</span>
                     {unitsField(t, i, 'w-full py-1.5 text-sm')}
                   </label>
                   <label className="block">
-                    <span className="block text-[10px] text-neutral-500">{t.mode === 'pillar1800' ? '每注成本' : isErhe(t.mode) ? '每注基礎' : '每碰成本'}</span>
+                    <span className="block text-[10px] text-neutral-500">{t.mode === 'pillar1800' ? '每注成本' : '每碰成本'}</span>
                     {baseField(t, i, 'w-full py-1.5 text-sm')}
                   </label>
-                </div>
+                </div>}
                 {audit(t)}
               </div>
             ))}
@@ -286,9 +335,15 @@ export const BetEditModal: React.FC<{
               {targets.map((t, i) => (
                 <tr key={t.id} className="border-b border-black/[0.06] dark:border-white/[0.06] align-top">
                   <td className="px-4 py-2.5">{head(t)}</td>
-                  <td className="px-3 py-2.5 min-w-[180px]">{ballsField(t, i)}</td>
-                  <td className="px-3 py-2.5 text-right">{unitsField(t, i, 'w-16 text-[12px]')}</td>
-                  <td className="px-3 py-2.5 text-right">{baseField(t, i, 'w-20 text-[12px]')}</td>
+                  {isErhe(t.mode) ? (
+                    <td colSpan={3} className="px-3 py-2.5 min-w-[260px]">{ballsField(t, i)}</td>
+                  ) : (
+                    <>
+                      <td className="px-3 py-2.5 min-w-[180px]">{ballsField(t, i)}</td>
+                      <td className="px-3 py-2.5 text-right">{unitsField(t, i, 'w-16 text-[12px]')}</td>
+                      <td className="px-3 py-2.5 text-right">{baseField(t, i, 'w-20 text-[12px]')}</td>
+                    </>
+                  )}
                   <td className="px-4 py-2.5">{audit(t)}</td>
                 </tr>
               ))}
