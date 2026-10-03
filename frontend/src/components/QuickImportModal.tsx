@@ -1,4 +1,5 @@
 import React, {useEffect, useState} from 'react';
+import {createPortal} from 'react-dom';
 import {X, ClipboardPaste, ListChecks, Upload, AlertTriangle, CheckCircle2} from 'lucide-react';
 import {api, QuickImportDTO, QuickImportErrorDTO, QuickImportWarningDTO, LedgerMode, TensPairDTO, GameKey} from '../api/client';
 import {useAsync} from '../api/useAsync';
@@ -1009,28 +1010,35 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
             setExcludePrompt(null);
             runPreview(next);
           };
-          return (
-            <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50">
-              <div className="w-full max-w-md bg-white dark:bg-[#121212] border border-black/10 dark:border-white/10 rounded-2xl shadow-2xl">
-                <div className="flex items-center gap-2 px-6 py-4 border-b border-black/[0.08] dark:border-white/[0.08] text-amber-800 dark:text-amber-300">
-                  <AlertTriangle className="w-4 h-4 shrink-0" />
-                  <span className="font-display font-bold text-sm">1800碰 需要去除號碼</span>
+          // 掛到 body(portal):避免被外層 modal 的 transform / backdrop-filter 吃掉 fixed 定位。
+          // 手機(< sm)整頁全螢幕、號碼 5 欄大按鈕、底部按鈕避開安全區;sm 以上置中卡片。
+          return createPortal((
+            <div className="fixed inset-0 z-[70] flex sm:items-center sm:justify-center sm:p-4 bg-black/60">
+              <div className="w-full h-[100dvh] sm:h-auto sm:max-h-[90vh] sm:max-w-md flex flex-col bg-white dark:bg-[#121212] sm:border border-black/10 dark:border-white/10 sm:rounded-2xl shadow-2xl overflow-hidden text-neutral-800 dark:text-neutral-200">
+                <div className="flex items-center gap-2 px-4 sm:px-6 py-4 pt-[max(1rem,env(safe-area-inset-top))] sm:pt-4 border-b border-black/[0.08] dark:border-white/[0.08] shrink-0">
+                  <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                  <span className="flex-1 font-display font-bold text-base sm:text-sm text-neutral-900 dark:text-white">1800碰 需要去除號碼</span>
+                  <button type="button" onClick={() => setExcludePrompt(null)} aria-label="關閉"
+                    className="w-9 h-9 sm:w-7 sm:h-7 flex items-center justify-center rounded-lg text-neutral-500 hover:text-neutral-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
+                    <X className="w-5 h-5 sm:w-4 sm:h-4" />
+                  </button>
                 </div>
-                <div className="px-6 py-5 space-y-4">
-                  <p className="text-[12px] text-neutral-700 dark:text-neutral-300 leading-relaxed">
+                <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-6 py-5 space-y-5">
+                  <p className="text-sm sm:text-[12px] text-neutral-700 dark:text-neutral-300 leading-relaxed">
                     前兩柱合計 <strong>{excludePrompt.pillar_count}</strong> 顆,最多 <strong>{max}</strong> 顆。
                     請點選要去除的號碼,去除的號碼會併入「其他」柱。
                   </p>
                   {lines.map(pl => (
                     <div key={pl.line_no}>
-                      <div className="mb-1.5 text-[11px] font-mono text-neutral-500">第 {pl.line_no} 行「{pl.line}」</div>
-                      <div className="flex flex-wrap gap-2">
+                      <div className="mb-2 text-xs sm:text-[11px] font-mono text-neutral-500 break-all">第 {pl.line_no} 行「{pl.line}」</div>
+                      <div className="grid grid-cols-5 gap-2 sm:flex sm:flex-wrap">
                         {pl.numbers.map(n => {
                           const on = excludePicked.has(n);
                           return (
                             <button key={n} type="button" onClick={() => toggle(n)}
+                              aria-pressed={on}
                               title={on ? `取消去除 ${n} 號` : `去除 ${n} 號`}
-                              className={`w-8 h-8 rounded-full text-[12px] font-mono font-bold transition-all ${
+                              className={`h-11 sm:w-8 sm:h-8 rounded-full text-sm sm:text-[12px] font-mono font-bold transition-all ${
                                 on ? 'bg-rose-600 text-white line-through'
                                   : 'bg-black/[0.05] dark:bg-white/[0.08] text-neutral-800 dark:text-neutral-100 hover:bg-black/10 dark:hover:bg-white/15'}`}>
                               {String(n).padStart(2, '0')}
@@ -1040,23 +1048,25 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
                       </div>
                     </div>
                   ))}
-                  <div className={`text-[11px] font-mono text-right ${front <= max ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                </div>
+                <div className="shrink-0 border-t border-black/[0.08] dark:border-white/[0.08] px-4 sm:px-6 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:pb-3 space-y-2">
+                  <div className={`text-sm sm:text-[11px] font-mono text-right ${front <= max ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
                     前兩柱 {front} / {max} 顆
                   </div>
-                </div>
-                <div className="flex items-center justify-end gap-2 px-6 py-3 border-t border-black/[0.08] dark:border-white/[0.08]">
-                  <button type="button" onClick={() => setExcludePrompt(null)}
-                    className="py-1.5 px-3 rounded-lg text-[11px] font-semibold border border-black/10 dark:border-white/10 text-neutral-700 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
-                    稍後手動修改
-                  </button>
-                  <button type="button" disabled={!ok || busy} onClick={apply}
-                    className="py-1.5 px-3 rounded-lg text-[11px] font-semibold bg-black text-white dark:bg-white dark:text-black hover:opacity-90 disabled:opacity-30 transition-opacity">
-                    去除並重新解析
-                  </button>
+                  <div className="flex items-center gap-2 sm:justify-end">
+                    <button type="button" onClick={() => setExcludePrompt(null)}
+                      className="flex-1 sm:flex-none py-3 sm:py-1.5 px-3 rounded-lg text-sm sm:text-[11px] font-semibold border border-black/10 dark:border-white/10 text-neutral-700 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
+                      稍後手動修改
+                    </button>
+                    <button type="button" disabled={!ok || busy} onClick={apply}
+                      className="flex-1 sm:flex-none py-3 sm:py-1.5 px-3 rounded-lg text-sm sm:text-[11px] font-semibold bg-black text-white dark:bg-white dark:text-black hover:opacity-90 disabled:opacity-30 transition-opacity">
+                      去除並重新解析
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
-          );
+          ), document.body);
         })()}
 
         {/* Modal Footer */}
