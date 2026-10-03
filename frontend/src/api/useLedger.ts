@@ -1,6 +1,6 @@
 import {createContext, createElement, useCallback, useContext, useEffect, useMemo, useState} from 'react';
 import type {Dispatch, ReactNode, SetStateAction} from 'react';
-import {api, ConflictBet, LedgerEntryDTO, LedgerMode} from './client';
+import {api, BatchEditDTO, BatchEditItem, ConflictBet, LedgerEntryDTO, LedgerMode} from './client';
 import {useAuth} from './useAuth';
 import {BetRecord} from '../types';
 
@@ -314,5 +314,20 @@ export function useLedgerActions() {
     [loggedIn, ctx],
   );
 
-  return {resettle, deleteById, error};
+  // 週期帳編輯器儲存:後端重算成本並重新對獎,回來的新紀錄直接覆寫共用 cache
+  const batchEdit = useCallback(
+    async (items: BatchEditItem[]): Promise<BatchEditDTO> => {
+      const res = await api.ledgerBatchEdit(items);
+      if (res.saved > 0) {
+        const byId = new Map(res.items.map(it => [String(it.id), it.new]));
+        ctx.setEntries(prev =>
+          prev.map(e => (byId.has(String(e.id)) ? {...e, record: byId.get(String(e.id))!} : e)),
+        );
+      }
+      return res;
+    },
+    [ctx],
+  );
+
+  return {resettle, deleteById, batchEdit, error};
 }

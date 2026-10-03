@@ -10,6 +10,7 @@
     bet_delete    撤銷一筆(刪除)        → 反轉 = 把整筆 record 重新 insert 回去
     bet_clear     清空某下法的全部紀錄     → 反轉 = 把那一批 record 全部放回去
     quick_import  快速上傳一次多筆        → 反轉 = 刪掉那一批
+    bet_edit      週期帳編輯器改多筆      → 反轉 = 每筆 payload 覆寫回編輯前
     void          作廢(反轉)某個操作     → 本身也是一筆紀錄,不能再被作廢
 
 關鍵在 bet_delete:**刪之前**要先把整筆內容塞進 reverse_data,不然事後拿不
@@ -33,6 +34,7 @@ ACTION_LABELS = {
     "bet_delete": "撤銷下注",
     "bet_clear": "清空紀錄",
     "bet_settle": "改期數對獎",
+    "bet_edit": "編輯下注",
     "quick_import": "快速上傳",
     "void": "作廢操作",
 }

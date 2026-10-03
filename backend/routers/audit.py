@@ -11,6 +11,7 @@
     bet_settle    {"entry": {id, mode, record, …}} → 把 payload 覆寫回改期數之前
     bet_clear     {"entries": [...]}               → 整批 insert 回去
     quick_import  {"entries": [...]}               → 整批刪掉
+    bet_edit      {"entries": [...]}               → 每筆 payload 覆寫回編輯前
 
 作廢動作(void)本身不可再作廢 —— 一路反轉回去語意會纏死,要復原就再作廢
 原本那筆的下一次操作。已作廢的重複作廢回 400。
@@ -66,6 +67,12 @@ def _revert(user: str, row: dict) -> int:
             return 0
         return 1 if ledger_store.update_entry(
             user, int(eid), entry.get("record") or {}) else 0
+
+    if action == "bet_edit":
+        # 週期帳編輯器一次存多筆 → 每筆換回編輯前的整筆(id 沒變)
+        return sum(1 for e in (data.get("entries") or [])
+                   if isinstance(e, dict) and e.get("id") is not None
+                   and ledger_store.update_entry(user, int(e["id"]), e.get("record") or {}))
 
     if action == "bet_clear":
         return sum(_restore(user, e) for e in (data.get("entries") or []))

@@ -15,6 +15,7 @@ import { weekAddDays, weekMonday } from '../../weeks';
 import { DayMoney, splitCostPayout, ShareVersionDTO } from '../../shares';
 import { copyText } from '../../clipboard';
 import { SharesEditor } from './EditionSettings';
+import { BetEditModal, EditTarget } from '../BetEditModal';
 
 const num = (v: unknown): number => {
   const n = typeof v === 'number' ? v : parseFloat(String(v ?? ''));
@@ -724,6 +725,10 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
   const { editions } = useEditions();
   const { games } = useGame();
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  // 下注紀錄編輯器:點單筆直接開;勾選多筆後從底部列一起開
+  const [editSel, setEditSel] = useState<Set<string>>(new Set());
+  const [editTargets, setEditTargets] = useState<EditTarget[] | null>(null);
+  const [editSaved, setEditSaved] = useState<number | null>(null);
 
   const simEids = useMemo(
     () => new Set(editions.filter(e => e.simulated).map(e => e.eid)),
@@ -753,6 +758,27 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
     return Array.from(s).sort((a, b) => a - b);
   }, [entries]);
   const edName = (ed: number) => editions.find(x => x.eid === ed)?.name ?? `版${ed}`;
+  const openEditor = (ids: string[]) => {
+    const want = new Set(ids);
+    const targets: EditTarget[] = entries
+      .filter(e => want.has(String(e.id)))
+      .map(e => {
+        const r = e.record as Record<string, unknown>;
+        return {
+          id: String(e.id), mode: e.mode, record: r, deltas: ballDeltasOf(r),
+          gameShort: gameShort(String(r.game ?? '')), editionName: edName(num(r.edition) || 1),
+        };
+      });
+    if (targets.length) setEditTargets(targets);
+  };
+  const toggleEditSel = (id: string) => setEditSel(prev => {
+    const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n;
+  });
+  useEffect(() => {
+    if (editSaved === null) return;
+    const t = window.setTimeout(() => setEditSaved(null), 3500);
+    return () => window.clearTimeout(t);
+  }, [editSaved]);
   // 資料裡出現過的下法(依 MODE_ROWS 順序),給下法篩選鈕用
   const usedModes = useMemo(() => {
     const order: LedgerMode[] = ['single', 'multi', 'pillar1800', 'combo9000', 'combo'];
@@ -1669,7 +1695,7 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
                         <table className="w-full text-[11px] whitespace-nowrap">
                           <thead className="text-[9px] uppercase tracking-wider text-neutral-400">
                             <tr>
-                              <th className="px-3 py-1 pl-9 text-left font-semibold">下注方式</th>
+                              <th className="px-3 py-1 pl-9 text-left font-semibold">下注方式<span className="ml-1 normal-case tracking-normal font-normal">(點列編輯)</span></th>
                               <th className="px-3 py-1 text-left font-semibold">期號 / 核對</th>
                               <th className="px-3 py-1 text-left font-semibold">下注組合</th>
                               <th className="px-3 py-1 text-right font-semibold">成本</th>
@@ -1681,8 +1707,20 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
                           <tbody className="font-mono">
                             {day.rows.map((v) => (
                               <React.Fragment key={v.id}>
-                              <tr className="border-t border-black/[0.05] dark:border-white/[0.05]">
-                                <td className="px-3 pt-1.5 pb-0 pl-9 align-top">
+                              <tr
+                                className="border-t border-black/[0.05] dark:border-white/[0.05] cursor-pointer hover:bg-black/[0.02] dark:hover:bg-white/[0.03]"
+                                onClick={() => openEditor([v.id])}
+                                title="點一下編輯這筆(號碼 / 車支數 / 成本)"
+                              >
+                                <td className="px-3 pt-1.5 pb-0 pl-3 align-top">
+                                  <input
+                                    type="checkbox"
+                                    checked={editSel.has(v.id)}
+                                    onClick={e => e.stopPropagation()}
+                                    onChange={() => toggleEditSel(v.id)}
+                                    aria-label="勾選以批次編輯"
+                                    className="mr-2 align-middle w-3.5 h-3.5 accent-neutral-900 dark:accent-white"
+                                  />
                                   {v.gameShort && (
                                     <span className="px-1.5 py-0.5 rounded-full bg-sky-500/10 text-sky-600 dark:text-sky-400 text-[9px] mr-1 font-sans">{v.gameShort}</span>
                                   )}
@@ -1705,7 +1743,7 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
                                     }`}>{v.result}</span>
                                   )}
                                 </td>
-                                <td className="px-3 pt-1.5 pb-0 align-top font-sans">
+                                <td className="px-3 pt-1.5 pb-0 align-top font-sans" onClick={e => e.stopPropagation()}>
                                   <IssuePicker
                                     issue={v.issue}
                                     date={day.ymd}
@@ -1732,7 +1770,7 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
                                 <td className={`px-3 pt-1.5 pb-0 align-top text-right font-bold ${v.pending ? 'text-neutral-400' : pnlCls(v.pnl)}`}>
                                   {v.pending ? '—' : signedMoney(v.pnl)}
                                 </td>
-                                <td className="px-3 pt-1.5 pb-0 align-top text-right font-sans">
+                                <td className="px-3 pt-1.5 pb-0 align-top text-right font-sans" onClick={e => e.stopPropagation()}>
                                   {confirmDeleteId === v.id ? (
                                     <button
                                       type="button"
@@ -1754,7 +1792,7 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
                                 </td>
                               </tr>
                               {v.units > 0 && (
-                                <tr>
+                                <tr className="cursor-pointer" onClick={() => openEditor([v.id])}>
                                   <td colSpan={7} className="px-3 pt-0 pb-1.5 pl-9 text-[10px] text-neutral-400 dark:text-neutral-500">
                                     {Object.keys(v.deltas).length > 0 && v.costExpr
                                       // 有號碼加價:每車成本不一樣,改顯示上傳時的實際算式(含「15號+2」)
@@ -1791,6 +1829,36 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
       </div>
         </div>{/* /右欄 */}
       </div>{/* /雙欄 */}
+
+      {/* 底部操作列是 fixed,留一段空白免得蓋住最後幾列 */}
+      {(editSel.size > 0 || editSaved !== null) && <div className="h-16" />}
+      {(editSel.size > 0 || editSaved !== null) && (
+        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-black/10 dark:border-white/10 bg-white/95 dark:bg-[#121212]/95 backdrop-blur-sm px-4 py-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))]">
+          <div className="max-w-3xl mx-auto flex items-center justify-between gap-3 text-[12px]">
+            {editSel.size > 0 ? (
+              <>
+                <span className="text-neutral-600 dark:text-neutral-300">已勾選 <strong className="font-mono">{editSel.size}</strong> 筆</span>
+                <div className="flex items-center gap-4">
+                  <button type="button" onClick={() => setEditSel(new Set())}
+                    className="text-neutral-500 hover:text-neutral-900 dark:hover:text-white hover:underline underline-offset-2">取消勾選</button>
+                  <button type="button" onClick={() => openEditor([...editSel])}
+                    className="px-3.5 py-1.5 rounded-lg font-semibold bg-neutral-900 text-white dark:bg-white dark:text-black">編輯 {editSel.size} 筆</button>
+                </div>
+              </>
+            ) : (
+              <span className="text-neutral-600 dark:text-neutral-300">已儲存 {editSaved} 筆,成本已重算並重新對獎(可在操作歷史作廢還原)</span>
+            )}
+          </div>
+        </div>
+      )}
+
+      {editTargets && (
+        <BetEditModal
+          targets={editTargets}
+          onClose={() => setEditTargets(null)}
+          onSaved={(n) => { setEditTargets(null); setEditSel(new Set()); setEditSaved(n); }}
+        />
+      )}
     </div>
   );
 };

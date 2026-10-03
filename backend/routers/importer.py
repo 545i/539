@@ -31,7 +31,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import date as _date
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from backend import (audit_store, autosettle, cycle_store, edition_store,
@@ -40,6 +40,7 @@ from backend.data import get_game
 from backend.deps import current_user
 from core import combo as combo_mod
 from core import combo9000 as combo9000_mod
+from core import games as games_mod
 from core import pillar as pillar_mod
 from core.games import GameConfig
 
@@ -925,3 +926,116 @@ def quick_import_commit(body: QuickImportCommitIn, user: str = Depends(current_u
         "errors": errors,
         "warnings": warnings,
     }
+
+
+# ── 週期帳下注明細編輯器:逐筆改號碼 / 車支數 / 成本 ─────────────────
+# 只開放這幾欄;日期 / 期號 / 版 / 下法不動。成本照樣走 _recost(後端權威),
+# 1800碰 的自訂分柱原樣沿用紀錄裡的 pillars(編輯器不改柱)。
+_EDIT_KEYS = ("playType", "units", "cars", "betsCount", "selectedBalls", "stars",
+              "incomplete", "cost", "costExpr", "baseCost", "ballDeltas", "pillars")
+_MANUAL_HIT_RE = re.compile(r"中 (\d+)")
+
+
+class BatchEditItemIn(BaseModel):
+    id: int
+    selectedBalls: list[int] = Field(default_factory=list)
+    units: float = 0
+    base_cost: float | None = Field(   # 每單位基礎成本(二合每注/1800每注/連碰每碰…);None=吃版盤口
+        default=None, description="這筆的每單位基礎成本,覆蓋版盤口")
+    ball_deltas: dict[str, float] = Field(   # 1組/2組 個別號碼的每注基礎加價(號→+N)
+        default_factory=dict, description="二合每個號碼的每注基礎加價;其餘下法忽略")
+
+
+class BatchEditIn(BaseModel):
+    items: list[BatchEditItemIn] = Field(default_factory=list)
+    dry_run: bool = Field(default=False, description="只試算(回舊/新對照)不寫入")
+
+
+def _resettle_edited(new: dict, old: dict, g: GameConfig) -> dict:
+    """編輯後重新對獎,沿用原本的對獎方式:
+
+    - 原本是手填中獎(result 帶「手填」)→ 依原手填中獎數重算(手填數只存在 result 文字裡);
+    - 原本已對到開獎號 → 依同一組開獎號重算;
+    - 原本待開獎 → 該期(或該日)已開就對,沒開維持待開獎。
+    """
+    result = str(old.get("result") or "")
+    if "手填" in result:
+        m = _MANUAL_HIT_RE.search(result)
+        return settle.settle(new, None, g, hit_count=int(m.group(1)) if m else 0)
+    draw = old.get("drawBalls") or []
+    if draw:
+        return settle.settle(new, [int(x) for x in draw], g)
+    return autosettle.settle_record_if_drawn(
+        {**new, "result": autosettle.PENDING, "payout": 0, "pnl": 0}, g)
+
+
+def _edited_record(old: dict, mode: str, it: BatchEditItemIn) -> dict:
+    """依編輯內容重算一筆:成本走 _recost、對獎走 _resettle_edited。算不出來丟 ValueError。"""
+    g = games_mod.by_name(str(old.get("game") or ""))   # 紀錄存遊戲名稱;與 ledger 改期對獎同一查法
+    play_type = str(old.get("playType") or "")
+    if mode == "combo" and not play_type.startswith("星碰"):
+        # 舊連碰家族(全碰/立柱/拖膽)不是 _recost 的星碰算式,改了會變成星碰
+        raise ValueError("這筆連碰不是星碰格式,不支援編輯")
+    stars = int(old.get("stars") or 0) or (settle._stars_of(play_type) if mode == "combo" else 0)
+    odds = edition_store.get_odds(settle._edition(old), g.key)
+    item = _recost(g, odds, mode, it.selectedBalls, it.units, stars,
+                   base=it.base_cost, ball_deltas=it.ball_deltas,
+                   pillars=old.get("pillars") or [])
+    fresh = to_record(item, g, str(old.get("date") or ""), str(old.get("issue") or ""),
+                      edition=settle._edition(old))
+    new = {**old, **{k: fresh[k] for k in _EDIT_KEYS}}
+    return _resettle_edited(new, old, g)
+
+
+def _num0(v) -> float:
+    return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else 0.0
+
+
+@router.post("/batch-edit")
+def batch_edit(body: BatchEditIn, user: str = Depends(current_user)):
+    """週期帳下注明細編輯器:一次改多筆(可混合下法)的號碼 / 車支數 / 成本。
+
+    每筆成本後端重算(_recost)、依原對獎方式重新結算;回傳每筆 old / new 整筆與
+    cost_diff / pnl_diff,dry_run 只試算不寫入。只能改自己的紀錄(有一筆不是就 404)。
+    任何一筆算不出來就整批不寫(errors 帶 id),避免存一半。
+    一次儲存 = 操作歷史一筆 bet_edit,作廢時整批還原成編輯前。
+    """
+    mine = {e["id"]: e for e in ledger_store.list_entries(user)}
+    if any(it.id not in mine for it in body.items):
+        raise HTTPException(status_code=404, detail="找不到這筆紀錄")
+
+    out, errors = [], []
+    for i, it in enumerate(body.items, start=1):
+        entry = mine[it.id]
+        old = entry.get("record") or {}
+        try:
+            new = _edited_record(old, entry["mode"], it)
+        except ValueError as e:
+            errors.append({"id": it.id, "line_no": i, "message": str(e)})
+            continue
+        out.append({
+            "id": it.id, "mode": entry["mode"], "old": old, "new": new,
+            "cost_diff": round(_num0(new.get("cost")) - _num0(old.get("cost"))),
+            "pnl_diff": round(_num0(new.get("pnl")) - _num0(old.get("pnl"))),
+        })
+
+    if body.dry_run or errors or not out:
+        return {"dry_run": body.dry_run, "saved": 0, "items": out, "errors": errors}
+
+    olds = []
+    for o in out:
+        res = ledger_store.update_entry(user, o["id"], o["new"])
+        if res:
+            olds.append(res[1])
+    old_cost = sum(_num0(e["record"].get("cost")) for e in olds)
+    new_cost = sum(_num0(o["new"].get("cost")) for o in out)
+    audit_store.log(
+        user, "bet_edit",
+        target_id=out[0]["id"] if len(out) == 1 else None,
+        summary=(f"編輯 {len(olds)} 筆下注:成本 {round(old_cost):,} → {round(new_cost):,}"
+                 f"(差額 {round(new_cost - old_cost):+,})"
+                 + (f" · {audit_store.summarize_record(out[0]['mode'], out[0]['new'])}"
+                    if len(out) == 1 else "")),
+        reverse_data={"entries": olds},
+    )
+    return {"dry_run": False, "saved": len(olds), "items": out, "errors": []}

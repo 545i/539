@@ -655,6 +655,30 @@ export interface QuickImportCommitItem {
   pillars?: number[][]; // 1800碰自訂分柱 [[柱1],[柱2],[其他]];空 = 標準三柱
 }
 
+// 週期帳下注明細編輯器:逐筆改號碼 / 車支數 / 成本(日期 / 期號 / 版不改)
+export interface BatchEditItem {
+  id: number;
+  selectedBalls: number[];
+  units: number;
+  base_cost?: number | null; // 每單位基礎成本(二合每注 / 1800每注 / 連碰每碰…);null = 吃版盤口
+  ball_deltas?: Record<string, number>; // 1組/2組 個別號碼的每注基礎加價(號→+N)
+}
+// 後端試算 / 儲存的每筆結果:舊 / 新整筆 + 差額(金額一律後端算)
+export interface BatchEditResultItem {
+  id: number;
+  mode: LedgerMode;
+  old: Record<string, unknown>;
+  new: Record<string, unknown>;
+  cost_diff: number;
+  pnl_diff: number;
+}
+export interface BatchEditDTO {
+  dry_run: boolean;
+  saved: number;
+  items: BatchEditResultItem[];
+  errors: {id: number; line_no: number; message: string}[];
+}
+
 // 二合下注「組」設定(全站共用):固定顆數 + 是否啟用。
 // gid ↔ mode 由後端決定(1組=single、2組=multi);前端只認 mode 去存取流水。
 export interface GroupDTO {
@@ -1132,6 +1156,9 @@ export const api = {
   // hitCount 有值 = 手填中獎顆數(忘記期數但記得中幾顆),不查開獎號直接依組公式算。
   ledgerResettle: (id: number, issue: string, hitCount?: number | null) =>
     put<LedgerEntryDTO>(`ledger/${id}`, {issue, hit_count: hitCount ?? null}),
+  // 週期帳編輯器:dryRun = 只試算(回舊/新對照),否則寫入並重新對獎
+  ledgerBatchEdit: (items: BatchEditItem[], dryRun = false) =>
+    post<BatchEditDTO>('ledger/batch-edit', {items, dry_run: dryRun}),
   ledgerSettlePreview: (
     record: Record<string, unknown>,
     issue: string,
