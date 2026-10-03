@@ -563,13 +563,13 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
   const selEditionName = selEid == null ? '' : (editions.find(e => e.eid === selEid)?.name ?? String(selEid));
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 flex sm:items-center sm:justify-center sm:p-4 bg-black/70 backdrop-blur-xs animate-in fade-in duration-200">
       <div
         id="quick-import-modal-content"
-        className="w-full max-w-3xl max-h-[90vh] bg-white dark:bg-[#121212] border border-black/10 dark:border-white/10 rounded-2xl shadow-2xl flex flex-col text-neutral-800 dark:text-neutral-200"
+        className="w-full h-[100dvh] sm:h-auto sm:max-h-[90vh] sm:max-w-3xl bg-white dark:bg-[#121212] sm:border border-black/10 dark:border-white/10 sm:rounded-2xl shadow-2xl flex flex-col overflow-hidden text-neutral-800 dark:text-neutral-200"
       >
         {/* Modal Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-black/[0.08] dark:border-white/[0.08] shrink-0">
+        <div className="flex items-center justify-between px-4 sm:px-6 py-4 pt-[max(1rem,env(safe-area-inset-top))] sm:pt-4 border-b border-black/[0.08] dark:border-white/[0.08] shrink-0">
           <div className="flex items-center gap-2 font-display font-bold text-base text-neutral-900 dark:text-white uppercase tracking-wide">
             <ClipboardPaste className="w-4 h-4 text-neutral-500" />
             <span>快速上傳下注紀錄</span>
@@ -584,7 +584,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
           </button>
         </div>
 
-        <div className="p-6 space-y-4 overflow-y-auto">
+        <div className="flex-1 min-h-0 p-4 sm:p-6 space-y-4 overflow-y-auto">
           {!loggedIn && (
             <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-800 dark:text-amber-300 flex items-start gap-2">
               <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
@@ -763,122 +763,154 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
                 <span>解析出 {draftItems.length} 筆(號碼與支/車可直接改,成本上傳時後端重算)</span>
               </div>
 
-              {draftItems.length > 0 && (
-                <div className="rounded-xl border border-black/[0.08] dark:border-white/[0.08] overflow-x-auto">
-                  <table className="w-full text-[11px]">
-                    <thead className="bg-black/[0.03] dark:bg-white/[0.04] text-neutral-500">
-                      <tr>
-                        <th className="px-3 py-2 text-left font-semibold">玩法</th>
-                        <th className="px-3 py-2 text-left font-semibold">號碼(可編輯)</th>
-                        <th className="px-3 py-2 text-right font-semibold">支 / 車</th>
-                        <th className="px-3 py-2 text-right font-semibold">基礎成本<br/><span className="font-normal text-[9px]">每注/每碰·可改</span></th>
-                        <th className="px-3 py-2 text-right font-semibold">中獎顆數<br/><span className="font-normal text-[9px]">忘記期數可填</span></th>
-                      </tr>
-                    </thead>
-                    <tbody className="font-mono">
-                      {draftItems.map((d, i) => (
-                        <React.Fragment key={i}>
-                        <tr
-                          className={`border-t border-black/[0.06] dark:border-white/[0.06] ${
-                            d.incomplete ? 'bg-amber-500/10' : ''
-                          }`}
-                        >
-                          <td className="px-3 py-2 font-sans align-top">
-                            <span className="px-1.5 py-0.5 rounded-full bg-black/5 dark:bg-white/10 text-[10px] mr-1.5">
-                              {MODE_LABEL[d.mode]}
-                            </span>
-                            {d.playType}
-                            {d.incomplete && (
-                              <div className="text-[10px] text-amber-700 dark:text-amber-400 mt-0.5">
-                                ⚠ 顆數不足,請手動補齊號碼
-                              </div>
-                            )}
-                          </td>
-                          <td className="px-3 py-2">
-                            <input
-                              value={d.balls}
-                              onChange={e => setDraft(i, {balls: e.target.value})}
-                              spellCheck={false}
-                              className="w-full px-2 py-1 rounded-lg border border-black/10 dark:border-white/10 bg-white dark:bg-[#161616] text-[11px] font-mono text-neutral-900 dark:text-white outline-hidden focus:border-black/40 dark:focus:border-white/40"
-                            />
-                            <span className="text-[10px] text-neutral-400">
-                              {parseBalls(d.balls).length} 顆
-                            </span>
-                            {(d.mode === 'single' || d.mode === 'multi') && (
-                              <BallDeltaPicker
-                                balls={parseBalls(d.balls)}
-                                deltas={d.deltas}
-                                base={d.base}
-                                onChange={next => setDraft(i, {deltas: next})}
-                              />
-                            )}
-                          </td>
-                          <td className="px-3 py-2 text-right align-top">
-                            <input
-                              type="number"
-                              min={1}
-                              value={d.units}
-                              onChange={e => setDraft(i, {units: Number(e.target.value)})}
-                              className="w-16 px-2 py-1 rounded-lg border border-black/10 dark:border-white/10 bg-white dark:bg-[#161616] text-[11px] font-mono text-right text-neutral-900 dark:text-white outline-hidden focus:border-black/40 dark:focus:border-white/40"
-                            />
-                          </td>
-                          <td className="px-3 py-2 text-right align-top">
-                            <input
-                              type="number"
-                              min={0}
-                              step="0.1"
-                              value={d.base}
-                              onChange={e => setDraft(i, {base: Number(e.target.value)})}
-                              title="這筆的每單位基礎成本(二合每注 / 連碰每碰…);預設帶版盤口,改了只影響這一筆"
-                              className="w-20 px-2 py-1 rounded-lg border border-black/10 dark:border-white/10 bg-white dark:bg-[#161616] text-[11px] font-mono text-right text-neutral-900 dark:text-white outline-hidden focus:border-black/40 dark:focus:border-white/40"
-                            />
-                          </td>
-                          <td className="px-3 py-2 text-right align-top">
-                            <input
-                              type="number"
-                              min={0}
-                              value={d.hit}
-                              placeholder="待開獎"
-                              onChange={e => setDraft(i, {hit: e.target.value})}
-                              title="填了就直接依這個中獎數結算(不必期數);留空 = 待開獎"
-                              className="w-16 px-2 py-1 rounded-lg border border-black/10 dark:border-white/10 bg-white dark:bg-[#161616] text-[11px] font-mono text-right text-neutral-900 dark:text-white outline-hidden focus:border-black/40 dark:focus:border-white/40"
-                            />
-                          </td>
-                        </tr>
-                        {/* 成本解析:這一筆成本是怎麼算出來的 */}
-                        <tr
-                          key={`cost-${i}`}
-                          className={`border-t-0 ${d.incomplete ? 'bg-amber-500/10' : ''}`}
-                        >
-                          <td colSpan={5} className="px-3 pb-2 pt-0">
-                            <div className="flex items-baseline justify-between gap-2 text-[10px] text-neutral-500 dark:text-neutral-400">
-                              <span className="font-mono">
-                                {costs[i]
-                                  ? (costs[i]!.expr || '—')
-                                  : (costBusy ? '試算中…' : '—')}
-                              </span>
-                              <span className="font-mono font-bold text-neutral-800 dark:text-neutral-200 whitespace-nowrap">
-                                {costs[i] ? money(costs[i]!.cost) : ''}
-                              </span>
+              {draftItems.length > 0 && (() => {
+                // 編輯欄位兩種版面共用:sm 以上表格、手機直排卡片(表格在窄螢幕會被擠爛)
+                const inputCls = 'px-2 py-1 rounded-lg border border-black/10 dark:border-white/10 bg-white dark:bg-[#161616] font-mono text-neutral-900 dark:text-white outline-hidden focus:border-black/40 dark:focus:border-white/40';
+                const ballsField = (d: DraftItem, i: number) => (
+                  d.mode === 'pillar1800' ? (
+                    // 1800碰 沒有選號,顯示分柱(自訂柱列出各柱;標準三柱標註固定分柱)
+                    <div className="text-[11px] font-mono text-neutral-600 dark:text-neutral-300 leading-relaxed break-all">
+                      {d.pillars.length === 3
+                        ? d.pillars.map((p, k) => (
+                            <div key={k}>
+                              {k < 2 ? `第${k + 1}柱` : '其他'}({p.length}):{p.map(n => String(n).padStart(2, '0')).join(' ')}
                             </div>
-                          </td>
-                        </tr>
-                      </React.Fragment>
+                          ))
+                        : '標準三柱 10~18 / 20~29 / 其他'}
+                    </div>
+                  ) : (
+                    <>
+                      <input
+                        value={d.balls}
+                        onChange={e => setDraft(i, {balls: e.target.value})}
+                        spellCheck={false}
+                        className={`w-full ${inputCls} text-sm sm:text-[11px]`}
+                      />
+                      <span className="text-[10px] text-neutral-400">{parseBalls(d.balls).length} 顆</span>
+                      {(d.mode === 'single' || d.mode === 'multi') && (
+                        <BallDeltaPicker
+                          balls={parseBalls(d.balls)}
+                          deltas={d.deltas}
+                          base={d.base}
+                          onChange={next => setDraft(i, {deltas: next})}
+                        />
+                      )}
+                    </>
+                  )
+                );
+                const unitsField = (d: DraftItem, i: number, cls: string) => (
+                  <input type="number" inputMode="decimal" min={1} value={d.units}
+                    onChange={e => setDraft(i, {units: Number(e.target.value)})}
+                    className={`${cls} ${inputCls} text-right`} />
+                );
+                const baseField = (d: DraftItem, i: number, cls: string) => (
+                  <input type="number" inputMode="decimal" min={0} step="0.1" value={d.base}
+                    onChange={e => setDraft(i, {base: Number(e.target.value)})}
+                    title="這筆的每單位基礎成本(二合每注 / 連碰每碰…);預設帶版盤口,改了只影響這一筆"
+                    className={`${cls} ${inputCls} text-right`} />
+                );
+                const hitField = (d: DraftItem, i: number, cls: string) => (
+                  <input type="number" inputMode="numeric" min={0} value={d.hit} placeholder="待開獎"
+                    onChange={e => setDraft(i, {hit: e.target.value})}
+                    title="填了就直接依這個中獎數結算(不必期數);留空 = 待開獎"
+                    className={`${cls} ${inputCls} text-right`} />
+                );
+                const costLine = (i: number) => (
+                  <div className="flex items-baseline justify-between gap-2 text-[10px] text-neutral-500 dark:text-neutral-400">
+                    <span className="font-mono break-all">
+                      {costs[i] ? (costs[i]!.expr || '—') : (costBusy ? '試算中…' : '—')}
+                    </span>
+                    <span className="font-mono font-bold text-neutral-800 dark:text-neutral-200 whitespace-nowrap">
+                      {costs[i] ? money(costs[i]!.cost) : ''}
+                    </span>
+                  </div>
+                );
+                const modeTag = (d: DraftItem) => (
+                  <>
+                    <span className="px-1.5 py-0.5 rounded-full bg-black/5 dark:bg-white/10 text-[10px] mr-1.5 whitespace-nowrap">
+                      {MODE_LABEL[d.mode]}
+                    </span>
+                    {d.playType}
+                    {d.incomplete && (
+                      <div className="text-[10px] text-amber-700 dark:text-amber-400 mt-0.5">⚠ 顆數不足,請手動補齊號碼</div>
+                    )}
+                  </>
+                );
+                return (
+                  <>
+                    {/* 手機:每筆一張直排卡片,欄位全寬、不橫向捲動 */}
+                    <div className="sm:hidden rounded-xl border border-black/[0.08] dark:border-white/[0.08] divide-y divide-black/[0.06] dark:divide-white/[0.06]">
+                      {draftItems.map((d, i) => (
+                        <div key={i} className={`p-3 space-y-2.5 ${d.incomplete ? 'bg-amber-500/10' : ''}`}>
+                          <div className="text-[12px] font-sans text-neutral-800 dark:text-neutral-100">{modeTag(d)}</div>
+                          <div>{ballsField(d, i)}</div>
+                          <div className="grid grid-cols-3 gap-2">
+                            <label className="block">
+                              <span className="block mb-0.5 text-[10px] text-neutral-500">支 / 車</span>
+                              {unitsField(d, i, 'w-full py-2 text-sm')}
+                            </label>
+                            <label className="block">
+                              <span className="block mb-0.5 text-[10px] text-neutral-500">基礎成本</span>
+                              {baseField(d, i, 'w-full py-2 text-sm')}
+                            </label>
+                            <label className="block">
+                              <span className="block mb-0.5 text-[10px] text-neutral-500">中獎顆數</span>
+                              {hitField(d, i, 'w-full py-2 text-sm')}
+                            </label>
+                          </div>
+                          {costLine(i)}
+                        </div>
                       ))}
-                    </tbody>
-                    <tfoot>
-                      <tr className="border-t-2 border-black/10 dark:border-white/15 bg-black/[0.03] dark:bg-white/[0.05]">
-                        <td colSpan={3} className="px-3 py-2 text-right font-sans font-semibold text-neutral-700 dark:text-neutral-200">
-                          總下注成本{costBusy && ' (試算中…)'}
-                        </td>
-                        <td className="px-3 py-2 text-right font-mono font-bold text-neutral-900 dark:text-white whitespace-nowrap">
-                          {money(costTotal)}
-                        </td>
-                      </tr>
-                    </tfoot>
-                  </table>
-                </div>
-              )}
+                      <div className="flex items-center justify-between px-3 py-2.5 bg-black/[0.03] dark:bg-white/[0.05]">
+                        <span className="text-[12px] font-semibold text-neutral-700 dark:text-neutral-200">總下注成本{costBusy && ' (試算中…)'}</span>
+                        <span className="font-mono font-bold text-neutral-900 dark:text-white">{money(costTotal)}</span>
+                      </div>
+                    </div>
+
+                    {/* sm 以上:表格 */}
+                    <div className="hidden sm:block rounded-xl border border-black/[0.08] dark:border-white/[0.08] overflow-x-auto">
+                      <table className="w-full text-[11px]">
+                        <thead className="bg-black/[0.03] dark:bg-white/[0.04] text-neutral-500">
+                          <tr>
+                            <th className="px-3 py-2 text-left font-semibold">玩法</th>
+                            <th className="px-3 py-2 text-left font-semibold">號碼(可編輯)</th>
+                            <th className="px-3 py-2 text-right font-semibold">支 / 車</th>
+                            <th className="px-3 py-2 text-right font-semibold">基礎成本<br/><span className="font-normal text-[9px]">每注/每碰·可改</span></th>
+                            <th className="px-3 py-2 text-right font-semibold">中獎顆數<br/><span className="font-normal text-[9px]">忘記期數可填</span></th>
+                          </tr>
+                        </thead>
+                        <tbody className="font-mono">
+                          {draftItems.map((d, i) => (
+                            <React.Fragment key={i}>
+                              <tr className={`border-t border-black/[0.06] dark:border-white/[0.06] ${d.incomplete ? 'bg-amber-500/10' : ''}`}>
+                                <td className="px-3 py-2 font-sans align-top">{modeTag(d)}</td>
+                                <td className="px-3 py-2">{ballsField(d, i)}</td>
+                                <td className="px-3 py-2 text-right align-top">{unitsField(d, i, 'w-16 text-[11px]')}</td>
+                                <td className="px-3 py-2 text-right align-top">{baseField(d, i, 'w-20 text-[11px]')}</td>
+                                <td className="px-3 py-2 text-right align-top">{hitField(d, i, 'w-16 text-[11px]')}</td>
+                              </tr>
+                              {/* 成本解析:這一筆成本是怎麼算出來的 */}
+                              <tr className={`border-t-0 ${d.incomplete ? 'bg-amber-500/10' : ''}`}>
+                                <td colSpan={5} className="px-3 pb-2 pt-0">{costLine(i)}</td>
+                              </tr>
+                            </React.Fragment>
+                          ))}
+                        </tbody>
+                        <tfoot>
+                          <tr className="border-t-2 border-black/10 dark:border-white/15 bg-black/[0.03] dark:bg-white/[0.05]">
+                            <td colSpan={3} className="px-3 py-2 text-right font-sans font-semibold text-neutral-700 dark:text-neutral-200">
+                              總下注成本{costBusy && ' (試算中…)'}
+                            </td>
+                            <td className="px-3 py-2 text-right font-mono font-bold text-neutral-900 dark:text-white whitespace-nowrap">
+                              {money(costTotal)}
+                            </td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  </>
+                );
+              })()}
 
               {errors.length > 0 && (
                 <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-[11px] text-rose-700 dark:text-rose-400 space-y-1">
@@ -916,7 +948,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
 
         {/* 未來日期確認:選到今天以後的日期 → 先確認是不是真的要記到那天 */}
         {futurePrompt && (
-          <div className="px-6 py-3 border-t border-sky-500/30 bg-sky-500/[0.07] space-y-2 shrink-0">
+          <div className="px-4 sm:px-6 py-3 border-t border-sky-500/30 bg-sky-500/[0.07] space-y-2 shrink-0">
             <div className="flex items-start gap-1.5 text-[12px] text-sky-800 dark:text-sky-300">
               <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
               <span>
@@ -949,7 +981,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
 
         {/* 覆蓋確認:偵測到同 遊戲+版+日期 已上傳過 → 列出將被覆蓋的紀錄,確認才送 */}
         {overwriteTarget && (
-          <div className="px-6 py-3 border-t border-amber-500/30 bg-amber-500/[0.06] space-y-2 shrink-0">
+          <div className="px-4 sm:px-6 py-3 border-t border-amber-500/30 bg-amber-500/[0.06] space-y-2 shrink-0">
             <div className="flex items-start gap-1.5 text-[11px] text-amber-800 dark:text-amber-300">
               <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
               <span>
@@ -1070,9 +1102,9 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
         })()}
 
         {/* Modal Footer */}
-        <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-black/[0.08] dark:border-white/[0.08] shrink-0">
+        <div className="flex flex-wrap items-center justify-end gap-2 px-4 sm:px-6 pt-3 sm:pt-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:pb-4 border-t border-black/[0.08] dark:border-white/[0.08] shrink-0">
           {!targetReady && (
-            <span className="mr-auto text-[11px] text-amber-700 dark:text-amber-400">
+            <span className="w-full sm:w-auto sm:mr-auto text-[11px] text-amber-700 dark:text-amber-400">
               請先選擇 {missingSel.length ? missingSel.join(' / ') : '期號(依日期反查)'}
             </span>
           )}
@@ -1081,7 +1113,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
             id="quick-import-preview-btn"
             disabled={busy || !text.trim() || !loggedIn || !targetReady}
             onClick={() => runPreview()}
-            className="py-2.5 px-4 rounded-xl text-xs uppercase tracking-wider font-semibold bg-white dark:bg-[#161616] border border-black/[0.08] dark:border-white/[0.08] text-neutral-700 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5 disabled:opacity-30 transition-colors flex items-center gap-2"
+            className="flex-1 sm:flex-none justify-center py-3 sm:py-2.5 px-4 rounded-xl text-xs uppercase tracking-wider font-semibold bg-white dark:bg-[#161616] border border-black/[0.08] dark:border-white/[0.08] text-neutral-700 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5 disabled:opacity-30 transition-colors flex items-center gap-2"
           >
             <ListChecks className="w-4 h-4" />
             {busy ? '處理中…' : '解析預覽'}
@@ -1093,7 +1125,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
             disabled={busy || !loggedIn || draftItems.length === 0 || done !== null || !targetReady || overwriteTarget != null || futurePrompt}
             onClick={() => confirm()}
             title={anyIncomplete ? '仍有顆數不足的列,建議先補齊再上傳' : ''}
-            className="py-2.5 px-4 rounded-xl text-xs uppercase tracking-wider font-semibold bg-black text-white dark:bg-white dark:text-black hover:opacity-90 disabled:opacity-30 transition-opacity flex items-center gap-2 shadow-xs active:scale-98"
+            className="flex-1 sm:flex-none justify-center py-3 sm:py-2.5 px-4 rounded-xl text-xs uppercase tracking-wider font-semibold bg-black text-white dark:bg-white dark:text-black hover:opacity-90 disabled:opacity-30 transition-opacity flex items-center gap-2 shadow-xs active:scale-98"
           >
             <Upload className="w-4 h-4" />
             確認上傳{draftItems.length > 0 ? ` ${draftItems.length} 筆` : ''}
