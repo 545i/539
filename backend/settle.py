@@ -9,7 +9,8 @@
 - single / multi  二合買牌的兩個「組」(1組 / 2組),派彩公式統一:命中幾顆 ×
                   車數 × 每車中獎可得(成本 2755 / 車 → 中一顆得 21200 / 車,不除以 4)。
                   有 ballDetail(編輯器逐顆車數)時改逐顆:Σ 中獎號碼各自車數 × 每車中獎;
-                  逐顆紀錄不能手填中獎數(不知道哪顆中,派彩不唯一)。
+                  逐顆紀錄手填:各顆車數不同時要點選「哪幾顆中」(hit_balls),派彩 =
+                  被點選各顆自己的車數 × 每車中獎;車數相同時仍可填「中 k 顆」。
                   (single 是舊「單顆」的 mode key,如今就是 1組;不再特例。)
 - pillar1800  三柱全包,命中注數只可能是 4 / 3 / 0(見 core.pillar),
               回收 = 支數 × 命中注數 × 每注可得。
@@ -78,12 +79,38 @@ def _stars_of(play_type: str) -> int:
     return int(m.group(1)) if m else 3
 
 
+def _cars_vary(record: dict) -> bool:
+    """逐顆紀錄的各顆車數是否不同(不同才需要點選中獎號碼)。"""
+    detail = record.get("ballDetail") or []
+    return len({_f(d, "cars") for d in detail}) > 1
+
+
+def _manual_balls(record: dict, hit_balls: list[int], g: GameConfig) -> dict:
+    """二合手填「中哪幾顆」:派彩 = 被點選各顆自己的車數 × 每車中獎。點選結果存 hitBalls。"""
+    out = dict(record)
+    detail = record.get("ballDetail") or []
+    cars_of = ({int(d.get("n") or 0): _f(d, "cars") for d in detail} if detail
+               else {int(n): _cars(record) for n in record.get("selectedBalls") or []})
+    hit = sorted({int(n) for n in hit_balls})
+    bad = [n for n in hit if n not in cars_of]
+    if bad:
+        raise ValueError(f"{bad} 不是這筆下注的號碼")
+    payout = sum(cars_of[n] for n in hit) * _odds(record, g)["win_payout"]
+    out["payout"] = round(float(payout))
+    out["pnl"] = round(float(payout) - _f(record, "cost", 0.0))
+    out["result"] = (f"中 {len(hit)} 顆:{'、'.join(f'{n:02d}' for n in hit)}(手填)"
+                     if hit else "槓龜(手填)")
+    out["hitBalls"] = hit
+    return out
+
+
 def _manual(record: dict, hit_count: int, g: GameConfig) -> dict:
     """手填中獎數量:不看開獎號,直接用該下法「每中一單位」的派彩換算。
 
     drawBalls 不動(使用者不記得期數,本來就沒有開獎號可填)。
     """
     out = dict(record)
+    out.pop("hitBalls", None)   # 改填「中 k 顆」→ 先前點選的中獎號碼作廢
     cost = _f(record, "cost", 0.0)
     mode = record.get("mode")
     cars = _cars(record)
@@ -106,9 +133,9 @@ def _manual(record: dict, hit_count: int, g: GameConfig) -> dict:
         payout = k * cars * prize9000
         result = f"中 {k} 碰(手填)" if k > 0 else "槓龜(手填)"
     else:  # single / multi 二合組:每中一顆 = 車數 × 每車中獎(不除以 4)
-        if record.get("ballDetail"):
-            # 逐顆車數不同:只知道中幾顆、不知道哪幾顆,派彩不唯一 → 不能手填
-            raise ValueError("這筆各顆車數不同,不能手填中獎數,請選期號對獎")
+        if _cars_vary(record):
+            # 逐顆車數不同:只知道中幾顆、不知道哪幾顆,派彩不唯一 → 要點選中獎號碼
+            raise ValueError("這筆各顆車數不同,請點選中獎號碼(或選期號對獎)")
         payout = k * cars * odds["win_payout"]
         result = f"中 {k} 顆(手填)" if k > 0 else "槓龜(手填)"
 
@@ -119,16 +146,19 @@ def _manual(record: dict, hit_count: int, g: GameConfig) -> dict:
 
 
 def settle(record: dict, draw: list[int] | None, g: GameConfig,
-           hit_count: int | None = None) -> dict:
+           hit_count: int | None = None, hit_balls: list[int] | None = None) -> dict:
     """回傳「對過獎」的紀錄(淺拷貝),更新 drawBalls / result / payout / pnl。
 
     只動對獎會變的欄位,其餘(selectedBalls / cost / 期數 …)原樣保留。
     hit_count 有值時走手填(不看 draw,見 _manual)。
     """
+    if hit_balls is not None and record.get("mode") in ("single", "multi"):
+        return _manual_balls(record, hit_balls, g)
     if hit_count is not None:
         return _manual(record, hit_count, g)
 
     out = dict(record)
+    out.pop("hitBalls", None)   # 依開獎號 / 待開獎 → 先前手填點選的中獎號碼作廢
     cost = _f(record, "cost", 0.0)
 
     # 該期還沒開 / 查不到 → 待開獎,不硬算

@@ -28,7 +28,8 @@ def _check_mode(mode: str) -> str:
     return mode
 
 
-def _resettle(record: dict, issue: str, hit_count: int | None = None) -> dict:
+def _resettle(record: dict, issue: str, hit_count: int | None = None,
+              hit_balls: list[int] | None = None) -> dict:
     """把一筆紀錄對到指定期數的開獎號:更新期數 / 日期 / 開獎號 / 損益。
 
     money 規則全在 backend.settle;查不到該期(未開)就退回待開獎。登入與未登入
@@ -38,8 +39,8 @@ def _resettle(record: dict, issue: str, hit_count: int | None = None) -> dict:
     該下法公式結算;issue 有給仍寫回(方便之後補記),沒給就沿用原本的。
     """
     g = games.by_name(str(record.get("game", "")))
-    if hit_count is not None:
-        out = settle.settle(record, None, g, hit_count=hit_count)
+    if hit_count is not None or hit_balls is not None:
+        out = settle.settle(record, None, g, hit_count=hit_count, hit_balls=hit_balls)
         if issue:
             out["issue"] = str(issue)
         return out
@@ -95,12 +96,14 @@ class EntryIn(BaseModel):
 class SettleIn(BaseModel):
     issue: str = ""
     hit_count: int | None = None    # 手填中獎數量(忘記期數但記得中幾顆)
+    hit_balls: list[int] | None = None   # 手填中哪幾顆(逐顆車數不同的二合紀錄用)
 
 
 class PreviewIn(BaseModel):
     record: dict = Field(default_factory=dict)
     issue: str = ""
     hit_count: int | None = None
+    hit_balls: list[int] | None = None
 
 
 @router.get("")
@@ -242,7 +245,7 @@ def settle_preview(body: PreviewIn):
     自己的暫存,不需要登入也不動任何人的資料。
     """
     try:
-        return _resettle(body.record, body.issue, body.hit_count)
+        return _resettle(body.record, body.issue, body.hit_count, body.hit_balls)
     except ValueError as e:     # 例:逐顆車數紀錄不能手填
         raise HTTPException(status_code=400, detail=str(e)) from e
 
@@ -259,15 +262,16 @@ def resettle_entry(entry_id: int, body: SettleIn, user: str = Depends(current_us
         raise HTTPException(status_code=404, detail="找不到這筆紀錄")
 
     try:
-        updated_record = _resettle(cur["record"], body.issue, body.hit_count)
+        updated_record = _resettle(cur["record"], body.issue, body.hit_count, body.hit_balls)
     except ValueError as e:     # 例:逐顆車數紀錄不能手填
         raise HTTPException(status_code=400, detail=str(e)) from e
     res = ledger_store.update_entry(user, entry_id, updated_record)
     if res is None:
         raise HTTPException(status_code=404, detail="找不到這筆紀錄")
     new_entry, old_entry = res
-    label = f"手填中 {body.hit_count} 顆" if body.hit_count is not None \
-        else f"改期數對獎 → {body.issue}"
+    label = (f"手填中獎號碼 {body.hit_balls}" if body.hit_balls is not None
+             else f"手填中 {body.hit_count} 顆" if body.hit_count is not None
+             else f"改期數對獎 → {body.issue}")
     audit_store.log(
         user, "bet_settle", target_id=entry_id,
         summary=f"{label}:"

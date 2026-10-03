@@ -27,6 +27,7 @@ interface Draft {
   units: number;
   base: number;      // 0 = 沿用版盤口(送 null)
   rows: BallRow[];   // 1組/2組 逐顆(號碼字串改了就跟著增減)
+  hit: number[] | null;   // 手填紀錄:點選的中獎號碼(null = 沿用紀錄存的 hitBalls / 中 k 顆)
 }
 
 const num = (v: unknown): number => {
@@ -67,8 +68,13 @@ function initDraft(t: EditTarget): Draft {
     units: num(r.units) || num(r.cars),
     base: num(r.baseCost),
     rows,
+    hit: Array.isArray(r.hitBalls) ? (r.hitBalls as number[]).map(Number) : null,
   };
 }
+
+// 手填中獎的紀錄改成各顆車數不同 → 「中 k 顆」不唯一,要點選中哪幾顆
+const needHitBalls = (t: EditTarget, d: Draft) =>
+  isErhe(t.mode) && String(t.record.result ?? '').includes('手填') && new Set(d.rows.map(x => x.cars)).size > 1;
 
 // 號碼字串改了 → 逐顆列跟著增減;既有號碼保留原車數 / 每注,新號碼沿用第一列
 function syncRows(rows: BallRow[], balls: number[]): BallRow[] {
@@ -81,6 +87,7 @@ function toItem(t: EditTarget, d: Draft): BatchEditItem {
     return {
       id: Number(t.id), selectedBalls: d.rows.map(x => x.n), units: d.rows[0]?.cars ?? 0,
       ball_detail: d.rows.map(x => ({n: x.n, cars: x.cars, base: x.base > 0 ? x.base : null})),
+      hit_balls: d.hit === null ? null : d.hit.filter(n => d.rows.some(x => x.n === n)),
     };
   }
   const balls = hasBalls(t.mode) ? parseBalls(d.balls) : [];
@@ -217,6 +224,29 @@ export const BetEditModal: React.FC<{
                 </label>
               </div>
             ))}
+          </div>
+        )}
+        {needHitBalls(t, d) && (
+          // 原本手填「中 k 顆」:各顆車數不同時要點選中哪幾顆,派彩依各顆車數算
+          <div className="mt-2 space-y-1.5">
+            <div className="text-[10px] text-neutral-500">原本手填「{String(t.record.result ?? '')}」,各顆車數不同,請點選中獎號碼</div>
+            <div className="flex flex-wrap gap-2">
+              {d.rows.map(x => {
+                const on = (d.hit ?? []).includes(x.n);
+                return (
+                  <button key={x.n} type="button"
+                    onClick={() => setDraft(i, {hit: on ? (d.hit ?? []).filter(n => n !== x.n) : [...(d.hit ?? []), x.n]})}
+                    className={`w-10 h-10 rounded-full font-mono font-bold text-[13px] ${on
+                      ? 'bg-neutral-900 text-white dark:bg-white dark:text-black'
+                      : 'bg-black/[0.05] dark:bg-white/[0.08] text-neutral-800 dark:text-neutral-100'}`}>
+                    {pad(x.n)}
+                  </button>
+                );
+              })}
+              {d.hit !== null && d.hit.filter(n => d.rows.some(x => x.n === n)).length === 0 && (
+                <span className="self-center text-[11px] text-neutral-500">槓龜</span>
+              )}
+            </div>
           </div>
         )}
       </>

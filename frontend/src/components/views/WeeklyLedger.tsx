@@ -1760,6 +1760,9 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
                                     showNums={false}
                                     onRefresh={() => resettle(v.id, v.issue)}
                                     onManualHit={(k) => resettle(v.id, v.issue, k)}
+                                    // 逐顆車數不同 → 手填改成點選中獎號碼(中 k 顆不唯一)
+                                    manualBalls={new Set(v.detail.map(d => d.cars)).size > 1 ? v.detail.map(d => d.n) : undefined}
+                                    onManualHitBalls={(balls) => resettle(v.id, v.issue, null, balls)}
                                   />
                                 </td>
                                 <td className="px-3 pt-1.5 pb-0 align-top text-neutral-700 dark:text-neutral-300">

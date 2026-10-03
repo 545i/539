@@ -1,4 +1,5 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { ChevronDown, RotateCw } from 'lucide-react';
 import { DrawDTO } from '../api/client';
 
@@ -28,6 +29,9 @@ interface IssuePickerProps {
   // 給了就在旁邊多一個「中N顆」小輸入 + 套用鈕:忘記期數但記得中幾顆時,直接
   // 依組公式手填結算(不查開獎號)。見 backend.settle 的 hit_count。
   onManualHit?: (hitCount: number) => void;
+  // 二合逐顆車數不同的紀錄:手填改成點選「中哪幾顆」(給了就取代「中N」輸入)。
+  manualBalls?: number[];
+  onManualHitBalls?: (balls: number[]) => void;
   // 1800碰:分幾柱填「各柱中幾顆」,中碰=各柱相乘(取代單一「中N」)。
   manualPillars?: number;
   // 下拉選項要不要一起顯示遊戲名(期號+日期+遊戲+開獎號)。
@@ -46,6 +50,8 @@ export const IssuePicker: React.FC<IssuePickerProps> = ({
   onSelect,
   onRefresh,
   onManualHit,
+  manualBalls,
+  onManualHitBalls,
   manualPillars,
   gameLabel,
   showNums = true,
@@ -71,6 +77,9 @@ export const IssuePicker: React.FC<IssuePickerProps> = ({
   const selNums = (options.find(o => o.issue === issue)?.nums ?? [])
     .map(n => String(n).padStart(2, '0')).join(' ');
   const [hit, setHit] = React.useState('');
+  const [ballSheet, setBallSheet] = React.useState(false);
+  const [picked, setPicked] = React.useState<Set<number>>(new Set());
+  const ballMode = !!(manualBalls && manualBalls.length > 0 && onManualHitBalls);
 
   // 1800碰 直接填「中幾碰」,其他玩法填「中幾顆」—— 差在標籤,值都是直接送去結算
   const isPillar = (manualPillars ?? 0) > 1;
@@ -123,7 +132,54 @@ export const IssuePicker: React.FC<IssuePickerProps> = ({
           <RotateCw className="w-3 h-3" />
         </button>
       )}
-      {onManualHit && (
+      {ballMode && (
+        <button
+          type="button"
+          onClick={() => { setPicked(new Set()); setBallSheet(true); }}
+          title="忘記期數?點選中了哪幾顆號碼結算(各顆車數不同)"
+          className="shrink-0 px-1.5 py-1 rounded-lg border border-black/10 dark:border-white/10 text-[10px] font-semibold text-neutral-500 hover:text-neutral-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 active:scale-95 transition-colors"
+        >
+          中獎號
+        </button>
+      )}
+      {ballSheet && ballMode && createPortal((
+        // 手機底部面板、sm 以上置中;點選中獎號碼後套用
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center sm:justify-center bg-black/50" onClick={() => setBallSheet(false)}>
+          <div
+            className="w-full sm:max-w-sm bg-white dark:bg-[#121212] sm:rounded-2xl rounded-t-2xl px-4 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))] space-y-3 text-neutral-800 dark:text-neutral-200"
+            onClick={e => e.stopPropagation()}
+          >
+            <div>
+              <div className="text-[14px] font-bold text-neutral-900 dark:text-white">點選中獎號碼</div>
+              <div className="text-[11px] text-neutral-400">各顆車數不同,派彩依中獎那幾顆各自的車數計算;都沒中就直接套用</div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {manualBalls!.map(n => {
+                const on = picked.has(n);
+                return (
+                  <button key={n} type="button"
+                    onClick={() => setPicked(prev => { const s2 = new Set(prev); s2.has(n) ? s2.delete(n) : s2.add(n); return s2; })}
+                    className={`w-11 h-11 rounded-full font-mono font-bold text-[14px] transition-colors ${on
+                      ? 'bg-neutral-900 text-white dark:bg-white dark:text-black'
+                      : 'bg-black/[0.05] dark:bg-white/[0.08] text-neutral-800 dark:text-neutral-100'}`}>
+                    {String(n).padStart(2, '0')}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="flex items-center justify-end gap-4">
+              <button type="button" onClick={() => setBallSheet(false)}
+                className="text-[12px] text-neutral-500 hover:text-neutral-900 dark:hover:text-white hover:underline underline-offset-2">取消</button>
+              <button type="button"
+                onClick={() => { onManualHitBalls!([...picked].sort((a, b) => a - b)); setBallSheet(false); }}
+                className="px-4 py-2 rounded-lg text-[12px] font-semibold bg-neutral-900 text-white dark:bg-white dark:text-black">
+                {picked.size ? `中 ${picked.size} 顆,套用` : '槓龜,套用'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ), document.body)}
+      {onManualHit && !ballMode && (
         <div className="inline-flex items-center gap-0.5" title={`忘記期數?直接填中幾${hitLabel}結算`}>
           <input
             type="number"

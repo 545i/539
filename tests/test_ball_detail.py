@@ -98,12 +98,33 @@ def test_settle_without_detail_unchanged(env):
     assert out["payout"] == round(1 * 5 * float(odds["win_payout"]))
 
 
-def test_manual_hit_rejected_for_per_ball(env):
+PER_BALL = {"mode": "single", "cars": 8, "units": 8, "selectedBalls": [13, 27], "cost": 1,
+            "ballDetail": DETAIL}
+
+
+def test_manual_hit_count_rejected_when_cars_vary(env):
     g, _ = env
-    rec = {"mode": "single", "cars": 8, "units": 8, "selectedBalls": [13, 27], "cost": 1,
-           "ballDetail": DETAIL}
     with pytest.raises(ValueError):
-        settle.settle(rec, None, g, hit_count=1)
+        settle.settle(PER_BALL, None, g, hit_count=1)
+
+
+def test_manual_hit_balls_pays_each_balls_cars(env):
+    g, odds = env
+    out = settle.settle(PER_BALL, None, g, hit_balls=[27])
+    assert out["payout"] == round(5 * float(odds["win_payout"]))
+    assert out["hitBalls"] == [27] and "手填" in out["result"] and "中 1 顆" in out["result"]
+    out = settle.settle(PER_BALL, None, g, hit_balls=[])
+    assert out["payout"] == 0 and "槓龜" in out["result"] and out["hitBalls"] == []
+    with pytest.raises(ValueError):
+        settle.settle(PER_BALL, None, g, hit_balls=[5])     # 不是這筆的號碼
+
+
+def test_manual_hit_count_ok_when_cars_same(env):
+    """各顆車數相同(只有每注不同)→ 結果唯一,維持「中 k 顆」手填。"""
+    g, odds = env
+    rec = {**PER_BALL, "ballDetail": [{"n": 13, "cars": 8, "base": 72.5}, {"n": 27, "cars": 8, "base": 74.5}]}
+    out = settle.settle(rec, None, g, hit_count=1)
+    assert out["payout"] == round(8 * float(odds["win_payout"]))
 
 
 def test_reconcile_total_carry_per_ball(env):
@@ -144,18 +165,42 @@ def test_batch_edit_per_ball_and_resettle(client, env):
     assert _rec(client, eid)["ballDetail"] == []
 
 
-def test_batch_edit_manual_record_to_per_ball_is_error(client):
+def _manual_record(client):
     res = client.post(f"{P}/ledger/quick-import/commit", headers=ALICE, json={
         "game": "lotto539", "date": "2026-09-01", "issue": "", "edition": 1,
         "items": [{"mode": "single", "selectedBalls": [13, 27], "units": 8, "hit_count": 1}]}).json()
-    eid = res["items"][0]["id"]
+    return res["items"][0]["id"]
+
+
+def test_batch_edit_manual_record_to_per_ball_needs_hit_balls(client):
+    eid = _manual_record(client)
     res = client.post(f"{P}/ledger/batch-edit", headers=ALICE,
                       json={"items": [{"id": eid, "ball_detail": DETAIL}]}).json()
     assert res["saved"] == 0 and res["errors"][0]["id"] == eid
 
 
-def test_resettle_manual_on_per_ball_returns_400(client):
+def test_batch_edit_manual_record_to_per_ball_with_hit_balls(client, env):
+    _, odds = env
+    eid = _manual_record(client)
+    res = client.post(f"{P}/ledger/batch-edit", headers=ALICE,
+                      json={"items": [{"id": eid, "ball_detail": DETAIL, "hit_balls": [27]}]}).json()
+    assert res["errors"] == [] and res["saved"] == 1
+    rec = _rec(client, eid)
+    assert rec["payout"] == round(5 * float(odds["win_payout"])) and rec["hitBalls"] == [27]
+    # 之後再編輯(改車數)沿用存下的 hitBalls,不必重點
+    detail2 = [{"n": 13, "cars": 8, "base": 72.5}, {"n": 27, "cars": 6, "base": 74.5}]
+    res = client.post(f"{P}/ledger/batch-edit", headers=ALICE,
+                      json={"items": [{"id": eid, "ball_detail": detail2}]}).json()
+    assert res["errors"] == []
+    assert _rec(client, eid)["payout"] == round(6 * float(odds["win_payout"]))
+
+
+def test_resettle_manual_on_per_ball(client, env):
+    _, odds = env
     [eid] = _commit(client, [{"mode": "single", "selectedBalls": [13, 27], "units": 8}], issue="115000999")
     client.post(f"{P}/ledger/batch-edit", headers=ALICE, json={"items": [{"id": eid, "ball_detail": DETAIL}]})
     r = client.put(f"{P}/ledger/{eid}", headers=ALICE, json={"issue": "", "hit_count": 1})
-    assert r.status_code == 400
+    assert r.status_code == 400       # 各顆車數不同 → 中 k 顆不唯一
+    r = client.put(f"{P}/ledger/{eid}", headers=ALICE, json={"issue": "", "hit_balls": [13]})
+    assert r.status_code == 200
+    assert r.json()["record"]["payout"] == round(8 * float(odds["win_payout"]))

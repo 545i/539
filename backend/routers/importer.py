@@ -1002,6 +1002,8 @@ class BatchEditItemIn(BaseModel):
         default_factory=dict, description="二合每個號碼的每注基礎加價;其餘下法忽略")
     ball_detail: list[BallDetailIn] = Field(   # 1組/2組 逐顆車數 + 每注成本;有給就取代 selectedBalls/units
         default_factory=list, description="二合逐顆 [{n, cars, base}];其餘下法忽略")
+    hit_balls: list[int] | None = Field(   # 手填紀錄改成逐顆(各顆車數不同)時,點選中哪幾顆
+        default=None, description="手填中獎號碼;None = 沿用紀錄裡存的 hitBalls")
 
 
 class BatchEditIn(BaseModel):
@@ -1009,15 +1011,21 @@ class BatchEditIn(BaseModel):
     dry_run: bool = Field(default=False, description="只試算(回舊/新對照)不寫入")
 
 
-def _resettle_edited(new: dict, old: dict, g: GameConfig) -> dict:
+def _resettle_edited(new: dict, old: dict, g: GameConfig,
+                     hit_balls: list[int] | None = None) -> dict:
     """編輯後重新對獎,沿用原本的對獎方式:
 
-    - 原本是手填中獎(result 帶「手填」)→ 依原手填中獎數重算(手填數只存在 result 文字裡);
+    - 原本是手填中獎(result 帶「手填」)→ 有點選中獎號碼(hit_balls,或紀錄存的 hitBalls)
+      就依各顆車數算;否則依原手填中獎數重算(手填數只存在 result 文字裡)。各顆車數
+      不同又沒點選 → settle 丟 ValueError(中 k 顆不唯一);
     - 原本已對到開獎號 → 依同一組開獎號重算;
     - 原本待開獎 → 該期(或該日)已開就對,沒開維持待開獎。
     """
     result = str(old.get("result") or "")
     if "手填" in result:
+        hb = hit_balls if hit_balls is not None else old.get("hitBalls")
+        if hb is not None and new.get("mode") in ("single", "multi"):
+            return settle.settle(new, None, g, hit_balls=hb)
         m = _MANUAL_HIT_RE.search(result)
         return settle.settle(new, None, g, hit_count=int(m.group(1)) if m else 0)
     draw = old.get("drawBalls") or []
@@ -1043,7 +1051,7 @@ def _edited_record(old: dict, mode: str, it: BatchEditItemIn) -> dict:
     fresh = to_record(item, g, str(old.get("date") or ""), str(old.get("issue") or ""),
                       edition=settle._edition(old))
     new = {**old, **{k: fresh[k] for k in _EDIT_KEYS}}
-    return _resettle_edited(new, old, g)
+    return _resettle_edited(new, old, g, it.hit_balls)
 
 
 def _num0(v) -> float:

@@ -299,11 +299,11 @@ export function useLedgerActions() {
   );
 
   const resettle = useCallback(
-    async (id: string | number, issue: string, hitCount?: number | null) => {
+    async (id: string | number, issue: string, hitCount?: number | null, hitBalls?: number[] | null) => {
       if (!loggedIn) return;
       setError(null);
       try {
-        const entry = await api.ledgerResettle(Number(id), issue, hitCount);
+        const entry = await api.ledgerResettle(Number(id), issue, hitCount, hitBalls);
         ctx.setEntries(prev =>
           prev.map(e => (String(e.id) === String(id) ? entry : e)),
         );
