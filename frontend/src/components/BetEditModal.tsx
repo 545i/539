@@ -243,9 +243,18 @@ export const BetEditModal: React.FC<{
                   </button>
                 );
               })}
-              {d.hit !== null && d.hit.filter(n => d.rows.some(x => x.n === n)).length === 0 && (
-                <span className="self-center text-[11px] text-neutral-500">槓龜</span>
-              )}
+              {(() => {
+                // 明確的「槓龜」:都沒中就直接點這顆(不必先點號碼再取消)
+                const miss = d.hit !== null && d.hit.filter(n => d.rows.some(x => x.n === n)).length === 0;
+                return (
+                  <button type="button" onClick={() => setDraft(i, {hit: []})}
+                    className={`h-10 px-3.5 rounded-full text-[12px] font-semibold ${miss
+                      ? 'bg-neutral-900 text-white dark:bg-white dark:text-black'
+                      : 'bg-black/[0.05] dark:bg-white/[0.08] text-neutral-700 dark:text-neutral-200'}`}>
+                    槓龜
+                  </button>
+                );
+              })()}
             </div>
           </div>
         )}
