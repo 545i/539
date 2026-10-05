@@ -594,7 +594,7 @@ export const PredictionView: React.FC = () => {
                       expanded ? 'rotate-90' : ''
                     }`}
                   />
-                  <span className="text-xs font-semibold text-neutral-800 dark:text-neutral-200">
+                  <span className="text-xs font-semibold text-neutral-800 dark:text-neutral-200 whitespace-nowrap">
                     {row.label}
                   </span>
                   <div className="flex items-center gap-1.5 flex-wrap">
@@ -603,11 +603,11 @@ export const PredictionView: React.FC = () => {
                     ))}
                   </div>
                   <div className="ml-auto flex items-center gap-2 shrink-0">
-                    <span className="text-[calc(10px*var(--fs))] px-1.5 py-0.5 rounded-full font-semibold bg-black/[0.04] dark:bg-white/[0.06] text-neutral-600 dark:text-neutral-300">
+                    <span className="text-[calc(10px*var(--fs))] px-1.5 py-0.5 rounded-full font-semibold whitespace-nowrap bg-black/[0.04] dark:bg-white/[0.06] text-neutral-600 dark:text-neutral-300">
                       開獎 {row.draw_lean}
                     </span>
                     {row.oe_win !== null && (
-                      <span className={`text-[calc(10px*var(--fs))] px-1.5 py-0.5 rounded-full font-semibold ${
+                      <span className={`text-[calc(10px*var(--fs))] px-1.5 py-0.5 rounded-full font-semibold whitespace-nowrap ${
                         row.oe_win
                           ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
                           : 'bg-neutral-500/15 text-neutral-500'
@@ -615,7 +615,7 @@ export const PredictionView: React.FC = () => {
                         均衡單雙 {row.oe_win ? '中' : '未中'}
                       </span>
                     )}
-                    <span className="text-[calc(10px*var(--fs))] font-mono uppercase tracking-wider text-neutral-400">
+                    <span className="text-[calc(10px*var(--fs))] font-mono uppercase tracking-wider text-neutral-400 whitespace-nowrap">
                       最佳 {best} 顆
                     </span>
                   </div>
@@ -628,11 +628,11 @@ export const PredictionView: React.FC = () => {
                       const hit = new Set(p.matched);
                       return (
                         <div key={s.key} className="flex items-center gap-2 flex-wrap">
-                          <span className="w-24 shrink-0 text-[calc(11px*var(--fs))] font-semibold text-neutral-600 dark:text-neutral-300">
+                          <span className="w-24 sm:w-auto sm:min-w-[calc(10.5rem*var(--fs))] sm:whitespace-nowrap shrink-0 text-[calc(11px*var(--fs))] font-semibold text-neutral-600 dark:text-neutral-300">
                             {s.label}
                           </span>
                           {s.key === 'balanced' ? (
-                            <span className="text-xs font-bold text-neutral-900 dark:text-white">{p.lean}</span>
+                            <span className="text-xs font-bold text-neutral-900 dark:text-white whitespace-nowrap">{p.lean}</span>
                           ) : (
                           <div className="flex gap-1.5 flex-wrap">
                             {p.numbers.map(n => (
@@ -648,7 +648,7 @@ export const PredictionView: React.FC = () => {
                           <div className="ml-auto flex items-center gap-2 shrink-0">
                             {p.oe_win !== null && (
                               <>
-                                <span className={`text-[calc(10px*var(--fs))] px-1.5 py-0.5 rounded-full font-semibold ${
+                                <span className={`text-[calc(10px*var(--fs))] px-1.5 py-0.5 rounded-full font-semibold whitespace-nowrap ${
                                   p.oe_win
                                     ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
                                     : 'bg-neutral-500/15 text-neutral-500'
@@ -658,7 +658,7 @@ export const PredictionView: React.FC = () => {
                               </>
                             )}
                             {s.key !== 'balanced' && (
-                            <span className={`text-[calc(10px*var(--fs))] font-mono ${
+                            <span className={`text-[calc(10px*var(--fs))] font-mono whitespace-nowrap ${
                               p.hits > 0 ? 'text-neutral-500' : 'text-neutral-400'
                             }`}>
                               {p.hits} 顆
