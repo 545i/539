@@ -111,10 +111,10 @@ export const SharesEditor: React.FC<{eid: number; edName: string; loggedIn: bool
   const inputCls = 'px-2.5 py-1.5 text-xs rounded-lg border border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.03] text-neutral-900 dark:text-white focus:outline-hidden';
   return (
     <div className="space-y-2 pt-3 border-t border-black/[0.06] dark:border-white/[0.06]">
-      <div className="text-[10px] uppercase tracking-[0.2em] font-semibold text-neutral-400 flex items-center gap-1.5">
+      <div className="text-[calc(10px*var(--fs))] uppercase tracking-[0.2em] font-semibold text-neutral-400 flex items-center gap-1.5">
         <PieChart className="w-3 h-3" />損益佔比({edName},不分遊戲)
       </div>
-      <div className="text-[11px] text-neutral-500 dark:text-neutral-400">
+      <div className="text-[calc(11px*var(--fs))] text-neutral-500 dark:text-neutral-400">
         本人初始 100%,往下分給其他人;本人自動 = 100 − 其他人合計,總和永遠剛好 100%。
         每週總帳的損益依此分配,金額四捨五入後加總一定等於總損益(不會差 ±1)。
         中途才開始分:按「新增生效日」選開始那天,那天(含)以後才照新佔比,之前仍照舊的。
@@ -125,7 +125,7 @@ export const SharesEditor: React.FC<{eid: number; edName: string; loggedIn: bool
       <div className="flex flex-wrap items-center gap-1.5">
         {versions.map(v => (
           <button key={v.since || 'base'} type="button" onClick={() => pickVersion(v)}
-            className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-all ${
+            className={`px-2.5 py-1 rounded-lg text-[calc(11px*var(--fs))] font-semibold border transition-all ${
               since === v.since ? 'bg-black text-white dark:bg-white dark:text-black border-transparent'
                 : 'border-black/10 dark:border-white/10 text-neutral-600 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5'}`}>
             {sinceLabel(v.since)}
@@ -135,7 +135,7 @@ export const SharesEditor: React.FC<{eid: number; edName: string; loggedIn: bool
           </button>
         ))}
         {isNew && (
-          <span className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-violet-500/15 text-violet-600 dark:text-violet-400">
+          <span className="px-2.5 py-1 rounded-lg text-[calc(11px*var(--fs))] font-semibold bg-violet-500/15 text-violet-600 dark:text-violet-400">
             {sinceLabel(since)}(新,未儲存)
           </span>
         )}
@@ -143,11 +143,11 @@ export const SharesEditor: React.FC<{eid: number; edName: string; loggedIn: bool
       <div className="flex flex-wrap items-center gap-2">
         <input type="date" value={newSince} onChange={e => setNewSince(e.target.value)} className={`${inputCls} font-mono`} />
         <button type="button" onClick={addVersion} disabled={!loggedIn}
-          className="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border border-violet-500/30 text-violet-600 dark:text-violet-400 hover:bg-violet-500/10 disabled:opacity-30 flex items-center gap-1">
+          className="px-2.5 py-1.5 rounded-lg text-[calc(11px*var(--fs))] font-semibold border border-violet-500/30 text-violet-600 dark:text-violet-400 hover:bg-violet-500/10 disabled:opacity-30 flex items-center gap-1">
           <Plus className="w-3 h-3" />新增生效日
         </button>
       </div>
-      <div className="text-[11px] text-neutral-500">
+      <div className="text-[calc(11px*var(--fs))] text-neutral-500">
         正在編輯:<strong className="text-neutral-800 dark:text-neutral-100">{sinceLabel(since)}</strong>
       </div>
       <div className="space-y-1.5 max-w-xl">
@@ -169,7 +169,7 @@ export const SharesEditor: React.FC<{eid: number; edName: string; loggedIn: bool
               <input type="number" step="0.01" min="0" max="100" value={o.pct}
                 onChange={e => setRow(i, 'pct', e.target.value)}
                 className={`${inputCls} w-full text-right font-mono`} />
-              <span className="text-[11px] text-neutral-400">%</span>
+              <span className="text-[calc(11px*var(--fs))] text-neutral-400">%</span>
             </div>
             <button type="button" onClick={() => setOthers(prev => prev.filter((_, j) => j !== i))}
               className="w-7 h-7 flex items-center justify-center rounded-lg text-rose-500 hover:bg-rose-500/10">
@@ -178,16 +178,16 @@ export const SharesEditor: React.FC<{eid: number; edName: string; loggedIn: bool
           </div>
         ))}
         <button type="button" onClick={() => setOthers(prev => [...prev, {name: '', pct: '', account: ''}])} disabled={!loggedIn}
-          className="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border border-black/10 dark:border-white/10 text-neutral-700 dark:text-neutral-200 hover:bg-black/5 dark:hover:bg-white/5 disabled:opacity-30 flex items-center gap-1">
+          className="px-2.5 py-1.5 rounded-lg text-[calc(11px*var(--fs))] font-semibold border border-black/10 dark:border-white/10 text-neutral-700 dark:text-neutral-200 hover:bg-black/5 dark:hover:bg-white/5 disabled:opacity-30 flex items-center gap-1">
           <Plus className="w-3 h-3" />新增分配對象
         </button>
       </div>
 
-      {over && <div className="text-[11px] text-rose-500">分出去的佔比合計 {(usedBps / 100).toFixed(2)}%,超過 100%。</div>}
-      {problem && <div className="text-[11px] text-rose-500">{problem}</div>}
+      {over && <div className="text-[calc(11px*var(--fs))] text-rose-500">分出去的佔比合計 {(usedBps / 100).toFixed(2)}%,超過 100%。</div>}
+      {problem && <div className="text-[calc(11px*var(--fs))] text-rose-500">{problem}</div>}
 
       {demoRows.length > 0 && (
-        <div className="text-[11px] text-neutral-500 flex flex-wrap items-center gap-x-3 gap-y-1">
+        <div className="text-[calc(11px*var(--fs))] text-neutral-500 flex flex-wrap items-center gap-x-3 gap-y-1">
           <span>試算:損益</span>
           <input type="number" value={demo} onChange={e => setDemo(e.target.value)} className={`${inputCls} w-28 font-mono`} />
           <span>→</span>
@@ -197,8 +197,8 @@ export const SharesEditor: React.FC<{eid: number; edName: string; loggedIn: bool
         </div>
       )}
 
-      {msg && <div className="text-[11px] text-emerald-600 dark:text-emerald-400">{msg}</div>}
-      {err && <div className="text-[11px] text-rose-500">{err}</div>}
+      {msg && <div className="text-[calc(11px*var(--fs))] text-emerald-600 dark:text-emerald-400">{msg}</div>}
+      {err && <div className="text-[calc(11px*var(--fs))] text-rose-500">{err}</div>}
       <div className="flex flex-wrap items-center gap-2">
       <button type="button" onClick={save} disabled={busy || !loggedIn || over || !!problem}
         className="px-6 py-2.5 rounded-full text-xs uppercase tracking-wider font-semibold bg-black text-white dark:bg-white dark:text-black hover:opacity-90 disabled:opacity-30 flex items-center gap-2 shadow-xs">
@@ -206,7 +206,7 @@ export const SharesEditor: React.FC<{eid: number; edName: string; loggedIn: bool
       </button>
       {!isNew && (since !== '' || others.length > 0) && (
         <button type="button" onClick={removeVersion} disabled={busy || !loggedIn}
-          className="px-3 py-1.5 rounded-lg text-[11px] font-semibold border border-rose-500/30 text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 disabled:opacity-30 flex items-center gap-1">
+          className="px-3 py-1.5 rounded-lg text-[calc(11px*var(--fs))] font-semibold border border-rose-500/30 text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 disabled:opacity-30 flex items-center gap-1">
           <Trash2 className="w-3 h-3" />刪除這組
         </button>
       )}
@@ -283,7 +283,7 @@ export const EditionSettings: React.FC = () => {
         <Layers className="w-4 h-4" />
         <span>下注版本與各版盤口({gameName})</span>
       </h3>
-      <div className="text-[11px] text-neutral-500 dark:text-neutral-400">
+      <div className="text-[calc(11px*var(--fs))] text-neutral-500 dark:text-neutral-400">
         每個「版」是一套組頭盤口,<strong className="text-neutral-700 dark:text-neutral-200">全站共用</strong>、
         <strong className="text-neutral-700 dark:text-neutral-200">依版×遊戲各自設定</strong>。
         下面編輯的是「選中的版 × {gameName}」;換遊戲請用頁首的遊戲切換器。
@@ -302,15 +302,15 @@ export const EditionSettings: React.FC = () => {
           ))}
         </div>
         <button type="button" onClick={addEd} disabled={!loggedIn}
-          className="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border border-black/10 dark:border-white/10 text-neutral-700 dark:text-neutral-200 hover:bg-black/5 dark:hover:bg-white/5 disabled:opacity-30 flex items-center gap-1">
+          className="px-2.5 py-1.5 rounded-lg text-[calc(11px*var(--fs))] font-semibold border border-black/10 dark:border-white/10 text-neutral-700 dark:text-neutral-200 hover:bg-black/5 dark:hover:bg-white/5 disabled:opacity-30 flex items-center gap-1">
           <Plus className="w-3 h-3" />新增版
         </button>
         <button type="button" onClick={renameEd} disabled={!loggedIn}
-          className="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border border-black/10 dark:border-white/10 text-neutral-700 dark:text-neutral-200 hover:bg-black/5 dark:hover:bg-white/5 disabled:opacity-30 flex items-center gap-1">
+          className="px-2.5 py-1.5 rounded-lg text-[calc(11px*var(--fs))] font-semibold border border-black/10 dark:border-white/10 text-neutral-700 dark:text-neutral-200 hover:bg-black/5 dark:hover:bg-white/5 disabled:opacity-30 flex items-center gap-1">
           <Pencil className="w-3 h-3" />改名
         </button>
         <button type="button" onClick={deleteEd} disabled={!loggedIn || editEid === 1}
-          className="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border border-rose-500/30 text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 disabled:opacity-30 flex items-center gap-1">
+          className="px-2.5 py-1.5 rounded-lg text-[calc(11px*var(--fs))] font-semibold border border-rose-500/30 text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 disabled:opacity-30 flex items-center gap-1">
           <Trash2 className="w-3 h-3" />刪除
         </button>
       </div>
@@ -318,18 +318,18 @@ export const EditionSettings: React.FC = () => {
       {/* 盤口欄位 */}
       {FIELD_GROUPS.map(grp => (
         <div key={grp.title} className="space-y-2">
-          <div className="text-[10px] uppercase tracking-[0.2em] font-semibold text-neutral-400">{grp.title}</div>
+          <div className="text-[calc(10px*var(--fs))] uppercase tracking-[0.2em] font-semibold text-neutral-400">{grp.title}</div>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             {grp.fields.map(([k, label]) => (
               <div key={k}>
-                <label className="block text-[10px] text-neutral-500 mb-1">
+                <label className="block text-[calc(10px*var(--fs))] text-neutral-500 mb-1">
                   {label}{custom[k] && <span className="text-indigo-500"> ·自訂</span>}
                 </label>
                 <input type="number" value={draft[k] ?? 0}
                   onChange={e => setField(k, Number(e.target.value) || 0)}
                   className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.03] text-neutral-900 dark:text-white font-mono focus:outline-hidden" />
                 {k === 'pair_bet_cost' && (
-                  <div className="mt-1 text-[10px] text-neutral-400 font-mono">
+                  <div className="mt-1 text-[calc(10px*var(--fs))] text-neutral-400 font-mono">
                     每車 = {(draft.pair_bet_cost ?? 0)} × {notesPerCar} = {Math.round((draft.pair_bet_cost ?? 0) * notesPerCar).toLocaleString()}
                   </div>
                 )}
@@ -339,8 +339,8 @@ export const EditionSettings: React.FC = () => {
         </div>
       ))}
 
-      {msg && <div className="text-[11px] text-emerald-600 dark:text-emerald-400">{msg}</div>}
-      {err && <div className="text-[11px] text-rose-500">{err}</div>}
+      {msg && <div className="text-[calc(11px*var(--fs))] text-emerald-600 dark:text-emerald-400">{msg}</div>}
+      {err && <div className="text-[calc(11px*var(--fs))] text-rose-500">{err}</div>}
 
       <div className="flex items-center gap-2 pt-1">
         <button type="button" onClick={save} disabled={busy || !loggedIn}

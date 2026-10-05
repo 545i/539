@@ -108,7 +108,7 @@ export const SettingsView: React.FC<Props> = ({ theme, onToggleTheme }) => {
             <div className="font-semibold text-xs text-neutral-900 dark:text-white">
               目前模式: {theme === 'dark' ? '極致沉浸黑 (Sophisticated Dark)' : '典雅明亮白 (Editorial Light)'}
             </div>
-            <div className="text-[11px] text-neutral-500 mt-0.5">高對比極簡視覺語彙，支援隨系統或手動切換</div>
+            <div className="text-[calc(11px*var(--fs))] text-neutral-500 mt-0.5">高對比極簡視覺語彙，支援隨系統或手動切換</div>
           </div>
           <button
             type="button"
@@ -126,7 +126,7 @@ export const SettingsView: React.FC<Props> = ({ theme, onToggleTheme }) => {
           <Layers className="w-4 h-4" />
           <span>下注組設定(1組 / 2組)</span>
         </h3>
-        <div className="text-[11px] text-neutral-500 dark:text-neutral-400">
+        <div className="text-[calc(11px*var(--fs))] text-neutral-500 dark:text-neutral-400">
           每組可設定<strong className="text-neutral-700 dark:text-neutral-200">預設建議顆數</strong>(下注時可自由增減,無下注紀錄時當建議值)與是否
           <strong className="text-neutral-700 dark:text-neutral-200">啟用</strong>。停用的組不會出現在下注分頁,
           快速上傳歸到該組的下注行也會被擋掉。這是<strong className="text-neutral-700 dark:text-neutral-200">全站共用</strong>設定。
@@ -139,7 +139,7 @@ export const SettingsView: React.FC<Props> = ({ theme, onToggleTheme }) => {
                 {g.name}
               </div>
               <div>
-                <label className="block text-[10px] uppercase tracking-[0.2em] font-semibold text-neutral-400 mb-1.5">
+                <label className="block text-[calc(10px*var(--fs))] uppercase tracking-[0.2em] font-semibold text-neutral-400 mb-1.5">
                   預設建議顆數
                 </label>
                 <input
@@ -165,8 +165,8 @@ export const SettingsView: React.FC<Props> = ({ theme, onToggleTheme }) => {
           ))}
         </div>
 
-        {groupMsg && <div className="text-[11px] text-emerald-600 dark:text-emerald-400">{groupMsg}</div>}
-        {groupErr && <div className="text-[11px] text-rose-500">{groupErr}</div>}
+        {groupMsg && <div className="text-[calc(11px*var(--fs))] text-emerald-600 dark:text-emerald-400">{groupMsg}</div>}
+        {groupErr && <div className="text-[calc(11px*var(--fs))] text-rose-500">{groupErr}</div>}
 
         <div className="pt-1">
           <button
@@ -194,7 +194,7 @@ export const SettingsView: React.FC<Props> = ({ theme, onToggleTheme }) => {
           <span>開獎資料更新狀態</span>
         </h3>
 
-        <div className="text-[11px] text-neutral-500 dark:text-neutral-400">
+        <div className="text-[calc(11px*var(--fs))] text-neutral-500 dark:text-neutral-400">
           {auto.loading && '載入中…'}
           {auto.error && <span className="text-rose-600 dark:text-rose-400">載入失敗:{auto.error}</span>}
           {auto.data && (
@@ -221,17 +221,17 @@ export const SettingsView: React.FC<Props> = ({ theme, onToggleTheme }) => {
             >
               <div>
                 <div className="font-semibold text-xs text-neutral-900 dark:text-white">{g.name}</div>
-                <div className="text-[11px] text-neutral-500 mt-0.5 font-mono">
+                <div className="text-[calc(11px*var(--fs))] text-neutral-500 mt-0.5 font-mono">
                   資料已到 {g.latest ?? '—'}
                   {g.target && ` / 應到 ${g.target}`}
                 </div>
                 {(g.status.error || g.status.msg) && (
-                  <div className={`text-[11px] mt-0.5 ${g.status.error ? 'text-rose-600 dark:text-rose-400' : 'text-neutral-500'}`}>
+                  <div className={`text-[calc(11px*var(--fs))] mt-0.5 ${g.status.error ? 'text-rose-600 dark:text-rose-400' : 'text-neutral-500'}`}>
                     {g.status.error || g.status.msg}
                   </div>
                 )}
               </div>
-              <span className={`text-[10px] px-2.5 py-1 rounded-full font-semibold whitespace-nowrap ${
+              <span className={`text-[calc(10px*var(--fs))] px-2.5 py-1 rounded-full font-semibold whitespace-nowrap ${
                 g.status.running
                   ? 'bg-black/5 dark:bg-white/10 text-neutral-600 dark:text-neutral-300'
                   : g.stale
@@ -244,10 +244,10 @@ export const SettingsView: React.FC<Props> = ({ theme, onToggleTheme }) => {
           ))}
         </div>
 
-        {fetchMsg && <div className="text-[11px] text-neutral-600 dark:text-neutral-300">{fetchMsg}</div>}
-        {fetchErr && <div className="text-[11px] text-rose-600 dark:text-rose-400">抓取失敗:{fetchErr}</div>}
+        {fetchMsg && <div className="text-[calc(11px*var(--fs))] text-neutral-600 dark:text-neutral-300">{fetchMsg}</div>}
+        {fetchErr && <div className="text-[calc(11px*var(--fs))] text-rose-600 dark:text-rose-400">抓取失敗:{fetchErr}</div>}
         {!loggedIn && (
-          <div className="text-[11px] text-neutral-500 dark:text-neutral-400">
+          <div className="text-[calc(11px*var(--fs))] text-neutral-500 dark:text-neutral-400">
             手動抓取需要登入(背景排程不受影響,仍會自動更新)。
           </div>
         )}

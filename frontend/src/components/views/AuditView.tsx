@@ -52,12 +52,12 @@ const Row: React.FC<{
         <div className="font-bold text-sm text-neutral-900 dark:text-white flex items-center gap-2 flex-wrap">
           <span>{row.action_label}</span>
           {row.voided && (
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-600 dark:text-rose-400 font-semibold tracking-wider">
+            <span className="text-[calc(10px*var(--fs))] px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-600 dark:text-rose-400 font-semibold tracking-wider">
               已作廢
             </span>
           )}
           {row.action === 'void' && row.void_of !== null && (
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-black/5 dark:bg-white/10 text-neutral-500 font-mono">
+            <span className="text-[calc(10px*var(--fs))] px-2 py-0.5 rounded-full bg-black/5 dark:bg-white/10 text-neutral-500 font-mono">
               #{row.void_of}
             </span>
           )}
@@ -71,7 +71,7 @@ const Row: React.FC<{
         >
           {row.summary || '—'}
         </div>
-        <div className="text-[10px] font-mono text-neutral-400 dark:text-neutral-500 mt-1.5">
+        <div className="text-[calc(10px*var(--fs))] font-mono text-neutral-400 dark:text-neutral-500 mt-1.5">
           {row.created} · #{row.id}
         </div>
       </div>
@@ -83,7 +83,7 @@ const Row: React.FC<{
         id={`audit-void-${row.id}`}
         onClick={onVoid}
         disabled={busy}
-        className="shrink-0 px-3 py-1.5 rounded-full text-[10px] font-semibold uppercase tracking-wider border border-black/10 dark:border-white/10 bg-white dark:bg-[#161616] text-neutral-700 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5 transition-colors disabled:opacity-40"
+        className="shrink-0 px-3 py-1.5 rounded-full text-[calc(10px*var(--fs))] font-semibold uppercase tracking-wider border border-black/10 dark:border-white/10 bg-white dark:bg-[#161616] text-neutral-700 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5 transition-colors disabled:opacity-40"
       >
         {busy ? '處理中…' : '作廢'}
       </button>

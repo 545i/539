@@ -127,7 +127,7 @@ const gameShort = (g: string) =>
     : (g.includes('天天樂') || g.includes('Fantasy')) ? '天天樂'
     : g.includes('六合') ? '六合彩' : g;
 const chipCls = (active: boolean) =>
-  `px-2 py-0.5 rounded-lg text-[10px] font-semibold transition-all ${
+  `px-2 py-0.5 rounded-lg text-[calc(10px*var(--fs))] font-semibold transition-all ${
     active
       ? 'bg-black text-white dark:bg-white dark:text-black'
       : 'border border-black/10 dark:border-white/10 text-neutral-600 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5'
@@ -239,7 +239,7 @@ export const BillReuseButton: React.FC<BillPickerProps> = ({
     const focus = isFocusWk(wk);
     const days = Array.from(new Set(rows.map(r => r.date))).sort();
     if (rows.length === 0)
-      return <div className="text-[11px] text-neutral-400 py-6 text-center">這週在目前篩選下沒有帳單。</div>;
+      return <div className="text-[calc(11px*var(--fs))] text-neutral-400 py-6 text-center">這週在目前篩選下沒有帳單。</div>;
     return days.map(day => {
       const dayRows = rows.filter(r => r.date === day);
       const dAll = allSelected(dayRows);
@@ -253,16 +253,16 @@ export const BillReuseButton: React.FC<BillPickerProps> = ({
               onChange={e => setRows(wk, dayRows, e.target.checked)}
               className={`w-3.5 h-3.5 shrink-0 ${focus ? 'accent-emerald-600' : 'accent-indigo-600'}`}
             />
-            <span className="flex-1 text-[11px] font-mono text-neutral-500">{day.slice(5)}</span>
-            <span className={`text-[10px] font-mono shrink-0 ${pnlOf(dayRows) >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+            <span className="flex-1 text-[calc(11px*var(--fs))] font-mono text-neutral-500">{day.slice(5)}</span>
+            <span className={`text-[calc(10px*var(--fs))] font-mono shrink-0 ${pnlOf(dayRows) >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
               {money(pnlOf(dayRows))}
             </span>
           </div>
           {dayRows.map(r => {
             const on = included(r);
             const tag = focus
-              ? (on ? null : <span className="px-1 py-0.5 rounded text-[9px] font-semibold bg-rose-500/12 text-rose-600 dark:text-rose-400 shrink-0">已排除</span>)
-              : (on ? <span className="px-1 py-0.5 rounded text-[9px] font-semibold bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 shrink-0">已沿用</span> : null);
+              ? (on ? null : <span className="px-1 py-0.5 rounded text-[calc(9px*var(--fs))] font-semibold bg-rose-500/12 text-rose-600 dark:text-rose-400 shrink-0">已排除</span>)
+              : (on ? <span className="px-1 py-0.5 rounded text-[calc(9px*var(--fs))] font-semibold bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 shrink-0">已沿用</span> : null);
             return (
               <label key={r.id} className={`flex items-center gap-2 px-3 py-1.5 pl-6 cursor-pointer hover:bg-black/[0.03] dark:hover:bg-white/[0.04] transition-colors ${!on ? 'opacity-55' : ''}`}>
                 <input
@@ -270,13 +270,13 @@ export const BillReuseButton: React.FC<BillPickerProps> = ({
                   onChange={() => toggleOne(wk, r.id)}
                   className={`w-3.5 h-3.5 shrink-0 ${focus ? 'accent-emerald-600' : 'accent-indigo-600'}`}
                 />
-                <span className="px-1.5 py-0.5 rounded text-[9px] font-semibold bg-black/[0.06] dark:bg-white/10 text-neutral-600 dark:text-neutral-300 shrink-0">{modeLabel(r.mode)}</span>
-                <span className="px-1 py-0.5 rounded text-[9px] bg-black/[0.04] dark:bg-white/[0.06] text-neutral-500 shrink-0">{gameShort(String(r.game ?? ''))}</span>
-                <span className={`text-[10px] font-mono text-neutral-500 truncate flex-1 ${!on ? 'line-through' : ''}`}>
+                <span className="px-1.5 py-0.5 rounded text-[calc(9px*var(--fs))] font-semibold bg-black/[0.06] dark:bg-white/10 text-neutral-600 dark:text-neutral-300 shrink-0">{modeLabel(r.mode)}</span>
+                <span className="px-1 py-0.5 rounded text-[calc(9px*var(--fs))] bg-black/[0.04] dark:bg-white/[0.06] text-neutral-500 shrink-0">{gameShort(String(r.game ?? ''))}</span>
+                <span className={`text-[calc(10px*var(--fs))] font-mono text-neutral-500 truncate flex-1 ${!on ? 'line-through' : ''}`}>
                   {fmtBalls(r.selectedBalls) || r.result || '—'}
                 </span>
                 {tag}
-                <span className={`text-[10px] font-mono font-bold shrink-0 ${r.pnl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>{money(r.pnl)}</span>
+                <span className={`text-[calc(10px*var(--fs))] font-mono font-bold shrink-0 ${r.pnl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>{money(r.pnl)}</span>
               </label>
             );
           })}
@@ -302,16 +302,16 @@ export const BillReuseButton: React.FC<BillPickerProps> = ({
           className={`w-4 h-4 shrink-0 ${focus ? 'accent-emerald-600' : 'accent-indigo-600'}`}
         />
         <button type="button" onClick={() => { toggleExpand(wk); setDetailWeek(wk); }}
-          className="flex-1 flex items-center gap-1.5 text-left text-[12px] font-semibold min-w-0">
+          className="flex-1 flex items-center gap-1.5 text-left text-[calc(12px*var(--fs))] font-semibold min-w-0">
           <span className="md:hidden">{expanded.has(wk) ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}</span>
           <ChevronRight className="hidden md:inline w-3.5 h-3.5" />
           <span className="truncate">{weekRangeLabel(wk)}</span>
           {focus
-            ? <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 shrink-0">本週 · 預設納入</span>
-            : <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-indigo-500/12 text-indigo-600 dark:text-indigo-400 shrink-0">之前週期</span>}
-          <span className="text-[10px] font-mono font-normal text-neutral-400 shrink-0">{rows.filter(included).length}/{rows.length}</span>
+            ? <span className="px-1.5 py-0.5 rounded text-[calc(9px*var(--fs))] font-bold bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 shrink-0">本週 · 預設納入</span>
+            : <span className="px-1.5 py-0.5 rounded text-[calc(9px*var(--fs))] font-bold bg-indigo-500/12 text-indigo-600 dark:text-indigo-400 shrink-0">之前週期</span>}
+          <span className="text-[calc(10px*var(--fs))] font-mono font-normal text-neutral-400 shrink-0">{rows.filter(included).length}/{rows.length}</span>
         </button>
-        <span className={`text-[11px] font-mono font-bold shrink-0 ${pnlOf(rows) >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>{money(pnlOf(rows))}</span>
+        <span className={`text-[calc(11px*var(--fs))] font-mono font-bold shrink-0 ${pnlOf(rows) >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>{money(pnlOf(rows))}</span>
       </div>
     );
   };
@@ -334,7 +334,7 @@ export const BillReuseButton: React.FC<BillPickerProps> = ({
         type="button"
         onClick={() => setOpen(true)}
         title="挑選要算進建議車支數的帳單:本週可排除、之前週期可沿用併入"
-        className={`px-2 py-1 rounded-md text-[11px] font-semibold flex items-center gap-1 transition-colors ${
+        className={`px-2 py-1 rounded-md text-[calc(11px*var(--fs))] font-semibold flex items-center gap-1 transition-colors ${
           summary.reuseCount > 0 || summary.excludedCount > 0
             ? 'bg-indigo-600 text-white hover:bg-indigo-700'
             : 'bg-black/[0.04] dark:bg-white/[0.06] text-neutral-600 dark:text-neutral-300 hover:bg-black/10 dark:hover:bg-white/10'
@@ -369,25 +369,25 @@ export const BillReuseButton: React.FC<BillPickerProps> = ({
 
             {/* 說明 + 即時摘要 */}
             <div className="px-4 pt-3 pb-2 border-b border-black/[0.05] dark:border-white/[0.06]">
-              <p className="text-[11px] text-neutral-500 dark:text-neutral-400 leading-relaxed">
+              <p className="text-[calc(11px*var(--fs))] text-neutral-500 dark:text-neutral-400 leading-relaxed">
                 勾選要算進赤字的帳單。<span className="text-emerald-600 dark:text-emerald-400 font-semibold">本週</span>預設全勾(取消=排除,例如大贏那筆先落袋);
                 <span className="text-indigo-600 dark:text-indigo-400 font-semibold">之前週期</span>預設不勾(勾選=沿用,把沒追回的舊赤字併進本週)。不影響週期帳本身,建議車支數會即時重算。
               </p>
               <div className="mt-2.5 grid grid-cols-3 gap-2">
                 <div className="rounded-xl bg-emerald-500/[0.06] border border-emerald-500/20 px-3 py-2">
-                  <div className="text-[10px] text-emerald-700/70 dark:text-emerald-400/70">本週(納入)</div>
+                  <div className="text-[calc(10px*var(--fs))] text-emerald-700/70 dark:text-emerald-400/70">本週(納入)</div>
                   <div className={`font-mono text-sm font-bold ${summary.focusPnl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>{money(summary.focusPnl)}</div>
-                  <div className="text-[9px] text-neutral-400">{summary.focusCount} 筆納入 · {summary.excludedCount} 筆排除</div>
+                  <div className="text-[calc(9px*var(--fs))] text-neutral-400">{summary.focusCount} 筆納入 · {summary.excludedCount} 筆排除</div>
                 </div>
                 <div className="rounded-xl bg-indigo-500/[0.06] border border-indigo-500/20 px-3 py-2">
-                  <div className="text-[10px] text-indigo-700/70 dark:text-indigo-400/70">沿用之前週期</div>
+                  <div className="text-[calc(10px*var(--fs))] text-indigo-700/70 dark:text-indigo-400/70">沿用之前週期</div>
                   <div className={`font-mono text-sm font-bold ${summary.reusePnl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>{money(summary.reusePnl)}</div>
-                  <div className="text-[9px] text-neutral-400">{summary.reuseCount} 筆併入</div>
+                  <div className="text-[calc(9px*var(--fs))] text-neutral-400">{summary.reuseCount} 筆併入</div>
                 </div>
                 <div className="rounded-xl bg-black/[0.03] dark:bg-white/[0.05] border border-black/10 dark:border-white/10 px-3 py-2">
-                  <div className="text-[10px] text-neutral-500">綜合赤字基準(跨版)</div>
+                  <div className="text-[calc(10px*var(--fs))] text-neutral-500">綜合赤字基準(跨版)</div>
                   <div className={`font-mono text-sm font-bold ${summary.deficit >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>{money(summary.deficit)}</div>
-                  <div className="text-[9px] text-neutral-400">本週 + 沿用 − 排除</div>
+                  <div className="text-[calc(9px*var(--fs))] text-neutral-400">本週 + 沿用 − 排除</div>
                 </div>
               </div>
             </div>
@@ -395,14 +395,14 @@ export const BillReuseButton: React.FC<BillPickerProps> = ({
             {/* 篩選:下法 / 板名 / 遊戲 */}
             <div className="px-4 py-2 border-b border-black/[0.05] dark:border-white/[0.06] space-y-1.5">
               <div className="flex flex-wrap items-center gap-1.5">
-                <span className="text-[10px] uppercase tracking-wider text-neutral-400 font-semibold w-8 shrink-0">下法</span>
+                <span className="text-[calc(10px*var(--fs))] uppercase tracking-wider text-neutral-400 font-semibold w-8 shrink-0">下法</span>
                 {FILTERS.map(f => (
                   <button key={f.key} type="button" onClick={() => setModeFilter(f.key)} className={chipCls(modeFilter === f.key)}>{f.label}</button>
                 ))}
               </div>
               {edOptions.length > 1 && (
                 <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="text-[10px] uppercase tracking-wider text-neutral-400 font-semibold w-8 shrink-0">板名</span>
+                  <span className="text-[calc(10px*var(--fs))] uppercase tracking-wider text-neutral-400 font-semibold w-8 shrink-0">板名</span>
                   <button type="button" onClick={() => setEdFilter('all')} className={chipCls(edFilter === 'all')}>全部</button>
                   {edOptions.map(eid => (
                     <button key={eid} type="button" onClick={() => setEdFilter(eid)} className={chipCls(edFilter === eid)}>{edName(eid)}</button>
@@ -411,7 +411,7 @@ export const BillReuseButton: React.FC<BillPickerProps> = ({
               )}
               {gameOptions.length > 1 && (
                 <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="text-[10px] uppercase tracking-wider text-neutral-400 font-semibold w-8 shrink-0">遊戲</span>
+                  <span className="text-[calc(10px*var(--fs))] uppercase tracking-wider text-neutral-400 font-semibold w-8 shrink-0">遊戲</span>
                   <button type="button" onClick={() => setGameFilter('all')} className={chipCls(gameFilter === 'all')}>全部</button>
                   {gameOptions.map(g => (
                     <button key={g} type="button" onClick={() => setGameFilter(g)} className={chipCls(gameFilter === g)}>{gameShort(g)}</button>
@@ -423,9 +423,9 @@ export const BillReuseButton: React.FC<BillPickerProps> = ({
             {/* 本體:直板機單欄手風琴 / 寬板機左右雙欄 */}
             <div className="flex-1 min-h-0 flex flex-col md:flex-row border-t border-black/[0.06] dark:border-white/[0.08]">
               {!loggedIn ? (
-                <div className="flex-1 text-[11px] text-neutral-400 py-10 text-center">未登入:沒有帳單可挑選(帳單存在登入帳號)。</div>
+                <div className="flex-1 text-[calc(11px*var(--fs))] text-neutral-400 py-10 text-center">未登入:沒有帳單可挑選(帳單存在登入帳號)。</div>
               ) : weeks.length === 0 ? (
-                <div className="flex-1 text-[11px] text-neutral-400 py-10 text-center">目前篩選下沒有帳單(換下法 / 板名 / 遊戲看看)。</div>
+                <div className="flex-1 text-[calc(11px*var(--fs))] text-neutral-400 py-10 text-center">目前篩選下沒有帳單(換下法 / 板名 / 遊戲看看)。</div>
               ) : (
                 <>
                   <div className="flex-1 min-h-0 md:flex-none md:w-72 lg:w-80 xl:w-96 md:shrink-0 md:border-r border-black/[0.06] dark:border-white/[0.08] overflow-y-auto p-3 space-y-2 md:space-y-0 md:p-0">
@@ -443,20 +443,20 @@ export const BillReuseButton: React.FC<BillPickerProps> = ({
                     {activeWeek ? (
                       <>
                         <div className="sticky top-0 z-10 flex items-center justify-between gap-2 px-3 py-2 bg-white dark:bg-[#161616] border-b border-black/[0.06] dark:border-white/[0.08]">
-                          <span className="text-[12px] font-semibold truncate">
+                          <span className="text-[calc(12px*var(--fs))] font-semibold truncate">
                             {weekRangeLabel(activeWeek)} 明細
-                            <span className={`ml-1 text-[10px] font-normal ${isFocusWk(activeWeek) ? 'text-emerald-600 dark:text-emerald-400' : 'text-indigo-600 dark:text-indigo-400'}`}>
+                            <span className={`ml-1 text-[calc(10px*var(--fs))] font-normal ${isFocusWk(activeWeek) ? 'text-emerald-600 dark:text-emerald-400' : 'text-indigo-600 dark:text-indigo-400'}`}>
                               {isFocusWk(activeWeek) ? '(取消勾選 = 排除)' : '(勾選 = 沿用)'}
                             </span>
                           </span>
-                          <span className={`text-[11px] font-mono font-bold shrink-0 ${pnlOf(byWeek.get(activeWeek) ?? []) >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                          <span className={`text-[calc(11px*var(--fs))] font-mono font-bold shrink-0 ${pnlOf(byWeek.get(activeWeek) ?? []) >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
                             {money(pnlOf(byWeek.get(activeWeek) ?? []))}
                           </span>
                         </div>
                         <div>{renderDetail(activeWeek, byWeek.get(activeWeek) ?? [])}</div>
                       </>
                     ) : (
-                      <div className="flex-1 text-[11px] text-neutral-400 py-10 text-center">左側選一個週期看明細</div>
+                      <div className="flex-1 text-[calc(11px*var(--fs))] text-neutral-400 py-10 text-center">左側選一個週期看明細</div>
                     )}
                   </div>
                 </>
@@ -465,10 +465,10 @@ export const BillReuseButton: React.FC<BillPickerProps> = ({
 
             {/* 底部:合計 + 重設 + 儲存並套用 */}
             <div className="flex items-center justify-between gap-2 p-4 border-t border-black/[0.06] dark:border-white/[0.08]">
-              <div className="text-[11px] text-neutral-500 dark:text-neutral-400">
+              <div className="text-[calc(11px*var(--fs))] text-neutral-500 dark:text-neutral-400">
                 共納入 <strong className="text-neutral-800 dark:text-neutral-200">{summary.focusCount + summary.reuseCount}</strong> 筆
                 (本週 {summary.focusCount} · 沿用 {summary.reuseCount}) · 排除 {summary.excludedCount} 筆
-                <span className="ml-2 text-[10px]">
+                <span className="ml-2 text-[calc(10px*var(--fs))]">
                   {dirty ? '有未儲存變更' : savedOk ? '已同步到帳號' : saveErr ? '儲存失敗' : ''}
                 </span>
               </div>

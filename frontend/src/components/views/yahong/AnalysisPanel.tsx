@@ -18,12 +18,12 @@ const PillarCard: React.FC<{ title: string; p: YahongPillarDTO; isFantasy: boole
     <div className="p-4 rounded-xl bg-black/[0.02] dark:bg-white/[0.03] border border-black/[0.06] dark:border-white/[0.06] space-y-3">
       <div className="flex items-center justify-between">
         <span className="text-sm font-display font-bold text-neutral-900 dark:text-white">{title}</span>
-        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${BADGE_META[p.badge]}`}>{p.badgeText}</span>
+        <span className={`text-[calc(10px*var(--fs))] font-semibold px-2 py-0.5 rounded-full ${BADGE_META[p.badge]}`}>{p.badgeText}</span>
       </div>
       <div className={`grid gap-2 ${cells.length >= 5 ? 'grid-cols-3 sm:grid-cols-5' : 'grid-cols-3'}`}>
         {cells.map(c => (
           <div key={c.label}>
-            <div className="text-[10px] uppercase tracking-wider text-neutral-400 truncate">{c.label}</div>
+            <div className="text-[calc(10px*var(--fs))] uppercase tracking-wider text-neutral-400 truncate">{c.label}</div>
             <div className="text-base font-mono font-bold text-neutral-900 dark:text-white tabular-nums">{c.value}</div>
           </div>
         ))}
@@ -48,11 +48,11 @@ const RecommendCard: React.FC<{ r: YahongRecommendDTO }> = ({ r }) => {
       <div className={`text-sm font-display font-bold ${meta.text}`}>{r.name}</div>
       <div className="space-y-2">
         <div>
-          <div className="text-[10px] uppercase tracking-wider text-neutral-400 mb-1">三星(3 碼)</div>
+          <div className="text-[calc(10px*var(--fs))] uppercase tracking-wider text-neutral-400 mb-1">三星(3 碼)</div>
           {balls(r.star3)}
         </div>
         <div>
-          <div className="text-[10px] uppercase tracking-wider text-neutral-400 mb-1">四星(4 碼)</div>
+          <div className="text-[calc(10px*var(--fs))] uppercase tracking-wider text-neutral-400 mb-1">四星(4 碼)</div>
           {balls(r.star4)}
         </div>
       </div>
@@ -85,7 +85,7 @@ export const AnalysisPanel: React.FC<{ game: GameKey }> = ({ game }) => {
               <LayoutGrid className="w-4 h-4 text-neutral-500" />
               <span>柱碰即時看板</span>
               {data.latestDate && (
-                <span className="text-[10px] font-mono text-neutral-400 normal-case">最新 {data.latestDate} · 共 {data.totalDraws} 期</span>
+                <span className="text-[calc(10px*var(--fs))] font-mono text-neutral-400 normal-case">最新 {data.latestDate} · 共 {data.totalDraws} 期</span>
               )}
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -104,9 +104,9 @@ export const AnalysisPanel: React.FC<{ game: GameKey }> = ({ game }) => {
               <div className="flex flex-wrap gap-2">
                 {data.hot.map(h => (
                   <div key={h.num} className="relative inline-flex flex-col items-center px-2 py-1.5 rounded-xl bg-rose-500/10 border border-rose-500/20">
-                    {h.today && <span className="absolute -top-1.5 -right-1.5 text-[8px] px-1 rounded bg-amber-500 text-white font-bold">開</span>}
+                    {h.today && <span className="absolute -top-1.5 -right-1.5 text-[calc(8px*var(--fs))] px-1 rounded bg-amber-500 text-white font-bold">開</span>}
                     <span className="font-mono font-bold text-sm text-rose-700 dark:text-rose-300">{pad2(h.num)}</span>
-                    <span className="text-[10px] text-neutral-500">開 {h.count} 次</span>
+                    <span className="text-[calc(10px*var(--fs))] text-neutral-500">開 {h.count} 次</span>
                   </div>
                 ))}
               </div>
@@ -121,7 +121,7 @@ export const AnalysisPanel: React.FC<{ game: GameKey }> = ({ game }) => {
                 {data.cold.map(c => (
                   <div key={c.num} className="inline-flex flex-col items-center px-2 py-1.5 rounded-xl bg-cyan-500/10 border border-cyan-500/20">
                     <span className="font-mono font-bold text-sm text-cyan-700 dark:text-cyan-300">{pad2(c.num)}</span>
-                    <span className="text-[10px] text-neutral-500">{c.miss === 0 ? '今日開出' : `漏 ${c.miss} 期`}</span>
+                    <span className="text-[calc(10px*var(--fs))] text-neutral-500">{c.miss === 0 ? '今日開出' : `漏 ${c.miss} 期`}</span>
                   </div>
                 ))}
               </div>
@@ -137,7 +137,7 @@ export const AnalysisPanel: React.FC<{ game: GameKey }> = ({ game }) => {
             <div className="overflow-x-auto -mx-1 px-1">
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="text-left text-[10px] uppercase tracking-wider text-neutral-400">
+                  <tr className="text-left text-[calc(10px*var(--fs))] uppercase tracking-wider text-neutral-400">
                     <th className="px-2 py-1.5">號碼</th>
                     <th className="px-2 py-1.5 text-right">綜合分</th>
                     <th className="px-2 py-1.5 text-right">頻率分</th>
@@ -173,7 +173,7 @@ export const AnalysisPanel: React.FC<{ game: GameKey }> = ({ game }) => {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {data.recommend.map(r => <RecommendCard key={r.mode} r={r} />)}
             </div>
-            <p className="text-[10px] text-neutral-400">模式 1 為全盤純亂數;其餘為 probScore 高分子集的加權隨機抽樣,非最佳化。</p>
+            <p className="text-[calc(10px*var(--fs))] text-neutral-400">模式 1 為全盤純亂數;其餘為 probScore 高分子集的加權隨機抽樣,非最佳化。</p>
           </div>
         </>
       )}

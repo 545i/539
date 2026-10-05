@@ -19,13 +19,13 @@ export const OverwriteConfirm: React.FC<{
         <AlertTriangle className="w-5 h-5 shrink-0" />
         <span>這一組下注已經有紀錄了</span>
       </div>
-      <p className="text-[12px] text-neutral-600 dark:text-neutral-300 leading-relaxed">
+      <p className="text-[calc(12px*var(--fs))] text-neutral-600 dark:text-neutral-300 leading-relaxed">
         同一天、同一版、同一組玩法只能一筆。按下確認會<strong>覆蓋</strong>以下既有紀錄
         (舊的會作廢、可從操作歷史還原):
       </p>
       <div className="rounded-lg border border-black/10 dark:border-white/10 divide-y divide-black/[0.05] dark:divide-white/[0.05] max-h-48 overflow-y-auto">
         {conflicts.map(c => (
-          <div key={c.id} className="px-3 py-1.5 text-[11px] flex items-center justify-between gap-2">
+          <div key={c.id} className="px-3 py-1.5 text-[calc(11px*var(--fs))] flex items-center justify-between gap-2">
             <span className="font-sans text-neutral-600 dark:text-neutral-300 shrink-0">
               {MODE_LABEL[c.mode]} {c.playType}
             </span>
@@ -33,7 +33,7 @@ export const OverwriteConfirm: React.FC<{
               {c.selectedBalls.map(b => String(b).padStart(2, '0')).join(' ') || '—'}
             </span>
             <span className="font-mono font-bold text-neutral-800 dark:text-neutral-200 shrink-0">{money(c.cost)}</span>
-            <span className={`text-[10px] shrink-0 ${
+            <span className={`text-[calc(10px*var(--fs))] shrink-0 ${
               c.payout > 0 ? 'text-emerald-600 dark:text-emerald-400'
                 : c.result === '待開獎' ? 'text-neutral-400'
                   : 'text-rose-600 dark:text-rose-400'}`}>{c.result}</span>

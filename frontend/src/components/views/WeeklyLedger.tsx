@@ -194,7 +194,7 @@ export const BillCards: React.FC<{ bill: BillEditionData[]; md: string }> = ({ b
     {bill.map(e => (
       <div key={e.edition} className="space-y-2">
         {multi && (
-          <div className="inline-block px-2 py-0.5 rounded-md bg-violet-500/10 text-violet-600 dark:text-violet-400 text-[11px] font-bold">{e.edition}</div>
+          <div className="inline-block px-2 py-0.5 rounded-md bg-violet-500/10 text-violet-600 dark:text-violet-400 text-[calc(11px*var(--fs))] font-bold">{e.edition}</div>
         )}
         <div className="grid gap-2 sm:grid-cols-2">
           {e.games.map(g => {
@@ -203,22 +203,22 @@ export const BillCards: React.FC<{ bill: BillEditionData[]; md: string }> = ({ b
             <div key={g.label} className="rounded-xl border border-black/10 dark:border-white/10 bg-white dark:bg-[#161616] p-3 space-y-2">
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-1.5">
-                  <span className="px-1.5 py-0.5 rounded bg-sky-500/10 text-sky-600 dark:text-sky-400 text-[11px] font-bold">{g.label}</span>
-                  <span className="text-[10px] text-neutral-400 font-mono">{md}</span>
+                  <span className="px-1.5 py-0.5 rounded bg-sky-500/10 text-sky-600 dark:text-sky-400 text-[calc(11px*var(--fs))] font-bold">{g.label}</span>
+                  <span className="text-[calc(10px*var(--fs))] text-neutral-400 font-mono">{md}</span>
                 </div>
                 <span className={`font-mono text-sm font-bold ${g.net >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
                   {g.net >= 0 ? '展收 ' : '展付 '}{Math.abs(g.net).toLocaleString()}
                 </span>
               </div>
               <div className="flex flex-wrap items-center gap-1">
-                <span className="text-[10px] text-neutral-400 mr-1">獎號</span>
+                <span className="text-[calc(10px*var(--fs))] text-neutral-400 mr-1">獎號</span>
                 {g.draw.length ? g.draw.map(n => (
-                  <span key={n} className="w-6 h-6 flex items-center justify-center rounded-full bg-black/[0.06] dark:bg-white/[0.08] text-[11px] font-mono font-semibold text-neutral-800 dark:text-neutral-100">
+                  <span key={n} className="w-6 h-6 flex items-center justify-center rounded-full bg-black/[0.06] dark:bg-white/[0.08] text-[calc(11px*var(--fs))] font-mono font-semibold text-neutral-800 dark:text-neutral-100">
                     {String(n).padStart(2, '0')}
                   </span>
-                )) : <span className="text-[11px] text-neutral-400">未開</span>}
+                )) : <span className="text-[calc(11px*var(--fs))] text-neutral-400">未開</span>}
               </div>
-              <div className="text-[11px] font-mono space-y-0.5">
+              <div className="text-[calc(11px*var(--fs))] font-mono space-y-0.5">
                 <div className="flex justify-between"><span className="text-neutral-500">牌支(成本)</span><span className="font-semibold text-neutral-800 dark:text-neutral-100">{g.cost.toLocaleString()}</span></div>
                 {g.wins.map((w, i) => (
                   <div key={i} className="flex justify-between text-emerald-600 dark:text-emerald-400">
@@ -236,7 +236,7 @@ export const BillCards: React.FC<{ bill: BillEditionData[]; md: string }> = ({ b
               <button
                 type="button"
                 onClick={() => copyCard(key, billGameText(g, md, multi ? e.edition : undefined))}
-                className="w-full mt-1 px-2 py-1 rounded-md text-[10px] font-semibold border border-emerald-500/40 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/10 transition-colors"
+                className="w-full mt-1 px-2 py-1 rounded-md text-[calc(10px*var(--fs))] font-semibold border border-emerald-500/40 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/10 transition-colors"
               >
                 {copiedKey === key ? '已複製' : copyFail === key ? '複製失敗,請長按文字手動複製' : '複製帳單'}
               </button>
@@ -257,7 +257,7 @@ export const GameBreak: React.FC<{ byGame: Map<string, GameAgg>; className?: str
   return (
     <div className={`flex flex-col gap-0.5 ${className ?? ''}`}>
       {items.map(([g, a]) => (
-        <div key={g} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] font-mono">
+        <div key={g} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[calc(10px*var(--fs))] font-mono">
           <span className="inline-block min-w-[3.75rem] px-1.5 py-0.5 rounded bg-sky-500/10 text-sky-600 dark:text-sky-400 font-sans font-semibold text-center">{g}</span>
           <span className="text-neutral-500">成本 <span className="text-neutral-800 dark:text-neutral-200 font-semibold">{money(a.cost)}</span></span>
           <span className="text-neutral-500">派彩 <span className="text-emerald-600 dark:text-emerald-400 font-semibold">{money(a.payout)}</span></span>
@@ -284,28 +284,28 @@ const RecoverCard: React.FC<{ title: string; d: RecoverData | null; onClick?: ()
     className="text-left w-full rounded-xl border border-black/10 dark:border-white/10 bg-white dark:bg-[#121212] p-3 hover:bg-black/[0.02] dark:hover:bg-white/[0.03] hover:border-black/20 dark:hover:border-white/20 transition-colors"
   >
     <div className="flex items-center justify-between">
-      <span className="text-[10px] uppercase tracking-wider text-neutral-400 font-semibold">{title}</span>
-      <span className="text-[9px] text-neutral-400">點卡排除 ›</span>
+      <span className="text-[calc(10px*var(--fs))] uppercase tracking-wider text-neutral-400 font-semibold">{title}</span>
+      <span className="text-[calc(9px*var(--fs))] text-neutral-400">點卡排除 ›</span>
     </div>
     {!d ? (
-      <div className="mt-1 text-[12px] text-neutral-400">本週無此下法紀錄</div>
+      <div className="mt-1 text-[calc(12px*var(--fs))] text-neutral-400">本週無此下法紀錄</div>
     ) : d.cars == null ? (
       <div className="mt-1">
         <div className="font-mono font-bold text-sm text-emerald-600 dark:text-emerald-400">本週未虧損</div>
-        <div className="text-[10px] text-neutral-400 mt-0.5">目前損益 {sfmt1(d.cumPnl)}</div>
+        <div className="text-[calc(10px*var(--fs))] text-neutral-400 mt-0.5">目前損益 {sfmt1(d.cumPnl)}</div>
       </div>
     ) : !Number.isFinite(d.cars) ? (
       <div className="mt-1">
         <div className="font-mono font-bold text-sm text-rose-600 dark:text-rose-400">中 1 顆追不回</div>
-        <div className="text-[10px] text-neutral-400 mt-0.5">每車淨利 ≤ 0(顆數過多)</div>
+        <div className="text-[calc(10px*var(--fs))] text-neutral-400 mt-0.5">每車淨利 ≤ 0(顆數過多)</div>
       </div>
     ) : (
       <>
         <div className="mt-0.5 flex items-baseline gap-1">
           <span className="font-mono font-bold text-2xl text-neutral-900 dark:text-white">{(d.cars as number).toLocaleString()}</span>
-          <span className="text-[11px] text-neutral-400">車 · {d.suggestBalls} 顆</span>
+          <span className="text-[calc(11px*var(--fs))] text-neutral-400">車 · {d.suggestBalls} 顆</span>
         </div>
-        <div className="mt-1.5 space-y-0.5 text-[11px] font-mono">
+        <div className="mt-1.5 space-y-0.5 text-[calc(11px*var(--fs))] font-mono">
           <div className="flex justify-between"><span className="text-neutral-500">本局成本</span><span className="font-semibold text-neutral-800 dark:text-neutral-100">{fmt1(d.cost)}</span></div>
           <div className="flex justify-between"><span className="text-neutral-500">中 1 顆可得</span><span className="font-semibold text-emerald-600 dark:text-emerald-400">{fmt1(d.gain)}</span></div>
           <div className="flex justify-between border-t border-black/[0.06] dark:border-white/[0.06] pt-0.5 mt-0.5"><span className="text-neutral-500">中後累積</span><span className={`font-bold ${pnlCls(d.after)}`}>{sfmt1(d.after)}</span></div>
@@ -323,22 +323,22 @@ const P1800Block: React.FC<{ label: string; d: RecoverData | null; onClick: () =
     className="text-left w-full rounded-lg border border-amber-500/20 dark:border-amber-400/20 bg-amber-500/[0.03] px-2.5 py-1.5 hover:bg-amber-500/[0.09] transition-colors"
   >
     <div className="flex items-center justify-between">
-      <span className="text-[10px] font-semibold text-amber-700 dark:text-amber-400">{label}</span>
-      <span className="text-[9px] text-neutral-400">排除 ›</span>
+      <span className="text-[calc(10px*var(--fs))] font-semibold text-amber-700 dark:text-amber-400">{label}</span>
+      <span className="text-[calc(9px*var(--fs))] text-neutral-400">排除 ›</span>
     </div>
     {!d ? (
-      <div className="text-[11px] text-neutral-400 mt-0.5">本週無紀錄</div>
+      <div className="text-[calc(11px*var(--fs))] text-neutral-400 mt-0.5">本週無紀錄</div>
     ) : d.cars == null ? (
-      <div className="text-[12px] font-mono font-bold text-emerald-600 dark:text-emerald-400 mt-0.5">未虧損 <span className="text-[10px] font-normal text-neutral-400">{sfmt1(d.cumPnl)}</span></div>
+      <div className="text-[calc(12px*var(--fs))] font-mono font-bold text-emerald-600 dark:text-emerald-400 mt-0.5">未虧損 <span className="text-[calc(10px*var(--fs))] font-normal text-neutral-400">{sfmt1(d.cumPnl)}</span></div>
     ) : !Number.isFinite(d.cars) ? (
-      <div className="text-[12px] font-mono font-bold text-rose-600 dark:text-rose-400 mt-0.5">中4碰仍追不回</div>
+      <div className="text-[calc(12px*var(--fs))] font-mono font-bold text-rose-600 dark:text-rose-400 mt-0.5">中4碰仍追不回</div>
     ) : (
       <div className="mt-0.5">
         <div className="flex items-baseline gap-1">
           <span className="font-mono font-bold text-xl text-neutral-900 dark:text-white">{fmt1(d.cars as number)}</span>
-          <span className="text-[10px] text-neutral-400">支 · 中4碰</span>
+          <span className="text-[calc(10px*var(--fs))] text-neutral-400">支 · 中4碰</span>
         </div>
-        <div className="text-[10px] font-mono text-neutral-500 space-y-0.5 mt-0.5">
+        <div className="text-[calc(10px*var(--fs))] font-mono text-neutral-500 space-y-0.5 mt-0.5">
           <div className="flex justify-between"><span>成本</span><span className="text-neutral-800 dark:text-neutral-200">{fmt1(d.cost)}</span></div>
           <div className="flex justify-between"><span>中4碰可得</span><span className="text-emerald-600 dark:text-emerald-400">{fmt1(d.gain)}</span></div>
           <div className="flex justify-between"><span>中後累積</span><span className={`font-semibold ${pnlCls(d.after)}`}>{sfmt1(d.after)}</span></div>
@@ -352,7 +352,7 @@ const P1800Block: React.FC<{ label: string; d: RecoverData | null; onClick: () =
 // 1800碰卡:兩種建議 —— ①獨立(追 1800碰自己流水) ②追該版總損益;各用中4碰回本。
 const Recover1800Card: React.FC<{ dSelf: RecoverData | null; dAll: RecoverData | null; onSelf: () => void; onAll: () => void }> = ({ dSelf, dAll, onSelf, onAll }) => (
   <div className="rounded-xl border border-amber-500/25 dark:border-amber-400/25 bg-amber-500/[0.04] dark:bg-amber-400/[0.05] p-2 space-y-1.5">
-    <span className="text-[10px] uppercase tracking-wider text-amber-700 dark:text-amber-400 font-semibold">1800碰 建議支數</span>
+    <span className="text-[calc(10px*var(--fs))] uppercase tracking-wider text-amber-700 dark:text-amber-400 font-semibold">1800碰 建議支數</span>
     <P1800Block label="獨立(追1800碰流水)" d={dSelf} onClick={onSelf} />
     <P1800Block label="追該版總損益" d={dAll} onClick={onAll} />
   </div>
@@ -366,22 +366,22 @@ const P9000Block: React.FC<{ label: string; d: RecoverData | null; onClick: () =
     className="text-left w-full rounded-lg border border-sky-500/20 dark:border-sky-400/20 bg-sky-500/[0.03] px-2.5 py-1.5 hover:bg-sky-500/[0.09] transition-colors"
   >
     <div className="flex items-center justify-between">
-      <span className="text-[10px] font-semibold text-sky-700 dark:text-sky-400">{label}</span>
-      <span className="text-[9px] text-neutral-400">排除 ›</span>
+      <span className="text-[calc(10px*var(--fs))] font-semibold text-sky-700 dark:text-sky-400">{label}</span>
+      <span className="text-[calc(9px*var(--fs))] text-neutral-400">排除 ›</span>
     </div>
     {!d ? (
-      <div className="text-[11px] text-neutral-400 mt-0.5">本週無紀錄</div>
+      <div className="text-[calc(11px*var(--fs))] text-neutral-400 mt-0.5">本週無紀錄</div>
     ) : d.cars == null ? (
-      <div className="text-[12px] font-mono font-bold text-emerald-600 dark:text-emerald-400 mt-0.5">未虧損 <span className="text-[10px] font-normal text-neutral-400">{sfmt1(d.cumPnl)}</span></div>
+      <div className="text-[calc(12px*var(--fs))] font-mono font-bold text-emerald-600 dark:text-emerald-400 mt-0.5">未虧損 <span className="text-[calc(10px*var(--fs))] font-normal text-neutral-400">{sfmt1(d.cumPnl)}</span></div>
     ) : !Number.isFinite(d.cars) ? (
-      <div className="text-[12px] font-mono font-bold text-rose-600 dark:text-rose-400 mt-0.5">中2碰仍追不回</div>
+      <div className="text-[calc(12px*var(--fs))] font-mono font-bold text-rose-600 dark:text-rose-400 mt-0.5">中2碰仍追不回</div>
     ) : (
       <div className="mt-0.5">
         <div className="flex items-baseline gap-1">
           <span className="font-mono font-bold text-xl text-neutral-900 dark:text-white">{fmt1(d.cars as number)}</span>
-          <span className="text-[10px] text-neutral-400">支 · 中2碰</span>
+          <span className="text-[calc(10px*var(--fs))] text-neutral-400">支 · 中2碰</span>
         </div>
-        <div className="text-[10px] font-mono text-neutral-500 space-y-0.5 mt-0.5">
+        <div className="text-[calc(10px*var(--fs))] font-mono text-neutral-500 space-y-0.5 mt-0.5">
           <div className="flex justify-between"><span>成本</span><span className="text-neutral-800 dark:text-neutral-200">{fmt1(d.cost)}</span></div>
           <div className="flex justify-between"><span>中2碰可得</span><span className="text-emerald-600 dark:text-emerald-400">{fmt1(d.gain)}</span></div>
           <div className="flex justify-between"><span>中後累積</span><span className={`font-semibold ${pnlCls(d.after)}`}>{sfmt1(d.after)}</span></div>
@@ -394,7 +394,7 @@ const P9000Block: React.FC<{ label: string; d: RecoverData | null; onClick: () =
 // 9000碰卡:兩種建議 —— ①獨立(追 9000碰自己流水) ②追該版總損益;皆過關固定中2碰回本。
 const Recover9000Card: React.FC<{ dSelf: RecoverData | null; dAll: RecoverData | null; onSelf: () => void; onAll: () => void }> = ({ dSelf, dAll, onSelf, onAll }) => (
   <div className="rounded-xl border border-sky-500/25 dark:border-sky-400/25 bg-sky-500/[0.04] dark:bg-sky-400/[0.05] p-2 space-y-1.5">
-    <span className="text-[10px] uppercase tracking-wider text-sky-700 dark:text-sky-400 font-semibold">9000碰 建議支數</span>
+    <span className="text-[calc(10px*var(--fs))] uppercase tracking-wider text-sky-700 dark:text-sky-400 font-semibold">9000碰 建議支數</span>
     <P9000Block label="獨立(追9000碰流水)" d={dSelf} onClick={onSelf} />
     <P9000Block label="追該版總損益" d={dAll} onClick={onAll} />
   </div>
@@ -410,21 +410,21 @@ const AverageMethodCell: React.FC<{ m: AllocMethod; best: boolean; hasDeficit: b
   = ({ m, best, hasDeficit, onWeight }) => (
   <div className={`rounded-xl border p-3 ${best && hasDeficit ? 'border-emerald-500/40 bg-emerald-500/[0.06]' : 'border-black/10 dark:border-white/10 bg-white dark:bg-[#121212]'}`}>
     <div className="flex items-center justify-between">
-      <span className="text-[10px] uppercase tracking-wider font-semibold text-neutral-500 dark:text-neutral-300">{m.label}</span>
-      {best && hasDeficit && <span className="text-[9px] text-emerald-600 dark:text-emerald-400 font-semibold">期望值最高</span>}
+      <span className="text-[calc(10px*var(--fs))] uppercase tracking-wider font-semibold text-neutral-500 dark:text-neutral-300">{m.label}</span>
+      {best && hasDeficit && <span className="text-[calc(9px*var(--fs))] text-emerald-600 dark:text-emerald-400 font-semibold">期望值最高</span>}
     </div>
     {!hasDeficit ? (
-      <div className="mt-1 text-[11px] text-neutral-400">—</div>
+      <div className="mt-1 text-[calc(11px*var(--fs))] text-neutral-400">—</div>
     ) : (
       <>
         {/* 大字 = 建議下注量 */}
         <div className="mt-0.5 flex items-baseline gap-1">
           <span className="font-mono font-bold text-2xl text-neutral-900 dark:text-white">{fmt1(m.units)}</span>
-          <span className="text-[11px] text-neutral-400">{m.unit}</span>
+          <span className="text-[calc(11px*var(--fs))] text-neutral-400">{m.unit}</span>
         </div>
         {/* 攤平比例:滑塊可手動調(0~100%),放手後另三法自動依比例分配 */}
         <div className="mt-1.5">
-          <div className="flex justify-between text-[10px] font-mono text-neutral-500">
+          <div className="flex justify-between text-[calc(10px*var(--fs))] font-mono text-neutral-500">
             <span>攤平比例</span><span className="font-semibold text-neutral-700 dark:text-neutral-200">{(m.weight * 100).toFixed(1)}%</span>
           </div>
           <input
@@ -437,7 +437,7 @@ const AverageMethodCell: React.FC<{ m: AllocMethod; best: boolean; hasDeficit: b
             className={`mt-1 w-full h-1.5 cursor-pointer ${best ? 'accent-emerald-500' : 'accent-violet-500'}`}
           />
         </div>
-        <div className="mt-1.5 space-y-0.5 text-[11px] font-mono">
+        <div className="mt-1.5 space-y-0.5 text-[calc(11px*var(--fs))] font-mono">
           <div className="flex justify-between"><span className="text-neutral-500">成本</span><span className="font-semibold text-neutral-800 dark:text-neutral-100">{fmt1(m.cost)}</span></div>
           <div className="flex justify-between"><span className="text-neutral-500">命中可追回</span><span className="font-semibold text-emerald-600 dark:text-emerald-400">{fmt1(m.ifHit)}</span></div>
           <div className="flex justify-between border-t border-black/[0.06] dark:border-white/[0.06] pt-0.5 mt-0.5"><span className="text-neutral-500">返還率</span><span className="font-semibold text-neutral-700 dark:text-neutral-200">{(m.rtp * 100).toFixed(1)}%</span></div>
@@ -482,15 +482,15 @@ const AverageCard: React.FC<{ d: AverageData }> = ({ d }) => {
   return (
     <div className="space-y-1.5">
       <div className="flex items-center gap-2 flex-wrap">
-        <span className="inline-block px-2 py-0.5 rounded-md bg-violet-500/10 text-violet-600 dark:text-violet-400 text-[11px] font-bold">{d.name}</span>
+        <span className="inline-block px-2 py-0.5 rounded-md bg-violet-500/10 text-violet-600 dark:text-violet-400 text-[calc(11px*var(--fs))] font-bold">{d.name}</span>
         {d.deficit > 0
-          ? <span className="text-[10px] font-mono text-neutral-500">總投入 <span className="font-bold text-neutral-900 dark:text-white">{fmt1(budget)}</span> · 全中可追回 <span className="text-emerald-600 dark:text-emerald-400 font-semibold">{fmt1(d.deficit)}</span></span>
-          : <span className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400 font-semibold">未虧損 {sfmt1(d.cumPnl)},無需攤平</span>}
+          ? <span className="text-[calc(10px*var(--fs))] font-mono text-neutral-500">總投入 <span className="font-bold text-neutral-900 dark:text-white">{fmt1(budget)}</span> · 全中可追回 <span className="text-emerald-600 dark:text-emerald-400 font-semibold">{fmt1(d.deficit)}</span></span>
+          : <span className="text-[calc(10px*var(--fs))] font-mono text-emerald-600 dark:text-emerald-400 font-semibold">未虧損 {sfmt1(d.cumPnl)},無需攤平</span>}
         {d.deficit > 0 && override && (
           <button
             type="button"
             onClick={() => setOverride(null)}
-            className="text-[9px] px-1.5 py-0.5 rounded-md border border-black/10 dark:border-white/10 text-neutral-500 hover:bg-black/5 dark:hover:bg-white/5 font-semibold"
+            className="text-[calc(9px*var(--fs))] px-1.5 py-0.5 rounded-md border border-black/10 dark:border-white/10 text-neutral-500 hover:bg-black/5 dark:hover:bg-white/5 font-semibold"
           >
             重設自動比例
           </button>
@@ -500,7 +500,7 @@ const AverageCard: React.FC<{ d: AverageData }> = ({ d }) => {
         {cells.map(m => <AverageMethodCell key={m.key} m={m} best={m.key === d.bestKey} hasDeficit={d.deficit > 0} onWeight={v => setWeight(m.key, v)} />)}
       </div>
       {d.deficit > 0 && (
-        <div className="text-[9px] text-neutral-400 leading-relaxed">
+        <div className="text-[calc(9px*var(--fs))] text-neutral-400 leading-relaxed">
           預設比例 = 返還率 ÷ 四法總和(期望值越高注額越大)。拖滑塊可手動調某一法,其餘三法自動依比例分配;
           總投入隨新比例重算,仍保持全中可追回=赤字。命中賠率&gt;1 故命中可追回&gt;成本;但返還率&lt;100%(負期望),長期仍虧。
         </div>
@@ -543,9 +543,9 @@ const RecoverModal: React.FC<{
         <div className="text-sm font-bold text-neutral-900 dark:text-white">{title} · {weekLabel} 明細</div>
         <button type="button" onClick={onClose} className="w-6 h-6 flex items-center justify-center rounded-md text-neutral-400 hover:text-neutral-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/10">✕</button>
       </div>
-      <div className="text-[11px] text-neutral-500 dark:text-neutral-400">本週明細在最下方(彈窗預設捲到底):點某列 = 排除/納入該筆(排除的不算赤字,例如大贏先落袋)。往上滑可勾之前週期「沿用」把舊赤字併進來。都只影響建議車支數,不動週期帳。</div>
+      <div className="text-[calc(11px*var(--fs))] text-neutral-500 dark:text-neutral-400">本週明細在最下方(彈窗預設捲到底):點某列 = 排除/納入該筆(排除的不算赤字,例如大贏先落袋)。往上滑可勾之前週期「沿用」把舊赤字併進來。都只影響建議車支數,不動週期帳。</div>
       {/* 建議車數摘要(即時) */}
-      <div className="rounded-lg bg-black/[0.03] dark:bg-white/[0.05] px-3 py-2 text-[11px] font-mono">
+      <div className="rounded-lg bg-black/[0.03] dark:bg-white/[0.05] px-3 py-2 text-[calc(11px*var(--fs))] font-mono">
         {d == null || d.cars == null ? (
           <span className="text-emerald-600 dark:text-emerald-400 font-bold">未虧損{d ? `(${sfmt1(d.cumPnl)})` : ''}</span>
         ) : !Number.isFinite(d.cars) ? (
@@ -559,18 +559,18 @@ const RecoverModal: React.FC<{
       {reuseRows.length > 0 && (
         <div className="space-y-1">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400">沿用之前週期(勾選=併入赤字)</span>
-            <span className="text-[10px] font-mono text-neutral-400">{reuseRows.filter(r => isReused(r.id)).length}/{reuseRows.length} 筆</span>
+            <span className="text-[calc(11px*var(--fs))] font-semibold text-indigo-600 dark:text-indigo-400">沿用之前週期(勾選=併入赤字)</span>
+            <span className="text-[calc(10px*var(--fs))] font-mono text-neutral-400">{reuseRows.filter(r => isReused(r.id)).length}/{reuseRows.length} 筆</span>
           </div>
           {sortedReuse.map(r => {
             const on = isReused(r.id);
             return (
               <button key={r.id} type="button" onClick={() => onToggleReuse(r.id)}
-                className={`w-full flex items-center justify-between gap-2 text-[11px] font-mono px-2 py-1.5 rounded-lg border transition-colors ${on ? 'border-indigo-500/40 bg-indigo-500/[0.06]' : 'border-black/10 dark:border-white/10 opacity-70 hover:bg-black/[0.03] dark:hover:bg-white/[0.05]'}`}>
+                className={`w-full flex items-center justify-between gap-2 text-[calc(11px*var(--fs))] font-mono px-2 py-1.5 rounded-lg border transition-colors ${on ? 'border-indigo-500/40 bg-indigo-500/[0.06]' : 'border-black/10 dark:border-white/10 opacity-70 hover:bg-black/[0.03] dark:hover:bg-white/[0.05]'}`}>
                 <span className="flex items-center gap-1.5 min-w-0">
-                  <span className={`w-4 h-4 shrink-0 rounded border flex items-center justify-center text-[9px] ${on ? 'border-indigo-500 bg-indigo-500 text-white' : 'border-neutral-400 text-transparent'}`}>✓</span>
+                  <span className={`w-4 h-4 shrink-0 rounded border flex items-center justify-center text-[calc(9px*var(--fs))] ${on ? 'border-indigo-500 bg-indigo-500 text-white' : 'border-neutral-400 text-transparent'}`}>✓</span>
                   <span className="text-neutral-500 font-sans">{r.date.slice(5)}</span>
-                  <span className="px-1 py-0.5 rounded bg-black/[0.05] dark:bg-white/10 text-[9px] font-sans text-neutral-600 dark:text-neutral-300 shrink-0">{r.tag}</span>
+                  <span className="px-1 py-0.5 rounded bg-black/[0.05] dark:bg-white/10 text-[calc(9px*var(--fs))] font-sans text-neutral-600 dark:text-neutral-300 shrink-0">{r.tag}</span>
                   <span className="text-neutral-400 truncate">{r.balls.map(b => String(b).padStart(2, '0')).join(' ') || '—'}</span>
                 </span>
                 <span className="flex items-center gap-2 shrink-0">
@@ -586,19 +586,19 @@ const RecoverModal: React.FC<{
       {/* 本週明細(放最下方,配合彈窗預設捲到最底):勾/取消 = 納入/排除該筆 */}
       <div className="space-y-1 border-t border-black/[0.06] dark:border-white/[0.08] pt-2.5">
         <div className="flex items-center justify-between">
-          <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">本週明細(取消勾選=排除)</span>
-          <span className="text-[10px] font-mono text-neutral-400">{rows.filter(r => !excluded.has(r.id)).length}/{rows.length} 筆</span>
+          <span className="text-[calc(11px*var(--fs))] font-semibold text-emerald-600 dark:text-emerald-400">本週明細(取消勾選=排除)</span>
+          <span className="text-[calc(10px*var(--fs))] font-mono text-neutral-400">{rows.filter(r => !excluded.has(r.id)).length}/{rows.length} 筆</span>
         </div>
-        {rows.length === 0 && <div className="text-[11px] text-neutral-400 py-2">這週沒有紀錄。</div>}
+        {rows.length === 0 && <div className="text-[calc(11px*var(--fs))] text-neutral-400 py-2">這週沒有紀錄。</div>}
         {sortedRows.map(r => {
           const ex = excluded.has(r.id);
           return (
             <button key={r.id} type="button" onClick={() => onToggle(r.id)}
-              className={`w-full flex items-center justify-between gap-2 text-[11px] font-mono px-2 py-1.5 rounded-lg border transition-colors ${ex ? 'border-black/10 dark:border-white/10 opacity-45' : 'border-black/10 dark:border-white/10 hover:bg-black/[0.03] dark:hover:bg-white/[0.05]'}`}>
+              className={`w-full flex items-center justify-between gap-2 text-[calc(11px*var(--fs))] font-mono px-2 py-1.5 rounded-lg border transition-colors ${ex ? 'border-black/10 dark:border-white/10 opacity-45' : 'border-black/10 dark:border-white/10 hover:bg-black/[0.03] dark:hover:bg-white/[0.05]'}`}>
               <span className="flex items-center gap-1.5 min-w-0">
-                <span className={`w-4 h-4 shrink-0 rounded border flex items-center justify-center text-[9px] ${ex ? 'border-neutral-400 text-transparent' : 'border-emerald-500 bg-emerald-500 text-white'}`}>✓</span>
+                <span className={`w-4 h-4 shrink-0 rounded border flex items-center justify-center text-[calc(9px*var(--fs))] ${ex ? 'border-neutral-400 text-transparent' : 'border-emerald-500 bg-emerald-500 text-white'}`}>✓</span>
                 <span className="text-neutral-500 font-sans">{r.date.slice(5)}</span>
-                <span className="px-1 py-0.5 rounded bg-black/[0.05] dark:bg-white/10 text-[9px] font-sans text-neutral-600 dark:text-neutral-300 shrink-0">{r.tag}</span>
+                <span className="px-1 py-0.5 rounded bg-black/[0.05] dark:bg-white/10 text-[calc(9px*var(--fs))] font-sans text-neutral-600 dark:text-neutral-300 shrink-0">{r.tag}</span>
                 <span className={`text-neutral-400 truncate ${ex ? 'line-through' : ''}`}>{r.balls.map(b => String(b).padStart(2, '0')).join(' ') || '—'}</span>
               </span>
               <span className="flex items-center gap-2 shrink-0">
@@ -612,14 +612,14 @@ const RecoverModal: React.FC<{
 
       {/* 手動儲存:排除 + 沿用變更自動存本機/session,按此同步到帳號(跨裝置),帶儲存回饋 */}
       <div className="flex items-center justify-between gap-2 border-t border-black/[0.06] dark:border-white/[0.08] pt-3">
-        <span className="text-[10px] text-neutral-400">
+        <span className="text-[calc(10px*var(--fs))] text-neutral-400">
           {dirty ? '有未儲存的排除/沿用變更' : saveState === 'saved' ? '已同步到帳號' : '排除/沿用已暫存'}
         </span>
         <button
           type="button"
           onClick={onSave}
           disabled={saveState === 'saving' || (!dirty && saveState !== 'error')}
-          className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-colors disabled:opacity-40 ${
+          className={`px-3 py-1.5 rounded-lg text-[calc(11px*var(--fs))] font-semibold transition-colors disabled:opacity-40 ${
             saveState === 'error'
               ? 'bg-rose-500/15 text-rose-700 dark:text-rose-300 hover:bg-rose-500/25'
               : saveState === 'saved' && !dirty
@@ -1219,12 +1219,12 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
   }, [recoverModal, entries, focusMonday, wk.allWeeks]);
 
   if (!loggedIn) {
-    return <div className="text-[12px] text-neutral-500 p-4">登入後才有跨裝置的下注流水可彙整成週總帳。</div>;
+    return <div className="text-[calc(12px*var(--fs))] text-neutral-500 p-4">登入後才有跨裝置的下注流水可彙整成週總帳。</div>;
   }
 
   return (
     <div className="space-y-4">
-      <p className="text-[11px] text-neutral-500 dark:text-neutral-400 leading-relaxed">
+      <p className="text-[calc(11px*var(--fs))] text-neutral-500 dark:text-neutral-400 leading-relaxed">
         全部下注流水(含快速上傳與手動記錄,排除模擬版)依開獎日期歸「週一~週日」的週。
         點<strong>週</strong>展開看每日小計,再點<strong>某日</strong>看當天逐筆的下注方式 / 組合 / 成本 / 派彩 / 盈虧。
       </p>
@@ -1241,10 +1241,10 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
       {/* 建議下注量(回本試算):依版分區,每區 2×2(上 1組/2組,下 1800碰/9000碰)。點卡彈明細逐筆排除。 */}
       {(recoverRows.length > 0 || averageRows.length > 0) && (
         <div className="space-y-2.5">
-          <div className="flex items-center flex-wrap gap-x-2 gap-y-1 text-[11px] font-semibold text-neutral-600 dark:text-neutral-300">
+          <div className="flex items-center flex-wrap gap-x-2 gap-y-1 text-[calc(11px*var(--fs))] font-semibold text-neutral-600 dark:text-neutral-300">
             <span>建議下注量<span className="ml-1 font-normal font-mono text-neutral-400">{wk.allWeeks ? '全部週' : wk.label}</span></span>
             {reuseIds.length > 0 && (
-              <span className="px-1.5 py-0.5 rounded-md bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 font-mono text-[10px]">
+              <span className="px-1.5 py-0.5 rounded-md bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 font-mono text-[calc(10px*var(--fs))]">
                 含沿用帳單 {reuseIds.length} 筆
               </span>
             )}
@@ -1252,7 +1252,7 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
             <span className="inline-flex rounded-lg border border-black/10 dark:border-white/10 overflow-hidden">
               {(['flow', 'average'] as const).map(m => (
                 <button key={m} type="button" onClick={() => setRecoverMode(m)}
-                  className={`px-2 py-0.5 text-[10px] font-semibold transition-colors ${recoverMode === m ? 'bg-black text-white dark:bg-white dark:text-black' : 'text-neutral-500 hover:bg-black/5 dark:hover:bg-white/10'}`}>
+                  className={`px-2 py-0.5 text-[calc(10px*var(--fs))] font-semibold transition-colors ${recoverMode === m ? 'bg-black text-white dark:bg-white dark:text-black' : 'text-neutral-500 hover:bg-black/5 dark:hover:bg-white/10'}`}>
                   {m === 'flow' ? '流水(回本)' : '攤平(期望值)'}
                 </button>
               ))}
@@ -1261,7 +1261,7 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
             <span className="inline-flex rounded-lg border border-black/10 dark:border-white/10 overflow-hidden" title="建議車數的成本與派彩要用哪個遊戲的盤口">
               {([['lotto539', '539/天天樂盤口'], ['marksix', '六合彩盤口']] as const).map(([k, label]) => (
                 <button key={k} type="button" onClick={() => setOddsGame(k)}
-                  className={`px-2 py-0.5 text-[10px] font-semibold transition-colors ${oddsGame === k ? 'bg-sky-600 text-white' : 'text-neutral-500 hover:bg-black/5 dark:hover:bg-white/10'}`}>
+                  className={`px-2 py-0.5 text-[calc(10px*var(--fs))] font-semibold transition-colors ${oddsGame === k ? 'bg-sky-600 text-white' : 'text-neutral-500 hover:bg-black/5 dark:hover:bg-white/10'}`}>
                   {label}
                 </button>
               ))}
@@ -1299,11 +1299,11 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
           {recoverMode === 'average' && avgSummary.deficit > 0 && (
             <div className="grid grid-cols-2 gap-2">
               <div className="rounded-xl border border-rose-500/20 dark:border-rose-400/20 bg-rose-500/[0.04] dark:bg-rose-400/[0.05] p-3">
-                <div className="text-[10px] uppercase tracking-wider text-rose-600 dark:text-rose-400 font-semibold">追平損益需成本</div>
+                <div className="text-[calc(10px*var(--fs))] uppercase tracking-wider text-rose-600 dark:text-rose-400 font-semibold">追平損益需成本</div>
                 <div className="mt-0.5 font-mono font-bold text-2xl text-neutral-900 dark:text-white">{fmt1(avgSummary.cost)}</div>
               </div>
               <div className="rounded-xl border border-emerald-500/20 dark:border-emerald-400/20 bg-emerald-500/[0.04] dark:bg-emerald-400/[0.05] p-3">
-                <div className="text-[10px] uppercase tracking-wider text-emerald-600 dark:text-emerald-400 font-semibold">命中可得</div>
+                <div className="text-[calc(10px*var(--fs))] uppercase tracking-wider text-emerald-600 dark:text-emerald-400 font-semibold">命中可得</div>
                 <div className="mt-0.5 font-mono font-bold text-2xl text-emerald-600 dark:text-emerald-400">{fmt1(avgSummary.deficit)}</div>
               </div>
             </div>
@@ -1312,10 +1312,10 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
           {/* 攤平模式:追回赤字基準(總損益 / 單一下法) */}
           {recoverMode === 'average' && (
             <div className="flex flex-wrap items-center gap-1.5">
-              <span className="text-[10px] text-neutral-400">追回基準</span>
+              <span className="text-[calc(10px*var(--fs))] text-neutral-400">追回基準</span>
               {([['total', '總損益'], ['single', '1組'], ['multi', '2組'], ['pillar1800', '1800碰'], ['combo9000', '9000碰']] as const).map(([k, lbl]) => (
                 <button key={k} type="button" onClick={() => setAvgBase(k)}
-                  className={`px-2 py-0.5 rounded-md text-[10px] font-semibold transition-colors ${avgBase === k ? 'bg-violet-500/20 text-violet-700 dark:text-violet-300' : 'text-neutral-500 hover:bg-black/5 dark:hover:bg-white/10'}`}>
+                  className={`px-2 py-0.5 rounded-md text-[calc(10px*var(--fs))] font-semibold transition-colors ${avgBase === k ? 'bg-violet-500/20 text-violet-700 dark:text-violet-300' : 'text-neutral-500 hover:bg-black/5 dark:hover:bg-white/10'}`}>
                   {lbl}
                 </button>
               ))}
@@ -1324,7 +1324,7 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
 
           {recoverMode === 'flow' && recoverRows.map(g => (
             <div key={g.eid} className="space-y-1.5">
-              <div className="inline-block px-2 py-0.5 rounded-md bg-violet-500/10 text-violet-600 dark:text-violet-400 text-[11px] font-bold">{g.name}</div>
+              <div className="inline-block px-2 py-0.5 rounded-md bg-violet-500/10 text-violet-600 dark:text-violet-400 text-[calc(11px*var(--fs))] font-bold">{g.name}</div>
               {/* 每版 2×2:上排 1組/2組,下排 1800碰/9000碰 */}
               <div className="grid grid-cols-2 gap-2 items-start">
                 <RecoverCard title={`${g.name} · 1組`} d={g.single} onClick={() => setRecoverModal({ eid: g.eid, mode: 'single', label: `${g.name} 1組` })} />
@@ -1417,13 +1417,13 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
       {/* 版篩選 */}
       {usedEds.length > 1 && (
         <div className="flex flex-wrap items-center gap-1.5">
-          <span className="text-[10px] uppercase tracking-wider text-neutral-400 font-semibold">版</span>
+          <span className="text-[calc(10px*var(--fs))] uppercase tracking-wider text-neutral-400 font-semibold">版</span>
           {(['all', ...usedEds] as (number | 'all')[]).map(ed => (
             <button
               key={String(ed)}
               type="button"
               onClick={() => setSelEd(ed)}
-              className={`px-2.5 py-1 rounded-lg text-[10px] font-semibold transition-all ${
+              className={`px-2.5 py-1 rounded-lg text-[calc(10px*var(--fs))] font-semibold transition-all ${
                 selEd === ed
                   ? 'bg-black text-white dark:bg-white dark:text-black'
                   : 'border border-black/10 dark:border-white/10 text-neutral-600 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5'
@@ -1438,13 +1438,13 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
       {/* 下法篩選(策略頁「查看本週流水」連結進來時會預設某一種下法) */}
       {usedModes.length > 1 && (
         <div className="flex flex-wrap items-center gap-1.5">
-          <span className="text-[10px] uppercase tracking-wider text-neutral-400 font-semibold">下法</span>
+          <span className="text-[calc(10px*var(--fs))] uppercase tracking-wider text-neutral-400 font-semibold">下法</span>
           {(['all', ...usedModes] as (LedgerMode | 'all')[]).map(m => (
             <button
               key={m}
               type="button"
               onClick={() => setSelMode(m)}
-              className={`px-2.5 py-1 rounded-lg text-[10px] font-semibold transition-all ${
+              className={`px-2.5 py-1 rounded-lg text-[calc(10px*var(--fs))] font-semibold transition-all ${
                 selMode === m
                   ? 'bg-black text-white dark:bg-white dark:text-black'
                   : 'border border-black/10 dark:border-white/10 text-neutral-600 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5'
@@ -1459,7 +1459,7 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
       {/* 頂端總計(跟著聚焦週:單週=該週,全部週=合計) */}
       {weeks.length > 0 && (
         <>
-        <div className="text-[11px] font-semibold text-neutral-600 dark:text-neutral-300">
+        <div className="text-[calc(11px*var(--fs))] font-semibold text-neutral-600 dark:text-neutral-300">
           總計<span className="ml-1 font-normal font-mono text-neutral-400">{wk.allWeeks ? '全部週' : wk.label}</span>
         </div>
         <div className="grid grid-cols-3 gap-2">
@@ -1469,7 +1469,7 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
             ['總盈虧', signedMoney(grand.pnl), pnlCls(grand.pnl)],
           ] as const).map(([label, val, cls]) => (
             <div key={label} className="rounded-xl border border-black/10 dark:border-white/10 bg-white dark:bg-[#121212] px-3 py-2">
-              <div className="text-[10px] uppercase tracking-wider text-neutral-400">{label}</div>
+              <div className="text-[calc(10px*var(--fs))] uppercase tracking-wider text-neutral-400">{label}</div>
               <div className={`font-mono font-bold text-sm ${cls}`}>{val}</div>
             </div>
           ))}
@@ -1478,10 +1478,10 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
       )}
 
       {loading && weeks.length === 0 && (
-        <div className="text-[12px] text-neutral-400 p-4">載入流水中…</div>
+        <div className="text-[calc(12px*var(--fs))] text-neutral-400 p-4">載入流水中…</div>
       )}
       {!loading && weeks.length === 0 && (
-        <div className="text-[11px] text-neutral-400 dark:text-neutral-500 leading-relaxed p-4 rounded-xl bg-black/[0.02] dark:bg-white/[0.03] border border-black/[0.06] dark:border-white/[0.06]">
+        <div className="text-[calc(11px*var(--fs))] text-neutral-400 dark:text-neutral-500 leading-relaxed p-4 rounded-xl bg-black/[0.02] dark:bg-white/[0.03] border border-black/[0.06] dark:border-white/[0.06]">
           目前這個篩選下沒有下注流水。
         </div>
       )}
@@ -1501,7 +1501,7 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
       )}
       {/* 聚焦週在本篩選下沒有紀錄(日曆式切週可能落在空週) */}
       {weeks.length > 0 && !wk.allWeeks && visibleWeeks.length === 0 && (
-        <div className="text-[11px] text-neutral-400 dark:text-neutral-500 p-3 rounded-xl bg-black/[0.02] dark:bg-white/[0.03] border border-black/[0.06] dark:border-white/[0.06]">
+        <div className="text-[calc(11px*var(--fs))] text-neutral-400 dark:text-neutral-500 p-3 rounded-xl bg-black/[0.02] dark:bg-white/[0.03] border border-black/[0.06] dark:border-white/[0.06]">
           {wk.label} 這個篩選下沒有紀錄。用 ‹ › 切到其他週,或點中間看「全部週」。
         </div>
       )}
@@ -1517,19 +1517,19 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
               onClick={() => toggle(openWeeks, w.monday, setOpenWeeks)}
               className="w-full flex items-center gap-2 px-3 py-2.5 text-left hover:bg-black/[0.02] dark:hover:bg-white/[0.03] transition-colors"
             >
-              <span className="text-[11px] w-3 shrink-0 text-center text-neutral-400">{wOpen ? '▾' : '▸'}</span>
+              <span className="text-[calc(11px*var(--fs))] w-3 shrink-0 text-center text-neutral-400">{wOpen ? '▾' : '▸'}</span>
               <div className="min-w-0 flex-1">
-                <div className="text-[12px] font-semibold text-neutral-800 dark:text-neutral-100 font-mono">
+                <div className="text-[calc(12px*var(--fs))] font-semibold text-neutral-800 dark:text-neutral-100 font-mono">
                   {weekLabel(w)}
-                  <span className="ml-1.5 font-sans font-normal text-neutral-400 text-[10px]">{w.count} 筆</span>
+                  <span className="ml-1.5 font-sans font-normal text-neutral-400 text-[calc(10px*var(--fs))]">{w.count} 筆</span>
                   {w.pendingCount > 0 && (
-                    <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 text-[9px] font-semibold">
+                    <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 text-[calc(9px*var(--fs))] font-semibold">
                       {w.pendingCount} 筆待開獎
                     </span>
                   )}
                 </div>
               </div>
-              <div className="flex items-center gap-3 text-[10px] font-mono shrink-0">
+              <div className="flex items-center gap-3 text-[calc(10px*var(--fs))] font-mono shrink-0">
                 <span className="text-neutral-500">成本 <span className="font-bold text-neutral-800 dark:text-neutral-200">{money(w.cost)}</span></span>
                 <span className="text-neutral-500">派彩 <span className="font-bold text-emerald-600 dark:text-emerald-400">{money(w.payout)}</span></span>
                 <span className="text-neutral-500">盈虧 <span className={`font-bold ${pnlCls(w.pnl)}`}>{signedMoney(w.pnl)}</span></span>
@@ -1539,7 +1539,7 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
             {/* 本週各遊戲拆帳 */}
             {wOpen && w.byGame.size > 1 && (
               <div className="px-3 py-2 pl-8 border-t border-black/[0.06] dark:border-white/[0.06] bg-black/[0.015] dark:bg-white/[0.02]">
-                <div className="text-[9px] uppercase tracking-wider text-neutral-400 mb-1">本週各遊戲</div>
+                <div className="text-[calc(9px*var(--fs))] uppercase tracking-wider text-neutral-400 mb-1">本週各遊戲</div>
                 <GameBreak byGame={w.byGame} />
               </div>
             )}
@@ -1550,7 +1550,7 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
               if (sp.eds.length === 0) return null;
               return (
                 <div className="px-3 py-2 pl-8 border-t border-black/[0.06] dark:border-white/[0.06] bg-black/[0.015] dark:bg-white/[0.02] space-y-1">
-                  <div className="text-[9px] uppercase tracking-wider text-neutral-400">本週損益佔比</div>
+                  <div className="text-[calc(9px*var(--fs))] uppercase tracking-wider text-neutral-400">本週損益佔比</div>
                   {/* 每版預設只一行(本人 + 另 N 人 ▸);點開才列其他人與分段 —— 人再多高度也不會暴增 */}
                   {sp.eds.map(e => {
                     const key = `${w.monday}|${e.ed}`;
@@ -1570,11 +1570,11 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
                       );
                     };
                     return (
-                      <div key={e.ed} className="text-[10px] font-mono">
+                      <div key={e.ed} className="text-[calc(10px*var(--fs))] font-mono">
                         <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
                           {/* 版名標籤兼「設定佔比」入口(⚙),不另佔一顆按鈕 —— 手機上才擠得進一行 */}
                           <button type="button" onClick={() => setShareEdit(e.ed)} title="設定佔比"
-                            className="px-1.5 py-0.5 rounded-full bg-violet-500/10 text-violet-600 dark:text-violet-400 hover:bg-violet-500/20 text-[9px] font-sans whitespace-nowrap">
+                            className="px-1.5 py-0.5 rounded-full bg-violet-500/10 text-violet-600 dark:text-violet-400 hover:bg-violet-500/20 text-[calc(9px*var(--fs))] font-sans whitespace-nowrap">
                             {e.name} ⚙
                           </button>
                           <span className={`font-bold ${pnlCls(e.net)}`}>{signedMoney(e.net)}</span>
@@ -1593,7 +1593,7 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
                               <div className="flex flex-wrap gap-x-3 gap-y-0.5">{others.map(person)}</div>
                             )}
                             {e.segs.length > 1 && (
-                              <div className="text-[9px] text-neutral-400 font-sans space-y-0.5">
+                              <div className="text-[calc(9px*var(--fs))] text-neutral-400 font-sans space-y-0.5">
                                 {e.segs.map(sg => (
                                   <div key={sg.since || 'base'}>
                                     <span className="font-mono">{sg.from.slice(5).replace('-', '/')}{sg.to !== sg.from ? `~${sg.to.slice(5).replace('-', '/')}` : ''}</span>
@@ -1615,7 +1615,7 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
                     const selfT = sp.total.get('本人');
                     const rest = all.filter(([n]) => n !== '本人');
                     return (
-                      <div className="text-[10px] font-mono pt-1 border-t border-black/[0.05] dark:border-white/[0.05]">
+                      <div className="text-[calc(10px*var(--fs))] font-mono pt-1 border-t border-black/[0.05] dark:border-white/[0.05]">
                         <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
                           <span className="text-neutral-400 font-sans">各人合計</span>
                           {selfT && <span className="text-neutral-500">本人 <span className={`font-bold ${pnlCls(selfT.net)}`}>{signedMoney(selfT.net)}</span></span>}
@@ -1652,15 +1652,15 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
                       onClick={() => toggle(openDays, day.ymd, setOpenDays)}
                       className="w-full flex items-center gap-2 px-3 py-2 pl-6 text-left hover:bg-black/[0.02] dark:hover:bg-white/[0.03] transition-colors"
                     >
-                      <span className="text-[10px] w-3 shrink-0 text-center text-neutral-400">{dOpen ? '▾' : '▸'}</span>
-                      <div className="min-w-0 flex-1 text-[11px] font-mono text-neutral-700 dark:text-neutral-300">
+                      <span className="text-[calc(10px*var(--fs))] w-3 shrink-0 text-center text-neutral-400">{dOpen ? '▾' : '▸'}</span>
+                      <div className="min-w-0 flex-1 text-[calc(11px*var(--fs))] font-mono text-neutral-700 dark:text-neutral-300">
                         {day.ymd ? `${day.ymd.slice(5).replace('-', '/')}(${weekdayOf(day.ymd)})` : '(無日期)'}
-                        <span className="ml-1.5 font-sans text-neutral-400 text-[10px]">{day.count} 筆</span>
+                        <span className="ml-1.5 font-sans text-neutral-400 text-[calc(10px*var(--fs))]">{day.count} 筆</span>
                         {day.pendingCount > 0 && (
-                          <span className="ml-1.5 text-amber-600 dark:text-amber-400 text-[9px]">{day.pendingCount} 待開</span>
+                          <span className="ml-1.5 text-amber-600 dark:text-amber-400 text-[calc(9px*var(--fs))]">{day.pendingCount} 待開</span>
                         )}
                       </div>
-                      <div className="flex items-center gap-3 text-[10px] font-mono shrink-0">
+                      <div className="flex items-center gap-3 text-[calc(10px*var(--fs))] font-mono shrink-0">
                         <span className="text-neutral-500">{money(day.cost)}</span>
                         <span className="text-emerald-600 dark:text-emerald-400">{money(day.payout)}</span>
                         <span className={`font-bold ${pnlCls(day.pnl)}`}>{signedMoney(day.pnl)}</span>
@@ -1683,14 +1683,14 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
                                 key={v}
                                 type="button"
                                 onClick={() => setQuickDays(prev => { const n = new Set(prev); v === 'quick' ? n.add(day.ymd) : n.delete(day.ymd); return n; })}
-                                className={`px-2 py-0.5 rounded-md text-[10px] font-semibold transition-colors ${on ? 'bg-black text-white dark:bg-white dark:text-black' : 'border border-black/10 dark:border-white/10 text-neutral-600 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5'}`}
+                                className={`px-2 py-0.5 rounded-md text-[calc(10px*var(--fs))] font-semibold transition-colors ${on ? 'bg-black text-white dark:bg-white dark:text-black' : 'border border-black/10 dark:border-white/10 text-neutral-600 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5'}`}
                               >
                                 {v === 'detail' ? '明細' : '快捷'}
                               </button>
                             );
                           })}
                           {quickDays.has(day.ymd) && (
-                            <span className="ml-1 text-[10px] text-neutral-400">每張卡各自「複製帳單」</span>
+                            <span className="ml-1 text-[calc(10px*var(--fs))] text-neutral-400">每張卡各自「複製帳單」</span>
                           )}
                         </div>
                         {quickDays.has(day.ymd) ? (
@@ -1699,8 +1699,8 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
                           </div>
                         ) : (
                         <div className="overflow-x-auto">
-                        <table className="w-full text-[11px] whitespace-nowrap">
-                          <thead className="text-[9px] uppercase tracking-wider text-neutral-400">
+                        <table className="w-full text-[calc(11px*var(--fs))] whitespace-nowrap">
+                          <thead className="text-[calc(9px*var(--fs))] uppercase tracking-wider text-neutral-400">
                             <tr>
                               <th className="px-3 py-1 pl-9 text-left font-semibold">下注方式<span className="ml-1 normal-case tracking-normal font-normal">(點列編輯)</span></th>
                               <th className="px-3 py-1 text-left font-semibold">期號 / 核對</th>
@@ -1729,10 +1729,10 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
                                     className="mr-2 align-middle w-3.5 h-3.5 accent-neutral-900 dark:accent-white"
                                   />
                                   {v.gameShort && (
-                                    <span className="px-1.5 py-0.5 rounded-full bg-sky-500/10 text-sky-600 dark:text-sky-400 text-[9px] mr-1 font-sans">{v.gameShort}</span>
+                                    <span className="px-1.5 py-0.5 rounded-full bg-sky-500/10 text-sky-600 dark:text-sky-400 text-[calc(9px*var(--fs))] mr-1 font-sans">{v.gameShort}</span>
                                   )}
-                                  <span className="px-1.5 py-0.5 rounded-full bg-violet-500/10 text-violet-600 dark:text-violet-400 text-[9px] mr-1 font-sans">{v.editionName}</span>
-                                  <span className="px-1.5 py-0.5 rounded-full bg-black/5 dark:bg-white/10 text-[10px] mr-1.5 font-sans">{v.modeLabel}</span>
+                                  <span className="px-1.5 py-0.5 rounded-full bg-violet-500/10 text-violet-600 dark:text-violet-400 text-[calc(9px*var(--fs))] mr-1 font-sans">{v.editionName}</span>
+                                  <span className="px-1.5 py-0.5 rounded-full bg-black/5 dark:bg-white/10 text-[calc(10px*var(--fs))] mr-1.5 font-sans">{v.modeLabel}</span>
                                   <span className="font-sans text-neutral-600 dark:text-neutral-400">{v.playType}</span>
                                   {/* 車 / 支數接在下注方式後面,粗體(原本只藏在下方算式裡) */}
                                   {v.units > 0 && v.detail.length === 0 && (
@@ -1741,7 +1741,7 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
                                     </span>
                                   )}
                                   {v.result && (
-                                    <span className={`ml-1.5 font-sans text-[9px] px-1.5 py-0.5 rounded-full ${
+                                    <span className={`ml-1.5 font-sans text-[calc(9px*var(--fs))] px-1.5 py-0.5 rounded-full ${
                                       v.pending
                                         ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
                                         : v.payout > 0
@@ -1770,7 +1770,7 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
                                     <span key={n} className="mr-1.5 whitespace-nowrap">
                                       {String(n).padStart(2, '0')}
                                       {v.detail.length > 0 && <span className="font-bold text-neutral-900 dark:text-white">×{v.detail.find(d => d.n === n)?.cars ?? ''}</span>}
-                                      {v.deltas[n] ? <sup className="ml-0.5 text-[9px] font-bold text-amber-600 dark:text-amber-400">+{v.deltas[n]}</sup> : null}
+                                      {v.deltas[n] ? <sup className="ml-0.5 text-[calc(9px*var(--fs))] font-bold text-amber-600 dark:text-amber-400">+{v.deltas[n]}</sup> : null}
                                     </span>
                                   )) : '—'}
                                 </td>
@@ -1786,7 +1786,7 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
                                     <button
                                       type="button"
                                       onClick={() => { deleteById(v.id); setConfirmDeleteId(null); }}
-                                      className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-rose-600 text-white hover:bg-rose-700 transition-colors"
+                                      className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[calc(10px*var(--fs))] font-semibold bg-rose-600 text-white hover:bg-rose-700 transition-colors"
                                     >
                                       確認?
                                     </button>
@@ -1804,7 +1804,7 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
                               </tr>
                               {v.units > 0 && (
                                 <tr className="cursor-pointer" onClick={() => openEditor([v.id])}>
-                                  <td colSpan={7} className="px-3 pt-0 pb-1.5 pl-9 text-[10px] text-neutral-400 dark:text-neutral-500">
+                                  <td colSpan={7} className="px-3 pt-0 pb-1.5 pl-9 text-[calc(10px*var(--fs))] text-neutral-400 dark:text-neutral-500">
                                     {(Object.keys(v.deltas).length > 0 || v.detail.length > 0) && v.costExpr
                                       // 有號碼加價:每車成本不一樣,改顯示上傳時的實際算式(含「15號+2」)
                                       ? v.costExpr
@@ -1830,7 +1830,7 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
         })}
       </div>
 
-      <div className="flex items-start gap-1.5 text-[10px] text-neutral-500 dark:text-neutral-400 leading-relaxed pt-1">
+      <div className="flex items-start gap-1.5 text-[calc(10px*var(--fs))] text-neutral-500 dark:text-neutral-400 leading-relaxed pt-1">
         <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0 text-neutral-400" />
         <span>
           <strong>成本</strong> = 每注基礎成本 × 支/注數;
@@ -1845,7 +1845,7 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
       {(editSel.size > 0 || editSaved !== null || actionError) && <div className="h-16" />}
       {(editSel.size > 0 || editSaved !== null || actionError) && (
         <div className="fixed inset-x-0 bottom-0 z-40 border-t border-black/10 dark:border-white/10 bg-white/95 dark:bg-[#121212]/95 backdrop-blur-sm px-4 py-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))]">
-          <div className="max-w-3xl mx-auto flex items-center justify-between gap-3 text-[12px]">
+          <div className="max-w-3xl mx-auto flex items-center justify-between gap-3 text-[calc(12px*var(--fs))]">
             {editSel.size > 0 ? (
               <>
                 <span className="text-neutral-600 dark:text-neutral-300">已勾選 <strong className="font-mono">{editSel.size}</strong> 筆</span>

@@ -104,7 +104,7 @@ export const IssuePicker: React.FC<IssuePickerProps> = ({
               ?? extras.find(o => o.issue === val);
             onSelect(val, picked?.date ?? date);
           }}
-          className="appearance-none pr-6 pl-2 py-1 rounded-lg border border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.03] text-[11px] font-mono font-bold text-neutral-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-black/20 dark:focus:ring-white/20 cursor-pointer"
+          className="appearance-none pr-6 pl-2 py-1 rounded-lg border border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.03] text-[calc(11px*var(--fs))] font-mono font-bold text-neutral-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-black/20 dark:focus:ring-white/20 cursor-pointer"
         >
           {extras.map(o => (
             <option key={o.issue} value={o.issue}>{o.issue}（{o.date}）</option>
@@ -118,7 +118,7 @@ export const IssuePicker: React.FC<IssuePickerProps> = ({
         <ChevronDown className="w-3 h-3 text-neutral-400 absolute right-1.5 pointer-events-none" />
       </div>
       {showNums && selNums && (
-        <span className="text-[11px] font-mono font-semibold text-neutral-600 dark:text-neutral-300 whitespace-nowrap">
+        <span className="text-[calc(11px*var(--fs))] font-mono font-semibold text-neutral-600 dark:text-neutral-300 whitespace-nowrap">
           {selNums}
         </span>
       )}
@@ -137,7 +137,7 @@ export const IssuePicker: React.FC<IssuePickerProps> = ({
           type="button"
           onClick={() => { setPicked(new Set()); setBallSheet(true); }}
           title="忘記期數?點選中了哪幾顆號碼結算(各顆車數不同)"
-          className="shrink-0 px-1.5 py-1 rounded-lg border border-black/10 dark:border-white/10 text-[10px] font-semibold text-neutral-500 hover:text-neutral-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 active:scale-95 transition-colors"
+          className="shrink-0 px-1.5 py-1 rounded-lg border border-black/10 dark:border-white/10 text-[calc(10px*var(--fs))] font-semibold text-neutral-500 hover:text-neutral-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 active:scale-95 transition-colors"
         >
           中獎號
         </button>
@@ -150,8 +150,8 @@ export const IssuePicker: React.FC<IssuePickerProps> = ({
             onClick={e => e.stopPropagation()}
           >
             <div>
-              <div className="text-[14px] font-bold text-neutral-900 dark:text-white">點選中獎號碼</div>
-              <div className="text-[11px] text-neutral-400">各顆車數不同,派彩依中獎那幾顆各自的車數計算;都沒中就直接套用</div>
+              <div className="text-[calc(14px*var(--fs))] font-bold text-neutral-900 dark:text-white">點選中獎號碼</div>
+              <div className="text-[calc(11px*var(--fs))] text-neutral-400">各顆車數不同,派彩依中獎那幾顆各自的車數計算;都沒中就直接套用</div>
             </div>
             <div className="flex flex-wrap gap-2">
               {manualBalls!.map(n => {
@@ -159,7 +159,7 @@ export const IssuePicker: React.FC<IssuePickerProps> = ({
                 return (
                   <button key={n} type="button"
                     onClick={() => setPicked(prev => { const s2 = new Set(prev); s2.has(n) ? s2.delete(n) : s2.add(n); return s2; })}
-                    className={`w-11 h-11 rounded-full font-mono font-bold text-[14px] transition-colors ${on
+                    className={`w-11 h-11 rounded-full font-mono font-bold text-[calc(14px*var(--fs))] transition-colors ${on
                       ? 'bg-neutral-900 text-white dark:bg-white dark:text-black'
                       : 'bg-black/[0.05] dark:bg-white/[0.08] text-neutral-800 dark:text-neutral-100'}`}>
                     {String(n).padStart(2, '0')}
@@ -169,10 +169,10 @@ export const IssuePicker: React.FC<IssuePickerProps> = ({
             </div>
             <div className="flex items-center justify-end gap-4">
               <button type="button" onClick={() => setBallSheet(false)}
-                className="text-[12px] text-neutral-500 hover:text-neutral-900 dark:hover:text-white hover:underline underline-offset-2">取消</button>
+                className="text-[calc(12px*var(--fs))] text-neutral-500 hover:text-neutral-900 dark:hover:text-white hover:underline underline-offset-2">取消</button>
               <button type="button"
                 onClick={() => { onManualHitBalls!([...picked].sort((a, b) => a - b)); setBallSheet(false); }}
-                className="px-4 py-2 rounded-lg text-[12px] font-semibold bg-neutral-900 text-white dark:bg-white dark:text-black">
+                className="px-4 py-2 rounded-lg text-[calc(12px*var(--fs))] font-semibold bg-neutral-900 text-white dark:bg-white dark:text-black">
                 {picked.size ? `中 ${picked.size} 顆,套用` : '槓龜,套用'}
               </button>
             </div>
@@ -188,13 +188,13 @@ export const IssuePicker: React.FC<IssuePickerProps> = ({
             placeholder={hitPlaceholder}
             onChange={e => setHit(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') applyHit(); }}
-            className="w-12 px-1 py-1 rounded-lg border border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.03] text-[11px] font-mono text-neutral-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-black/20 dark:focus:ring-white/20"
+            className="w-12 px-1 py-1 rounded-lg border border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.03] text-[calc(11px*var(--fs))] font-mono text-neutral-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-black/20 dark:focus:ring-white/20"
           />
           <button
             type="button"
             onClick={applyHit}
             title={`依填入的中獎${hitLabel}數結算(不查開獎號)`}
-            className="shrink-0 px-1.5 py-1 rounded-lg border border-black/10 dark:border-white/10 text-[10px] font-semibold text-neutral-500 hover:text-neutral-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 active:scale-95 transition-colors"
+            className="shrink-0 px-1.5 py-1 rounded-lg border border-black/10 dark:border-white/10 text-[calc(10px*var(--fs))] font-semibold text-neutral-500 hover:text-neutral-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 active:scale-95 transition-colors"
           >
             {hitLabel}
           </button>

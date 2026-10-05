@@ -113,7 +113,7 @@ const BallDeltaPicker: React.FC<{
     if (costText.trim() !== '' && Number.isFinite(v) && v > 0) apply(() => v - base);
     else setCostText(cur === null ? '' : fmtD(base + cur));   // 空白 / 亂打 → 還原
   };
-  const btn = 'px-2 py-0.5 rounded-md text-[11px] font-mono font-semibold border transition-colors';
+  const btn = 'px-2 py-0.5 rounded-md text-[calc(11px*var(--fs))] font-mono font-semibold border transition-colors';
   const idle = 'border-black/15 dark:border-white/15 text-neutral-700 dark:text-neutral-200 hover:bg-black/5 dark:hover:bg-white/5';
   const on = 'bg-neutral-900 text-white border-neutral-900 dark:bg-white dark:text-black dark:border-white';
   if (balls.length === 0) return null;
@@ -126,13 +126,13 @@ const BallDeltaPicker: React.FC<{
           return (
             <button key={n} type="button" onClick={() => toggleBall(n)}
               title={d ? `${n} 號每注 +${fmtD(d)}` : `點選後設定 ${n} 號加價`}
-              className={`relative w-7 h-7 rounded-full text-[11px] font-mono font-bold transition-all ${
+              className={`relative w-7 h-7 rounded-full text-[calc(11px*var(--fs))] font-mono font-bold transition-all ${
                 s1 ? `${on} ring-2 ring-offset-1 ring-neutral-900 dark:ring-white dark:ring-offset-[#161616]`
                   : d ? on
                     : 'bg-black/[0.05] dark:bg-white/[0.08] text-neutral-800 dark:text-neutral-100 hover:bg-black/10 dark:hover:bg-white/15'}`}>
               {String(n).padStart(2, '0')}
               {d ? (
-                <span className="absolute -top-2 -right-2.5 px-1 rounded-full text-[8px] leading-[14px] font-bold bg-white text-neutral-900 border border-neutral-900 dark:bg-[#161616] dark:text-white dark:border-white">
+                <span className="absolute -top-2 -right-2.5 px-1 rounded-full text-[calc(8px*var(--fs))] leading-[14px] font-bold bg-white text-neutral-900 border border-neutral-900 dark:bg-[#161616] dark:text-white dark:border-white">
                   {d > 0 ? '+' : ''}{fmtD(d)}
                 </span>
               ) : null}
@@ -140,13 +140,13 @@ const BallDeltaPicker: React.FC<{
           );
         })}
         {balls.length > 1 && (
-          <button type="button" className="text-[10px] text-neutral-500 underline underline-offset-2"
+          <button type="button" className="text-[calc(10px*var(--fs))] text-neutral-500 underline underline-offset-2"
             onClick={() => setSel(picked.length === balls.length ? new Set() : new Set(balls))}>
             {picked.length === balls.length ? '取消全選' : '全選'}
           </button>
         )}
         {picked.length === 0 && Object.keys(deltas).length === 0 && (
-          <span className="text-[10px] text-neutral-400">點號碼可個別加價(每注 +N)</span>
+          <span className="text-[calc(10px*var(--fs))] text-neutral-400">點號碼可個別加價(每注 +N)</span>
         )}
       </div>
       {picked.length > 0 && (
@@ -166,9 +166,9 @@ const BallDeltaPicker: React.FC<{
               onBlur={commitCost}
               onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); commitCost(); } }}
               title={`每注成本(基礎 ${fmtD(base)});直接輸入,例 ${fmtD(base + 2)} = +2`}
-              className="w-16 px-1.5 py-0.5 rounded-md border border-black/20 dark:border-white/20 bg-white dark:bg-[#161616] text-[12px] font-mono font-bold text-center text-neutral-900 dark:text-white outline-hidden focus:border-neutral-900 dark:focus:border-white"
+              className="w-16 px-1.5 py-0.5 rounded-md border border-black/20 dark:border-white/20 bg-white dark:bg-[#161616] text-[calc(12px*var(--fs))] font-mono font-bold text-center text-neutral-900 dark:text-white outline-hidden focus:border-neutral-900 dark:focus:border-white"
             />
-            <span className="mt-0.5 text-[9px] font-mono text-neutral-400">
+            <span className="mt-0.5 text-[calc(9px*var(--fs))] font-mono text-neutral-400">
               {cur === null ? '每注' : `每注 ${cur > 0 ? '+' : cur < 0 ? '' : '±'}${fmtD(cur)}`}
             </span>
           </label>
@@ -586,7 +586,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
 
         <div className="flex-1 min-h-0 p-4 sm:p-6 space-y-4 overflow-y-auto">
           {!loggedIn && (
-            <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-800 dark:text-amber-300 flex items-start gap-2">
+            <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-[calc(11px*var(--fs))] text-amber-800 dark:text-amber-300 flex items-start gap-2">
               <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
               <span>快速上傳要先登入 —— 紀錄是記在你的帳號底下的。</span>
             </div>
@@ -594,7 +594,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
 
           <div className="flex flex-wrap items-end gap-3">
             <div className="order-3">
-              <label className="block text-[10px] uppercase tracking-[0.2em] font-semibold text-neutral-400 mb-1.5">
+              <label className="block text-[calc(10px*var(--fs))] uppercase tracking-[0.2em] font-semibold text-neutral-400 mb-1.5">
                 上傳到哪款{selDate && uploadedGames.size > 0 && <span className="ml-1 normal-case tracking-normal text-emerald-600 dark:text-emerald-400 font-normal">綠=這天已上傳</span>}
               </label>
               <div className="inline-flex p-1 rounded-xl bg-black/[0.03] dark:bg-white/[0.04] border border-black/[0.06] dark:border-white/[0.06] gap-1">
@@ -622,7 +622,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
               </div>
             </div>
             <div className="order-2">
-              <label className="block text-[10px] uppercase tracking-[0.2em] font-semibold text-neutral-400 mb-1.5">
+              <label className="block text-[calc(10px*var(--fs))] uppercase tracking-[0.2em] font-semibold text-neutral-400 mb-1.5">
                 上傳到哪版
               </label>
               <div className="inline-flex p-1 rounded-xl bg-black/[0.03] dark:bg-white/[0.04] border border-black/[0.06] dark:border-white/[0.06] gap-1 flex-wrap">
@@ -643,7 +643,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
               </div>
             </div>
             <div className="order-1">
-              <label className="block text-[10px] uppercase tracking-[0.2em] font-semibold text-neutral-400 mb-1.5">
+              <label className="block text-[calc(10px*var(--fs))] uppercase tracking-[0.2em] font-semibold text-neutral-400 mb-1.5">
                 下注日期(整批只選一次)
               </label>
               <div className="flex items-center gap-2 flex-wrap">
@@ -668,14 +668,14 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
                 </span>
               </div>
               {issueHint && (
-                <div className={`mt-1 text-[10px] ${
+                <div className={`mt-1 text-[calc(10px*var(--fs))] ${
                   drawStatus === 'pending'
                     ? 'text-sky-700 dark:text-sky-400'
                     : 'text-amber-700 dark:text-amber-400'
                 }`}>{issueHint}</div>
               )}
             </div>
-            <div className="order-4 text-[11px] text-neutral-500 dark:text-neutral-400 pb-2.5">
+            <div className="order-4 text-[calc(11px*var(--fs))] text-neutral-500 dark:text-neutral-400 pb-2.5">
               {targetReady ? (
                 <>記到 <strong>{selGameName}・{selEditionName}・{
                   issue ? `第 ${issue} 期` : (predictedIssue ? `第 ${predictedIssue} 期(預估)` : '期號未定')
@@ -689,16 +689,16 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
 
           {/* 區間斷檔提醒(參考用):依目前遊戲,只顯示未開的區段配對 */}
           <div className="rounded-xl border border-black/[0.08] dark:border-white/[0.08] bg-black/[0.02] dark:bg-white/[0.03] p-3 space-y-2">
-            <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.2em] font-semibold text-neutral-400">
+            <div className="flex items-center gap-1.5 text-[calc(10px*var(--fs))] uppercase tracking-[0.2em] font-semibold text-neutral-400">
               <AlertTriangle className="w-3.5 h-3.5" />
               <span>1800碰斷檔提醒（{selGameShort || '尚未選遊戲'}・參考）</span>
             </div>
             {!selGame && (
-              <div className="text-[11px] text-neutral-400">先在上方選一款遊戲才顯示斷檔提醒。</div>
+              <div className="text-[calc(11px*var(--fs))] text-neutral-400">先在上方選一款遊戲才顯示斷檔提醒。</div>
             )}
-            {selGame && pairs.loading && <div className="text-[11px] text-neutral-400">載入中…</div>}
+            {selGame && pairs.loading && <div className="text-[calc(11px*var(--fs))] text-neutral-400">載入中…</div>}
             {selGame && !pairs.loading && brokenPairs.length === 0 && (
-              <div className="text-[11px] text-neutral-400">
+              <div className="text-[calc(11px*var(--fs))] text-neutral-400">
                 各十位區段近期都有開出，目前沒有連續未開的組合。
               </div>
             )}
@@ -706,7 +706,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
               {brokenPairs.map(p => (
                 <span
                   key={`${p.bands[0]}-${p.bands[1]}`}
-                  className={`px-2 py-1 rounded-lg text-[11px] font-mono ${
+                  className={`px-2 py-1 rounded-lg text-[calc(11px*var(--fs))] font-mono ${
                     p.alert
                       ? 'bg-amber-500/15 text-amber-800 dark:text-amber-300 border border-amber-500/30 font-bold'
                       : 'bg-black/5 dark:bg-white/10 text-neutral-600 dark:text-neutral-300'
@@ -720,7 +720,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
           </div>
 
           <div>
-            <label className="block text-[10px] uppercase tracking-[0.2em] font-semibold text-neutral-400 mb-1.5">
+            <label className="block text-[calc(10px*var(--fs))] uppercase tracking-[0.2em] font-semibold text-neutral-400 mb-1.5">
               下注文字
             </label>
             <textarea
@@ -735,7 +735,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
               }}
               className="w-full px-3 py-2.5 rounded-xl border border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.03] text-sm font-mono leading-relaxed text-neutral-900 dark:text-white outline-hidden focus:border-black/40 dark:focus:border-white/40 transition-colors resize-y"
             />
-            <div className="mt-2 text-[10px] text-neutral-400 leading-relaxed space-y-0.5">
+            <div className="mt-2 text-[calc(10px*var(--fs))] text-neutral-400 leading-relaxed space-y-0.5">
               <div>下注行<strong>依出現順序</strong>歸組:第 1 行 → 1組、第 2 行 → 2組。<code>21_24x20車</code> = 20 車(<strong>車字可省略</strong>,<code>21_24x20</code> 也認)</div>
               <div>一行選號 + <code>八顆三星1200</code> = 星碰三星(不足八顆會自動往上補足,可在預覽手改)</div>
               <div><code>10_18</code> / <code>20_29</code> / <code>其他400</code> 三行 = 1800碰 4 支</div>
@@ -744,13 +744,13 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
           </div>
 
           {error && (
-            <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-[11px] text-rose-700 dark:text-rose-400">
+            <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-[calc(11px*var(--fs))] text-rose-700 dark:text-rose-400">
               {error}
             </div>
           )}
 
           {done !== null && (
-            <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-[11px] text-emerald-800 dark:text-emerald-300 flex items-start gap-2">
+            <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-[calc(11px*var(--fs))] text-emerald-800 dark:text-emerald-300 flex items-start gap-2">
               <CheckCircle2 className="w-3.5 h-3.5 mt-0.5 shrink-0" />
               <span>已寫入 {done} 筆,各記帳分頁重新整理後就看得到。</span>
             </div>
@@ -758,7 +758,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
 
           {preview && (
             <div className="space-y-2">
-              <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.2em] font-semibold text-neutral-400">
+              <div className="flex items-center gap-2 text-[calc(10px*var(--fs))] uppercase tracking-[0.2em] font-semibold text-neutral-400">
                 <ListChecks className="w-3.5 h-3.5" />
                 <span>解析出 {draftItems.length} 筆(號碼與支/車可直接改,成本上傳時後端重算)</span>
               </div>
@@ -769,7 +769,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
                 const ballsField = (d: DraftItem, i: number) => (
                   d.mode === 'pillar1800' ? (
                     // 1800碰 沒有選號,顯示分柱(自訂柱列出各柱;標準三柱標註固定分柱)
-                    <div className="text-[11px] font-mono text-neutral-600 dark:text-neutral-300 leading-relaxed break-all">
+                    <div className="text-[calc(11px*var(--fs))] font-mono text-neutral-600 dark:text-neutral-300 leading-relaxed break-all">
                       {d.pillars.length === 3
                         ? d.pillars.map((p, k) => (
                             <div key={k}>
@@ -784,9 +784,9 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
                         value={d.balls}
                         onChange={e => setDraft(i, {balls: e.target.value})}
                         spellCheck={false}
-                        className={`w-full ${inputCls} text-sm sm:text-[11px]`}
+                        className={`w-full ${inputCls} text-sm sm:text-[calc(11px*var(--fs))]`}
                       />
-                      <span className="text-[10px] text-neutral-400">{parseBalls(d.balls).length} 顆</span>
+                      <span className="text-[calc(10px*var(--fs))] text-neutral-400">{parseBalls(d.balls).length} 顆</span>
                       {(d.mode === 'single' || d.mode === 'multi') && (
                         <BallDeltaPicker
                           balls={parseBalls(d.balls)}
@@ -816,7 +816,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
                     className={`${cls} ${inputCls} text-right`} />
                 );
                 const costLine = (i: number) => (
-                  <div className="flex items-baseline justify-between gap-2 text-[10px] text-neutral-500 dark:text-neutral-400">
+                  <div className="flex items-baseline justify-between gap-2 text-[calc(10px*var(--fs))] text-neutral-500 dark:text-neutral-400">
                     <span className="font-mono break-all">
                       {costs[i] ? (costs[i]!.expr || '—') : (costBusy ? '試算中…' : '—')}
                     </span>
@@ -827,12 +827,12 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
                 );
                 const modeTag = (d: DraftItem) => (
                   <>
-                    <span className="px-1.5 py-0.5 rounded-full bg-black/5 dark:bg-white/10 text-[10px] mr-1.5 whitespace-nowrap">
+                    <span className="px-1.5 py-0.5 rounded-full bg-black/5 dark:bg-white/10 text-[calc(10px*var(--fs))] mr-1.5 whitespace-nowrap">
                       {MODE_LABEL[d.mode]}
                     </span>
                     {d.playType}
                     {d.incomplete && (
-                      <div className="text-[10px] text-amber-700 dark:text-amber-400 mt-0.5">⚠ 顆數不足,請手動補齊號碼</div>
+                      <div className="text-[calc(10px*var(--fs))] text-amber-700 dark:text-amber-400 mt-0.5">⚠ 顆數不足,請手動補齊號碼</div>
                     )}
                   </>
                 );
@@ -842,19 +842,19 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
                     <div className="sm:hidden rounded-xl border border-black/[0.08] dark:border-white/[0.08] divide-y divide-black/[0.06] dark:divide-white/[0.06]">
                       {draftItems.map((d, i) => (
                         <div key={i} className={`p-3 space-y-2.5 ${d.incomplete ? 'bg-amber-500/10' : ''}`}>
-                          <div className="text-[12px] font-sans text-neutral-800 dark:text-neutral-100">{modeTag(d)}</div>
+                          <div className="text-[calc(12px*var(--fs))] font-sans text-neutral-800 dark:text-neutral-100">{modeTag(d)}</div>
                           <div>{ballsField(d, i)}</div>
                           <div className="grid grid-cols-3 gap-2">
                             <label className="block">
-                              <span className="block mb-0.5 text-[10px] text-neutral-500">支 / 車</span>
+                              <span className="block mb-0.5 text-[calc(10px*var(--fs))] text-neutral-500">支 / 車</span>
                               {unitsField(d, i, 'w-full py-2 text-sm')}
                             </label>
                             <label className="block">
-                              <span className="block mb-0.5 text-[10px] text-neutral-500">基礎成本</span>
+                              <span className="block mb-0.5 text-[calc(10px*var(--fs))] text-neutral-500">基礎成本</span>
                               {baseField(d, i, 'w-full py-2 text-sm')}
                             </label>
                             <label className="block">
-                              <span className="block mb-0.5 text-[10px] text-neutral-500">中獎顆數</span>
+                              <span className="block mb-0.5 text-[calc(10px*var(--fs))] text-neutral-500">中獎顆數</span>
                               {hitField(d, i, 'w-full py-2 text-sm')}
                             </label>
                           </div>
@@ -862,21 +862,21 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
                         </div>
                       ))}
                       <div className="flex items-center justify-between px-3 py-2.5 bg-black/[0.03] dark:bg-white/[0.05]">
-                        <span className="text-[12px] font-semibold text-neutral-700 dark:text-neutral-200">總下注成本{costBusy && ' (試算中…)'}</span>
+                        <span className="text-[calc(12px*var(--fs))] font-semibold text-neutral-700 dark:text-neutral-200">總下注成本{costBusy && ' (試算中…)'}</span>
                         <span className="font-mono font-bold text-neutral-900 dark:text-white">{money(costTotal)}</span>
                       </div>
                     </div>
 
                     {/* sm 以上:表格 */}
                     <div className="hidden sm:block rounded-xl border border-black/[0.08] dark:border-white/[0.08] overflow-x-auto">
-                      <table className="w-full text-[11px]">
+                      <table className="w-full text-[calc(11px*var(--fs))]">
                         <thead className="bg-black/[0.03] dark:bg-white/[0.04] text-neutral-500">
                           <tr>
                             <th className="px-3 py-2 text-left font-semibold">玩法</th>
                             <th className="px-3 py-2 text-left font-semibold">號碼(可編輯)</th>
                             <th className="px-3 py-2 text-right font-semibold">支 / 車</th>
-                            <th className="px-3 py-2 text-right font-semibold">基礎成本<br/><span className="font-normal text-[9px]">每注/每碰·可改</span></th>
-                            <th className="px-3 py-2 text-right font-semibold">中獎顆數<br/><span className="font-normal text-[9px]">忘記期數可填</span></th>
+                            <th className="px-3 py-2 text-right font-semibold">基礎成本<br/><span className="font-normal text-[calc(9px*var(--fs))]">每注/每碰·可改</span></th>
+                            <th className="px-3 py-2 text-right font-semibold">中獎顆數<br/><span className="font-normal text-[calc(9px*var(--fs))]">忘記期數可填</span></th>
                           </tr>
                         </thead>
                         <tbody className="font-mono">
@@ -885,9 +885,9 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
                               <tr className={`border-t border-black/[0.06] dark:border-white/[0.06] ${d.incomplete ? 'bg-amber-500/10' : ''}`}>
                                 <td className="px-3 py-2 font-sans align-top">{modeTag(d)}</td>
                                 <td className="px-3 py-2">{ballsField(d, i)}</td>
-                                <td className="px-3 py-2 text-right align-top">{unitsField(d, i, 'w-16 text-[11px]')}</td>
-                                <td className="px-3 py-2 text-right align-top">{baseField(d, i, 'w-20 text-[11px]')}</td>
-                                <td className="px-3 py-2 text-right align-top">{hitField(d, i, 'w-16 text-[11px]')}</td>
+                                <td className="px-3 py-2 text-right align-top">{unitsField(d, i, 'w-16 text-[calc(11px*var(--fs))]')}</td>
+                                <td className="px-3 py-2 text-right align-top">{baseField(d, i, 'w-20 text-[calc(11px*var(--fs))]')}</td>
+                                <td className="px-3 py-2 text-right align-top">{hitField(d, i, 'w-16 text-[calc(11px*var(--fs))]')}</td>
                               </tr>
                               {/* 成本解析:這一筆成本是怎麼算出來的 */}
                               <tr className={`border-t-0 ${d.incomplete ? 'bg-amber-500/10' : ''}`}>
@@ -913,7 +913,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
               })()}
 
               {errors.length > 0 && (
-                <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-[11px] text-rose-700 dark:text-rose-400 space-y-1">
+                <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-[calc(11px*var(--fs))] text-rose-700 dark:text-rose-400 space-y-1">
                   <div className="flex items-center gap-2 font-semibold">
                     <AlertTriangle className="w-3.5 h-3.5" />
                     <span>{errors.length} 行不會被記進去(看不懂 / 遊戲不支援的下法)</span>
@@ -928,7 +928,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
 
               {/* 🟡 防呆提醒:黃色列出、不阻斷上傳(期號格式 / 大車支 / 舊日期 / 重複) */}
               {warnings.length > 0 && (
-                <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-800 dark:text-amber-300 space-y-1">
+                <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-[calc(11px*var(--fs))] text-amber-800 dark:text-amber-300 space-y-1">
                   <div className="flex items-center gap-2 font-semibold">
                     <AlertTriangle className="w-3.5 h-3.5" />
                     <span>{warnings.length} 項提醒(可照樣上傳,但請先確認)</span>
@@ -949,7 +949,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
         {/* 未來日期確認:選到今天以後的日期 → 先確認是不是真的要記到那天 */}
         {futurePrompt && (
           <div className="px-4 sm:px-6 py-3 border-t border-sky-500/30 bg-sky-500/[0.07] space-y-2 shrink-0">
-            <div className="flex items-start gap-1.5 text-[12px] text-sky-800 dark:text-sky-300">
+            <div className="flex items-start gap-1.5 text-[calc(12px*var(--fs))] text-sky-800 dark:text-sky-300">
               <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
               <span>
                 你選的下注日期是 <strong>{selDate}(第 {Number(selDate.slice(8, 10))} 天)</strong>,
@@ -963,7 +963,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
                 type="button"
                 disabled={busy}
                 onClick={() => setFuturePrompt(false)}
-                className="py-1.5 px-3 rounded-lg text-[11px] font-semibold border border-black/10 dark:border-white/10 text-neutral-700 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5 disabled:opacity-40 transition-colors"
+                className="py-1.5 px-3 rounded-lg text-[calc(11px*var(--fs))] font-semibold border border-black/10 dark:border-white/10 text-neutral-700 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5 disabled:opacity-40 transition-colors"
               >
                 取消,我要改日期
               </button>
@@ -971,7 +971,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
                 type="button"
                 disabled={busy}
                 onClick={() => { setFuturePrompt(false); confirm(true); }}
-                className="py-1.5 px-3 rounded-lg text-[11px] font-semibold bg-sky-600 text-white hover:bg-sky-700 disabled:opacity-40 transition-colors"
+                className="py-1.5 px-3 rounded-lg text-[calc(11px*var(--fs))] font-semibold bg-sky-600 text-white hover:bg-sky-700 disabled:opacity-40 transition-colors"
               >
                 確定,記到 {selDate}
               </button>
@@ -982,7 +982,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
         {/* 覆蓋確認:偵測到同 遊戲+版+日期 已上傳過 → 列出將被覆蓋的紀錄,確認才送 */}
         {overwriteTarget && (
           <div className="px-4 sm:px-6 py-3 border-t border-amber-500/30 bg-amber-500/[0.06] space-y-2 shrink-0">
-            <div className="flex items-start gap-1.5 text-[11px] text-amber-800 dark:text-amber-300">
+            <div className="flex items-start gap-1.5 text-[calc(11px*var(--fs))] text-amber-800 dark:text-amber-300">
               <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
               <span>
                 <strong>{overwriteTarget.gameName}・{overwriteTarget.editionName}・{overwriteTarget.date}</strong> 已經上傳過
@@ -992,7 +992,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
             </div>
             <div className="rounded-lg border border-amber-500/20 bg-white/60 dark:bg-black/20 divide-y divide-black/[0.04] dark:divide-white/[0.04] max-h-32 overflow-y-auto">
               {overwriteTarget.items.map((it, i) => (
-                <div key={i} className="flex items-center justify-between gap-2 px-2.5 py-1 text-[10px]">
+                <div key={i} className="flex items-center justify-between gap-2 px-2.5 py-1 text-[calc(10px*var(--fs))]">
                   <span className="font-sans text-neutral-600 dark:text-neutral-300 shrink-0">{MODE_LABEL[it.mode]} {it.playType}</span>
                   <span className="font-mono text-neutral-500 truncate">{it.balls.map(b => String(b).padStart(2, '0')).join(' ') || '—'}</span>
                   <span className="font-mono font-bold text-neutral-800 dark:text-neutral-200 shrink-0">{money(it.cost)}</span>
@@ -1004,7 +1004,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
                 type="button"
                 disabled={busy}
                 onClick={() => setOverwriteTarget(null)}
-                className="py-1.5 px-3 rounded-lg text-[11px] font-semibold border border-black/10 dark:border-white/10 text-neutral-700 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5 disabled:opacity-40 transition-colors"
+                className="py-1.5 px-3 rounded-lg text-[calc(11px*var(--fs))] font-semibold border border-black/10 dark:border-white/10 text-neutral-700 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5 disabled:opacity-40 transition-colors"
               >
                 取消
               </button>
@@ -1012,7 +1012,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
                 type="button"
                 disabled={busy}
                 onClick={() => doCommit(overwriteTarget.ts)}
-                className="py-1.5 px-3 rounded-lg text-[11px] font-semibold bg-rose-600 text-white hover:bg-rose-700 disabled:opacity-40 transition-colors flex items-center gap-1.5"
+                className="py-1.5 px-3 rounded-lg text-[calc(11px*var(--fs))] font-semibold bg-rose-600 text-white hover:bg-rose-700 disabled:opacity-40 transition-colors flex items-center gap-1.5"
               >
                 <Upload className="w-3.5 h-3.5" />
                 {busy ? '覆蓋中…' : '確認覆蓋並送出'}
@@ -1056,13 +1056,13 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
                   </button>
                 </div>
                 <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-6 py-5 space-y-5">
-                  <p className="text-sm sm:text-[12px] text-neutral-700 dark:text-neutral-300 leading-relaxed">
+                  <p className="text-sm sm:text-[calc(12px*var(--fs))] text-neutral-700 dark:text-neutral-300 leading-relaxed">
                     前兩柱合計 <strong>{excludePrompt.pillar_count}</strong> 顆,最多 <strong>{max}</strong> 顆。
                     請點選要去除的號碼,去除的號碼會併入「其他」柱。
                   </p>
                   {lines.map(pl => (
                     <div key={pl.line_no}>
-                      <div className="mb-2 text-xs sm:text-[11px] font-mono text-neutral-500 break-all">第 {pl.line_no} 行「{pl.line}」</div>
+                      <div className="mb-2 text-xs sm:text-[calc(11px*var(--fs))] font-mono text-neutral-500 break-all">第 {pl.line_no} 行「{pl.line}」</div>
                       <div className="grid grid-cols-5 gap-2 sm:flex sm:flex-wrap">
                         {pl.numbers.map(n => {
                           const on = excludePicked.has(n);
@@ -1070,7 +1070,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
                             <button key={n} type="button" onClick={() => toggle(n)}
                               aria-pressed={on}
                               title={on ? `取消去除 ${n} 號` : `去除 ${n} 號`}
-                              className={`h-11 sm:w-8 sm:h-8 rounded-full text-sm sm:text-[12px] font-mono font-bold transition-all ${
+                              className={`h-11 sm:w-8 sm:h-8 rounded-full text-sm sm:text-[calc(12px*var(--fs))] font-mono font-bold transition-all ${
                                 on ? 'bg-rose-600 text-white line-through'
                                   : 'bg-black/[0.05] dark:bg-white/[0.08] text-neutral-800 dark:text-neutral-100 hover:bg-black/10 dark:hover:bg-white/15'}`}>
                               {String(n).padStart(2, '0')}
@@ -1082,16 +1082,16 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
                   ))}
                 </div>
                 <div className="shrink-0 border-t border-black/[0.08] dark:border-white/[0.08] px-4 sm:px-6 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:pb-3 space-y-2">
-                  <div className={`text-sm sm:text-[11px] font-mono text-right ${front <= max ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                  <div className={`text-sm sm:text-[calc(11px*var(--fs))] font-mono text-right ${front <= max ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
                     前兩柱 {front} / {max} 顆
                   </div>
                   <div className="flex items-center gap-2 sm:justify-end">
                     <button type="button" onClick={() => setExcludePrompt(null)}
-                      className="flex-1 sm:flex-none py-3 sm:py-1.5 px-3 rounded-lg text-sm sm:text-[11px] font-semibold border border-black/10 dark:border-white/10 text-neutral-700 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
+                      className="flex-1 sm:flex-none py-3 sm:py-1.5 px-3 rounded-lg text-sm sm:text-[calc(11px*var(--fs))] font-semibold border border-black/10 dark:border-white/10 text-neutral-700 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
                       稍後手動修改
                     </button>
                     <button type="button" disabled={!ok || busy} onClick={apply}
-                      className="flex-1 sm:flex-none py-3 sm:py-1.5 px-3 rounded-lg text-sm sm:text-[11px] font-semibold bg-black text-white dark:bg-white dark:text-black hover:opacity-90 disabled:opacity-30 transition-opacity">
+                      className="flex-1 sm:flex-none py-3 sm:py-1.5 px-3 rounded-lg text-sm sm:text-[calc(11px*var(--fs))] font-semibold bg-black text-white dark:bg-white dark:text-black hover:opacity-90 disabled:opacity-30 transition-opacity">
                       去除並重新解析
                     </button>
                   </div>
@@ -1104,7 +1104,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
         {/* Modal Footer */}
         <div className="flex flex-wrap items-center justify-end gap-2 px-4 sm:px-6 pt-3 sm:pt-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:pb-4 border-t border-black/[0.08] dark:border-white/[0.08] shrink-0">
           {!targetReady && (
-            <span className="w-full sm:w-auto sm:mr-auto text-[11px] text-amber-700 dark:text-amber-400">
+            <span className="w-full sm:w-auto sm:mr-auto text-[calc(11px*var(--fs))] text-amber-700 dark:text-amber-400">
               請先選擇 {missingSel.length ? missingSel.join(' / ') : '期號(依日期反查)'}
             </span>
           )}

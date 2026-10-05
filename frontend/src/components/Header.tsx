@@ -16,7 +16,7 @@ export const GameSwitcher: React.FC = () => {
           type="button"
           onClick={() => setGameKey(g.key)}
           title={g.name}
-          className={`px-2.5 sm:px-3 py-1 rounded-lg text-[11px] sm:text-xs font-semibold transition-all whitespace-nowrap ${
+          className={`px-2.5 sm:px-3 py-1 rounded-lg text-[calc(11px*var(--fs))] sm:text-xs font-semibold transition-all whitespace-nowrap ${
             gameKey === g.key
               ? 'bg-black text-white dark:bg-white dark:text-black shadow-xs'
               : 'text-neutral-600 dark:text-neutral-400 hover:text-black dark:hover:text-white'
@@ -60,7 +60,7 @@ export const Header: React.FC<Props> = ({
           <Menu className="w-5 h-5" />
         </button>
         <div>
-          <div className="text-[9px] uppercase tracking-[0.25em] text-neutral-400 dark:text-neutral-500 font-semibold">
+          <div className="text-[calc(9px*var(--fs))] uppercase tracking-[0.25em] text-neutral-400 dark:text-neutral-500 font-semibold">
             Dualis Analytics
           </div>
           <h2 className="text-base sm:text-lg font-display font-bold text-[#141414] dark:text-white tracking-wide">

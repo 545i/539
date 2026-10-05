@@ -34,11 +34,11 @@ const Settle: React.FC<{ net: number; size?: 'lg' | 'sm' }> = ({ net, size = 'lg
 const BetLine: React.FC<{ r: BetRow }> = ({ r }) => (
   <div className="py-2 space-y-1">
     <div className="flex items-center gap-1.5 flex-wrap">
-      <span className="text-[12px] font-bold text-neutral-900 dark:text-white">{r.gameShort}</span>
-      <span className="text-[12px] font-semibold text-neutral-800 dark:text-neutral-100">{r.modeLabel}</span>
-      {r.playType && <span className="text-[11px] text-neutral-500">{r.playType}</span>}
-      {r.detail.length === 0 && <span className="text-[11px] text-neutral-500 font-mono">{r.units}{r.unitLabel}</span>}
-      <span className={`ml-auto text-[11px] ${
+      <span className="text-[calc(12px*var(--fs))] font-bold text-neutral-900 dark:text-white">{r.gameShort}</span>
+      <span className="text-[calc(12px*var(--fs))] font-semibold text-neutral-800 dark:text-neutral-100">{r.modeLabel}</span>
+      {r.playType && <span className="text-[calc(11px*var(--fs))] text-neutral-500">{r.playType}</span>}
+      {r.detail.length === 0 && <span className="text-[calc(11px*var(--fs))] text-neutral-500 font-mono">{r.units}{r.unitLabel}</span>}
+      <span className={`ml-auto text-[calc(11px*var(--fs))] ${
         r.payout > 0 && !r.pending ? 'text-neutral-900 dark:text-white font-semibold' : 'text-neutral-400'}`}>{r.result || '待開獎'}</span>
     </div>
     {r.balls.length > 0 && (
@@ -46,16 +46,16 @@ const BetLine: React.FC<{ r: BetRow }> = ({ r }) => (
         {r.balls.map((n, i) => {
           const hit = r.drawBalls.includes(n);
           return (
-            <span key={`${n}-${i}`} className={`text-[12px] font-mono font-semibold ${
+            <span key={`${n}-${i}`} className={`text-[calc(12px*var(--fs))] font-mono font-semibold ${
               hit ? 'text-neutral-900 dark:text-white font-bold underline underline-offset-2' : 'text-neutral-500 dark:text-neutral-400'}`}>
               {String(n).padStart(2, '0')}
-              {r.deltas[n] ? <sup className="ml-0.5 text-[9px] font-bold">+{r.deltas[n]}</sup> : null}
+              {r.deltas[n] ? <sup className="ml-0.5 text-[calc(9px*var(--fs))] font-bold">+{r.deltas[n]}</sup> : null}
             </span>
           );
         })}
       </div>
     )}
-    <div className="flex justify-between text-[11px] font-mono">
+    <div className="flex justify-between text-[calc(11px*var(--fs))] font-mono">
       <span className="text-neutral-500">成本 <span className="text-neutral-800 dark:text-neutral-100 font-semibold">{money(r.cost)}</span></span>
       <span className="text-neutral-500">派彩 <span className={r.payout > 0 ? 'text-neutral-900 dark:text-white font-bold' : 'text-neutral-400'}>{money(r.payout)}</span></span>
     </div>
@@ -70,18 +70,18 @@ const DayCard: React.FC<{ day: DayGroup; mine: number }> = ({ day, mine }) => {
     <div>
       <button type="button" onClick={() => setOpen(o => !o)} className="w-full flex items-center gap-2 py-2.5 text-left">
         {open ? <ChevronDown className="w-3.5 h-3.5 text-neutral-400" /> : <ChevronRight className="w-3.5 h-3.5 text-neutral-400" />}
-        <span className="text-[13px] font-semibold font-mono text-neutral-800 dark:text-neutral-100">{md(day.ymd)}({weekdayOf(day.ymd)})</span>
-        <span className="text-[10px] text-neutral-400">{day.count} 筆{day.pendingCount > 0 ? ` · ${day.pendingCount} 待開` : ''}</span>
-        <span className="ml-auto text-[10px] text-neutral-400">你分到</span>
-        <span className="font-mono text-[13px] font-bold text-neutral-900 dark:text-white">{fmtSigned(mine)}</span>
+        <span className="text-[calc(13px*var(--fs))] font-semibold font-mono text-neutral-800 dark:text-neutral-100">{md(day.ymd)}({weekdayOf(day.ymd)})</span>
+        <span className="text-[calc(10px*var(--fs))] text-neutral-400">{day.count} 筆{day.pendingCount > 0 ? ` · ${day.pendingCount} 待開` : ''}</span>
+        <span className="ml-auto text-[calc(10px*var(--fs))] text-neutral-400">你分到</span>
+        <span className="font-mono text-[calc(13px*var(--fs))] font-bold text-neutral-900 dark:text-white">{fmtSigned(mine)}</span>
       </button>
       {open && (
         <div className="pl-5 pb-3">
-          <div className="pb-2 text-[11px] font-mono text-neutral-500">
+          <div className="pb-2 text-[calc(11px*var(--fs))] font-mono text-neutral-500">
             當日總損益 <span className="font-semibold text-neutral-800 dark:text-neutral-100">{fmtSigned(day.pnl)}</span>
             <span className="ml-2">成本 {money(day.cost)} · 派彩 {money(day.payout)}</span>
           </div>
-          <div className="flex gap-4 text-[12px]">
+          <div className="flex gap-4 text-[calc(12px*var(--fs))]">
             {(['list', 'bill'] as const).map(v => (
               <button key={v} type="button" onClick={() => setBill(v === 'bill')}
                 className={`pb-0.5 font-semibold ${bill === (v === 'bill')
@@ -153,15 +153,15 @@ const BoardView: React.FC<{ b: SharedBoardDTO }> = ({ b }) => {
       {/* 總覽:我的佔比 + 最新一週要付/分到/結算 + 累計 */}
       <div className="space-y-4 pb-4 border-b border-black/[0.08] dark:border-white/[0.08]">
         <div>
-          <div className="text-[11px] text-neutral-500">你的佔比</div>
+          <div className="text-[calc(11px*var(--fs))] text-neutral-500">你的佔比</div>
           <div className="text-4xl font-bold font-mono text-neutral-900 dark:text-white leading-tight">{myPct !== undefined ? `${myPct}%` : '0%'}</div>
-          <div className="text-[11px] text-neutral-400 mt-0.5">{pctNote}</div>
+          <div className="text-[calc(11px*var(--fs))] text-neutral-400 mt-0.5">{pctNote}</div>
         </div>
         {latest && <ShareBar items={latest.shares} highlight={meName} />}
 
         {cur && (
           <div className="space-y-2">
-            <div className="text-[11px] text-neutral-500">
+            <div className="text-[calc(11px*var(--fs))] text-neutral-500">
               最新一週 <span className="font-mono">{md(weeks[0].monday)} ~ {md(weeks[0].sunday)}</span>
               {weeks[0].pendingCount > 0 && <span className="ml-1 text-neutral-400">({weeks[0].pendingCount} 筆待開獎,派彩未計)</span>}
             </div>
@@ -170,7 +170,7 @@ const BoardView: React.FC<{ b: SharedBoardDTO }> = ({ b }) => {
               <StatTile label="你分到(派彩)" value={money(cur.me.payout)} />
             </div>
             <div>
-              <div className="text-[10px] text-neutral-500">本週結算(分到 − 支付)</div>
+              <div className="text-[calc(10px*var(--fs))] text-neutral-500">本週結算(分到 − 支付)</div>
               <Settle net={cur.me.net} />
             </div>
           </div>
@@ -178,15 +178,15 @@ const BoardView: React.FC<{ b: SharedBoardDTO }> = ({ b }) => {
 
         {weeks.length > 1 && (
           <div className="grid grid-cols-3 gap-4 pt-3 border-t border-black/[0.05] dark:border-white/[0.06]">
-            <div><div className="text-[10px] text-neutral-500">累計支付</div><div className="font-mono text-[13px] font-bold">{money(sum.cost)}</div></div>
-            <div><div className="text-[10px] text-neutral-500">累計分到</div><div className="font-mono text-[13px] font-bold">{money(sum.payout)}</div></div>
-            <div><div className="text-[10px] text-neutral-500">累計結算</div><div className={`font-mono text-[13px] font-bold ${pnlTone(sum.net)}`}>{fmtSigned(sum.net)}</div></div>
+            <div><div className="text-[calc(10px*var(--fs))] text-neutral-500">累計支付</div><div className="font-mono text-[calc(13px*var(--fs))] font-bold">{money(sum.cost)}</div></div>
+            <div><div className="text-[calc(10px*var(--fs))] text-neutral-500">累計分到</div><div className="font-mono text-[calc(13px*var(--fs))] font-bold">{money(sum.payout)}</div></div>
+            <div><div className="text-[calc(10px*var(--fs))] text-neutral-500">累計結算</div><div className={`font-mono text-[calc(13px*var(--fs))] font-bold ${pnlTone(sum.net)}`}>{fmtSigned(sum.net)}</div></div>
           </div>
         )}
       </div>
 
       {weeks.length === 0 && (
-        <div className="text-[12px] text-neutral-400 py-4">
+        <div className="text-[calc(12px*var(--fs))] text-neutral-400 py-4">
           目前還沒有帳單(只顯示你有佔比那些日子的下注)。
         </div>
       )}
@@ -200,12 +200,12 @@ const BoardView: React.FC<{ b: SharedBoardDTO }> = ({ b }) => {
             <button type="button" onClick={() => setOpenWeek(open ? null : w.monday)} className="w-full py-3 text-left space-y-1">
               <div className="flex items-center gap-2">
                 {open ? <ChevronDown className="w-4 h-4 text-neutral-400" /> : <ChevronRight className="w-4 h-4 text-neutral-400" />}
-                <span className="text-[13px] font-semibold font-mono text-neutral-800 dark:text-neutral-100">{md(w.monday)} ~ {md(w.sunday)}</span>
-                <span className="text-[10px] text-neutral-400">{w.count} 筆</span>
-                {w.pendingCount > 0 && <span className="text-[10px] text-neutral-400">{w.pendingCount} 待開</span>}
+                <span className="text-[calc(13px*var(--fs))] font-semibold font-mono text-neutral-800 dark:text-neutral-100">{md(w.monday)} ~ {md(w.sunday)}</span>
+                <span className="text-[calc(10px*var(--fs))] text-neutral-400">{w.count} 筆</span>
+                {w.pendingCount > 0 && <span className="text-[calc(10px*var(--fs))] text-neutral-400">{w.pendingCount} 待開</span>}
               </div>
               <div className="flex items-end justify-between gap-2 pl-6">
-                <div className="text-[11px] text-neutral-500 font-mono">付 {money(sp.me.cost)} · 分 {money(sp.me.payout)}</div>
+                <div className="text-[calc(11px*var(--fs))] text-neutral-500 font-mono">付 {money(sp.me.cost)} · 分 {money(sp.me.payout)}</div>
                 <Settle net={sp.me.net} size="sm" />
               </div>
             </button>
@@ -213,7 +213,7 @@ const BoardView: React.FC<{ b: SharedBoardDTO }> = ({ b }) => {
             {open && (
               <div className="pl-6 pb-4 space-y-4">
                 <div>
-                  <div className="text-[10px] text-neutral-400 font-semibold mb-1">這週合計:成本 {money(sp.cost)} · 派彩 {money(sp.payout)} · 盈虧 {fmtSigned(sp.net)}</div>
+                  <div className="text-[calc(10px*var(--fs))] text-neutral-400 font-semibold mb-1">這週合計:成本 {money(sp.cost)} · 派彩 {money(sp.payout)} · 盈虧 {fmtSigned(sp.net)}</div>
                   <AllocList
                     items={sp.rows.map(r => ({
                       name: nameOf(r.name),
@@ -224,7 +224,7 @@ const BoardView: React.FC<{ b: SharedBoardDTO }> = ({ b }) => {
                     }))}
                   />
                   {sp.segs.length > 1 && (
-                    <div className="text-[10px] text-neutral-400 space-y-0.5 mt-1">
+                    <div className="text-[calc(10px*var(--fs))] text-neutral-400 space-y-0.5 mt-1">
                       {sp.segs.map(sg => (
                         <div key={sg.since || 'base'}>
                           <span className="font-mono">{md(sg.from)}{sg.to !== sg.from ? `~${md(sg.to)}` : ''}</span>
@@ -235,7 +235,7 @@ const BoardView: React.FC<{ b: SharedBoardDTO }> = ({ b }) => {
                   )}
                 </div>
                 <div className="divide-y divide-black/[0.05] dark:divide-white/[0.06]">
-                  <div className="text-[10px] text-neutral-400 font-semibold pb-1">每天下注(點開看明細 / 帳單卡片)</div>
+                  <div className="text-[calc(10px*var(--fs))] text-neutral-400 font-semibold pb-1">每天下注(點開看明細 / 帳單卡片)</div>
                   {w.days.map((day, di) => <DayCard key={day.ymd} day={day} mine={sp.dayMine[di] ?? 0} />)}
                 </div>
               </div>
@@ -257,7 +257,7 @@ const zero3 = (): Money3 => ({ cost: 0, payout: 0, net: 0 });
 
 // 從我(版主)角度的結算一句話:合夥人淨額 < 0 → 應收;> 0 → 應付
 const OwnerSettle: React.FC<{ net: number; size?: 'lg' | 'sm' }> = ({ net, size = 'sm' }) => (
-  <span className={`font-bold ${size === 'lg' ? 'text-xl' : 'text-[13px]'} ${pnlTone(-net)}`}>
+  <span className={`font-bold ${size === 'lg' ? 'text-xl' : 'text-[calc(13px*var(--fs))]'} ${pnlTone(-net)}`}>
     {net < 0 ? '應收 ' : net > 0 ? '應付 ' : '不用收付'}
     {net !== 0 && <span className="font-mono">${Math.abs(net).toLocaleString()}</span>}
   </span>
@@ -351,7 +351,7 @@ const OwnerDashboard: React.FC<{ reloadKey: number; onHasPartners: (v: boolean) 
   return (
     <div className="space-y-4">
       {/* 週選擇 */}
-      <div className="flex gap-4 overflow-x-auto text-[12px]">
+      <div className="flex gap-4 overflow-x-auto text-[calc(12px*var(--fs))]">
         {[...perWeek.map(x => x.w.monday), ...(perWeek.length > 1 ? ['all'] : [])].map(k => (
           <button key={k} type="button" onClick={() => setSelWeek(k)}
             className={`shrink-0 pb-1 font-semibold font-mono ${weekKey === k ? 'text-neutral-900 dark:text-white border-b-2 border-current' : 'text-neutral-400'}`}>
@@ -363,23 +363,23 @@ const OwnerDashboard: React.FC<{ reloadKey: number; onHasPartners: (v: boolean) 
       {/* 總覽 */}
       <div className="grid grid-cols-3 gap-4 pb-4 border-b border-black/[0.08] dark:border-white/[0.08]">
         <div>
-          <div className="text-[10px] text-neutral-500">應收(合夥人付你)</div>
+          <div className="text-[calc(10px*var(--fs))] text-neutral-500">應收(合夥人付你)</div>
           <div className="text-lg font-bold font-mono text-neutral-900 dark:text-white">{money(receivable)}</div>
         </div>
         <div>
-          <div className="text-[10px] text-neutral-500">應付(你付合夥人)</div>
+          <div className="text-[calc(10px*var(--fs))] text-neutral-500">應付(你付合夥人)</div>
           <div className="text-lg font-bold font-mono text-neutral-900 dark:text-white">{money(payable)}</div>
         </div>
         <div>
-          <div className="text-[10px] text-neutral-500">淨額</div>
+          <div className="text-[calc(10px*var(--fs))] text-neutral-500">淨額</div>
           <div className={`text-lg font-bold font-mono ${pnlTone(receivable - payable)}`}>
             {receivable - payable >= 0 ? '收 ' : '付 '}{money(Math.abs(receivable - payable))}
           </div>
         </div>
-        {pending > 0 && <div className="col-span-3 text-[10px] text-neutral-400">{pending} 筆待開獎,派彩未計(開獎後自動更新)</div>}
+        {pending > 0 && <div className="col-span-3 text-[calc(10px*var(--fs))] text-neutral-400">{pending} 筆待開獎,派彩未計(開獎後自動更新)</div>}
       </div>
 
-      {list.length === 0 && <div className="text-[12px] text-neutral-400 py-2">這段期間沒有合夥人的收支。</div>}
+      {list.length === 0 && <div className="text-[calc(12px*var(--fs))] text-neutral-400 py-2">這段期間沒有合夥人的收支。</div>}
 
       {/* 每位合夥人 */}
       <div className="divide-y divide-black/[0.06] dark:divide-white/[0.06]">
@@ -393,10 +393,10 @@ const OwnerDashboard: React.FC<{ reloadKey: number; onHasPartners: (v: boolean) 
               <button type="button" onClick={() => setOpenP(open ? null : name)} className="w-full flex items-center gap-2 py-3 text-left">
                 {open ? <ChevronDown className="w-4 h-4 text-neutral-400 shrink-0" /> : <ChevronRight className="w-4 h-4 text-neutral-400 shrink-0" />}
                 <div className="min-w-0 flex-1">
-                  <div className="text-[13px] font-bold text-neutral-900 dark:text-white truncate">
-                    {name}{accounts.length > 0 && <span className="ml-1.5 text-[11px] font-mono font-normal text-neutral-400">{accounts.join(', ')}</span>}
+                  <div className="text-[calc(13px*var(--fs))] font-bold text-neutral-900 dark:text-white truncate">
+                    {name}{accounts.length > 0 && <span className="ml-1.5 text-[calc(11px*var(--fs))] font-mono font-normal text-neutral-400">{accounts.join(', ')}</span>}
                   </div>
-                  <div className="text-[11px] text-neutral-500 font-mono truncate">
+                  <div className="text-[calc(11px*var(--fs))] text-neutral-500 font-mono truncate">
                     {pcts.join(' · ') || '目前未分配'} · 付 {money(p.total.cost)} · 分 {money(p.total.payout)}
                   </div>
                 </div>
@@ -405,7 +405,7 @@ const OwnerDashboard: React.FC<{ reloadKey: number; onHasPartners: (v: boolean) 
               {open && (
                 <div className="pl-6 pb-3 space-y-1.5">
                   {cells.map((c, i) => (
-                    <div key={`${c.monday}|${c.ed}|${i}`} className="text-[11px]">
+                    <div key={`${c.monday}|${c.ed}|${i}`} className="text-[calc(11px*var(--fs))]">
                       <div className="flex items-center gap-2">
                         <span className="font-mono text-neutral-500">{md(c.monday)}~{md(weekAddDays(c.monday, 6))}</span>
                         <span className="font-semibold text-neutral-800 dark:text-neutral-100">{edName(c.ed)}</span>
@@ -413,7 +413,7 @@ const OwnerDashboard: React.FC<{ reloadKey: number; onHasPartners: (v: boolean) 
                         <span className="ml-auto"><OwnerSettle net={c.net} /></span>
                       </div>
                       {c.segs.length > 1 && (
-                        <div className="text-[10px] text-neutral-400 pl-1">
+                        <div className="text-[calc(10px*var(--fs))] text-neutral-400 pl-1">
                           {c.segs.map(sg => (
                             <span key={sg.since || 'base'} className="mr-3">
                               {md(sg.from)}{sg.to !== sg.from ? `~${md(sg.to)}` : ''} 照 {sg.shares.find(x => x.name === name)?.pct ?? 0}%
@@ -429,7 +429,7 @@ const OwnerDashboard: React.FC<{ reloadKey: number; onHasPartners: (v: boolean) 
           );
         })}
       </div>
-      <p className="text-[10px] text-neutral-400">
+      <p className="text-[calc(10px*var(--fs))] text-neutral-400">
         合夥人「付」= 成本 × 佔比、「分」= 派彩 × 佔比;分 − 付 為負 → 他要付你(應收),為正 → 你要付他(應付)。
         金額與週期帳「本週損益佔比」同一套守恆分配。
       </p>
@@ -467,7 +467,7 @@ export const SharedBillsView: React.FC = () => {
     <div className="space-y-4 animate-in fade-in duration-200">
       <div className="flex items-center gap-2">
         <PieChart className="w-4 h-4 text-neutral-400" />
-        <div className="text-[12px] text-neutral-500 dark:text-neutral-400 min-w-0">
+        <div className="text-[calc(12px*var(--fs))] text-neutral-500 dark:text-neutral-400 min-w-0">
           {cur === 'owner'
             ? '版主儀表板:跟每位合夥人要收 / 要付多少,點名字看各週各版明細。'
             : '版主把你連動進佔比後,這裡看你要付多少、分到多少,和每天下了什麼。'}
@@ -480,12 +480,12 @@ export const SharedBillsView: React.FC = () => {
           </button>
         )}
       </div>
-      {!loggedIn && <div className="text-[12px] text-neutral-400">請先登入。</div>}
-      {err && <div className="text-[12px] text-rose-500">{err}</div>}
+      {!loggedIn && <div className="text-[calc(12px*var(--fs))] text-neutral-400">請先登入。</div>}
+      {err && <div className="text-[calc(12px*var(--fs))] text-rose-500">{err}</div>}
 
       {/* 兩種身分都有才出分頁切換 */}
       {loggedIn && hasPartners && isPartner && (
-        <div className="flex gap-5 text-[13px]">
+        <div className="flex gap-5 text-[calc(13px*var(--fs))]">
           {(['owner', 'partner'] as const).map(t => (
             <button key={t} type="button" onClick={() => setTab(t)}
               className={`pb-1 font-semibold ${cur === t ? 'text-neutral-900 dark:text-white border-b-2 border-current' : 'text-neutral-400'}`}>
@@ -504,9 +504,9 @@ export const SharedBillsView: React.FC = () => {
 
       {cur === 'partner' && (
         <>
-          {loggedIn && boards === null && !err && <div className="text-[12px] text-neutral-400">讀取中…</div>}
+          {loggedIn && boards === null && !err && <div className="text-[calc(12px*var(--fs))] text-neutral-400">讀取中…</div>}
           {loggedIn && boards?.length === 0 && (
-            <div className="text-[12px] text-neutral-400 py-4">
+            <div className="text-[calc(12px*var(--fs))] text-neutral-400 py-4">
               目前沒有版主把你的帳號連動進損益佔比。
             </div>
           )}
@@ -514,7 +514,7 @@ export const SharedBillsView: React.FC = () => {
             <div className="flex gap-5 overflow-x-auto">
               {boards.map((b, i) => (
                 <button key={`${b.owner}/${b.eid}`} type="button" onClick={() => setSel(i)}
-                  className={`shrink-0 pb-1 text-[13px] font-semibold ${sel === i ? 'text-neutral-900 dark:text-white border-b-2 border-current' : 'text-neutral-400'}`}>
+                  className={`shrink-0 pb-1 text-[calc(13px*var(--fs))] font-semibold ${sel === i ? 'text-neutral-900 dark:text-white border-b-2 border-current' : 'text-neutral-400'}`}>
                   {b.owner}{boards.slice(0, i).some(x => x.owner === b.owner) ? ` #${boards.slice(0, i + 1).filter(x => x.owner === b.owner).length}` : ''}
                 </button>
               ))}

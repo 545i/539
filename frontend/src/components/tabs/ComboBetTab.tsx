@@ -216,13 +216,13 @@ export const ComboBetTab: React.FC<{ onOpenLedger?: (mode: LedgerMode) => void }
       <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <span className="text-[10px] uppercase tracking-[0.25em] text-neutral-400 dark:text-neutral-500 font-semibold">
+            <span className="text-[calc(10px*var(--fs))] uppercase tracking-[0.25em] text-neutral-400 dark:text-neutral-500 font-semibold">
               Combination Matrix Engine
             </span>
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-black/5 dark:bg-white/10 text-neutral-600 dark:text-neutral-300">
+            <span className="px-2 py-0.5 rounded-full text-[calc(10px*var(--fs))] font-mono bg-black/5 dark:bg-white/10 text-neutral-600 dark:text-neutral-300">
               {game.short_name}
             </span>
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-black/5 dark:bg-white/10 text-neutral-600 dark:text-neutral-300">
+            <span className="px-2 py-0.5 rounded-full text-[calc(10px*var(--fs))] font-mono bg-black/5 dark:bg-white/10 text-neutral-600 dark:text-neutral-300">
               C({n}, {k}) = {totalComb} 碰
             </span>
           </div>
@@ -236,12 +236,12 @@ export const ComboBetTab: React.FC<{ onOpenLedger?: (mode: LedgerMode) => void }
 
         <div className="flex items-center justify-between md:justify-end gap-4 border-t md:border-t-0 pt-2.5 md:pt-0 border-black/[0.06] dark:border-white/[0.06]">
           <div className="text-left md:text-right">
-            <span className="text-[10px] uppercase tracking-wider text-neutral-400 block">連碰累積損益</span>
+            <span className="text-[calc(10px*var(--fs))] uppercase tracking-wider text-neutral-400 block">連碰累積損益</span>
             <div className={`text-xl sm:text-2xl font-mono font-bold ${cumPnl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
               {cumPnl >= 0 ? `+${cumPnl.toLocaleString()}` : cumPnl.toLocaleString()}
             </div>
           </div>
-          <div className="text-right text-[11px] font-mono text-neutral-400">
+          <div className="text-right text-[calc(11px*var(--fs))] font-mono text-neutral-400">
             {roundCount} 局・中 {winCount} 局
           </div>
         </div>
@@ -261,7 +261,7 @@ export const ComboBetTab: React.FC<{ onOpenLedger?: (mode: LedgerMode) => void }
                 01 / 連碰組合參數
               </span>
               <div className="flex items-center gap-1.5">
-                <span className="text-[11px] font-mono text-neutral-400">期號</span>
+                <span className="text-[calc(11px*var(--fs))] font-mono text-neutral-400">期號</span>
                 <IssuePicker issue={curIssue} date={betDate} draws={draws} extraOption={histReq.data?.next ?? undefined} onSelect={pickIssue} />
               </div>
             </div>
@@ -269,7 +269,7 @@ export const ComboBetTab: React.FC<{ onOpenLedger?: (mode: LedgerMode) => void }
             {/* Method & Stars Grid */}
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="block text-[10px] uppercase tracking-[0.2em] font-semibold text-neutral-400 mb-1.5">
+                <label className="block text-[calc(10px*var(--fs))] uppercase tracking-[0.2em] font-semibold text-neutral-400 mb-1.5">
                   玩法方式
                 </label>
                 <select
@@ -285,7 +285,7 @@ export const ComboBetTab: React.FC<{ onOpenLedger?: (mode: LedgerMode) => void }
               </div>
 
               <div>
-                <label className="block text-[10px] uppercase tracking-[0.2em] font-semibold text-neutral-400 mb-1.5">
+                <label className="block text-[calc(10px*var(--fs))] uppercase tracking-[0.2em] font-semibold text-neutral-400 mb-1.5">
                   星數規格
                 </label>
                 <div className="grid grid-cols-3 gap-1 p-0.5 rounded-xl bg-black/[0.03] dark:bg-white/[0.04] border border-black/[0.06] dark:border-white/[0.06]">
@@ -294,7 +294,7 @@ export const ComboBetTab: React.FC<{ onOpenLedger?: (mode: LedgerMode) => void }
                       key={s}
                       type="button"
                       onClick={() => setStarCount(s)}
-                      className={`py-1 text-[11px] font-semibold rounded-lg transition-all ${
+                      className={`py-1 text-[calc(11px*var(--fs))] font-semibold rounded-lg transition-all ${
                         starCount === s
                           ? 'bg-black text-white dark:bg-white dark:text-black shadow-xs'
                           : 'text-neutral-600 dark:text-neutral-400'
@@ -308,7 +308,7 @@ export const ComboBetTab: React.FC<{ onOpenLedger?: (mode: LedgerMode) => void }
             </div>
 
             {!starAllowed && (
-              <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-800 dark:text-amber-300">
+              <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-[calc(11px*var(--fs))] text-amber-800 dark:text-amber-300">
                 {game.short_name}不適用星碰(星碰是 39 選 5 的玩法),已改用連碰計算。
                 要用星碰請在上方切換成今彩539 / 天天樂。
               </div>
@@ -331,7 +331,7 @@ export const ComboBetTab: React.FC<{ onOpenLedger?: (mode: LedgerMode) => void }
             {/* Units Multiplier Stepper & Pills */}
             <div className="space-y-2 pt-1">
               <div className="flex items-center justify-between">
-                <label className="text-[10px] uppercase tracking-[0.2em] font-semibold text-neutral-400">
+                <label className="text-[calc(10px*var(--fs))] uppercase tracking-[0.2em] font-semibold text-neutral-400">
                   下注支數 (Units)
                 </label>
                 <span className="text-xs font-mono font-bold text-neutral-900 dark:text-white">
@@ -386,30 +386,30 @@ export const ComboBetTab: React.FC<{ onOpenLedger?: (mode: LedgerMode) => void }
 
             {/* Live Financial Preview Card */}
             <div className="p-3.5 sm:p-4 rounded-xl bg-black/[0.02] dark:bg-white/[0.03] border border-black/[0.06] dark:border-white/[0.06] space-y-2">
-              <div className="text-[10px] uppercase tracking-wider text-neutral-400 font-semibold">
+              <div className="text-[calc(10px*var(--fs))] uppercase tracking-wider text-neutral-400 font-semibold">
                 組合注數與成本試算 (Live Preview)
               </div>
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <div>
-                  <span className="text-neutral-500 block text-[10px]">總組合碰數:</span>
+                  <span className="text-neutral-500 block text-[calc(10px*var(--fs))]">總組合碰數:</span>
                   <span className="font-mono font-bold text-sm text-neutral-900 dark:text-white">
                     {totalComb} 碰
                   </span>
                 </div>
                 <div>
-                  <span className="text-neutral-500 block text-[10px]">本期總成本:</span>
+                  <span className="text-neutral-500 block text-[calc(10px*var(--fs))]">本期總成本:</span>
                   <span className="font-mono font-bold text-sm text-neutral-900 dark:text-white">
                     NT$ {currentCost.toLocaleString()}
                   </span>
                 </div>
                 <div>
-                  <span className="text-neutral-500 block text-[10px]">命中 1 碰彩金:</span>
+                  <span className="text-neutral-500 block text-[calc(10px*var(--fs))]">命中 1 碰彩金:</span>
                   <span className="font-mono font-bold text-sm text-emerald-600 dark:text-emerald-400">
                     NT$ {Math.round(prizePerHitComb * units).toLocaleString()}
                   </span>
                 </div>
                 <div>
-                  <span className="text-neutral-500 block text-[10px]">玩法規格:</span>
+                  <span className="text-neutral-500 block text-[calc(10px*var(--fs))]">玩法規格:</span>
                   <span className="font-mono font-bold text-sm text-neutral-800 dark:text-neutral-200">
                     {starCount} 賠率
                   </span>
@@ -446,32 +446,32 @@ export const ComboBetTab: React.FC<{ onOpenLedger?: (mode: LedgerMode) => void }
           {/* Top 4 Metric Tiles */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3">
             <div className="p-3.5 sm:p-4 rounded-xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08]">
-              <div className="text-[10px] uppercase tracking-wider text-neutral-400">總投入成本</div>
+              <div className="text-[calc(10px*var(--fs))] uppercase tracking-wider text-neutral-400">總投入成本</div>
               <div className="text-base sm:text-lg font-bold font-mono text-neutral-900 dark:text-white mt-0.5">
                 {totalSpent.toLocaleString()}
               </div>
             </div>
 
             <div className="p-3.5 sm:p-4 rounded-xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08]">
-              <div className="text-[10px] uppercase tracking-wider text-neutral-400">總回收彩金</div>
+              <div className="text-[calc(10px*var(--fs))] uppercase tracking-wider text-neutral-400">總回收彩金</div>
               <div className="text-base sm:text-lg font-bold font-mono text-emerald-600 dark:text-emerald-400 mt-0.5">
                 {totalReturn.toLocaleString()}
               </div>
             </div>
 
             <div className="p-3.5 sm:p-4 rounded-xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08]">
-              <div className="text-[10px] uppercase tracking-wider text-neutral-400">累積淨損益</div>
+              <div className="text-[calc(10px*var(--fs))] uppercase tracking-wider text-neutral-400">累積淨損益</div>
               <div className={`text-base sm:text-lg font-bold font-mono mt-0.5 ${cumPnl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
                 {cumPnl >= 0 ? `+${cumPnl.toLocaleString()}` : cumPnl.toLocaleString()}
               </div>
             </div>
 
             <div className="p-3.5 sm:p-4 rounded-xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08]">
-              <div className="text-[10px] uppercase tracking-wider text-neutral-400">中獎率 / 局數</div>
+              <div className="text-[calc(10px*var(--fs))] uppercase tracking-wider text-neutral-400">中獎率 / 局數</div>
               <div className="text-base sm:text-lg font-bold font-mono text-neutral-900 dark:text-white mt-0.5">
                 {roundCount > 0 ? `${((winCount / roundCount) * 100).toFixed(0)}%` : '0%'}
               </div>
-              <div className="text-[10px] text-neutral-400 font-mono">共 {roundCount} 局</div>
+              <div className="text-[calc(10px*var(--fs))] text-neutral-400 font-mono">共 {roundCount} 局</div>
             </div>
           </div>
 
@@ -495,13 +495,13 @@ export const ComboBetTab: React.FC<{ onOpenLedger?: (mode: LedgerMode) => void }
             </div>
             <WeekSubtotal records={comboGroups} label={wk.label} unit="注" />
             {!wk.allWeeks && comboGroups.length === 0 && (
-              <div className="text-[11px] text-neutral-400">{wk.label} 沒有連碰紀錄。用 ‹ › 切到其他週。</div>
+              <div className="text-[calc(11px*var(--fs))] text-neutral-400">{wk.label} 沒有連碰紀錄。用 ‹ › 切到其他週。</div>
             )}
 
             {ledger.loading && <div className="text-xs text-neutral-400">載入流水帳中…</div>}
             {ledger.error && <div className="text-xs text-rose-500">{ledger.error}</div>}
             {!ledger.loggedIn && (
-              <div className="text-[11px] text-neutral-400">
+              <div className="text-[calc(11px*var(--fs))] text-neutral-400">
                 未登入:紀錄只留在這個瀏覽器分頁,重整就會消失。
               </div>
             )}
@@ -511,7 +511,7 @@ export const ComboBetTab: React.FC<{ onOpenLedger?: (mode: LedgerMode) => void }
             <button
               type="button"
               onClick={() => onOpenLedger?.('combo')}
-              className="w-full flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl border border-dashed border-black/15 dark:border-white/15 text-[12px] font-semibold text-neutral-600 dark:text-neutral-300 hover:bg-black/[0.03] dark:hover:bg-white/[0.04] hover:border-black/25 dark:hover:border-white/25 transition-colors"
+              className="w-full flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl border border-dashed border-black/15 dark:border-white/15 text-[calc(12px*var(--fs))] font-semibold text-neutral-600 dark:text-neutral-300 hover:bg-black/[0.03] dark:hover:bg-white/[0.04] hover:border-black/25 dark:hover:border-white/25 transition-colors"
             >
               查看 / 管理本週逐筆流水(對獎・改期・撤銷)
               <ChevronRight className="w-3.5 h-3.5" />

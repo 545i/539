@@ -66,10 +66,10 @@ const PairRow: React.FC<{ p: IntervalPairDTO; detail: string; tone: 'alert' | 'q
           {p.labels[0]} × {p.labels[1]}
         </span>
       </div>
-      <div className="text-[10px] font-mono text-neutral-400 mt-0.5 truncate">{detail}</div>
+      <div className="text-[calc(10px*var(--fs))] font-mono text-neutral-400 mt-0.5 truncate">{detail}</div>
     </div>
     <div
-      className={`text-[11px] font-mono shrink-0 text-right ${
+      className={`text-[calc(11px*var(--fs))] font-mono shrink-0 text-right ${
         tone === 'alert' ? 'text-amber-900 dark:text-amber-300 font-bold' : 'text-neutral-400'
       }`}
     >
@@ -108,19 +108,19 @@ const ComboRow: React.FC<{
             {label}
           </span>
         </div>
-        <div className="text-[10px] font-mono text-neutral-400 mt-0.5 truncate">
+        <div className="text-[calc(10px*var(--fs))] font-mono text-neutral-400 mt-0.5 truncate">
           {detail}
           {stat ? ` · 歷史最長 ${stat.max_gap} 期` : ''}
         </div>
         {alert && stat && (
-          <div className="text-[10px] font-semibold text-amber-700 dark:text-amber-400 mt-0.5">
+          <div className="text-[calc(10px*var(--fs))] font-semibold text-amber-700 dark:text-amber-400 mt-0.5">
             {label} 已連續 {stat.streak} 期沒有全部同時出現
           </div>
         )}
       </div>
       <div className="flex items-center gap-2 shrink-0">
         <div className="text-right">
-          <div className="text-[10px] text-neutral-400">距上次同時出現</div>
+          <div className="text-[calc(10px*var(--fs))] text-neutral-400">距上次同時出現</div>
           <div
             className={`text-xl font-mono font-bold leading-none mt-0.5 ${
               alert ? 'text-amber-900 dark:text-amber-300' : 'text-neutral-900 dark:text-white'
@@ -561,7 +561,7 @@ export const AnalysisView: React.FC = () => {
               <Bell className="w-4 h-4 text-amber-500" />
               <span>1800碰斷檔提醒</span>
               {alertPairs.length > 0 && (
-                <span className="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-300 text-[10px] font-mono font-bold">
+                <span className="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-300 text-[calc(10px*var(--fs))] font-mono font-bold">
                   {alertPairs.length} 組警示
                 </span>
               )}
@@ -578,7 +578,7 @@ export const AnalysisView: React.FC = () => {
             </div>
           </div>
 
-          <div className="text-[11px] text-neutral-500 dark:text-neutral-400">
+          <div className="text-[calc(11px*var(--fs))] text-neutral-500 dark:text-neutral-400">
             自訂的兩個號碼區間連續 {threshold} 期都沒開出號碼就跳警示;
             目前 {gameName} 有 {intervals.length} 個區間、共 {pairs.length} 組配對
             {isCustom ? '(已套用自訂區間)' : '(預設十位分段)'}。
@@ -588,13 +588,13 @@ export const AnalysisView: React.FC = () => {
           {showWatchSetup && (
             <div className="p-3 rounded-xl bg-black/[0.02] dark:bg-white/[0.03] border border-black/[0.06] dark:border-white/[0.06] space-y-3">
               <div className="flex items-center justify-between gap-2">
-                <span className="text-[10px] uppercase tracking-wider text-neutral-400 font-semibold">
+                <span className="text-[calc(10px*var(--fs))] uppercase tracking-wider text-neutral-400 font-semibold">
                   我的號碼區間({gameName} 01~{pad2(numMax)})
                 </span>
                 <button
                   type="button"
                   onClick={resetIntervals}
-                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-neutral-600 dark:text-neutral-300 hover:text-black dark:hover:text-white"
+                  className="inline-flex items-center gap-1 text-[calc(11px*var(--fs))] font-semibold text-neutral-600 dark:text-neutral-300 hover:text-black dark:hover:text-white"
                 >
                   <RotateCcw className="w-3 h-3" />
                   還原預設
@@ -612,7 +612,7 @@ export const AnalysisView: React.FC = () => {
                       <span className="block text-xs font-mono font-bold text-neutral-900 dark:text-white truncate">
                         {g.label}
                       </span>
-                      <span className="block text-[10px] font-mono text-neutral-400 truncate">
+                      <span className="block text-[calc(10px*var(--fs))] font-mono text-neutral-400 truncate">
                         {numsSummary(g.nums)}
                       </span>
                     </span>
@@ -627,7 +627,7 @@ export const AnalysisView: React.FC = () => {
                   </div>
                 ))}
                 {intervals.length === 0 && (
-                  <div className="text-[11px] text-neutral-400">
+                  <div className="text-[calc(11px*var(--fs))] text-neutral-400">
                     還沒有任何區間 —— 在下面新增,或按「還原預設」拿回十位分段。
                   </div>
                 )}
@@ -663,7 +663,7 @@ export const AnalysisView: React.FC = () => {
                     新增
                   </button>
                 </div>
-                <p className="text-[10px] font-mono text-neutral-400">
+                <p className="text-[calc(10px*var(--fs))] font-mono text-neutral-400">
                   {newNums.trim()
                     ? parsedNewNums.length > 0
                       ? `將加入 ${parsedNewNums.length} 顆:${numsSummary(parsedNewNums)}`
@@ -672,7 +672,7 @@ export const AnalysisView: React.FC = () => {
                 </p>
               </div>
 
-              <p className="text-[10px] text-neutral-400">
+              <p className="text-[calc(10px*var(--fs))] text-neutral-400">
                 區間設定存在這台瀏覽器({gameName}單獨一份),重整後保留。
               </p>
             </div>
@@ -681,12 +681,12 @@ export const AnalysisView: React.FC = () => {
           {/* 單一區間斷檔:每個區間自己連續幾期沒開(斷一期就提醒),不是配對 */}
           {!intervalAbsence.loading && !intervalAbsence.error && absentSingles.length > 0 && (
             <div className="space-y-1.5">
-              <div className="text-[11px] font-semibold text-neutral-600 dark:text-neutral-300">單一區間斷檔(幾期沒開)</div>
+              <div className="text-[calc(11px*var(--fs))] font-semibold text-neutral-600 dark:text-neutral-300">單一區間斷檔(幾期沒開)</div>
               <div className="flex flex-wrap gap-1.5">
                 {absentSingles.map(x => (
                   <span
                     key={x.label}
-                    className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-mono font-semibold ${
+                    className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[calc(11px*var(--fs))] font-mono font-semibold ${
                       x.alert
                         ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
                         : 'bg-black/[0.04] dark:bg-white/[0.06] text-neutral-600 dark:text-neutral-300'
@@ -701,7 +701,7 @@ export const AnalysisView: React.FC = () => {
             </div>
           )}
 
-          <div className="text-[11px] font-semibold text-neutral-600 dark:text-neutral-300 pt-1">區間配對斷檔(兩區間一起沒開)</div>
+          <div className="text-[calc(11px*var(--fs))] font-semibold text-neutral-600 dark:text-neutral-300 pt-1">區間配對斷檔(兩區間一起沒開)</div>
           {intervalPairs.loading && <div className="text-xs text-neutral-400">載入區間統計中…</div>}
           {intervalPairs.error && <div className="text-xs text-rose-500">{intervalPairs.error}</div>}
 
@@ -730,11 +730,11 @@ export const AnalysisView: React.FC = () => {
             <div className="flex items-center gap-2 text-neutral-900 dark:text-white font-display font-bold text-sm uppercase tracking-wide">
               <Target className="w-4 h-4 text-amber-500" />
               <span>9000碰(全段同開,多久沒一起開)</span>
-              <span className="px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 text-[10px] font-semibold">
+              <span className="px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 text-[calc(10px*var(--fs))] font-semibold">
                 全站公共・提醒機器人
               </span>
               {comboAlertCount > 0 && (
-                <span className="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-300 text-[10px] font-mono font-bold">
+                <span className="px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-300 text-[calc(10px*var(--fs))] font-mono font-bold">
                   {comboAlertCount} 組警示
                 </span>
               )}
@@ -754,13 +754,13 @@ export const AnalysisView: React.FC = () => {
             </div>
           </div>
 
-          <div className="text-[11px] text-neutral-500 dark:text-neutral-400">
+          <div className="text-[calc(11px*var(--fs))] text-neutral-500 dark:text-neutral-400">
             勾選上方那份區間清單裡的幾個區間組成一組(例:01~09 + 10~19 + 20~29 + 30~39),
             追蹤距上次「每個區間在同一期都至少開出一顆」過了幾期;連續 <strong>{watchThreshold}</strong> 期
             沒有一起開就跳警示、並由<strong>提醒機器人推到群組</strong>。這份設定<strong>全站共用</strong>,
             目前 {gameName} 監看 {combos.length} 組。
           </div>
-          {watchMsg && <div className="text-[11px] text-emerald-600 dark:text-emerald-400">{watchMsg}</div>}
+          {watchMsg && <div className="text-[calc(11px*var(--fs))] text-emerald-600 dark:text-emerald-400">{watchMsg}</div>}
 
           {comboTogether.loading && <div className="text-xs text-neutral-400">載入區間組合統計中…</div>}
           {comboTogether.error && <div className="text-xs text-rose-500">{comboTogether.error}</div>}
@@ -786,12 +786,12 @@ export const AnalysisView: React.FC = () => {
 
           {/* 新增組合:勾區間,每個區間各自是一個 group */}
           <div className="pt-3 border-t border-black/[0.06] dark:border-white/[0.06] space-y-3">
-            <div className="text-[10px] uppercase tracking-wider text-neutral-400 font-semibold">
+            <div className="text-[calc(10px*var(--fs))] uppercase tracking-wider text-neutral-400 font-semibold">
               勾選要納入的區間({intervals.length} 個可選)
             </div>
 
             {intervals.length === 0 ? (
-              <div className="text-[11px] text-neutral-400">
+              <div className="text-[calc(11px*var(--fs))] text-neutral-400">
                 目前沒有任何區間 —— 先到上方「設定監看區間」新增,或按「還原預設」拿回十位分段。
               </div>
             ) : (
@@ -812,7 +812,7 @@ export const AnalysisView: React.FC = () => {
                     >
                       <span className="block text-xs font-mono font-bold">{g.label}</span>
                       <span
-                        className={`block text-[10px] font-mono ${
+                        className={`block text-[calc(10px*var(--fs))] font-mono ${
                           on ? 'opacity-70' : 'text-neutral-400'
                         }`}
                       >
@@ -843,7 +843,7 @@ export const AnalysisView: React.FC = () => {
               </button>
             </div>
 
-            <p className="text-[10px] font-mono text-neutral-400">
+            <p className="text-[calc(10px*var(--fs))] font-mono text-neutral-400">
               {canAddCombo
                 ? `${pickedLabel} — ${pickedGroups.length} 個區間都要在同一期各開出至少一顆才算「一起開」`
                 : pickedGroups.length === 1
@@ -851,7 +851,7 @@ export const AnalysisView: React.FC = () => {
                   : '還沒勾任何區間 —— 勾 2 個以上(例如四段全勾)看它多久沒一起開。'}
             </p>
 
-            <p className="text-[10px] text-neutral-400">
+            <p className="text-[calc(10px*var(--fs))] text-neutral-400">
               組合存在這台瀏覽器({gameName}單獨一份),重整後保留;存的是當下各區間的號碼,
               之後改區間清單不會回頭動到已建立的組合。右側大字為距上次全部同時出現的期數。
             </p>
@@ -883,7 +883,7 @@ export const AnalysisView: React.FC = () => {
           </div>
 
           {/* 分色圖例(依十位) */}
-          <div className="flex flex-wrap gap-3 text-[10px] text-neutral-500 dark:text-neutral-400">
+          <div className="flex flex-wrap gap-3 text-[calc(10px*var(--fs))] text-neutral-500 dark:text-neutral-400">
             {bands.map(l => (
               <span key={l.t} className="inline-flex items-center gap-1">
                 <span className={`inline-block w-2.5 h-2.5 rounded-full ${l.c}`} />
@@ -900,13 +900,13 @@ export const AnalysisView: React.FC = () => {
               <table className="border-separate border-spacing-0 text-center">
                 <thead>
                   <tr>
-                    <th className="sticky left-0 z-10 bg-white dark:bg-[#121212] px-2 py-1.5 text-left text-[10px] uppercase tracking-wider text-neutral-400 font-semibold">
+                    <th className="sticky left-0 z-10 bg-white dark:bg-[#121212] px-2 py-1.5 text-left text-[calc(10px*var(--fs))] uppercase tracking-wider text-neutral-400 font-semibold">
                       開獎日期
                     </th>
                     {allNums.map(n => (
                       <th
                         key={n}
-                        className="px-0.5 py-1.5 text-[9px] font-mono text-neutral-400 dark:text-neutral-500 min-w-[1.35rem]"
+                        className="px-0.5 py-1.5 text-[calc(9px*var(--fs))] font-mono text-neutral-400 dark:text-neutral-500 min-w-[1.35rem]"
                       >
                         {n.toString().padStart(2, '0')}
                       </th>
@@ -919,12 +919,12 @@ export const AnalysisView: React.FC = () => {
                     return (
                       <tr key={d.date + (d.issue ?? '')} className="hover:bg-black/[0.02] dark:hover:bg-white/[0.02]">
                         <td className="sticky left-0 z-10 bg-white dark:bg-[#121212] px-2 py-1 text-left whitespace-nowrap border-t border-black/[0.05] dark:border-white/[0.05]">
-                          <span className="font-mono text-[11px] text-neutral-700 dark:text-neutral-300">{d.date}</span>
+                          <span className="font-mono text-[calc(11px*var(--fs))] text-neutral-700 dark:text-neutral-300">{d.date}</span>
                         </td>
                         {allNums.map(n => (
                           <td key={n} className="px-0.5 py-1 border-t border-black/[0.05] dark:border-white/[0.05]">
                             {hit.has(n) ? (
-                              <span className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-[9px] font-mono font-bold ${bandDot(n)}`}>
+                              <span className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-[calc(9px*var(--fs))] font-mono font-bold ${bandDot(n)}`}>
                                 {n.toString().padStart(2, '0')}
                               </span>
                             ) : (
@@ -938,7 +938,7 @@ export const AnalysisView: React.FC = () => {
                 </tbody>
                 <tfoot>
                   <tr>
-                    <td className="sticky left-0 z-10 bg-black/[0.02] dark:bg-white/[0.03] px-2 py-1.5 text-left text-[10px] uppercase tracking-wider text-neutral-400 font-semibold border-t border-black/[0.08] dark:border-white/[0.08]">
+                    <td className="sticky left-0 z-10 bg-black/[0.02] dark:bg-white/[0.03] px-2 py-1.5 text-left text-[calc(10px*var(--fs))] uppercase tracking-wider text-neutral-400 font-semibold border-t border-black/[0.08] dark:border-white/[0.08]">
                       出現次數
                     </td>
                     {allNums.map(n => {
@@ -946,7 +946,7 @@ export const AnalysisView: React.FC = () => {
                       return (
                         <td
                           key={n}
-                          className={`px-0.5 py-1.5 text-[10px] font-mono border-t border-black/[0.08] dark:border-white/[0.08] ${
+                          className={`px-0.5 py-1.5 text-[calc(10px*var(--fs))] font-mono border-t border-black/[0.08] dark:border-white/[0.08] ${
                             c === 0 ? 'text-neutral-300 dark:text-neutral-600' : 'text-neutral-900 dark:text-white font-bold'
                           }`}
                         >
@@ -960,7 +960,7 @@ export const AnalysisView: React.FC = () => {
             </div>
           )}
 
-          <p className="text-[11px] text-neutral-400 dark:text-neutral-500">
+          <p className="text-[calc(11px*var(--fs))] text-neutral-400 dark:text-neutral-500">
             每一列為一期開獎,圓點標出當期開出的號碼(依十位分色);最下方為該號在近 {histN} 期的出現次數分佈。
           </p>
         </div>
@@ -1034,9 +1034,9 @@ export const AnalysisView: React.FC = () => {
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 {[0, 1, 2].map(i => (
                   <div key={i} className="p-4 rounded-xl bg-black/[0.02] dark:bg-white/[0.03] border border-black/[0.06] dark:border-white/[0.06]">
-                    <div className="text-[10px] uppercase tracking-wider text-neutral-400">{pillarLabel(i)}</div>
+                    <div className="text-[calc(10px*var(--fs))] uppercase tracking-wider text-neutral-400">{pillarLabel(i)}</div>
                     <div className="text-2xl font-bold font-mono text-neutral-900 dark:text-white mt-1">{actualRate(i)}</div>
-                    <div className="text-[10px] text-neutral-400 mt-1">理論開出率 {theoryRate(i)}</div>
+                    <div className="text-[calc(10px*var(--fs))] text-neutral-400 mt-1">理論開出率 {theoryRate(i)}</div>
                   </div>
                 ))}
               </div>
@@ -1053,11 +1053,11 @@ export const AnalysisView: React.FC = () => {
           {parity.error && <div className="text-xs text-rose-500">{parity.error}</div>}
           <div className="grid grid-cols-2 gap-4">
             <div className="p-4 rounded-xl bg-black/[0.02] dark:bg-white/[0.03] border border-black/[0.06] dark:border-white/[0.06]">
-              <div className="text-[10px] uppercase tracking-wider text-neutral-400">單號 vs 雙號</div>
+              <div className="text-[calc(10px*var(--fs))] uppercase tracking-wider text-neutral-400">單號 vs 雙號</div>
               <div className="text-xl font-bold font-mono text-neutral-900 dark:text-white mt-1">{ratioText(parityPct?.odd)}</div>
             </div>
             <div className="p-4 rounded-xl bg-black/[0.02] dark:bg-white/[0.03] border border-black/[0.06] dark:border-white/[0.06]">
-              <div className="text-[10px] uppercase tracking-wider text-neutral-400">
+              <div className="text-[calc(10px*var(--fs))] uppercase tracking-wider text-neutral-400">
                 {split
                   ? `大號 (${pad2(split + 1)}-${pad2(numMax)}) vs 小號 (01-${pad2(split)})`
                   : '大號 vs 小號'}

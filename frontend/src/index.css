@@ -4,6 +4,26 @@
    所以改成 class-based —— dark: 只在 .dark(或其子孫)底下才生效,切換鈕才有作用。 */
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* 寬板文字比例:--fs 是全站字級倍率(只放大字,不動間距/版面)。
+   手機/平板維持 1,寬螢幕(≥1280px)放大 50%。所有 text-* 與 text-[Npx] 都乘上它。 */
+:root { --fs: 1; }
+@media (min-width: 1280px) {
+  :root { --fs: 1.5; }
+}
+
+@theme {
+  --text-xs: calc(0.75rem * var(--fs));
+  --text-sm: calc(0.875rem * var(--fs));
+  --text-base: calc(1rem * var(--fs));
+  --text-lg: calc(1.125rem * var(--fs));
+  --text-xl: calc(1.25rem * var(--fs));
+  --text-2xl: calc(1.5rem * var(--fs));
+  --text-3xl: calc(1.875rem * var(--fs));
+  --text-4xl: calc(2.25rem * var(--fs));
+  --text-5xl: calc(3rem * var(--fs));
+  --text-6xl: calc(3.75rem * var(--fs));
+}
+
 @layer base {
   :root {
     --bg-canvas: #F9F9F7;
@@ -48,6 +68,7 @@ body {
   background-color: var(--bg-canvas);
   color: var(--text-primary);
   font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: calc(1rem * var(--fs));
   -webkit-font-smoothing: antialiased;
 }
 
@@ -84,7 +105,7 @@ body {
 .lt {
   border-collapse: collapse;
   width: 100%;
-  font-size: 0.85rem;
+  font-size: calc(0.85rem * var(--fs));
   font-variant-numeric: tabular-nums;
 }
 

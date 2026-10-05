@@ -17,7 +17,7 @@ const MetricCell: React.FC<{ m: YahongMetricDTO }> = ({ m }) => {
         : fmtValue(m.value, m.fmt);
   return (
     <div className="p-3 rounded-xl bg-black/[0.02] dark:bg-white/[0.03] border border-black/[0.06] dark:border-white/[0.06]">
-      <div className="text-[10px] uppercase tracking-wider text-neutral-400 truncate">{m.label}</div>
+      <div className="text-[calc(10px*var(--fs))] uppercase tracking-wider text-neutral-400 truncate">{m.label}</div>
       <div className="text-lg font-mono font-bold text-neutral-900 dark:text-white mt-1 tabular-nums">
         {display}
       </div>
@@ -67,7 +67,7 @@ export const MatrixPanel: React.FC<{ game: GameKey }> = ({ game }) => {
               </span>
             </div>
             <p className="text-xs mt-2 leading-relaxed opacity-90">{data.verdict.desc}</p>
-            <p className="text-[10px] mt-1 opacity-60 font-mono">累計觀測 {data.totalDraws} 期</p>
+            <p className="text-[calc(10px*var(--fs))] mt-1 opacity-60 font-mono">累計觀測 {data.totalDraws} 期</p>
           </div>
 
           {/* 華爾街八大 */}

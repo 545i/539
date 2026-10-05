@@ -44,7 +44,7 @@ const ReconReport: React.FC<{ data: ReconcileDTO }> = ({ data }) => {
   const { bill, report, records_used } = data;
   if (!report) {
     return (
-      <div className="text-[11px] text-rose-600 dark:text-rose-400 space-y-0.5">
+      <div className="text-[calc(11px*var(--fs))] text-rose-600 dark:text-rose-400 space-y-0.5">
         {bill.errors.length
           ? bill.errors.map((e, i) => <div key={i}>· {e}</div>)
           : <div>帳單缺日期或遊戲,無法比對。</div>}
@@ -53,21 +53,21 @@ const ReconReport: React.FC<{ data: ReconcileDTO }> = ({ data }) => {
   }
   return (
     <div className="space-y-2">
-      <div className="flex flex-wrap items-center gap-2 text-[10px] text-neutral-500">
+      <div className="flex flex-wrap items-center gap-2 text-[calc(10px*var(--fs))] text-neutral-500">
         <span>帳單 {bill.date}・{bill.draw.map(n => String(n).padStart(2, '0')).join(' ')}</span>
         <span className="text-neutral-400">比對我們 {records_used} 筆</span>
       </div>
       {report.maybe_wrong_date && (
-        <div className="text-[11px] text-amber-700 dark:text-amber-400 flex items-start gap-1.5">
+        <div className="text-[calc(11px*var(--fs))] text-amber-700 dark:text-amber-400 flex items-start gap-1.5">
           <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
           <span>成本落差過大(我 {money(report.total_cost_ours)} vs 他 {money(report.total_cost_theirs)})—— 這張帳單會不會是別的日期?</span>
         </div>
       )}
       {!report.have_records && (
-        <div className="text-[11px] text-amber-700 dark:text-amber-400">這一版該日期沒有我們的下注紀錄可比對。</div>
+        <div className="text-[calc(11px*var(--fs))] text-amber-700 dark:text-amber-400">這一版該日期沒有我們的下注紀錄可比對。</div>
       )}
       <div className="overflow-x-auto rounded-lg border border-black/10 dark:border-white/10">
-        <table className="w-full text-[10px] font-mono whitespace-nowrap">
+        <table className="w-full text-[calc(10px*var(--fs))] font-mono whitespace-nowrap">
           <thead className="bg-black/[0.04] dark:bg-white/[0.06] text-neutral-500">
             <tr>
               <th className="px-2 py-1 text-left">桶</th>
@@ -101,7 +101,7 @@ const ReconReport: React.FC<{ data: ReconcileDTO }> = ({ data }) => {
         </table>
       </div>
       {/* 該日期結算:中獎金額 + 最終需付(誰付誰)*/}
-      <div className="rounded-lg border border-black/10 dark:border-white/10 p-2.5 text-[11px] font-mono space-y-1">
+      <div className="rounded-lg border border-black/10 dark:border-white/10 p-2.5 text-[calc(11px*var(--fs))] font-mono space-y-1">
         <div className="flex items-center justify-between">
           <span className="text-neutral-500">總成本 我/他</span>
           <span>{money(report.total_cost_ours)} / {money(report.total_cost_theirs)}</span>
@@ -120,7 +120,7 @@ const ReconReport: React.FC<{ data: ReconcileDTO }> = ({ data }) => {
           </span>
         </div>
       </div>
-      <div className="text-[10px] text-neutral-500 leading-relaxed">
+      <div className="text-[calc(10px*var(--fs))] text-neutral-500 leading-relaxed">
         「最終」= 總成本 − 中獎金額(正 = 我方要付組頭,負 = 組頭付我方)。紅字 = 和對接人不一致(<strong>中碰 / 得到 / 最終</strong>最要注意);成本差多為盤口率不同,把這版盤口設成對接人的率即可歸零。
       </div>
     </div>
@@ -337,13 +337,13 @@ export const UploadHistoryView: React.FC<Props> = ({ onRefill, onChanged }) => {
         </div>
       )}
 
-      <p className="text-[11px] text-neutral-500 dark:text-neutral-400 leading-relaxed">
+      <p className="text-[calc(11px*var(--fs))] text-neutral-500 dark:text-neutral-400 leading-relaxed">
         每批上傳保留<strong>原始文本</strong>、每筆<strong>下注明細</strong>,細緻到「列」的
         <strong>派彩 / 盈虧</strong>(派彩取自該筆已結算的下注紀錄,未開獎顯示「待開獎」)。
       </p>
 
       {history.length === 0 && (
-        <div className="text-[11px] text-neutral-400 dark:text-neutral-500 leading-relaxed p-4 rounded-xl bg-black/[0.02] dark:bg-white/[0.03] border border-black/[0.06] dark:border-white/[0.06]">
+        <div className="text-[calc(11px*var(--fs))] text-neutral-400 dark:text-neutral-500 leading-relaxed p-4 rounded-xl bg-black/[0.02] dark:bg-white/[0.03] border border-black/[0.06] dark:border-white/[0.06]">
           目前沒有上傳紀錄。到「紀錄下注」頁點<strong>「快速上傳」</strong>貼下注文字、按
           <strong>「確認上傳」</strong>後,這裡就會列出該批的明細與逐筆派彩 / 盈虧。
         </div>
@@ -352,13 +352,13 @@ export const UploadHistoryView: React.FC<Props> = ({ onRefill, onChanged }) => {
       {/* 版篩選:只看某一版的上傳歷史 */}
       {editions.length > 1 && (
         <div className="flex flex-wrap items-center gap-1.5">
-          <span className="text-[10px] uppercase tracking-wider text-neutral-400 font-semibold">版</span>
+          <span className="text-[calc(10px*var(--fs))] uppercase tracking-wider text-neutral-400 font-semibold">版</span>
           {['all', ...editions].map(ed => (
             <button
               key={ed}
               type="button"
               onClick={() => setFilterEdition(ed)}
-              className={`px-2.5 py-1 rounded-lg text-[10px] font-semibold transition-all ${
+              className={`px-2.5 py-1 rounded-lg text-[calc(10px*var(--fs))] font-semibold transition-all ${
                 filterEdition === ed
                   ? 'bg-black text-white dark:bg-white dark:text-black'
                   : 'border border-black/10 dark:border-white/10 text-neutral-600 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5'
@@ -381,12 +381,12 @@ export const UploadHistoryView: React.FC<Props> = ({ onRefill, onChanged }) => {
               onClick={() => toggleDate(grp.date)}
               className="w-full flex items-center gap-2 py-1 text-neutral-500 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-100 transition-colors group"
             >
-              <span className="text-[11px] w-3 shrink-0 text-center">{collapsed ? '▸' : '▾'}</span>
+              <span className="text-[calc(11px*var(--fs))] w-3 shrink-0 text-center">{collapsed ? '▸' : '▾'}</span>
               <span className="h-px flex-1 bg-black/10 dark:bg-white/10" />
-              <span className="text-[11px] font-mono font-semibold whitespace-nowrap">
+              <span className="text-[calc(11px*var(--fs))] font-mono font-semibold whitespace-nowrap">
                 {grp.date || '(無日期)'}
               </span>
-              <span className="text-[10px] font-mono text-neutral-400 whitespace-nowrap">
+              <span className="text-[calc(10px*var(--fs))] font-mono text-neutral-400 whitespace-nowrap">
                 {grp.entries.length} 批・{money(grp.subtotal)}
               </span>
               <span className="h-px flex-1 bg-black/10 dark:bg-white/10" />
@@ -423,39 +423,39 @@ export const UploadHistoryView: React.FC<Props> = ({ onRefill, onChanged }) => {
           onClick={() => toggle(h.ts)}
           className="min-w-0 flex-1 text-left"
         >
-          <div className={`text-[11px] font-semibold truncate ${isDup ? 'text-rose-600 dark:text-rose-400' : 'text-neutral-700 dark:text-neutral-300'}`}>
+          <div className={`text-[calc(11px*var(--fs))] font-semibold truncate ${isDup ? 'text-rose-600 dark:text-rose-400' : 'text-neutral-700 dark:text-neutral-300'}`}>
             <span className="text-neutral-400 mr-0.5">{isOpen ? '▾' : '▸'}</span>
             {h.gameName}・{h.editionName}
             {h.issue ? `・第 ${h.issue} 期${h.date ? `(${h.date})` : ''}` : ''}
             <span className="ml-1.5 font-normal text-neutral-400">{h.count} 筆</span>
             {sum.pendingCount > 0 && (
-              <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 text-[9px] font-semibold">
+              <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 text-[calc(9px*var(--fs))] font-semibold">
                 {sum.pendingCount} 筆待開獎
               </span>
             )}
             {h.reconAt && (
-              <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[9px] font-semibold">已對帳</span>
+              <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[calc(9px*var(--fs))] font-semibold">已對帳</span>
             )}
           </div>
           {isDup && (
-            <div className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-rose-500/15 text-rose-600 dark:text-rose-400 text-[9px] font-bold">
+            <div className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-rose-500/15 text-rose-600 dark:text-rose-400 text-[calc(9px*var(--fs))] font-bold">
               <AlertTriangle className="w-2.5 h-2.5 shrink-0" />
               可能重複上傳
             </div>
           )}
-          <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] font-mono">
+          <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[calc(10px*var(--fs))] font-mono">
             <span className="text-neutral-500">成本 <span className="text-neutral-800 dark:text-neutral-200 font-bold">{money(sum.cost)}</span></span>
             <span className="text-neutral-500">派彩 <span className="text-emerald-600 dark:text-emerald-400 font-bold">{win != null ? money(win) : '—'}</span></span>
             <span className="text-neutral-500">盈虧 <span className={`font-bold ${pnl == null ? 'text-neutral-400' : pnl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>{pnl != null ? (pnl >= 0 ? '+' : '') + money(pnl) : '—'}</span></span>
           </div>
         </button>
         <div className="flex items-center gap-2">
-          <span className="text-[11px] text-neutral-400 font-mono">{fmtTime(h.ts)}</span>
+          <span className="text-[calc(11px*var(--fs))] text-neutral-400 font-mono">{fmtTime(h.ts)}</span>
           <button
             type="button"
             onClick={() => (reconTs === h.ts ? setReconTs(null) : openRecon(h.ts))}
             title="貼對接人帳單,和這一版該日期的流水對帳"
-            className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold transition-colors ${
+            className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[calc(10px*var(--fs))] font-semibold transition-colors ${
               reconTs === h.ts
                 ? 'bg-black text-white dark:bg-white dark:text-black'
                 : 'text-neutral-500 hover:text-black dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5'
@@ -469,7 +469,7 @@ export const UploadHistoryView: React.FC<Props> = ({ onRefill, onChanged }) => {
               type="button"
               onClick={() => onRefill(h)}
               title="填回編輯:帶回這批的日期/遊戲/版/文本,改完上傳會取代(作廢)原批次"
-              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold text-neutral-500 hover:text-black dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[calc(10px*var(--fs))] font-semibold text-neutral-500 hover:text-black dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
             >
               <CornerDownLeft className="w-3 h-3" />
               填回
@@ -479,7 +479,7 @@ export const UploadHistoryView: React.FC<Props> = ({ onRefill, onChanged }) => {
             type="button"
             onClick={() => { setVoidErr(null); setVoidTs(voidTs === h.ts ? null : h.ts); }}
             title="作廢這批上傳:連同它建立的下注紀錄一起刪除"
-            className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold transition-colors ${
+            className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[calc(10px*var(--fs))] font-semibold transition-colors ${
               voidTs === h.ts
                 ? 'bg-rose-600 text-white'
                 : 'text-neutral-500 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-black/5 dark:hover:bg-white/5'
@@ -494,7 +494,7 @@ export const UploadHistoryView: React.FC<Props> = ({ onRefill, onChanged }) => {
       {/* 作廢二次確認:連同這批建立的 ledger 下注一起刪 */}
       {voidTs === h.ts && (
         <div className="px-3 py-2.5 border-b border-black/[0.06] dark:border-white/[0.06] bg-rose-500/[0.06] flex flex-wrap items-center gap-2">
-          <span className="text-[11px] text-rose-700 dark:text-rose-300 flex items-center gap-1.5">
+          <span className="text-[calc(11px*var(--fs))] text-rose-700 dark:text-rose-300 flex items-center gap-1.5">
             <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
             作廢後,這批 <strong>{h.count}</strong> 筆下注(成本 {money(h.totalCost)})會從流水中移除,無法從這裡復原。確定?
           </span>
@@ -502,7 +502,7 @@ export const UploadHistoryView: React.FC<Props> = ({ onRefill, onChanged }) => {
             type="button"
             disabled={voidBusy}
             onClick={() => doVoid(h.ts)}
-            className="px-3 py-1 rounded-lg text-[11px] font-semibold bg-rose-600 text-white hover:bg-rose-700 disabled:opacity-40 transition-colors"
+            className="px-3 py-1 rounded-lg text-[calc(11px*var(--fs))] font-semibold bg-rose-600 text-white hover:bg-rose-700 disabled:opacity-40 transition-colors"
           >
             {voidBusy ? '作廢中…' : '確定作廢'}
           </button>
@@ -510,18 +510,18 @@ export const UploadHistoryView: React.FC<Props> = ({ onRefill, onChanged }) => {
             type="button"
             disabled={voidBusy}
             onClick={() => setVoidTs(null)}
-            className="px-3 py-1 rounded-lg text-[11px] font-semibold border border-black/10 dark:border-white/10 text-neutral-700 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+            className="px-3 py-1 rounded-lg text-[calc(11px*var(--fs))] font-semibold border border-black/10 dark:border-white/10 text-neutral-700 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
           >
             取消
           </button>
-          {voidErr && <span className="text-[11px] text-rose-600 dark:text-rose-400">{voidErr}</span>}
+          {voidErr && <span className="text-[calc(11px*var(--fs))] text-rose-600 dark:text-rose-400">{voidErr}</span>}
         </div>
       )}
 
       {/* 對帳面板:貼帳單 → 比對這一版該日期的流水 */}
       {reconTs === h.ts && (
         <div className="px-3 py-2.5 border-b border-black/[0.06] dark:border-white/[0.06] bg-amber-500/[0.04] space-y-2">
-          <div className="text-[10px] text-neutral-500 dark:text-neutral-400">
+          <div className="text-[calc(10px*var(--fs))] text-neutral-500 dark:text-neutral-400">
             貼上對接人帳單(含日期/獎號/二三四各支與成本/中碰),比對「{h.editionName}」這一版該日期的流水。
           </div>
           <textarea
@@ -530,24 +530,24 @@ export const UploadHistoryView: React.FC<Props> = ({ onRefill, onChanged }) => {
             spellCheck={false}
             placeholder={`8/24\n539獎號\n09、10、19、23、26\n539牌支\n二2090支 150062\n三 2640支 165000\n四 1050支 51765\n牌支共收366827\n三中4碰 228000\n合計 收 138827`}
             onChange={e => setBillText(e.target.value)}
-            className="w-full px-2 py-1.5 rounded-lg border border-black/10 dark:border-white/10 bg-white dark:bg-[#121212] text-[11px] font-mono leading-relaxed text-neutral-900 dark:text-white outline-hidden resize-y"
+            className="w-full px-2 py-1.5 rounded-lg border border-black/10 dark:border-white/10 bg-white dark:bg-[#121212] text-[calc(11px*var(--fs))] font-mono leading-relaxed text-neutral-900 dark:text-white outline-hidden resize-y"
           />
           <div className="flex items-center gap-2 flex-wrap">
-            <label className="text-[10px] text-neutral-500 dark:text-neutral-400 flex items-center gap-1">
+            <label className="text-[calc(10px*var(--fs))] text-neutral-500 dark:text-neutral-400 flex items-center gap-1">
               對帳日期
               <input
                 type="date"
                 value={reconDate}
                 onChange={e => setReconDate(e.target.value)}
                 title="帳單沒寫日期時填這裡(第二種帳單格式)"
-                className="px-1.5 py-1 rounded-md border border-black/10 dark:border-white/10 bg-white dark:bg-[#121212] text-[11px] font-mono text-neutral-900 dark:text-white outline-hidden"
+                className="px-1.5 py-1 rounded-md border border-black/10 dark:border-white/10 bg-white dark:bg-[#121212] text-[calc(11px*var(--fs))] font-mono text-neutral-900 dark:text-white outline-hidden"
               />
             </label>
             <button
               type="button"
               disabled={reconBusy || !billText.trim()}
               onClick={() => runRecon(h.eid ?? 1)}
-              className="px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-black text-white dark:bg-white dark:text-black hover:opacity-90 disabled:opacity-30 transition-opacity flex items-center gap-1.5"
+              className="px-3 py-1.5 rounded-lg text-[calc(11px*var(--fs))] font-semibold bg-black text-white dark:bg-white dark:text-black hover:opacity-90 disabled:opacity-30 transition-opacity flex items-center gap-1.5"
             >
               <ClipboardCheck className="w-3.5 h-3.5" />
               {reconBusy ? '比對中…' : '比對'}
@@ -556,13 +556,13 @@ export const UploadHistoryView: React.FC<Props> = ({ onRefill, onChanged }) => {
               <button
                 type="button"
                 onClick={() => saveRecon(h.ts)}
-                className="px-3 py-1.5 rounded-lg text-[11px] font-semibold border border-black/10 dark:border-white/10 text-neutral-700 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+                className="px-3 py-1.5 rounded-lg text-[calc(11px*var(--fs))] font-semibold border border-black/10 dark:border-white/10 text-neutral-700 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
               >
                 {h.reconAt ? '更新保存' : '保存對帳'}
               </button>
             )}
-            {h.reconAt && <span className="text-[10px] text-emerald-600 dark:text-emerald-400">已保存 {fmtTime(h.reconAt)}</span>}
-            {reconErr && <span className="text-[11px] text-rose-600 dark:text-rose-400">{reconErr}</span>}
+            {h.reconAt && <span className="text-[calc(10px*var(--fs))] text-emerald-600 dark:text-emerald-400">已保存 {fmtTime(h.reconAt)}</span>}
+            {reconErr && <span className="text-[calc(11px*var(--fs))] text-rose-600 dark:text-rose-400">{reconErr}</span>}
           </div>
           {recon && <ReconReport data={recon} />}
         </div>
@@ -570,7 +570,7 @@ export const UploadHistoryView: React.FC<Props> = ({ onRefill, onChanged }) => {
 
       {/* 原始文本(展開才顯示)*/}
       {isOpen && h.text && (
-        <pre className="px-3 py-2 text-[10px] font-mono whitespace-pre-wrap break-all text-neutral-500 dark:text-neutral-400 border-b border-black/[0.06] dark:border-white/[0.06] max-h-28 overflow-y-auto">
+        <pre className="px-3 py-2 text-[calc(10px*var(--fs))] font-mono whitespace-pre-wrap break-all text-neutral-500 dark:text-neutral-400 border-b border-black/[0.06] dark:border-white/[0.06] max-h-28 overflow-y-auto">
           {h.text}
         </pre>
       )}
@@ -578,8 +578,8 @@ export const UploadHistoryView: React.FC<Props> = ({ onRefill, onChanged }) => {
       {/* 下注明細 + 逐筆派彩 / 盈虧(展開才顯示)*/}
       {isOpen && (
       <div className="overflow-x-auto">
-      <table className="w-full text-[11px] whitespace-nowrap">
-        <thead className="text-[9px] uppercase tracking-wider text-neutral-400 bg-black/[0.02] dark:bg-white/[0.03]">
+      <table className="w-full text-[calc(11px*var(--fs))] whitespace-nowrap">
+        <thead className="text-[calc(9px*var(--fs))] uppercase tracking-wider text-neutral-400 bg-black/[0.02] dark:bg-white/[0.03]">
           <tr>
             <th className="px-3 py-1 text-left font-semibold">下注方式</th>
             <th className="px-3 py-1 text-left font-semibold">下注組合</th>
@@ -593,12 +593,12 @@ export const UploadHistoryView: React.FC<Props> = ({ onRefill, onChanged }) => {
             <React.Fragment key={i}>
               <tr className="border-t border-black/[0.05] dark:border-white/[0.05]">
                 <td className="px-3 pt-1.5 pb-0 align-top">
-                  <span className="px-1.5 py-0.5 rounded-full bg-black/5 dark:bg-white/10 text-[10px] mr-1.5 font-sans">
+                  <span className="px-1.5 py-0.5 rounded-full bg-black/5 dark:bg-white/10 text-[calc(10px*var(--fs))] mr-1.5 font-sans">
                     {v.modeLabel}
                   </span>
                   <span className="font-sans text-neutral-600 dark:text-neutral-400">{v.playType}</span>
                   {v.result && (
-                    <span className={`ml-1.5 font-sans text-[9px] px-1.5 py-0.5 rounded-full ${
+                    <span className={`ml-1.5 font-sans text-[calc(9px*var(--fs))] px-1.5 py-0.5 rounded-full ${
                       v.pending
                         ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
                         : (v.payout ?? 0) > 0
@@ -628,7 +628,7 @@ export const UploadHistoryView: React.FC<Props> = ({ onRefill, onChanged }) => {
               </tr>
               {v.costExpr && (
                 <tr>
-                  <td colSpan={5} className="px-3 pt-0 pb-1.5 text-[10px] text-neutral-400 dark:text-neutral-500">
+                  <td colSpan={5} className="px-3 pt-0 pb-1.5 text-[calc(10px*var(--fs))] text-neutral-400 dark:text-neutral-500">
                     {v.costExpr}
                   </td>
                 </tr>
@@ -660,7 +660,7 @@ export const UploadHistoryView: React.FC<Props> = ({ onRefill, onChanged }) => {
 
       {/* 計算方式 tip(展開才顯示):說明成本 / 派彩怎麼來的 */}
       {isOpen && (
-        <div className="px-3 py-2 text-[10px] leading-relaxed text-neutral-500 dark:text-neutral-400 border-t border-black/[0.06] dark:border-white/[0.06] bg-black/[0.015] dark:bg-white/[0.02] space-y-0.5">
+        <div className="px-3 py-2 text-[calc(10px*var(--fs))] leading-relaxed text-neutral-500 dark:text-neutral-400 border-t border-black/[0.06] dark:border-white/[0.06] bg-black/[0.015] dark:bg-white/[0.02] space-y-0.5">
           <div><span className="font-semibold text-neutral-600 dark:text-neutral-300">成本</span> = 每注基礎成本 × 支/注數(逐列算式見「下注組合」下方灰字)。</div>
           <div><span className="font-semibold text-neutral-600 dark:text-neutral-300">派彩</span> = 開獎對獎後「中的碰/顆/注數 × 車數 × 該版每碰派彩(盤口)」;未中或未開獎為 0。</div>
           <div><span className="font-semibold text-neutral-600 dark:text-neutral-300">盈虧</span> = 派彩 − 成本(綠賺紅賠;仍有待開獎的列不計入合計派彩)。</div>

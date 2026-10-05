@@ -99,7 +99,7 @@ export const LoginModal: React.FC<Props> = ({isOpen, onClose, gate = false}) => 
 
           <div className="space-y-3">
             <div>
-              <label className="block text-[10px] uppercase tracking-[0.2em] font-semibold text-neutral-400 mb-1.5">
+              <label className="block text-[calc(10px*var(--fs))] uppercase tracking-[0.2em] font-semibold text-neutral-400 mb-1.5">
                 帳號
               </label>
               <input
@@ -113,7 +113,7 @@ export const LoginModal: React.FC<Props> = ({isOpen, onClose, gate = false}) => 
             </div>
 
             <div>
-              <label className="block text-[10px] uppercase tracking-[0.2em] font-semibold text-neutral-400 mb-1.5">
+              <label className="block text-[calc(10px*var(--fs))] uppercase tracking-[0.2em] font-semibold text-neutral-400 mb-1.5">
                 密碼
               </label>
               <input
@@ -128,7 +128,7 @@ export const LoginModal: React.FC<Props> = ({isOpen, onClose, gate = false}) => 
 
             {tab === 'register' && (
               <div>
-                <label className="block text-[10px] uppercase tracking-[0.2em] font-semibold text-neutral-400 mb-1.5">
+                <label className="block text-[calc(10px*var(--fs))] uppercase tracking-[0.2em] font-semibold text-neutral-400 mb-1.5">
                   邀請碼
                 </label>
                 <input
@@ -138,7 +138,7 @@ export const LoginModal: React.FC<Props> = ({isOpen, onClose, gate = false}) => 
                   onChange={e => setInviteCode(e.target.value)}
                   className="w-full h-10 px-3 rounded-xl border border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.03] text-sm font-mono text-neutral-900 dark:text-white outline-hidden focus:border-black/40 dark:focus:border-white/40 transition-colors"
                 />
-                <p className="text-[10px] text-neutral-400 mt-1.5">
+                <p className="text-[calc(10px*var(--fs))] text-neutral-400 mt-1.5">
                   沒有邀請碼無法註冊新帳號。
                 </p>
               </div>
@@ -146,13 +146,13 @@ export const LoginModal: React.FC<Props> = ({isOpen, onClose, gate = false}) => 
           </div>
 
           {error && (
-            <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-[11px] text-rose-700 dark:text-rose-400">
+            <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-[calc(11px*var(--fs))] text-rose-700 dark:text-rose-400">
               {error}
             </div>
           )}
 
           {notice && (
-            <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-[11px] text-emerald-800 dark:text-emerald-300 flex items-start gap-2">
+            <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-[calc(11px*var(--fs))] text-emerald-800 dark:text-emerald-300 flex items-start gap-2">
               <CheckCircle2 className="w-3.5 h-3.5 mt-0.5 shrink-0" />
               <span>{notice}</span>
             </div>
@@ -168,7 +168,7 @@ export const LoginModal: React.FC<Props> = ({isOpen, onClose, gate = false}) => 
             {busy ? '處理中…' : tab === 'login' ? '登入' : '註冊帳號'}
           </button>
 
-          <p className="text-[10px] text-neutral-400 leading-relaxed">
+          <p className="text-[calc(10px*var(--fs))] text-neutral-400 leading-relaxed">
             登入後記帳流水存在伺服器,重整或換裝置都還在;未登入時紀錄只留在這個瀏覽器分頁。
           </p>
         </form>

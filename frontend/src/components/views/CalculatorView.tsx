@@ -96,7 +96,7 @@ export const CalculatorView: React.FC = () => {
             
             {/* Star Selection(彩券類型改由頁首全域切換) */}
             <div>
-              <label className="block text-[10px] uppercase tracking-[0.2em] font-semibold text-neutral-400 mb-1.5">
+              <label className="block text-[calc(10px*var(--fs))] uppercase tracking-[0.2em] font-semibold text-neutral-400 mb-1.5">
                 下注星數 (k)
               </label>
               <div className="flex gap-1 p-0.5 rounded-xl bg-black/[0.03] dark:bg-white/[0.04] border border-black/[0.06] dark:border-white/[0.06]">
@@ -134,7 +134,7 @@ export const CalculatorView: React.FC = () => {
             {/* 這四段只是常用價的快選鈕;選到的值當 per_bet 送給 /api/combo/calc,
                 成本由後端算(不填則用 core.combo 的市場價 72.5/63/50)。 */}
             <div className="flex items-center justify-between pt-1">
-              <label className="text-[10px] uppercase tracking-[0.2em] font-semibold text-neutral-400">
+              <label className="text-[calc(10px*var(--fs))] uppercase tracking-[0.2em] font-semibold text-neutral-400">
                 單碰基準成本 (元)
               </label>
               <div className="flex items-center gap-1.5">
@@ -164,22 +164,22 @@ export const CalculatorView: React.FC = () => {
           {/* 4 Summary Tiles */}
           <div className="grid grid-cols-2 gap-3">
             <div className="p-4 rounded-xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08]">
-              <div className="text-[10px] uppercase tracking-wider text-neutral-400">選取總顆數 (n)</div>
+              <div className="text-[calc(10px*var(--fs))] uppercase tracking-wider text-neutral-400">選取總顆數 (n)</div>
               <div className="text-xl font-bold font-mono text-neutral-900 dark:text-white mt-0.5">{n} 顆</div>
             </div>
 
             <div className="p-4 rounded-xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08]">
-              <div className="text-[10px] uppercase tracking-wider text-neutral-400">總碰數 C({n},{starValue})</div>
+              <div className="text-[calc(10px*var(--fs))] uppercase tracking-wider text-neutral-400">總碰數 C({n},{starValue})</div>
               <div className="text-xl font-bold font-mono text-neutral-900 dark:text-white mt-0.5">{comboCount.toLocaleString()} 碰</div>
             </div>
 
             <div className="p-4 rounded-xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08]">
-              <div className="text-[10px] uppercase tracking-wider text-neutral-400">單碰價格</div>
+              <div className="text-[calc(10px*var(--fs))] uppercase tracking-wider text-neutral-400">單碰價格</div>
               <div className="text-xl font-bold font-mono text-neutral-900 dark:text-white mt-0.5">NT$ {costPerBet}</div>
             </div>
 
             <div className="p-4 rounded-xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08]">
-              <div className="text-[10px] uppercase tracking-wider text-neutral-400">總下注成本</div>
+              <div className="text-[calc(10px*var(--fs))] uppercase tracking-wider text-neutral-400">總下注成本</div>
               <div className="text-xl font-bold font-mono text-emerald-600 dark:text-emerald-400 mt-0.5">
                 NT$ {totalCost.toLocaleString()}
               </div>
@@ -193,7 +193,7 @@ export const CalculatorView: React.FC = () => {
                 <Hash className="w-4 h-4 text-neutral-500" />
                 <span>注單組合展開預覽 (前 {sampleCombos.length} 組)</span>
               </h3>
-              <span className="text-[10px] font-mono text-neutral-400">共 {comboCount} 碰</span>
+              <span className="text-[calc(10px*var(--fs))] font-mono text-neutral-400">共 {comboCount} 碰</span>
             </div>
 
             {sampleCombos.length === 0 ? (
@@ -204,7 +204,7 @@ export const CalculatorView: React.FC = () => {
               <div className="grid grid-cols-2 gap-2 max-h-56 overflow-y-auto pr-1">
                 {sampleCombos.map((combo, idx) => (
                   <div key={idx} className="p-2 rounded-lg bg-black/[0.02] dark:bg-white/[0.03] border border-black/[0.06] dark:border-white/[0.06] flex items-center justify-between">
-                    <span className="text-[10px] font-mono text-neutral-400">#{idx + 1}</span>
+                    <span className="text-[calc(10px*var(--fs))] font-mono text-neutral-400">#{idx + 1}</span>
                     <div className="flex gap-1 font-mono font-bold text-xs text-neutral-900 dark:text-white">
                       {combo.map(b => (
                         <span key={b} className="px-1.5 py-0.5 rounded bg-black/5 dark:bg-white/10">
@@ -224,7 +224,7 @@ export const CalculatorView: React.FC = () => {
               <Info className="w-3.5 h-3.5 text-neutral-500" />
               <span>C(n, k) 快速碰數對照表 (2星 ~ 4星)</span>
             </div>
-            <div className="grid grid-cols-4 gap-2 text-center pt-1 font-mono text-[11px]">
+            <div className="grid grid-cols-4 gap-2 text-center pt-1 font-mono text-[calc(11px*var(--fs))]">
               <div className="p-2 rounded bg-white dark:bg-[#161616] border border-black/[0.06] dark:border-white/[0.06]">
                 <div className="text-neutral-400">5 顆 (2星)</div>
                 <div className="font-bold text-neutral-900 dark:text-white">10 碰</div>

@@ -72,7 +72,7 @@ const LiveDrawList: React.FC = () => {
   }, [reload]);
 
   if (!data) {
-    return <div className="px-2 text-[10px] text-neutral-400">載入開獎資料…</div>;
+    return <div className="px-2 text-[calc(10px*var(--fs))] text-neutral-400">載入開獎資料…</div>;
   }
 
   return (
@@ -86,17 +86,17 @@ const LiveDrawList: React.FC = () => {
           >
             <div className="font-semibold text-neutral-900 dark:text-neutral-100 flex items-center justify-between">
               <span className="tracking-tight">{row.name}</span>
-              <span className="text-[10px] font-mono text-neutral-500 dark:text-neutral-400">
+              <span className="text-[calc(10px*var(--fs))] font-mono text-neutral-500 dark:text-neutral-400">
                 {row.count} 期
               </span>
             </div>
-            <div className="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1 flex items-center justify-between">
-              <span className="text-[10px] font-mono">{row.latest?.date ?? '—'}</span>
+            <div className="text-[calc(11px*var(--fs))] text-neutral-500 dark:text-neutral-400 mt-1 flex items-center justify-between">
+              <span className="text-[calc(10px*var(--fs))] font-mono">{row.latest?.date ?? '—'}</span>
               {row.latest?.issue && (
-                <span className="font-mono text-[10px]">#{row.latest.issue}</span>
+                <span className="font-mono text-[calc(10px*var(--fs))]">#{row.latest.issue}</span>
               )}
             </div>
-            <div className="mt-2 flex items-center gap-1 font-mono text-[11px] flex-wrap">
+            <div className="mt-2 flex items-center gap-1 font-mono text-[calc(11px*var(--fs))] flex-wrap">
               {(row.latest?.nums ?? []).map((b, i) => (
                 <span
                   key={i}
@@ -107,7 +107,7 @@ const LiveDrawList: React.FC = () => {
               ))}
             </div>
             {row.next?.at && (
-              <div className="mt-2 pt-2 border-t border-black/[0.05] dark:border-white/[0.05] flex items-center justify-between gap-2 font-mono text-[10px] text-neutral-500 dark:text-neutral-400">
+              <div className="mt-2 pt-2 border-t border-black/[0.05] dark:border-white/[0.05] flex items-center justify-between gap-2 font-mono text-[calc(10px*var(--fs))] text-neutral-500 dark:text-neutral-400">
                 <span className="truncate">
                   下一期{row.next.issue ? ` #${row.next.issue}` : ''} · {fmtDrawAt(row.next.at)} 開獎
                 </span>
@@ -189,7 +189,7 @@ export const Sidebar: React.FC<Props> = ({
                 <h1 className="font-display font-bold text-base text-[#141414] dark:text-white tracking-[0.05em] uppercase">
                   Dualis <span className="font-sans text-xs font-normal text-black/50 dark:text-white/50 lowercase italic">lottery</span>
                 </h1>
-                <p className="text-[10px] uppercase tracking-[0.2em] text-black/40 dark:text-white/40">
+                <p className="text-[calc(10px*var(--fs))] uppercase tracking-[0.2em] text-black/40 dark:text-white/40">
                   Precision Analytics
                 </p>
               </div>
@@ -204,7 +204,7 @@ export const Sidebar: React.FC<Props> = ({
                   ? 'bg-emerald-500 ring-2 ring-emerald-500/20'
                   : 'bg-neutral-400 ring-2 ring-neutral-400/20'
               }`}></div>
-              <span className="font-mono text-[11px] tracking-wide truncate">
+              <span className="font-mono text-[calc(11px*var(--fs))] tracking-wide truncate">
                 {loggedIn ? username || '已登入' : '未登入 (紀錄不會保存)'}
               </span>
             </div>
@@ -213,7 +213,7 @@ export const Sidebar: React.FC<Props> = ({
                 type="button"
                 id="logout-btn"
                 onClick={logout}
-                className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] uppercase tracking-wider font-semibold rounded-full border border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5 text-neutral-700 dark:text-neutral-300 transition-colors shrink-0"
+                className="inline-flex items-center gap-1 px-2.5 py-1 text-[calc(10px*var(--fs))] uppercase tracking-wider font-semibold rounded-full border border-black/10 dark:border-white/10 hover:bg-black/5 dark:hover:bg-white/5 text-neutral-700 dark:text-neutral-300 transition-colors shrink-0"
               >
                 <LogOut className="w-3 h-3" />
                 登出
@@ -223,7 +223,7 @@ export const Sidebar: React.FC<Props> = ({
                 type="button"
                 id="login-btn"
                 onClick={() => setIsLoginOpen(true)}
-                className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] uppercase tracking-wider font-semibold rounded-full bg-black text-white dark:bg-white dark:text-black hover:opacity-90 transition-opacity shrink-0"
+                className="inline-flex items-center gap-1 px-2.5 py-1 text-[calc(10px*var(--fs))] uppercase tracking-wider font-semibold rounded-full bg-black text-white dark:bg-white dark:text-black hover:opacity-90 transition-opacity shrink-0"
               >
                 <LogIn className="w-3 h-3" />
                 登入
@@ -239,7 +239,7 @@ export const Sidebar: React.FC<Props> = ({
               ) : (
                 <Sun className="w-3.5 h-3.5 text-neutral-700" />
               )}
-              <span className="text-[11px] uppercase tracking-wider">
+              <span className="text-[calc(11px*var(--fs))] uppercase tracking-wider">
                 {theme === 'dark' ? 'Midnight Dark' : 'Canvas Light'}
               </span>
             </div>
@@ -247,7 +247,7 @@ export const Sidebar: React.FC<Props> = ({
               type="button"
               id="theme-pill-toggle"
               onClick={onToggleTheme}
-              className="px-2.5 py-0.5 text-[10px] uppercase font-bold tracking-widest rounded-full bg-black text-white dark:bg-white dark:text-black transition-transform active:scale-95"
+              className="px-2.5 py-0.5 text-[calc(10px*var(--fs))] uppercase font-bold tracking-widest rounded-full bg-black text-white dark:bg-white dark:text-black transition-transform active:scale-95"
             >
               {theme === 'dark' ? 'Light' : 'Dark'}
             </button>
@@ -258,7 +258,7 @@ export const Sidebar: React.FC<Props> = ({
         <div className="flex-1 overflow-y-auto px-4 py-5 space-y-6 text-sm">
           {/* Navigation Section */}
           <div>
-            <div className="px-2 mb-2.5 text-[10px] uppercase tracking-[0.25em] text-neutral-400 dark:text-neutral-500 font-semibold">
+            <div className="px-2 mb-2.5 text-[calc(10px*var(--fs))] uppercase tracking-[0.25em] text-neutral-400 dark:text-neutral-500 font-semibold">
               Navigation
             </div>
             <nav className="space-y-1">
@@ -286,7 +286,7 @@ export const Sidebar: React.FC<Props> = ({
                       <span className="tracking-wide">{item.label}</span>
                     </div>
                     {item.tag && !isActive && (
-                      <span className="text-[9px] px-1.5 py-0.5 uppercase tracking-wider rounded border border-black/10 dark:border-white/10 text-neutral-400">
+                      <span className="text-[calc(9px*var(--fs))] px-1.5 py-0.5 uppercase tracking-wider rounded border border-black/10 dark:border-white/10 text-neutral-400">
                         {item.tag}
                       </span>
                     )}
@@ -301,7 +301,7 @@ export const Sidebar: React.FC<Props> = ({
 
           {/* Lottery Draw Status Area */}
           <div className="pt-2 border-t border-black/[0.06] dark:border-white/[0.06]">
-            <div className="px-2 mb-2.5 text-[10px] uppercase tracking-[0.25em] text-neutral-400 dark:text-neutral-500 font-semibold">
+            <div className="px-2 mb-2.5 text-[calc(10px*var(--fs))] uppercase tracking-[0.25em] text-neutral-400 dark:text-neutral-500 font-semibold">
               Live Draw Database
             </div>
             <LiveDrawList />
@@ -318,7 +318,7 @@ export const Sidebar: React.FC<Props> = ({
               >
                 <div className="flex items-center gap-2 text-neutral-600 dark:text-neutral-400">
                   <ShieldAlert className="w-3.5 h-3.5" />
-                  <span className="text-[11px] uppercase tracking-wider">免責聲明 (必讀)</span>
+                  <span className="text-[calc(11px*var(--fs))] uppercase tracking-wider">免責聲明 (必讀)</span>
                 </div>
                 {isDisclaimerExpanded ? (
                   <ChevronDown className="w-3.5 h-3.5 text-neutral-400" />
@@ -328,7 +328,7 @@ export const Sidebar: React.FC<Props> = ({
               </button>
 
               {isDisclaimerExpanded && (
-                <div className="p-3.5 pt-1 text-[11px] text-neutral-600 dark:text-neutral-400 space-y-2 border-t border-black/[0.06] dark:border-white/[0.06] leading-relaxed bg-white dark:bg-[#101010]">
+                <div className="p-3.5 pt-1 text-[calc(11px*var(--fs))] text-neutral-600 dark:text-neutral-400 space-y-2 border-t border-black/[0.06] dark:border-white/[0.06] leading-relaxed bg-white dark:bg-[#101010]">
                   <p>
                     今彩539 每期開獎為獨立隨機事件，長期期望報酬率約 <strong>-44.16%</strong>。
                   </p>

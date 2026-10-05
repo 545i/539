@@ -177,10 +177,10 @@ export const Combo9000Tab: React.FC<{ onOpenLedger?: (mode: LedgerMode) => void 
       <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <span className="text-[10px] uppercase tracking-[0.25em] text-neutral-400 dark:text-neutral-500 font-semibold">
+            <span className="text-[calc(10px*var(--fs))] uppercase tracking-[0.25em] text-neutral-400 dark:text-neutral-500 font-semibold">
               Four Heads Matrix (9000 Bets)
             </span>
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-black/5 dark:bg-white/10 text-neutral-600 dark:text-neutral-300">
+            <span className="px-2 py-0.5 rounded-full text-[calc(10px*var(--fs))] font-mono bg-black/5 dark:bg-white/10 text-neutral-600 dark:text-neutral-300">
               {gameCfg.short_name}
             </span>
           </div>
@@ -194,12 +194,12 @@ export const Combo9000Tab: React.FC<{ onOpenLedger?: (mode: LedgerMode) => void 
 
         <div className="flex items-center justify-between md:justify-end gap-4 border-t md:border-t-0 pt-2.5 md:pt-0 border-black/[0.06] dark:border-white/[0.06]">
           <div className="text-left md:text-right">
-            <span className="text-[10px] uppercase tracking-wider text-neutral-400 block">9000碰累積損益</span>
+            <span className="text-[calc(10px*var(--fs))] uppercase tracking-wider text-neutral-400 block">9000碰累積損益</span>
             <div className={`text-xl sm:text-2xl font-mono font-bold ${cumPnl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
               {cumPnl >= 0 ? `+${cumPnl.toLocaleString()}` : cumPnl.toLocaleString()}
             </div>
           </div>
-          <div className="text-right text-[11px] font-mono text-neutral-400">
+          <div className="text-right text-[calc(11px*var(--fs))] font-mono text-neutral-400">
             {roundCount} 局・過關 {winCount} 局
           </div>
         </div>
@@ -218,12 +218,12 @@ export const Combo9000Tab: React.FC<{ onOpenLedger?: (mode: LedgerMode) => void 
               <span className="text-xs font-display font-bold uppercase tracking-wider text-neutral-900 dark:text-white">
                 01 / 9000碰 全包下注
               </span>
-              <span className="text-[11px] font-mono text-neutral-400">
+              <span className="text-[calc(11px*var(--fs))] font-mono text-neutral-400">
                 四段全包 = {TOTAL_BETS.toLocaleString()} 碰
               </span>
             </div>
 
-            <div className="text-[11px] text-neutral-500 dark:text-neutral-400 leading-relaxed">
+            <div className="text-[calc(11px*var(--fs))] text-neutral-500 dark:text-neutral-400 leading-relaxed">
               9000碰 是固定全包:四段(十位頭)各取一顆組成一碰,共 9×10×10×10 =
               <strong> {TOTAL_BETS.toLocaleString()} 碰</strong>。開獎 5 顆若四段都有落點即過關,
               固定中 2 碰;任一段缺(缺頭)則槓龜。
@@ -236,7 +236,7 @@ export const Combo9000Tab: React.FC<{ onOpenLedger?: (mode: LedgerMode) => void 
                   key={i}
                   className="p-2.5 rounded-xl border border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.03]"
                 >
-                  <div className="text-[10px] uppercase tracking-wider font-semibold text-neutral-400">
+                  <div className="text-[calc(10px*var(--fs))] uppercase tracking-wider font-semibold text-neutral-400">
                     {s.name}({s.size} 顆)
                   </div>
                   <div className="text-xs font-mono font-bold mt-0.5 text-neutral-900 dark:text-white">
@@ -249,7 +249,7 @@ export const Combo9000Tab: React.FC<{ onOpenLedger?: (mode: LedgerMode) => void 
             {/* 下注支數(倍投) */}
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
-                <label className="text-[10px] uppercase tracking-[0.2em] font-semibold text-neutral-400">下注支數 (Units)</label>
+                <label className="text-[calc(10px*var(--fs))] uppercase tracking-[0.2em] font-semibold text-neutral-400">下注支數 (Units)</label>
                 <span className="text-xs font-mono font-bold text-neutral-900 dark:text-white">{units} 支</span>
               </div>
               <div className="flex items-center gap-2">
@@ -278,30 +278,30 @@ export const Combo9000Tab: React.FC<{ onOpenLedger?: (mode: LedgerMode) => void 
 
             {/* 試算 */}
             <div className="p-3.5 sm:p-4 rounded-xl bg-black/[0.02] dark:bg-white/[0.03] border border-black/[0.06] dark:border-white/[0.06] space-y-2">
-              <div className="text-[10px] uppercase tracking-wider text-neutral-400 font-semibold">
+              <div className="text-[calc(10px*var(--fs))] uppercase tracking-wider text-neutral-400 font-semibold">
                 全包試算 (9000 碰)
               </div>
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <div>
-                  <span className="text-neutral-500 block text-[10px]">總碰數 × 支:</span>
+                  <span className="text-neutral-500 block text-[calc(10px*var(--fs))]">總碰數 × 支:</span>
                   <span className="font-mono font-bold text-sm text-neutral-900 dark:text-white">
                     {TOTAL_BETS.toLocaleString()} × {units}
                   </span>
                 </div>
                 <div>
-                  <span className="text-neutral-500 block text-[10px]">投注碰數:</span>
+                  <span className="text-neutral-500 block text-[calc(10px*var(--fs))]">投注碰數:</span>
                   <span className="font-mono font-bold text-sm text-neutral-900 dark:text-white">
                     {betsWithUnits.toLocaleString()} 碰
                   </span>
                 </div>
                 <div>
-                  <span className="text-neutral-500 block text-[10px]">投注成本:</span>
+                  <span className="text-neutral-500 block text-[calc(10px*var(--fs))]">投注成本:</span>
                   <span className="font-mono font-bold text-sm text-neutral-900 dark:text-white">
                     NT$ {submitCost.toLocaleString()}
                   </span>
                 </div>
                 <div>
-                  <span className="text-neutral-500 block text-[10px]">過關彩金(中 2 碰):</span>
+                  <span className="text-neutral-500 block text-[calc(10px*var(--fs))]">過關彩金(中 2 碰):</span>
                   <span className="font-mono font-bold text-sm text-emerald-600 dark:text-emerald-400">
                     {passPayout.toLocaleString()}
                   </span>
@@ -325,12 +325,12 @@ export const Combo9000Tab: React.FC<{ onOpenLedger?: (mode: LedgerMode) => void 
               <span className="text-xs font-display font-bold uppercase tracking-wider text-neutral-900 dark:text-white">
                 02 / 9000碰 全段同開提醒
               </span>
-              <span className="text-[11px] font-mono text-neutral-400">
+              <span className="text-[calc(11px*var(--fs))] font-mono text-neutral-400">
                 多久沒一起開
               </span>
             </div>
 
-            <div className="text-[11px] text-neutral-500 dark:text-neutral-400 leading-relaxed">
+            <div className="text-[calc(11px*var(--fs))] text-neutral-500 dark:text-neutral-400 leading-relaxed">
               9000碰 過關要四段(0/1/2/3 頭)當期各開出至少 1 顆。這裡看四段已經
               連續幾期沒有「全段同開」—— 越久沒一起開,離下次過關的空窗拉得越長。
             </div>
@@ -366,12 +366,12 @@ export const Combo9000Tab: React.FC<{ onOpenLedger?: (mode: LedgerMode) => void 
                         {w.label}
                       </span>
                     </div>
-                    <div className="text-[10px] font-mono text-neutral-400 mt-0.5">
+                    <div className="text-[calc(10px*var(--fs))] font-mono text-neutral-400 mt-0.5">
                       歷史最長空窗 {w.max_gap} 期
                     </div>
                   </div>
 
-                  <div className={`text-[11px] font-mono shrink-0 text-right ${
+                  <div className={`text-[calc(11px*var(--fs))] font-mono shrink-0 text-right ${
                     on
                       ? 'text-amber-900 dark:text-amber-300 font-bold'
                       : w.streak === 0
@@ -395,32 +395,32 @@ export const Combo9000Tab: React.FC<{ onOpenLedger?: (mode: LedgerMode) => void 
           {/* Top 4 Metric Tiles */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3">
             <div className="p-3.5 sm:p-4 rounded-xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08]">
-              <div className="text-[10px] uppercase tracking-wider text-neutral-400">總投入成本</div>
+              <div className="text-[calc(10px*var(--fs))] uppercase tracking-wider text-neutral-400">總投入成本</div>
               <div className="text-base sm:text-lg font-bold font-mono text-neutral-900 dark:text-white mt-0.5">
                 {totalSpent.toLocaleString()}
               </div>
             </div>
 
             <div className="p-3.5 sm:p-4 rounded-xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08]">
-              <div className="text-[10px] uppercase tracking-wider text-neutral-400">總回收彩金</div>
+              <div className="text-[calc(10px*var(--fs))] uppercase tracking-wider text-neutral-400">總回收彩金</div>
               <div className="text-base sm:text-lg font-bold font-mono text-emerald-600 dark:text-emerald-400 mt-0.5">
                 {totalReturn.toLocaleString()}
               </div>
             </div>
 
             <div className="p-3.5 sm:p-4 rounded-xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08]">
-              <div className="text-[10px] uppercase tracking-wider text-neutral-400">累積淨損益</div>
+              <div className="text-[calc(10px*var(--fs))] uppercase tracking-wider text-neutral-400">累積淨損益</div>
               <div className={`text-base sm:text-lg font-bold font-mono mt-0.5 ${cumPnl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
                 {cumPnl >= 0 ? `+${cumPnl.toLocaleString()}` : cumPnl.toLocaleString()}
               </div>
             </div>
 
             <div className="p-3.5 sm:p-4 rounded-xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08]">
-              <div className="text-[10px] uppercase tracking-wider text-neutral-400">過關率 / 局數</div>
+              <div className="text-[calc(10px*var(--fs))] uppercase tracking-wider text-neutral-400">過關率 / 局數</div>
               <div className="text-base sm:text-lg font-bold font-mono text-neutral-900 dark:text-white mt-0.5">
                 {roundCount > 0 ? `${((winCount / roundCount) * 100).toFixed(0)}%` : '0%'}
               </div>
-              <div className="text-[10px] text-neutral-400 font-mono">共 {roundCount} 局</div>
+              <div className="text-[calc(10px*var(--fs))] text-neutral-400 font-mono">共 {roundCount} 局</div>
             </div>
           </div>
 
@@ -447,7 +447,7 @@ export const Combo9000Tab: React.FC<{ onOpenLedger?: (mode: LedgerMode) => void 
                   onClick={handleSettlePending}
                   disabled={settleBusy || !ledger.loggedIn}
                   title="備援:一鍵把所有待開獎且已開的紀錄自動對獎"
-                  className="text-[11px] font-semibold text-neutral-500 hover:text-neutral-900 dark:hover:text-white disabled:opacity-30 transition-colors flex items-center gap-1 active:scale-95"
+                  className="text-[calc(11px*var(--fs))] font-semibold text-neutral-500 hover:text-neutral-900 dark:hover:text-white disabled:opacity-30 transition-colors flex items-center gap-1 active:scale-95"
                 >
                   <RefreshCw className={`w-3 h-3 ${settleBusy ? 'animate-spin' : ''}`} />
                   {settleBusy ? '對獎中…' : '一鍵對獎'}
@@ -456,16 +456,16 @@ export const Combo9000Tab: React.FC<{ onOpenLedger?: (mode: LedgerMode) => void 
             </div>
             <WeekSubtotal records={flowRecords} label={wk.label} />
             {!wk.allWeeks && flowRecords.length === 0 && (
-              <div className="text-[11px] text-neutral-400">{wk.label} 沒有 9000碰 紀錄。用 ‹ › 切到其他週。</div>
+              <div className="text-[calc(11px*var(--fs))] text-neutral-400">{wk.label} 沒有 9000碰 紀錄。用 ‹ › 切到其他週。</div>
             )}
             {settleMsg && (
-              <div className="text-[11px] text-emerald-600 dark:text-emerald-400">{settleMsg}</div>
+              <div className="text-[calc(11px*var(--fs))] text-emerald-600 dark:text-emerald-400">{settleMsg}</div>
             )}
 
             {ledger.loading && <div className="text-xs text-neutral-400">載入流水帳中…</div>}
             {ledger.error && <div className="text-xs text-rose-500">{ledger.error}</div>}
             {!ledger.loggedIn && (
-              <div className="text-[11px] text-neutral-400">
+              <div className="text-[calc(11px*var(--fs))] text-neutral-400">
                 未登入:紀錄只留在這個瀏覽器分頁,重整就會消失。
               </div>
             )}
@@ -474,7 +474,7 @@ export const Combo9000Tab: React.FC<{ onOpenLedger?: (mode: LedgerMode) => void 
             <button
               type="button"
               onClick={() => onOpenLedger?.('combo9000')}
-              className="w-full flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl border border-dashed border-black/15 dark:border-white/15 text-[12px] font-semibold text-neutral-600 dark:text-neutral-300 hover:bg-black/[0.03] dark:hover:bg-white/[0.04] hover:border-black/25 dark:hover:border-white/25 transition-colors"
+              className="w-full flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl border border-dashed border-black/15 dark:border-white/15 text-[calc(12px*var(--fs))] font-semibold text-neutral-600 dark:text-neutral-300 hover:bg-black/[0.03] dark:hover:bg-white/[0.04] hover:border-black/25 dark:hover:border-white/25 transition-colors"
             >
               查看 / 管理本週逐筆流水(對獎・改期・撤銷)
               <ChevronRight className="w-3.5 h-3.5" />

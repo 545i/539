@@ -253,7 +253,7 @@ export default function App() {
                       >
                         <span>{tab.label}</span>
                         {tab.count !== undefined && (
-                          <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-normal ${
+                          <span className={`text-[calc(10px*var(--fs))] px-1.5 py-0.2 rounded-full font-mono font-normal ${
                             isActive 
                               ? 'bg-white/20 dark:bg-black/20 text-current' 
                               : 'bg-black/5 dark:bg-white/10 text-neutral-500'

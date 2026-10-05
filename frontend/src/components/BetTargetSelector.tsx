@@ -9,11 +9,11 @@ export const BetTargetSelector: React.FC = () => {
   return (
     <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
       <div className="flex items-center gap-2 flex-wrap">
-        <span className="text-[11px] font-semibold text-neutral-500 dark:text-neutral-400">下注遊戲</span>
+        <span className="text-[calc(11px*var(--fs))] font-semibold text-neutral-500 dark:text-neutral-400">下注遊戲</span>
         <GameSwitcher />
       </div>
       <div className="flex items-center gap-2 flex-wrap">
-        <span className="text-[11px] font-semibold text-neutral-500 dark:text-neutral-400">下注版本</span>
+        <span className="text-[calc(11px*var(--fs))] font-semibold text-neutral-500 dark:text-neutral-400">下注版本</span>
         <div className="inline-flex p-1 rounded-xl bg-black/[0.03] dark:bg-white/[0.04] border border-black/[0.06] dark:border-white/[0.06] gap-1 flex-wrap">
           {editions.map(e => (
             <button
@@ -30,7 +30,7 @@ export const BetTargetSelector: React.FC = () => {
             </button>
           ))}
         </div>
-        <span className="text-[10px] text-neutral-400">(在「設定」可新增版、改名、設各版盤口)</span>
+        <span className="text-[calc(10px*var(--fs))] text-neutral-400">(在「設定」可新增版、改名、設各版盤口)</span>
       </div>
     </div>
   );

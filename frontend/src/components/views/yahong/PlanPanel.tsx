@@ -41,7 +41,7 @@ const NumField: React.FC<{ label: string; value: number; onChange: (v: number) =
   label, value, onChange, step = 1,
 }) => (
   <label className="flex flex-col gap-1">
-    <span className="text-[10px] uppercase tracking-wider text-neutral-400">{label}</span>
+    <span className="text-[calc(10px*var(--fs))] uppercase tracking-wider text-neutral-400">{label}</span>
     <input
       type="number"
       step={step}
@@ -191,7 +191,7 @@ export const PlanPanel: React.FC<{ game: GameKey }> = ({ game }) => {
           )}
           {showTierDropdown && (
             <label className="flex flex-col gap-1">
-              <span className="text-[10px] uppercase tracking-wider text-neutral-400">階梯模式</span>
+              <span className="text-[calc(10px*var(--fs))] uppercase tracking-wider text-neutral-400">階梯模式</span>
               <select
                 value={tierMode539}
                 onChange={e => setTierMode539(e.target.value as TierMode)}
@@ -204,7 +204,7 @@ export const PlanPanel: React.FC<{ game: GameKey }> = ({ game }) => {
           )}
         </div>
         {pillar && (
-          <p className="text-[10px] text-neutral-400">立柱倍投的每碰成本 / 彩金為寫死常數(1800:1134 / 570;9000:4545 / 8000),不受上方輸入影響。</p>
+          <p className="text-[calc(10px*var(--fs))] text-neutral-400">立柱倍投的每碰成本 / 彩金為寫死常數(1800:1134 / 570;9000:4545 / 8000),不受上方輸入影響。</p>
         )}
       </div>
 
@@ -216,7 +216,7 @@ export const PlanPanel: React.FC<{ game: GameKey }> = ({ game }) => {
         <div className={`${cardClass} overflow-x-auto`}>
           <table className="w-full text-xs">
             <thead>
-              <tr className="text-left text-[10px] uppercase tracking-wider text-neutral-400">
+              <tr className="text-left text-[calc(10px*var(--fs))] uppercase tracking-wider text-neutral-400">
                 {cols.map((c, i) => (
                   <th key={c.header} className={`px-2 py-2 ${i === 0 ? '' : 'text-right'}`}>{c.header}</th>
                 ))}
@@ -239,7 +239,7 @@ export const PlanPanel: React.FC<{ game: GameKey }> = ({ game }) => {
               ))}
             </tbody>
           </table>
-          <p className="text-[10px] text-neutral-400 mt-3">
+          <p className="text-[calc(10px*var(--fs))] text-neutral-400 mt-3">
             {pillar ? '下注金額為整數元;' : `車數一律向上取整到 ${game === 'fantasy5' ? '0.01' : '0.05'};`}
             「保證賺錢」為無上限馬丁格爾加碼的話術,本金爆掉風險未計入。
           </p>

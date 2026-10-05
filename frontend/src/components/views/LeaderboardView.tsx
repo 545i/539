@@ -48,7 +48,7 @@ const Row: React.FC<{
           <div className="font-bold text-sm text-neutral-900 dark:text-white flex items-center gap-2">
             <span>{title}</span>
             {badge && (
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-black/5 dark:bg-white/10 text-neutral-600 dark:text-neutral-300 font-mono">
+              <span className="text-[calc(10px*var(--fs))] px-2 py-0.5 rounded-full bg-black/5 dark:bg-white/10 text-neutral-600 dark:text-neutral-300 font-mono">
                 {badge}
               </span>
             )}
@@ -63,7 +63,7 @@ const Row: React.FC<{
 
       <div className="flex items-center gap-3">
         <div className="text-right">
-          <div className="text-[10px] uppercase tracking-wider text-neutral-400">累積損益</div>
+          <div className="text-[calc(10px*var(--fs))] uppercase tracking-wider text-neutral-400">累積損益</div>
           <div className={`text-xl font-bold font-mono ${pnlColor(row.total_pnl)}`}>
             {pnlText(row.total_pnl)}
           </div>
@@ -127,7 +127,7 @@ const UserLedger: React.FC<{ username: string }> = ({ username }) => {
 
   return (
     <div className="space-y-2">
-      <div className="text-[10px] uppercase tracking-[0.2em] font-semibold text-neutral-400 dark:text-neutral-500">
+      <div className="text-[calc(10px*var(--fs))] uppercase tracking-[0.2em] font-semibold text-neutral-400 dark:text-neutral-500">
         下注歷史({entries.length} 筆,新→舊)
       </div>
       <div className="lt-wrap border border-black/[0.08] dark:border-white/[0.08] rounded-xl">
@@ -149,12 +149,12 @@ const UserLedger: React.FC<{ username: string }> = ({ username }) => {
               <tr key={e.id}>
                 <td>
                   <div className="text-xs font-mono font-bold">{e.issue || '—'}</div>
-                  <div className="text-[10px] text-neutral-400">{e.date || e.created.slice(0, 10)}</div>
+                  <div className="text-[calc(10px*var(--fs))] text-neutral-400">{e.date || e.created.slice(0, 10)}</div>
                 </td>
                 <td className="text-xs font-semibold">{(e.game || '—').split('(')[0]}</td>
                 <td className="text-xs">
                   <div className="font-semibold">{e.mode_name}</div>
-                  {e.playType && <div className="text-[10px] text-neutral-400">{e.playType}</div>}
+                  {e.playType && <div className="text-[calc(10px*var(--fs))] text-neutral-400">{e.playType}</div>}
                 </td>
                 <td className="font-mono text-xs">
                   {e.selectedBalls.length ? balls(e.selectedBalls).join(' ') : '—'}
@@ -162,7 +162,7 @@ const UserLedger: React.FC<{ username: string }> = ({ username }) => {
                 <td className="font-mono text-xs">{num(e.cars ?? e.units)}</td>
                 <td className="font-mono text-xs">{num(e.cost)}</td>
                 <td>
-                  <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${
+                  <span className={`px-2 py-0.5 rounded text-[calc(10px*var(--fs))] font-medium ${
                     (e.pnl ?? 0) > 0
                       ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 font-bold'
                       : e.result === '待開獎'
@@ -255,7 +255,7 @@ export const LeaderboardView: React.FC = () => {
 
       {modes.length > 0 && (
         <>
-          <div className="px-1 text-[10px] uppercase tracking-[0.2em] font-semibold text-neutral-400 dark:text-neutral-500">
+          <div className="px-1 text-[calc(10px*var(--fs))] uppercase tracking-[0.2em] font-semibold text-neutral-400 dark:text-neutral-500">
             全站各下法表現(所有帳號合計)
           </div>
           <div className="space-y-3">

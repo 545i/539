@@ -172,11 +172,11 @@ export const BetEditModal: React.FC<{
     const r = t.record;
     return (
       <div className="font-sans">
-        <div className="text-[12px] text-neutral-900 dark:text-white">
+        <div className="text-[calc(12px*var(--fs))] text-neutral-900 dark:text-white">
           <span className="font-semibold mr-1.5">{MODE_LABEL[t.mode] ?? t.mode}</span>
           <span className="text-neutral-600 dark:text-neutral-300">{String(preview.get(t.id)?.new.playType ?? r.playType ?? '')}</span>
         </div>
-        <div className="mt-0.5 text-[10px] text-neutral-400">
+        <div className="mt-0.5 text-[calc(10px*var(--fs))] text-neutral-400">
           {t.gameShort} · {t.editionName} · {String(r.date ?? '').slice(0, 10)}
           {r.issue ? ` · 第 ${String(r.issue)} 期` : ''}
         </div>
@@ -188,39 +188,39 @@ export const BetEditModal: React.FC<{
     if (t.mode === 'pillar1800') {
       const ps = (t.record.pillars as number[][]) ?? [];
       return (
-        <div className="text-[11px] font-mono text-neutral-600 dark:text-neutral-300 leading-relaxed break-all">
+        <div className="text-[calc(11px*var(--fs))] font-mono text-neutral-600 dark:text-neutral-300 leading-relaxed break-all">
           {ps.length === 3
             ? ps.map((p, k) => <div key={k}>{k < 2 ? `第${k + 1}柱` : '其他'}({p.length}):{p.map(pad).join(' ')}</div>)
             : '標準三柱 10~18 / 20~29 / 其他'}
-          <div className="text-[10px] font-sans text-neutral-400">分柱沿用原紀錄</div>
+          <div className="text-[calc(10px*var(--fs))] font-sans text-neutral-400">分柱沿用原紀錄</div>
         </div>
       );
     }
-    if (t.mode === 'combo9000') return <div className="text-[11px] text-neutral-500">9000碰 四段全包(無選號)</div>;
+    if (t.mode === 'combo9000') return <div className="text-[calc(11px*var(--fs))] text-neutral-500">9000碰 四段全包(無選號)</div>;
     const defBase = num(preview.get(t.id)?.new.baseCost);
     return (
       <>
         <input value={d.balls} onChange={e => (isErhe(t.mode) ? setBalls(i, e.target.value) : setDraft(i, {balls: e.target.value}))}
-          spellCheck={false} inputMode="numeric" className={`w-full ${inputCls} text-sm sm:text-[12px]`} />
-        <span className="text-[10px] text-neutral-400">{parseBalls(d.balls).length} 顆{isErhe(t.mode) ? ',每顆各自車數 / 每注成本' : ''}</span>
+          spellCheck={false} inputMode="numeric" className={`w-full ${inputCls} text-sm sm:text-[calc(12px*var(--fs))]`} />
+        <span className="text-[calc(10px*var(--fs))] text-neutral-400">{parseBalls(d.balls).length} 顆{isErhe(t.mode) ? ',每顆各自車數 / 每注成本' : ''}</span>
         {isErhe(t.mode) && d.rows.length > 0 && (
           // 逐顆一列:號碼 | 車數 | 每注成本(絕對值)
           <div className="mt-1.5 divide-y divide-black/[0.05] dark:divide-white/[0.06]">
             {d.rows.map(x => (
               <div key={x.n} className="grid grid-cols-[2.5rem_1fr_1fr] items-end gap-3 py-1.5">
-                <span className="font-mono font-bold text-[13px] text-neutral-900 dark:text-white pb-1">{pad(x.n)}</span>
+                <span className="font-mono font-bold text-[calc(13px*var(--fs))] text-neutral-900 dark:text-white pb-1">{pad(x.n)}</span>
                 <label className="block">
-                  <span className="block text-[9px] text-neutral-400">車數</span>
+                  <span className="block text-[calc(9px*var(--fs))] text-neutral-400">車數</span>
                   <input type="number" inputMode="decimal" min={0} step="0.5" value={x.cars || ''}
                     onChange={e => setRow(i, x.n, {cars: Number(e.target.value)})}
-                    className={`w-full ${inputCls} text-right text-sm sm:text-[12px]`} />
+                    className={`w-full ${inputCls} text-right text-sm sm:text-[calc(12px*var(--fs))]`} />
                 </label>
                 <label className="block">
-                  <span className="block text-[9px] text-neutral-400">每注成本</span>
+                  <span className="block text-[calc(9px*var(--fs))] text-neutral-400">每注成本</span>
                   <input type="number" inputMode="decimal" min={0} step="0.5" value={x.base > 0 ? x.base : ''}
                     placeholder={defBase ? String(defBase) : '盤口'}
                     onChange={e => setRow(i, x.n, {base: Number(e.target.value)})}
-                    className={`w-full ${inputCls} text-right text-sm sm:text-[12px]`} />
+                    className={`w-full ${inputCls} text-right text-sm sm:text-[calc(12px*var(--fs))]`} />
                 </label>
               </div>
             ))}
@@ -229,14 +229,14 @@ export const BetEditModal: React.FC<{
         {needHitBalls(t, d) && (
           // 原本手填「中 k 顆」:各顆車數不同時要點選中哪幾顆,派彩依各顆車數算
           <div className="mt-2 space-y-1.5">
-            <div className="text-[10px] text-neutral-500">原本手填「{String(t.record.result ?? '')}」,各顆車數不同,請點選中獎號碼</div>
+            <div className="text-[calc(10px*var(--fs))] text-neutral-500">原本手填「{String(t.record.result ?? '')}」,各顆車數不同,請點選中獎號碼</div>
             <div className="flex flex-wrap gap-2">
               {d.rows.map(x => {
                 const on = (d.hit ?? []).includes(x.n);
                 return (
                   <button key={x.n} type="button"
                     onClick={() => setDraft(i, {hit: on ? (d.hit ?? []).filter(n => n !== x.n) : [...(d.hit ?? []), x.n]})}
-                    className={`w-10 h-10 rounded-full font-mono font-bold text-[13px] ${on
+                    className={`w-10 h-10 rounded-full font-mono font-bold text-[calc(13px*var(--fs))] ${on
                       ? 'bg-neutral-900 text-white dark:bg-white dark:text-black'
                       : 'bg-black/[0.05] dark:bg-white/[0.08] text-neutral-800 dark:text-neutral-100'}`}>
                     {pad(x.n)}
@@ -248,7 +248,7 @@ export const BetEditModal: React.FC<{
                 const miss = d.hit !== null && d.hit.filter(n => d.rows.some(x => x.n === n)).length === 0;
                 return (
                   <button type="button" onClick={() => setDraft(i, {hit: []})}
-                    className={`h-10 px-3.5 rounded-full text-[12px] font-semibold ${miss
+                    className={`h-10 px-3.5 rounded-full text-[calc(12px*var(--fs))] font-semibold ${miss
                       ? 'bg-neutral-900 text-white dark:bg-white dark:text-black'
                       : 'bg-black/[0.05] dark:bg-white/[0.08] text-neutral-700 dark:text-neutral-200'}`}>
                     槓龜
@@ -280,7 +280,7 @@ export const BetEditModal: React.FC<{
     const err = errs.get(t.id);
     if (err) {
       return (
-        <div className="flex items-start gap-1.5 text-[11px] text-rose-600 dark:text-rose-400">
+        <div className="flex items-start gap-1.5 text-[calc(11px*var(--fs))] text-rose-600 dark:text-rose-400">
           <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" /><span>{err}</span>
         </div>
       );
@@ -290,20 +290,20 @@ export const BetEditModal: React.FC<{
       <div className="space-y-1">
         <div className="grid grid-cols-3 gap-2 text-right font-mono">
           <div>
-            <div className="text-[9px] font-sans text-neutral-400">原成本</div>
-            <div className="text-[12px] text-neutral-500">{money(oldCost)}</div>
+            <div className="text-[calc(9px*var(--fs))] font-sans text-neutral-400">原成本</div>
+            <div className="text-[calc(12px*var(--fs))] text-neutral-500">{money(oldCost)}</div>
           </div>
           <div>
-            <div className="text-[9px] font-sans text-neutral-400">新成本</div>
-            <div className="text-[12px] font-bold text-neutral-900 dark:text-white">{p ? money(num(p.new.cost)) : busy ? '…' : '—'}</div>
+            <div className="text-[calc(9px*var(--fs))] font-sans text-neutral-400">新成本</div>
+            <div className="text-[calc(12px*var(--fs))] font-bold text-neutral-900 dark:text-white">{p ? money(num(p.new.cost)) : busy ? '…' : '—'}</div>
           </div>
           <div>
-            <div className="text-[9px] font-sans text-neutral-400">差額</div>
-            <div className="text-[12px] font-bold text-neutral-900 dark:text-white">{p ? signed(p.cost_diff) : '—'}</div>
+            <div className="text-[calc(9px*var(--fs))] font-sans text-neutral-400">差額</div>
+            <div className="text-[calc(12px*var(--fs))] font-bold text-neutral-900 dark:text-white">{p ? signed(p.cost_diff) : '—'}</div>
           </div>
         </div>
         {p && (
-          <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 text-[10px] text-neutral-400">
+          <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 text-[calc(10px*var(--fs))] text-neutral-400">
             <span className="font-mono break-all">{String(p.new.costExpr ?? '')}</span>
             <span className="whitespace-nowrap">
               {isPending(p.new) ? '待開獎' : (
@@ -328,8 +328,8 @@ export const BetEditModal: React.FC<{
       <div className="w-full h-[100dvh] sm:h-auto sm:max-h-[90vh] sm:max-w-4xl bg-white dark:bg-[#121212] sm:rounded-2xl shadow-2xl flex flex-col overflow-hidden text-neutral-800 dark:text-neutral-200">
         <div className="flex items-center justify-between px-4 sm:px-6 py-3 pt-[max(0.75rem,env(safe-area-inset-top))] sm:pt-3 border-b border-black/[0.08] dark:border-white/[0.08] shrink-0">
           <div>
-            <div className="font-bold text-[15px] text-neutral-900 dark:text-white">編輯下注紀錄</div>
-            <div className="text-[10px] text-neutral-400">{targets.length} 筆 · 可改號碼、車/支數、成本;日期 / 期號 / 版不變</div>
+            <div className="font-bold text-[calc(15px*var(--fs))] text-neutral-900 dark:text-white">編輯下注紀錄</div>
+            <div className="text-[calc(10px*var(--fs))] text-neutral-400">{targets.length} 筆 · 可改號碼、車/支數、成本;日期 / 期號 / 版不變</div>
           </div>
           <button type="button" onClick={onClose} aria-label="關閉"
             className="p-1.5 rounded-full text-neutral-400 hover:text-neutral-700 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5">
@@ -346,11 +346,11 @@ export const BetEditModal: React.FC<{
                 <div>{ballsField(t, i)}</div>
                 {!isErhe(t.mode) && <div className="grid grid-cols-2 gap-3">
                   <label className="block">
-                    <span className="block text-[10px] text-neutral-500">{unitLabel(t.mode)}數</span>
+                    <span className="block text-[calc(10px*var(--fs))] text-neutral-500">{unitLabel(t.mode)}數</span>
                     {unitsField(t, i, 'w-full py-1.5 text-sm')}
                   </label>
                   <label className="block">
-                    <span className="block text-[10px] text-neutral-500">{t.mode === 'pillar1800' ? '每注成本' : '每碰成本'}</span>
+                    <span className="block text-[calc(10px*var(--fs))] text-neutral-500">{t.mode === 'pillar1800' ? '每注成本' : '每碰成本'}</span>
                     {baseField(t, i, 'w-full py-1.5 text-sm')}
                   </label>
                 </div>}
@@ -360,13 +360,13 @@ export const BetEditModal: React.FC<{
           </div>
 
           {/* sm 以上:表格 */}
-          <table className="hidden sm:table w-full text-[11px]">
-            <thead className="text-[10px] text-neutral-400">
+          <table className="hidden sm:table w-full text-[calc(11px*var(--fs))]">
+            <thead className="text-[calc(10px*var(--fs))] text-neutral-400">
               <tr className="border-b border-black/[0.08] dark:border-white/[0.08]">
                 <th className="px-4 py-2 text-left font-semibold">下法</th>
                 <th className="px-3 py-2 text-left font-semibold">號碼</th>
                 <th className="px-3 py-2 text-right font-semibold">車 / 支</th>
-                <th className="px-3 py-2 text-right font-semibold">成本<br /><span className="font-normal text-[9px]">每注 / 每碰</span></th>
+                <th className="px-3 py-2 text-right font-semibold">成本<br /><span className="font-normal text-[calc(9px*var(--fs))]">每注 / 每碰</span></th>
                 <th className="px-4 py-2 text-right font-semibold w-[260px]">原成本 / 新成本 / 差額</th>
               </tr>
             </thead>
@@ -379,8 +379,8 @@ export const BetEditModal: React.FC<{
                   ) : (
                     <>
                       <td className="px-3 py-2.5 min-w-[180px]">{ballsField(t, i)}</td>
-                      <td className="px-3 py-2.5 text-right">{unitsField(t, i, 'w-16 text-[12px]')}</td>
-                      <td className="px-3 py-2.5 text-right">{baseField(t, i, 'w-20 text-[12px]')}</td>
+                      <td className="px-3 py-2.5 text-right">{unitsField(t, i, 'w-16 text-[calc(12px*var(--fs))]')}</td>
+                      <td className="px-3 py-2.5 text-right">{baseField(t, i, 'w-20 text-[calc(12px*var(--fs))]')}</td>
                     </>
                   )}
                   <td className="px-4 py-2.5">{audit(t)}</td>
@@ -391,8 +391,8 @@ export const BetEditModal: React.FC<{
         </div>
 
         <div className="shrink-0 border-t border-black/[0.08] dark:border-white/[0.08] px-4 sm:px-6 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:pb-3 space-y-2">
-          {error && <div className="text-[11px] text-rose-600 dark:text-rose-400">{error}</div>}
-          <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 text-[11px]">
+          {error && <div className="text-[calc(11px*var(--fs))] text-rose-600 dark:text-rose-400">{error}</div>}
+          <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 text-[calc(11px*var(--fs))]">
             <span className="text-neutral-500">
               合計成本 <span className="font-mono">{money(totals.oldCost)}</span> →{' '}
               <span className="font-mono font-bold text-neutral-900 dark:text-white">{money(totals.newCost)}</span>
@@ -405,15 +405,15 @@ export const BetEditModal: React.FC<{
           </div>
           <div className="flex items-center justify-end gap-4">
             <button type="button" onClick={onClose}
-              className="text-[12px] text-neutral-500 hover:text-neutral-900 dark:hover:text-white hover:underline underline-offset-2">
+              className="text-[calc(12px*var(--fs))] text-neutral-500 hover:text-neutral-900 dark:hover:text-white hover:underline underline-offset-2">
               取消
             </button>
             <button type="button" disabled={!canSave} onClick={save}
-              className="px-4 py-2 rounded-lg text-[12px] font-semibold bg-neutral-900 text-white dark:bg-white dark:text-black disabled:opacity-40">
+              className="px-4 py-2 rounded-lg text-[calc(12px*var(--fs))] font-semibold bg-neutral-900 text-white dark:bg-white dark:text-black disabled:opacity-40">
               {saving ? '儲存中…' : `儲存 ${targets.length} 筆並重新對獎`}
             </button>
           </div>
-          <div className="text-[10px] text-neutral-400">儲存後可在「操作歷史」作廢這次編輯,還原成原紀錄。</div>
+          <div className="text-[calc(10px*var(--fs))] text-neutral-400">儲存後可在「操作歷史」作廢這次編輯,還原成原紀錄。</div>
         </div>
       </div>
     </div>

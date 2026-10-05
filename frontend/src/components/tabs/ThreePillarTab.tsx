@@ -256,13 +256,13 @@ export const ThreePillarTab: React.FC<{ onOpenLedger?: (mode: LedgerMode) => voi
       <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <span className="text-[10px] uppercase tracking-[0.25em] text-neutral-400 dark:text-neutral-500 font-semibold">
+            <span className="text-[calc(10px*var(--fs))] uppercase tracking-[0.25em] text-neutral-400 dark:text-neutral-500 font-semibold">
               Three Pillars Matrix (1800 Bets)
             </span>
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-black/5 dark:bg-white/10 text-neutral-600 dark:text-neutral-300">
+            <span className="px-2 py-0.5 rounded-full text-[calc(10px*var(--fs))] font-mono bg-black/5 dark:bg-white/10 text-neutral-600 dark:text-neutral-300">
               {gameCfg.short_name}
             </span>
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-black/5 dark:bg-white/10 text-neutral-600 dark:text-neutral-300">
+            <span className="px-2 py-0.5 rounded-full text-[calc(10px*var(--fs))] font-mono bg-black/5 dark:bg-white/10 text-neutral-600 dark:text-neutral-300">
               過關率 {passProb !== null ? `${(passProb * 100).toFixed(2)}%` : '—'}
             </span>
           </div>
@@ -276,12 +276,12 @@ export const ThreePillarTab: React.FC<{ onOpenLedger?: (mode: LedgerMode) => voi
 
         <div className="flex items-center justify-between md:justify-end gap-4 border-t md:border-t-0 pt-2.5 md:pt-0 border-black/[0.06] dark:border-white/[0.06]">
           <div className="text-left md:text-right">
-            <span className="text-[10px] uppercase tracking-wider text-neutral-400 block">三柱累積損益</span>
+            <span className="text-[calc(10px*var(--fs))] uppercase tracking-wider text-neutral-400 block">三柱累積損益</span>
             <div className={`text-xl sm:text-2xl font-mono font-bold ${cumPnl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
               {cumPnl >= 0 ? `+${cumPnl.toLocaleString()}` : cumPnl.toLocaleString()}
             </div>
           </div>
-          <div className="text-right text-[11px] font-mono text-neutral-400">
+          <div className="text-right text-[calc(11px*var(--fs))] font-mono text-neutral-400">
             {roundCount} 局・過關 {winCount} 局
           </div>
         </div>
@@ -301,12 +301,12 @@ export const ThreePillarTab: React.FC<{ onOpenLedger?: (mode: LedgerMode) => voi
               <span className="text-xs font-display font-bold uppercase tracking-wider text-neutral-900 dark:text-white">
                 01 / 三柱 1800 碰下注
               </span>
-              <span className="text-[11px] font-mono text-neutral-400">
+              <span className="text-[calc(11px*var(--fs))] font-mono text-neutral-400">
                 各柱相乘 = 注數
               </span>
             </div>
 
-            <div className="text-[11px] text-neutral-500 dark:text-neutral-400 leading-relaxed">
+            <div className="text-[calc(11px*var(--fs))] text-neutral-500 dark:text-neutral-400 leading-relaxed">
               自訂 <strong>2 柱</strong> → 第三柱自動全包「剩下的號碼」;或自訂滿 3 柱。
               注數 = 三柱顆數相乘。要整組全包就按<strong>「一鍵全包」</strong>({totalBets.toLocaleString()} 注)。
             </div>
@@ -316,17 +316,17 @@ export const ThreePillarTab: React.FC<{ onOpenLedger?: (mode: LedgerMode) => voi
               <button
                 type="button"
                 onClick={loadFullWheel}
-                className="px-2.5 py-1 rounded-lg text-[10px] font-bold border border-black/80 dark:border-white/80 bg-black text-white dark:bg-white dark:text-black hover:opacity-90 active:scale-95 transition-all"
+                className="px-2.5 py-1 rounded-lg text-[calc(10px*var(--fs))] font-bold border border-black/80 dark:border-white/80 bg-black text-white dark:bg-white dark:text-black hover:opacity-90 active:scale-95 transition-all"
               >
                 一鍵全包 ({totalBets.toLocaleString()} 注)
               </button>
-              <span className="text-[10px] uppercase tracking-wider text-neutral-400 font-semibold ml-1">預設柱</span>
+              <span className="text-[calc(10px*var(--fs))] uppercase tracking-wider text-neutral-400 font-semibold ml-1">預設柱</span>
               {pillars.map((p, i) => (
                 <button
                   key={i}
                   type="button"
                   onClick={() => presetFromFixed(i)}
-                  className="px-2.5 py-1 rounded-lg text-[10px] font-mono font-semibold border border-black/10 dark:border-white/10 text-neutral-700 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5 active:scale-95 transition-all"
+                  className="px-2.5 py-1 rounded-lg text-[calc(10px*var(--fs))] font-mono font-semibold border border-black/10 dark:border-white/10 text-neutral-700 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5 active:scale-95 transition-all"
                 >
                   {pillarRange(p)}
                 </button>
@@ -380,7 +380,7 @@ export const ThreePillarTab: React.FC<{ onOpenLedger?: (mode: LedgerMode) => voi
                   return (
                     <div key={i} className={`p-2.5 rounded-xl border flex items-center justify-between gap-2 ${theme}`}>
                       <div className="min-w-0">
-                        <div className="text-[10px] uppercase tracking-wider font-semibold opacity-70">
+                        <div className="text-[calc(10px*var(--fs))] uppercase tracking-wider font-semibold opacity-70">
                           {PILLAR_NAMES[i] ?? `第${i + 1}柱`}({p.length}顆)
                         </div>
                         <div className="text-xs font-mono font-bold mt-0.5 break-all">
@@ -403,7 +403,7 @@ export const ThreePillarTab: React.FC<{ onOpenLedger?: (mode: LedgerMode) => voi
             {/* 下注支數(倍投) */}
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
-                <label className="text-[10px] uppercase tracking-[0.2em] font-semibold text-neutral-400">下注支數 (Units)</label>
+                <label className="text-[calc(10px*var(--fs))] uppercase tracking-[0.2em] font-semibold text-neutral-400">下注支數 (Units)</label>
                 <span className="text-xs font-mono font-bold text-neutral-900 dark:text-white">{units} 支</span>
               </div>
               <div className="flex items-center gap-2">
@@ -433,16 +433,16 @@ export const ThreePillarTab: React.FC<{ onOpenLedger?: (mode: LedgerMode) => voi
 
             {/* 試算(全包時多顯示過關機率 / 彩金) */}
             <div className="p-3.5 sm:p-4 rounded-xl bg-black/[0.02] dark:bg-white/[0.03] border border-black/[0.06] dark:border-white/[0.06] space-y-2">
-              <div className="text-[10px] uppercase tracking-wider text-neutral-400 font-semibold">
+              <div className="text-[calc(10px*var(--fs))] uppercase tracking-wider text-neutral-400 font-semibold">
                 {isFullWheel ? '全包試算 (1800 碰)' : '部分包牌試算'}
               </div>
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <div>
-                  <span className="text-neutral-500 block text-[10px]">三柱顆數 × 支:</span>
+                  <span className="text-neutral-500 block text-[calc(10px*var(--fs))]">三柱顆數 × 支:</span>
                   <span className="font-mono font-bold text-sm text-neutral-900 dark:text-white">
                     {effSizes.length ? effSizes.join(' × ') : '—'} × {units}
                   </span>
-                  <span className="block text-[10px] text-neutral-400">
+                  <span className="block text-[calc(10px*var(--fs))] text-neutral-400">
                     {customCount >= NUM_SLOTS
                       ? `自訂滿 ${NUM_SLOTS} 柱`
                       : customCount === NUM_SLOTS - 1
@@ -451,19 +451,19 @@ export const ThreePillarTab: React.FC<{ onOpenLedger?: (mode: LedgerMode) => voi
                   </span>
                 </div>
                 <div>
-                  <span className="text-neutral-500 block text-[10px]">可組出注數:</span>
+                  <span className="text-neutral-500 block text-[calc(10px*var(--fs))]">可組出注數:</span>
                   <span className="font-mono font-bold text-sm text-neutral-900 dark:text-white">
                     {betsWithUnits.toLocaleString()} 注
                   </span>
                 </div>
                 <div>
-                  <span className="text-neutral-500 block text-[10px]">投注成本:</span>
+                  <span className="text-neutral-500 block text-[calc(10px*var(--fs))]">投注成本:</span>
                   <span className="font-mono font-bold text-sm text-neutral-900 dark:text-white">
                     NT$ {submitCost.toLocaleString()}
                   </span>
                 </div>
                 <div>
-                  <span className="text-neutral-500 block text-[10px]">目前選取:</span>
+                  <span className="text-neutral-500 block text-[calc(10px*var(--fs))]">目前選取:</span>
                   <span className="font-mono font-bold text-sm text-neutral-900 dark:text-white">
                     {selectedBalls.length} 顆
                   </span>
@@ -471,13 +471,13 @@ export const ThreePillarTab: React.FC<{ onOpenLedger?: (mode: LedgerMode) => voi
                 {isFullWheel && (
                   <>
                     <div>
-                      <span className="text-neutral-500 block text-[10px]">過關機率:</span>
+                      <span className="text-neutral-500 block text-[calc(10px*var(--fs))]">過關機率:</span>
                       <span className="font-mono font-bold text-sm text-emerald-600 dark:text-emerald-400">
                         {passProb !== null ? `${(passProb * 100).toFixed(2)}%` : '—'}
                       </span>
                     </div>
                     <div>
-                      <span className="text-neutral-500 block text-[10px]">開 4/3 碰彩金:</span>
+                      <span className="text-neutral-500 block text-[calc(10px*var(--fs))]">開 4/3 碰彩金:</span>
                       <span className="font-mono font-bold text-sm text-emerald-600 dark:text-emerald-400">
                         {(units * prize4).toLocaleString()} / {(units * prize3).toLocaleString()}
                       </span>
@@ -504,12 +504,12 @@ export const ThreePillarTab: React.FC<{ onOpenLedger?: (mode: LedgerMode) => voi
               <span className="text-xs font-display font-bold uppercase tracking-wider text-neutral-900 dark:text-white">
                 02 / 1800碰三柱斷檔
               </span>
-              <span className="text-[11px] font-mono text-neutral-400">
+              <span className="text-[calc(11px*var(--fs))] font-mono text-neutral-400">
                 連續 ≥4 期沒開
               </span>
             </div>
 
-            <div className="text-[11px] text-neutral-500 dark:text-neutral-400">
+            <div className="text-[calc(11px*var(--fs))] text-neutral-500 dark:text-neutral-400">
               1800碰過關需<strong>三柱都有開</strong>；任一柱（第一柱 10~18 / 第二柱 20~29 / 第三柱其餘）整柱沒開就斷柱。連續 4 期沒開列為警示。
             </div>
 
@@ -541,13 +541,13 @@ export const ThreePillarTab: React.FC<{ onOpenLedger?: (mode: LedgerMode) => voi
                         {p.name}
                       </span>
                     </div>
-                    <div className="text-[10px] font-mono text-neutral-400 mt-0.5">{p.label}</div>
+                    <div className="text-[calc(10px*var(--fs))] font-mono text-neutral-400 mt-0.5">{p.label}</div>
                   </div>
-                  <div className={`text-[11px] font-mono shrink-0 text-right ${
+                  <div className={`text-[calc(11px*var(--fs))] font-mono shrink-0 text-right ${
                     p.alert ? 'text-amber-900 dark:text-amber-300 font-bold' : 'text-neutral-400'
                   }`}>
                     {p.current > 0 ? `連續 ${p.current} 期沒開` : '本期有開'}
-                    <div className="text-[10px] text-neutral-400">歷史最長 {p.max_gap}</div>
+                    <div className="text-[calc(10px*var(--fs))] text-neutral-400">歷史最長 {p.max_gap}</div>
                   </div>
                 </div>
               ))}
@@ -560,12 +560,12 @@ export const ThreePillarTab: React.FC<{ onOpenLedger?: (mode: LedgerMode) => voi
               <span className="text-xs font-display font-bold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
                 十位段配對（輔助）
               </span>
-              <span className="text-[11px] font-mono text-neutral-400">
+              <span className="text-[calc(11px*var(--fs))] font-mono text-neutral-400">
                 連續 3 期都沒開
               </span>
             </div>
 
-            <div className="text-[11px] text-neutral-500 dark:text-neutral-400">
+            <div className="text-[calc(11px*var(--fs))] text-neutral-500 dark:text-neutral-400">
               參考用：任兩個十位段（0頭~3頭）連續 3 期<strong>都沒開出號碼</strong>才列示（與三柱定義不同，僅供輔助觀察）。
             </div>
 
@@ -606,12 +606,12 @@ export const ThreePillarTab: React.FC<{ onOpenLedger?: (mode: LedgerMode) => voi
                         {p.labels[0]} × {p.labels[1]}
                       </span>
                     </div>
-                    <div className="text-[10px] font-mono text-neutral-400 mt-0.5">
+                    <div className="text-[calc(10px*var(--fs))] font-mono text-neutral-400 mt-0.5">
                       {p.range[0]} × {p.range[1]}
                     </div>
                   </div>
 
-                  <div className={`text-[11px] font-mono shrink-0 text-right ${
+                  <div className={`text-[calc(11px*var(--fs))] font-mono shrink-0 text-right ${
                     p.alert ? 'text-amber-900 dark:text-amber-300 font-bold' : 'text-neutral-400'
                   }`}>
                     {p.alert ? `連續 ${p.streak} 期兩區段都未開` : `${p.streak} 期未開`}
@@ -629,15 +629,15 @@ export const ThreePillarTab: React.FC<{ onOpenLedger?: (mode: LedgerMode) => voi
               <span className="text-xs font-display font-bold uppercase tracking-wider text-neutral-900 dark:text-white">
                 03 / 10~19 逐號機率
               </span>
-              <span className="text-[11px] font-mono text-neutral-400">浮動{oddsRangeReq.data.rate_window}期 · 冷熱{oddsRangeReq.data.z_window}期</span>
+              <span className="text-[calc(11px*var(--fs))] font-mono text-neutral-400">浮動{oddsRangeReq.data.rate_window}期 · 冷熱{oddsRangeReq.data.z_window}期</span>
             </div>
 
-            <div className="text-[11px] text-indigo-700 dark:text-indigo-300 bg-indigo-500/[0.08] rounded-lg px-3 py-2 leading-relaxed">
+            <div className="text-[calc(11px*var(--fs))] text-indigo-700 dark:text-indigo-300 bg-indigo-500/[0.08] rounded-lg px-3 py-2 leading-relaxed">
               <strong>短期</strong>=近 {oddsRangeReq.data.rate_window} 期實測（跳動大，±{(oddsRangeReq.data.se * 100).toFixed(1)}%）；<strong>長期</strong>=近 {oddsRangeReq.data.long_window} 期實測（±{(oddsRangeReq.data.se_long * 100).toFixed(2)}%）。理論錨點 {(oddsRangeReq.data.prob * 100).toFixed(2)}%（{oddsRangeReq.data.pick}/{oddsRangeReq.data.num_max}）。短期只是近況、<strong>不代表下期更會開</strong>（每期獨立）。
             </div>
 
             <div className="space-y-1">
-              <div className="grid grid-cols-[auto_1fr_1fr_auto_auto] gap-x-2 text-[9px] uppercase tracking-wider text-neutral-400 px-1">
+              <div className="grid grid-cols-[auto_1fr_1fr_auto_auto] gap-x-2 text-[calc(9px*var(--fs))] uppercase tracking-wider text-neutral-400 px-1">
                 <span>號</span><span className="text-right">短期機率</span><span className="text-right">長期機率</span><span className="text-right">z</span><span className="text-right">壓力(非機率)</span>
               </div>
               {(() => {
@@ -654,7 +654,7 @@ export const ThreePillarTab: React.FC<{ onOpenLedger?: (mode: LedgerMode) => voi
                   : 'border-b border-black/[0.03] dark:border-white/[0.04]';
                 const tag = top ? ' ⚠' : hot ? ' 高' : cold ? ' 低' : '';
                 return (
-                <div key={o.num} className={`grid grid-cols-[auto_1fr_1fr_auto_auto] gap-x-2 items-center text-[11px] font-mono px-1 py-1 rounded ${cls}`}>
+                <div key={o.num} className={`grid grid-cols-[auto_1fr_1fr_auto_auto] gap-x-2 items-center text-[calc(11px*var(--fs))] font-mono px-1 py-1 rounded ${cls}`}>
                   <span className={`font-bold w-8 ${top ? 'text-amber-700 dark:text-amber-300' : hot ? 'text-rose-600 dark:text-rose-300' : cold ? 'text-sky-600 dark:text-sky-300' : 'text-neutral-900 dark:text-white'}`}>{String(o.num).padStart(2, '0')}{tag}</span>
                   <span className={`text-right font-semibold ${o.rate > o.rate_long ? 'text-rose-600 dark:text-rose-400' : o.rate < o.rate_long ? 'text-sky-600 dark:text-sky-400' : 'text-neutral-700 dark:text-neutral-200'}`}>
                     {(o.rate * 100).toFixed(1)}%
@@ -663,14 +663,14 @@ export const ThreePillarTab: React.FC<{ onOpenLedger?: (mode: LedgerMode) => voi
                   <span className={`text-right ${o.z >= 1 ? 'text-rose-500' : o.z <= -1 ? 'text-sky-500' : 'text-neutral-400'}`}>
                     {o.z >= 0 ? '+' : ''}{o.z.toFixed(1)}
                   </span>
-                  <span className={`text-right ${top ? 'text-amber-600 dark:text-amber-400 font-bold' : 'text-neutral-400'}`}>{(o.pressure * 100).toFixed(0)}%<span className="text-[9px] text-neutral-400 ml-0.5">{o.gap}/{o.max_gap}</span></span>
+                  <span className={`text-right ${top ? 'text-amber-600 dark:text-amber-400 font-bold' : 'text-neutral-400'}`}>{(o.pressure * 100).toFixed(0)}%<span className="text-[calc(9px*var(--fs))] text-neutral-400 ml-0.5">{o.gap}/{o.max_gap}</span></span>
                 </div>
                 );
                 });
               })()}
             </div>
 
-            <div className="text-[10px] text-neutral-500 dark:text-neutral-400 leading-relaxed border-t border-black/[0.06] dark:border-white/[0.06] pt-2 space-y-0.5 font-mono">
+            <div className="text-[calc(10px*var(--fs))] text-neutral-500 dark:text-neutral-400 leading-relaxed border-t border-black/[0.06] dark:border-white/[0.06] pt-2 space-y-0.5 font-mono">
               <div>短期機率 = (近{oddsRangeReq.data.rate_window}期次數 + p×{oddsRangeReq.data.smooth_m}) ÷ ({oddsRangeReq.data.rate_window}+{oddsRangeReq.data.smooth_m})　貝式平滑,向理論收斂不會0%</div>
               <div>長期機率 = (近{oddsRangeReq.data.long_window}期次數 + p×{oddsRangeReq.data.smooth_m}) ÷ ({oddsRangeReq.data.long_window}+{oddsRangeReq.data.smooth_m})</div>
               <div>理論錨點 = pick ÷ num_max = {oddsRangeReq.data.pick}/{oddsRangeReq.data.num_max} = {(oddsRangeReq.data.prob * 100).toFixed(2)}%</div>
@@ -687,32 +687,32 @@ export const ThreePillarTab: React.FC<{ onOpenLedger?: (mode: LedgerMode) => voi
           {/* Top 4 Metric Tiles */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3">
             <div className="p-3.5 sm:p-4 rounded-xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08]">
-              <div className="text-[10px] uppercase tracking-wider text-neutral-400">總投入成本</div>
+              <div className="text-[calc(10px*var(--fs))] uppercase tracking-wider text-neutral-400">總投入成本</div>
               <div className="text-base sm:text-lg font-bold font-mono text-neutral-900 dark:text-white mt-0.5">
                 {totalSpent.toLocaleString()}
               </div>
             </div>
 
             <div className="p-3.5 sm:p-4 rounded-xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08]">
-              <div className="text-[10px] uppercase tracking-wider text-neutral-400">總回收彩金</div>
+              <div className="text-[calc(10px*var(--fs))] uppercase tracking-wider text-neutral-400">總回收彩金</div>
               <div className="text-base sm:text-lg font-bold font-mono text-emerald-600 dark:text-emerald-400 mt-0.5">
                 {totalReturn.toLocaleString()}
               </div>
             </div>
 
             <div className="p-3.5 sm:p-4 rounded-xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08]">
-              <div className="text-[10px] uppercase tracking-wider text-neutral-400">累積淨損益</div>
+              <div className="text-[calc(10px*var(--fs))] uppercase tracking-wider text-neutral-400">累積淨損益</div>
               <div className={`text-base sm:text-lg font-bold font-mono mt-0.5 ${cumPnl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
                 {cumPnl >= 0 ? `+${cumPnl.toLocaleString()}` : cumPnl.toLocaleString()}
               </div>
             </div>
 
             <div className="p-3.5 sm:p-4 rounded-xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08]">
-              <div className="text-[10px] uppercase tracking-wider text-neutral-400">過關率 / 局數</div>
+              <div className="text-[calc(10px*var(--fs))] uppercase tracking-wider text-neutral-400">過關率 / 局數</div>
               <div className="text-base sm:text-lg font-bold font-mono text-neutral-900 dark:text-white mt-0.5">
                 {roundCount > 0 ? `${((winCount / roundCount) * 100).toFixed(0)}%` : '0%'}
               </div>
-              <div className="text-[10px] text-neutral-400 font-mono">共 {roundCount} 局</div>
+              <div className="text-[calc(10px*var(--fs))] text-neutral-400 font-mono">共 {roundCount} 局</div>
             </div>
           </div>
 
@@ -740,7 +740,7 @@ export const ThreePillarTab: React.FC<{ onOpenLedger?: (mode: LedgerMode) => voi
                   onClick={handleSettlePending}
                   disabled={settleBusy || !ledger.loggedIn}
                   title="備援:一鍵把所有待開獎且已開的紀錄自動對獎"
-                  className="text-[11px] font-semibold text-neutral-500 hover:text-neutral-900 dark:hover:text-white disabled:opacity-30 transition-colors flex items-center gap-1 active:scale-95"
+                  className="text-[calc(11px*var(--fs))] font-semibold text-neutral-500 hover:text-neutral-900 dark:hover:text-white disabled:opacity-30 transition-colors flex items-center gap-1 active:scale-95"
                 >
                   <RefreshCw className={`w-3 h-3 ${settleBusy ? 'animate-spin' : ''}`} />
                   {settleBusy ? '對獎中…' : '一鍵對獎'}
@@ -750,17 +750,17 @@ export const ThreePillarTab: React.FC<{ onOpenLedger?: (mode: LedgerMode) => voi
             {/* 該週(或全部週)小計:局數 / 過關 / 投入 / 回收 / 損益 */}
             <WeekSubtotal records={flowRecords} label={wk.label} />
             {!wk.allWeeks && flowRecords.length === 0 && (
-              <div className="text-[11px] text-neutral-400">{wk.label} 沒有三柱紀錄。用 ‹ › 切到其他週。</div>
+              <div className="text-[calc(11px*var(--fs))] text-neutral-400">{wk.label} 沒有三柱紀錄。用 ‹ › 切到其他週。</div>
             )}
 
             {settleMsg && (
-              <div className="text-[11px] text-emerald-600 dark:text-emerald-400">{settleMsg}</div>
+              <div className="text-[calc(11px*var(--fs))] text-emerald-600 dark:text-emerald-400">{settleMsg}</div>
             )}
 
             {ledger.loading && <div className="text-xs text-neutral-400">載入流水帳中…</div>}
             {ledger.error && <div className="text-xs text-rose-500">{ledger.error}</div>}
             {!ledger.loggedIn && (
-              <div className="text-[11px] text-neutral-400">
+              <div className="text-[calc(11px*var(--fs))] text-neutral-400">
                 未登入:紀錄只留在這個瀏覽器分頁,重整就會消失。
               </div>
             )}
@@ -769,7 +769,7 @@ export const ThreePillarTab: React.FC<{ onOpenLedger?: (mode: LedgerMode) => voi
             <button
               type="button"
               onClick={() => onOpenLedger?.('pillar1800')}
-              className="w-full flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl border border-dashed border-black/15 dark:border-white/15 text-[12px] font-semibold text-neutral-600 dark:text-neutral-300 hover:bg-black/[0.03] dark:hover:bg-white/[0.04] hover:border-black/25 dark:hover:border-white/25 transition-colors"
+              className="w-full flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl border border-dashed border-black/15 dark:border-white/15 text-[calc(12px*var(--fs))] font-semibold text-neutral-600 dark:text-neutral-300 hover:bg-black/[0.03] dark:hover:bg-white/[0.04] hover:border-black/25 dark:hover:border-white/25 transition-colors"
             >
               查看 / 管理本週逐筆流水(對獎・改期・撤銷)
               <ChevronRight className="w-3.5 h-3.5" />

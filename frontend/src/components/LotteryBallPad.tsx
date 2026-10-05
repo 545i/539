@@ -113,7 +113,7 @@ export const LotteryBallPad: React.FC<Props> = ({
               <button
                 type="button"
                 onClick={handleRandomSelect}
-                className="px-2.5 py-1 rounded-full text-[10px] font-semibold border border-black/10 dark:border-white/10 bg-white dark:bg-[#161616] text-neutral-700 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5 flex items-center gap-1 transition-colors active:scale-95"
+                className="px-2.5 py-1 rounded-full text-[calc(10px*var(--fs))] font-semibold border border-black/10 dark:border-white/10 bg-white dark:bg-[#161616] text-neutral-700 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5 flex items-center gap-1 transition-colors active:scale-95"
               >
                 <Dices className="w-3 h-3 text-neutral-500" />
                 隨機
@@ -121,7 +121,7 @@ export const LotteryBallPad: React.FC<Props> = ({
               <button
                 type="button"
                 onClick={handleHotSelect}
-                className="px-2.5 py-1 rounded-full text-[10px] font-semibold border border-black/10 dark:border-white/10 bg-white dark:bg-[#161616] text-neutral-700 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5 flex items-center gap-1 transition-colors active:scale-95"
+                className="px-2.5 py-1 rounded-full text-[calc(10px*var(--fs))] font-semibold border border-black/10 dark:border-white/10 bg-white dark:bg-[#161616] text-neutral-700 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5 flex items-center gap-1 transition-colors active:scale-95"
               >
                 <Flame className="w-3 h-3 text-amber-500" />
                 熱門
@@ -129,7 +129,7 @@ export const LotteryBallPad: React.FC<Props> = ({
               <button
                 type="button"
                 onClick={() => setIsKeypadOpen(!isKeypadOpen)}
-                className={`px-2.5 py-1 rounded-full text-[10px] font-semibold border transition-colors flex items-center gap-1 active:scale-95 ${
+                className={`px-2.5 py-1 rounded-full text-[calc(10px*var(--fs))] font-semibold border transition-colors flex items-center gap-1 active:scale-95 ${
                   isKeypadOpen 
                     ? 'bg-black text-white dark:bg-white dark:text-black border-black dark:border-white' 
                     : 'border-black/10 dark:border-white/10 bg-white dark:bg-[#161616] text-neutral-700 dark:text-neutral-300'
@@ -185,7 +185,7 @@ export const LotteryBallPad: React.FC<Props> = ({
         <>
           {/* Pillar 1 */}
           <div>
-            <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-semibold text-neutral-500 mb-1.5">
+            <div className="flex items-center gap-1.5 text-[calc(10px*var(--fs))] uppercase tracking-wider font-semibold text-neutral-500 mb-1.5">
               <span className="w-1.5 h-1.5 rounded-full bg-neutral-900 dark:bg-white"></span>
               <span>第 1 柱 (10-18)</span>
             </div>
@@ -196,7 +196,7 @@ export const LotteryBallPad: React.FC<Props> = ({
 
           {/* Pillar 2 */}
           <div>
-            <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-semibold text-amber-600 dark:text-amber-400 mb-1.5">
+            <div className="flex items-center gap-1.5 text-[calc(10px*var(--fs))] uppercase tracking-wider font-semibold text-amber-600 dark:text-amber-400 mb-1.5">
               <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
               <span>第 2 柱 (20-29)</span>
             </div>
@@ -207,7 +207,7 @@ export const LotteryBallPad: React.FC<Props> = ({
 
           {/* Pillar 3 */}
           <div>
-            <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-semibold text-emerald-600 dark:text-emerald-400 mb-1.5">
+            <div className="flex items-center gap-1.5 text-[calc(10px*var(--fs))] uppercase tracking-wider font-semibold text-emerald-600 dark:text-emerald-400 mb-1.5">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
               <span>第 3 柱 (其餘號碼)</span>
             </div>
@@ -232,12 +232,12 @@ export const LotteryBallPad: React.FC<Props> = ({
       <div className="flex items-center justify-between pt-2.5 border-t border-black/[0.06] dark:border-white/[0.06] text-xs gap-2 flex-wrap">
         <div className="text-neutral-600 dark:text-neutral-400 flex-1 min-w-0">
           {selectedBalls.length === 0 ? (
-            <span className="text-neutral-400 dark:text-neutral-500 text-[11px] font-mono block truncate">
+            <span className="text-neutral-400 dark:text-neutral-500 text-[calc(11px*var(--fs))] font-mono block truncate">
               點選號碼 (最多 {maxBalls} 顆)
             </span>
           ) : (
             <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="text-[11px] font-semibold text-neutral-500">已選 ({selectedBalls.length}):</span>
+              <span className="text-[calc(11px*var(--fs))] font-semibold text-neutral-500">已選 ({selectedBalls.length}):</span>
               <span className="font-mono font-bold text-xs text-neutral-900 dark:text-white bg-black/5 dark:bg-white/10 px-1.5 py-0.5 rounded">
                 {selectedBalls.sort((a, b) => a - b).map(n => n.toString().padStart(2, '0')).join(' ')}
               </span>
@@ -250,7 +250,7 @@ export const LotteryBallPad: React.FC<Props> = ({
           id="clear-balls-btn"
           disabled={selectedBalls.length === 0}
           onClick={onClear}
-          className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] uppercase tracking-wider font-semibold rounded-full border border-black/10 dark:border-white/10 bg-white dark:bg-[#161616] text-neutral-700 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5 disabled:opacity-30 disabled:cursor-not-allowed transition-colors active:scale-95 shrink-0"
+          className="inline-flex items-center gap-1 px-2.5 py-1 text-[calc(11px*var(--fs))] uppercase tracking-wider font-semibold rounded-full border border-black/10 dark:border-white/10 bg-white dark:bg-[#161616] text-neutral-700 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5 disabled:opacity-30 disabled:cursor-not-allowed transition-colors active:scale-95 shrink-0"
         >
           <Trash2 className="w-3 h-3" />
           清空

@@ -53,7 +53,7 @@ const Ball: React.FC<{ n: number; tone?: BallTone; size?: 'sm' | 'md' }> = ({
 }) => (
   <span
     className={`inline-flex items-center justify-center rounded-full font-mono font-bold ${
-      size === 'sm' ? 'w-6 h-6 text-[10px]' : 'w-8 h-8 text-xs'
+      size === 'sm' ? 'w-6 h-6 text-[calc(10px*var(--fs))]' : 'w-8 h-8 text-xs'
     } ${tone === 'band' ? bandBall(n) : TONE[tone]}`}
   >
     {pad2(n)}
@@ -76,10 +76,10 @@ const StrategyRow: React.FC<{ s: PredictStrategyDTO }> = ({ s }) => (
           {s.label}
         </div>
         <div className="flex items-center gap-1.5 mt-0.5">
-          <span className="text-[10px] font-mono uppercase tracking-[0.18em] text-neutral-400">
+          <span className="text-[calc(10px*var(--fs))] font-mono uppercase tracking-[0.18em] text-neutral-400">
             {s.key}
           </span>
-          <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-semibold ${
+          <span className={`text-[calc(9px*var(--fs))] px-1.5 py-0.5 rounded-full font-semibold ${
             s.ranked
               ? 'bg-blue-500/15 text-blue-600 dark:text-blue-300'
               : 'bg-neutral-500/15 text-neutral-500 dark:text-neutral-400'
@@ -95,7 +95,7 @@ const StrategyRow: React.FC<{ s: PredictStrategyDTO }> = ({ s }) => (
           s.sets.map((nums, i) => (
             <div key={i} className="flex items-center gap-2 flex-wrap">
               {s.sets.length > 1 && (
-                <span className="w-7 shrink-0 text-[10px] font-mono text-neutral-400">
+                <span className="w-7 shrink-0 text-[calc(10px*var(--fs))] font-mono text-neutral-400">
                   #{i + 1}
                 </span>
               )}
@@ -107,7 +107,7 @@ const StrategyRow: React.FC<{ s: PredictStrategyDTO }> = ({ s }) => (
             </div>
           ))
         )}
-        <p className="text-[11px] leading-relaxed text-neutral-500 dark:text-neutral-400">
+        <p className="text-[calc(11px*var(--fs))] leading-relaxed text-neutral-500 dark:text-neutral-400">
           {s.desc}
         </p>
       </div>
@@ -118,7 +118,7 @@ const StrategyRow: React.FC<{ s: PredictStrategyDTO }> = ({ s }) => (
 // 統計檢定用的小卡片 + 結論徽章(綠=符合隨機、琥珀=偏離,只是樣本波動不代表可預測)
 const StatCard: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
   <div className="rounded-xl border border-black/[0.06] dark:border-white/[0.08] bg-black/[0.015] dark:bg-white/[0.02] p-3.5 space-y-1.5">
-    <div className="text-[11px] font-display font-bold uppercase tracking-wide text-neutral-700 dark:text-neutral-200">
+    <div className="text-[calc(11px*var(--fs))] font-display font-bold uppercase tracking-wide text-neutral-700 dark:text-neutral-200">
       {title}
     </div>
     {children}
@@ -127,7 +127,7 @@ const StatCard: React.FC<{ title: string; children: React.ReactNode }> = ({ titl
 
 const Verdict: React.FC<{ ok: boolean; text: string }> = ({ ok, text }) => (
   <span
-    className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+    className={`inline-block px-2 py-0.5 rounded-full text-[calc(10px*var(--fs))] font-semibold ${
       ok
         ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
         : 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
@@ -206,7 +206,7 @@ export const PredictionView: React.FC = () => {
       {/* 期望值提醒 */}
       <div className="p-4 rounded-2xl border border-amber-500/30 bg-amber-500/[0.06] flex items-start gap-2.5">
         <Info className="w-4 h-4 mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
-        <p className="text-[11px] sm:text-xs leading-relaxed text-neutral-700 dark:text-neutral-300">
+        <p className="text-[calc(11px*var(--fs))] sm:text-xs leading-relaxed text-neutral-700 dark:text-neutral-300">
           {pred.data?.notice ??
             '五種策略的期望中獎率完全相同,下面的排行只是把運氣視覺化,不代表哪個策略比較會中。理性娛樂、量力而為。'}
         </p>
@@ -270,28 +270,28 @@ export const PredictionView: React.FC = () => {
               {/* 敘述性統計 */}
               <StatCard title="敘述性統計">
                 {ana.data.descriptive.sum && (
-                  <p className="text-[11px] text-neutral-600 dark:text-neutral-300">
+                  <p className="text-[calc(11px*var(--fs))] text-neutral-600 dark:text-neutral-300">
                     和值 平均 <b>{ana.data.descriptive.sum.mean}</b> · 中位 {ana.data.descriptive.sum.median} ·
                     標準差 {ana.data.descriptive.sum.std}({ana.data.descriptive.sum.min}~{ana.data.descriptive.sum.max})
                   </p>
                 )}
-                <p className="text-[11px] text-neutral-600 dark:text-neutral-300">
+                <p className="text-[calc(11px*var(--fs))] text-neutral-600 dark:text-neutral-300">
                   每期平均 奇數 {ana.data.descriptive.odd_avg} 個、大數 {ana.data.descriptive.big_avg} 個;
                   每號期望出現 {ana.data.descriptive.expected_per_num} 次
                 </p>
                 <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
-                  <span className="text-[10px] text-neutral-400">熱</span>
+                  <span className="text-[calc(10px*var(--fs))] text-neutral-400">熱</span>
                   {ana.data.descriptive.hot.map(h => <Ball key={h.num} n={h.num} size="sm" />)}
                 </div>
                 <div className="flex items-center gap-1.5 flex-wrap">
-                  <span className="text-[10px] text-neutral-400">冷</span>
+                  <span className="text-[calc(10px*var(--fs))] text-neutral-400">冷</span>
                   {ana.data.descriptive.cold.map(h => <Ball key={h.num} n={h.num} size="sm" />)}
                 </div>
               </StatCard>
 
               {/* 均勻度檢定 */}
               <StatCard title="均勻度檢定(χ² vs 均勻)">
-                <p className="text-[11px] font-mono text-neutral-600 dark:text-neutral-300">
+                <p className="text-[calc(11px*var(--fs))] font-mono text-neutral-600 dark:text-neutral-300">
                   χ² = {ana.data.uniformity.chi2}(自由度 {ana.data.uniformity.dof}) · p = {ana.data.uniformity.p}
                 </p>
                 <Verdict ok={ana.data.uniformity.uniform} text={ana.data.uniformity.verdict} />
@@ -299,7 +299,7 @@ export const PredictionView: React.FC = () => {
 
               {/* 獨立性檢定 */}
               <StatCard title="獨立性檢定(前後期 χ²)">
-                <p className="text-[11px] font-mono text-neutral-600 dark:text-neutral-300">
+                <p className="text-[calc(11px*var(--fs))] font-mono text-neutral-600 dark:text-neutral-300">
                   χ² = {ana.data.independence.chi2}(自由度 {ana.data.independence.dof}) · p = {ana.data.independence.p}
                 </p>
                 <Verdict ok={ana.data.independence.independent} text={ana.data.independence.verdict} />
@@ -308,7 +308,7 @@ export const PredictionView: React.FC = () => {
               {/* 皮爾森相關 */}
               <StatCard title="皮爾森相關(相鄰兩期特徵)">
                 {ana.data.pearson.features.map(f => (
-                  <div key={f.feature} className="flex items-center justify-between text-[11px] text-neutral-600 dark:text-neutral-300">
+                  <div key={f.feature} className="flex items-center justify-between text-[calc(11px*var(--fs))] text-neutral-600 dark:text-neutral-300">
                     <span>{f.feature}</span>
                     <span className="font-mono">
                       r = {f.r} <span className="text-neutral-400">({f.note})</span>
@@ -321,7 +321,7 @@ export const PredictionView: React.FC = () => {
               <StatCard title="貢獻性分析(各號對均勻度 χ² 的貢獻)">
                 <div className="space-y-1">
                   {ana.data.contribution.rows.slice(0, 6).map(r => (
-                    <div key={r.num} className="flex items-center gap-2 text-[11px]">
+                    <div key={r.num} className="flex items-center gap-2 text-[calc(11px*var(--fs))]">
                       <Ball n={r.num} size="sm" />
                       <span className="font-mono text-neutral-500">
                         實{r.observed}/期{r.expected}
@@ -337,10 +337,10 @@ export const PredictionView: React.FC = () => {
 
               {/* 變異數模擬 */}
               <StatCard title="變異數模擬(蒙地卡羅 vs 公平隨機)">
-                <p className="text-[11px] font-mono text-neutral-600 dark:text-neutral-300">
+                <p className="text-[calc(11px*var(--fs))] font-mono text-neutral-600 dark:text-neutral-300">
                   觀測變異 {ana.data.variance_sim.observed_var} · 隨機常態 {ana.data.variance_sim.sim_lo}~{ana.data.variance_sim.sim_hi}
                 </p>
-                <p className="text-[11px] text-neutral-600 dark:text-neutral-300">
+                <p className="text-[calc(11px*var(--fs))] text-neutral-600 dark:text-neutral-300">
                   落在模擬分佈第 <b>{ana.data.variance_sim.percentile}</b> 百分位
                 </p>
                 <Verdict
@@ -349,7 +349,7 @@ export const PredictionView: React.FC = () => {
                 />
               </StatCard>
             </div>
-            <p className="text-[11px] text-neutral-400 dark:text-neutral-500">{ana.data.notice}</p>
+            <p className="text-[calc(11px*var(--fs))] text-neutral-400 dark:text-neutral-500">{ana.data.notice}</p>
           </>
         )}
         {ana.data && ana.data.periods === 0 && (
@@ -376,14 +376,14 @@ export const PredictionView: React.FC = () => {
                   >
                     {pad2(c.num)}
                   </span>
-                  <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-semibold ${cfg.chip}`}>
+                  <span className={`text-[calc(9px*var(--fs))] px-1.5 py-0.5 rounded-full font-semibold ${cfg.chip}`}>
                     {cfg.label}
                   </span>
                 </div>
               );
             })}
           </div>
-          <p className="text-[11px] leading-relaxed text-neutral-500 dark:text-neutral-400">
+          <p className="text-[calc(11px*var(--fs))] leading-relaxed text-neutral-500 dark:text-neutral-400">
             這是把熱2、冷2、歷史2、單雙(1奇1偶)各取幾顆併成的參考組合。
           </p>
         </div>
@@ -407,7 +407,7 @@ export const PredictionView: React.FC = () => {
             </p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-[10px] text-neutral-400">組數(只影響均衡)</span>
+            <span className="text-[calc(10px*var(--fs))] text-neutral-400">組數(只影響均衡)</span>
             <div className="inline-flex p-1 rounded-xl bg-black/[0.03] dark:bg-white/[0.04] border border-black/[0.06] dark:border-white/[0.06] gap-1">
               {SET_OPTIONS.map(n => (
                 <button
@@ -438,7 +438,7 @@ export const PredictionView: React.FC = () => {
         </div>
 
         {pred.data && (
-          <p className="text-[11px] text-neutral-400 dark:text-neutral-500">
+          <p className="text-[calc(11px*var(--fs))] text-neutral-400 dark:text-neutral-500">
             熱/冷/頻率為選定範圍內的確定性排名 —— 與統計檢定完全一致;均衡依期號推導的
             固定種子抽樣後只看單多 / 雙多(seed {pred.data.seed})。同一範圍、同一期永遠同一組,切走再切回都不變。
           </p>
@@ -478,7 +478,7 @@ export const PredictionView: React.FC = () => {
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="text-[10px] uppercase tracking-wider text-neutral-400">
+                  <tr className="text-[calc(10px*var(--fs))] uppercase tracking-wider text-neutral-400">
                     <th className="text-left font-semibold py-1.5 w-16">名次</th>
                     <th className="text-left font-semibold py-1.5">策略</th>
                     <th className="text-right font-semibold py-1.5">期數</th>
@@ -544,7 +544,7 @@ export const PredictionView: React.FC = () => {
                 </tbody>
               </table>
             </div>
-            <p className="text-[11px] text-neutral-400">
+            <p className="text-[calc(11px*var(--fs))] text-neutral-400">
               參考基準:每期開 {review.data.pick} 顆、{review.data.num_max} 選{' '}
               {review.data.pick},隨便選 {review.data.pick} 顆的期望命中是{' '}
               {review.data.expected_avg.toFixed(2)} 顆;單雙預測約 50%。期數這麼少,誰在前面純屬偶然。
@@ -559,7 +559,7 @@ export const PredictionView: React.FC = () => {
           <ListOrdered className="w-4 h-4 text-neutral-400" />
           逐期明細
         </h3>
-        <p className="text-[11px] text-neutral-400">
+        <p className="text-[calc(11px*var(--fs))] text-neutral-400">
           點開某一期,看熱號 / 冷號 / 歷史頻率押了哪些號碼(綠底=押中的號)。
           <b>均衡只押單多 / 雙多</b>(不列號碼),與當期開獎一致就算「中」。每期只用
           「該期之前」的資料重新出號,不偷看答案。
@@ -603,11 +603,11 @@ export const PredictionView: React.FC = () => {
                     ))}
                   </div>
                   <div className="ml-auto flex items-center gap-2 shrink-0">
-                    <span className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold bg-black/[0.04] dark:bg-white/[0.06] text-neutral-600 dark:text-neutral-300">
+                    <span className="text-[calc(10px*var(--fs))] px-1.5 py-0.5 rounded-full font-semibold bg-black/[0.04] dark:bg-white/[0.06] text-neutral-600 dark:text-neutral-300">
                       開獎 {row.draw_lean}
                     </span>
                     {row.oe_win !== null && (
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${
+                      <span className={`text-[calc(10px*var(--fs))] px-1.5 py-0.5 rounded-full font-semibold ${
                         row.oe_win
                           ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
                           : 'bg-neutral-500/15 text-neutral-500'
@@ -615,7 +615,7 @@ export const PredictionView: React.FC = () => {
                         均衡單雙 {row.oe_win ? '中' : '未中'}
                       </span>
                     )}
-                    <span className="text-[10px] font-mono uppercase tracking-wider text-neutral-400">
+                    <span className="text-[calc(10px*var(--fs))] font-mono uppercase tracking-wider text-neutral-400">
                       最佳 {best} 顆
                     </span>
                   </div>
@@ -628,7 +628,7 @@ export const PredictionView: React.FC = () => {
                       const hit = new Set(p.matched);
                       return (
                         <div key={s.key} className="flex items-center gap-2 flex-wrap">
-                          <span className="w-24 shrink-0 text-[11px] font-semibold text-neutral-600 dark:text-neutral-300">
+                          <span className="w-24 shrink-0 text-[calc(11px*var(--fs))] font-semibold text-neutral-600 dark:text-neutral-300">
                             {s.label}
                           </span>
                           {s.key === 'balanced' ? (
@@ -648,7 +648,7 @@ export const PredictionView: React.FC = () => {
                           <div className="ml-auto flex items-center gap-2 shrink-0">
                             {p.oe_win !== null && (
                               <>
-                                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${
+                                <span className={`text-[calc(10px*var(--fs))] px-1.5 py-0.5 rounded-full font-semibold ${
                                   p.oe_win
                                     ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
                                     : 'bg-neutral-500/15 text-neutral-500'
@@ -658,7 +658,7 @@ export const PredictionView: React.FC = () => {
                               </>
                             )}
                             {s.key !== 'balanced' && (
-                            <span className={`text-[10px] font-mono ${
+                            <span className={`text-[calc(10px*var(--fs))] font-mono ${
                               p.hits > 0 ? 'text-neutral-500' : 'text-neutral-400'
                             }`}>
                               {p.hits} 顆

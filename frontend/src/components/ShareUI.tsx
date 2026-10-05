@@ -35,13 +35,13 @@ export const AllocList: React.FC<{ items: AllocItem[] }> = ({ items }) => (
     {items.map(r => (
       <div key={r.name} className="flex items-center gap-2 py-1.5">
         <div className="min-w-0 flex-1">
-          <div className={`truncate ${r.highlight ? 'text-[13px] font-bold text-neutral-900 dark:text-white' : 'text-[12px] text-neutral-600 dark:text-neutral-300'}`}>
-            {r.name}{r.highlight && <span className="ml-1 text-[10px] font-normal text-neutral-400">(你)</span>}
-            {r.pct !== undefined && <span className="ml-1.5 text-[11px] font-mono font-normal text-neutral-400">{r.pct}%</span>}
+          <div className={`truncate ${r.highlight ? 'text-[calc(13px*var(--fs))] font-bold text-neutral-900 dark:text-white' : 'text-[calc(12px*var(--fs))] text-neutral-600 dark:text-neutral-300'}`}>
+            {r.name}{r.highlight && <span className="ml-1 text-[calc(10px*var(--fs))] font-normal text-neutral-400">(你)</span>}
+            {r.pct !== undefined && <span className="ml-1.5 text-[calc(11px*var(--fs))] font-mono font-normal text-neutral-400">{r.pct}%</span>}
           </div>
-          {r.sub && <div className="text-[10px] text-neutral-400 font-mono truncate">{r.sub}</div>}
+          {r.sub && <div className="text-[calc(10px*var(--fs))] text-neutral-400 font-mono truncate">{r.sub}</div>}
         </div>
-        <span className={`font-mono shrink-0 ${r.highlight ? 'text-base font-bold text-neutral-900 dark:text-white' : 'text-[13px] font-semibold text-neutral-700 dark:text-neutral-200'}`}>
+        <span className={`font-mono shrink-0 ${r.highlight ? 'text-base font-bold text-neutral-900 dark:text-white' : 'text-[calc(13px*var(--fs))] font-semibold text-neutral-700 dark:text-neutral-200'}`}>
           {signed(r.amount)}
         </span>
       </div>
@@ -52,7 +52,7 @@ export const AllocList: React.FC<{ items: AllocItem[] }> = ({ items }) => (
 // 大數字統計(標籤在上、數字大字;不加框、不上色)
 export const StatTile: React.FC<{ label: string; value: React.ReactNode; big?: boolean }> = ({ label, value, big }) => (
   <div className="min-w-0">
-    <div className="text-[10px] text-neutral-500 dark:text-neutral-400">{label}</div>
+    <div className="text-[calc(10px*var(--fs))] text-neutral-500 dark:text-neutral-400">{label}</div>
     <div className={`font-mono font-bold truncate text-neutral-900 dark:text-white ${big ? 'text-2xl' : 'text-lg'}`}>{value}</div>
   </div>
 );

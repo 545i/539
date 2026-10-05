@@ -120,7 +120,7 @@ export const ExportView: React.FC = () => {
           <div className="flex flex-col sm:flex-row sm:items-center gap-3">
             <div className="sm:w-64 px-3 py-2 text-xs sm:text-sm rounded-xl border border-black/10 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.03] text-neutral-900 dark:text-white">
               匯出對象:<strong>{game?.name ?? '載入中…'}</strong>
-              <div className="text-[10px] text-neutral-500 mt-0.5">要換遊戲請用頁首的切換器</div>
+              <div className="text-[calc(10px*var(--fs))] text-neutral-500 mt-0.5">要換遊戲請用頁首的切換器</div>
             </div>
             <button
               onClick={() => run('report', () => api.exportReport(gameKey))}

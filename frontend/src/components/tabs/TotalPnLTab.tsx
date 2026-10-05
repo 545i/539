@@ -230,10 +230,10 @@ export const TotalPnLTab: React.FC = () => {
       <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <span className="text-[10px] uppercase tracking-[0.25em] text-neutral-400 dark:text-neutral-500 font-semibold">
+            <span className="text-[calc(10px*var(--fs))] uppercase tracking-[0.25em] text-neutral-400 dark:text-neutral-500 font-semibold">
               Consolidated Balance & Risk Management
             </span>
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-black/5 dark:bg-white/10 text-neutral-600 dark:text-neutral-300">
+            <span className="px-2 py-0.5 rounded-full text-[calc(10px*var(--fs))] font-mono bg-black/5 dark:bg-white/10 text-neutral-600 dark:text-neutral-300">
               全策略總帳{loggedIn && selEd !== 'all' ? `・${edName(selEd)}` : ''}
             </span>
           </div>
@@ -247,14 +247,14 @@ export const TotalPnLTab: React.FC = () => {
 
         <div className="flex items-center justify-between md:justify-end gap-4 border-t md:border-t-0 pt-2.5 md:pt-0 border-black/[0.06] dark:border-white/[0.06]">
           <div className="text-left md:text-right">
-            <span className="text-[10px] uppercase tracking-wider text-neutral-400 block">整體帳號淨損益</span>
+            <span className="text-[calc(10px*var(--fs))] uppercase tracking-wider text-neutral-400 block">整體帳號淨損益</span>
             <div className={`text-xl sm:text-2xl font-mono font-bold ${
               totals.pnl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
             }`}>
               {signed(totals.pnl)}
             </div>
           </div>
-          <div className="text-right text-[11px] font-mono text-neutral-400">
+          <div className="text-right text-[calc(11px*var(--fs))] font-mono text-neutral-400">
             {totals.rounds} 局・中獎 {totals.hits} 局 ({totals.winRate.toFixed(0)}%)
           </div>
         </div>
@@ -263,7 +263,7 @@ export const TotalPnLTab: React.FC = () => {
       {/* 版切換:整頁數字依選中的版重算('全部版' = 總版合併) */}
       {loggedIn && usedEds.length > 1 && (
         <div className="flex flex-wrap items-center gap-1.5">
-          <span className="text-[10px] uppercase tracking-wider text-neutral-400 font-semibold flex items-center gap-1">
+          <span className="text-[calc(10px*var(--fs))] uppercase tracking-wider text-neutral-400 font-semibold flex items-center gap-1">
             <Layers className="w-3.5 h-3.5" /> 依版檢視
           </span>
           {(['all', ...usedEds] as (number | 'all')[]).map(ed => (
@@ -271,7 +271,7 @@ export const TotalPnLTab: React.FC = () => {
               key={String(ed)}
               type="button"
               onClick={() => setSelEd(ed)}
-              className={`px-2.5 py-1 rounded-lg text-[10px] font-semibold transition-all ${
+              className={`px-2.5 py-1 rounded-lg text-[calc(10px*var(--fs))] font-semibold transition-all ${
                 selEd === ed
                   ? 'bg-black text-white dark:bg-white dark:text-black'
                   : 'border border-black/10 dark:border-white/10 text-neutral-600 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5'
@@ -286,35 +286,35 @@ export const TotalPnLTab: React.FC = () => {
       {/* 6 Overall Metric Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-6 gap-2.5 sm:gap-3">
         <div className="p-3.5 sm:p-4 rounded-xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] col-span-2 sm:col-span-1">
-          <div className="text-[10px] uppercase tracking-wider text-neutral-400">累積淨損益</div>
+          <div className="text-[calc(10px*var(--fs))] uppercase tracking-wider text-neutral-400">累積淨損益</div>
           <div className={`text-lg sm:text-xl font-bold font-mono mt-0.5 ${
             totals.pnl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
           }`}>
             {signed(totals.pnl)}
           </div>
           {totals.pnl < 0 && (
-            <div className="text-[10px] text-rose-500 dark:text-rose-400 mt-0.5 flex items-center gap-0.5">
+            <div className="text-[calc(10px*var(--fs))] text-rose-500 dark:text-rose-400 mt-0.5 flex items-center gap-0.5">
               <TrendingDown className="w-3 h-3" /> 需執行追平
             </div>
           )}
         </div>
 
         <div className="p-3.5 sm:p-4 rounded-xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08]">
-          <div className="text-[10px] uppercase tracking-wider text-neutral-400">總投入成本</div>
+          <div className="text-[calc(10px*var(--fs))] uppercase tracking-wider text-neutral-400">總投入成本</div>
           <div className="text-base sm:text-lg font-bold font-mono text-neutral-900 dark:text-white mt-0.5">
             {totals.cost.toLocaleString()}
           </div>
         </div>
 
         <div className="p-3.5 sm:p-4 rounded-xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08]">
-          <div className="text-[10px] uppercase tracking-wider text-neutral-400">總回收彩金</div>
+          <div className="text-[calc(10px*var(--fs))] uppercase tracking-wider text-neutral-400">總回收彩金</div>
           <div className="text-base sm:text-lg font-bold font-mono text-emerald-600 dark:text-emerald-400 mt-0.5">
             {totals.payout.toLocaleString()}
           </div>
         </div>
 
         <div className="p-3.5 sm:p-4 rounded-xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08]">
-          <div className="text-[10px] uppercase tracking-wider text-neutral-400">報酬率 (ROI)</div>
+          <div className="text-[calc(10px*var(--fs))] uppercase tracking-wider text-neutral-400">報酬率 (ROI)</div>
           <div className={`text-base sm:text-lg font-bold font-mono mt-0.5 ${
             totals.roi >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
           }`}>
@@ -323,21 +323,21 @@ export const TotalPnLTab: React.FC = () => {
         </div>
 
         <div className="p-3.5 sm:p-4 rounded-xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08]">
-          <div className="text-[10px] uppercase tracking-wider text-neutral-400">綜合勝率</div>
+          <div className="text-[calc(10px*var(--fs))] uppercase tracking-wider text-neutral-400">綜合勝率</div>
           <div className="text-base sm:text-lg font-bold font-mono text-neutral-900 dark:text-white mt-0.5">
             {totals.winRate.toFixed(1)}%
           </div>
-          <div className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-0.5">
+          <div className="text-[calc(10px*var(--fs))] text-emerald-600 dark:text-emerald-400 mt-0.5">
             中 {totals.hits} / {totals.rounds} 局
           </div>
         </div>
 
         <div className="p-3.5 sm:p-4 rounded-xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08]">
-          <div className="text-[10px] uppercase tracking-wider text-neutral-400">累積總車數</div>
+          <div className="text-[calc(10px*var(--fs))] uppercase tracking-wider text-neutral-400">累積總車數</div>
           <div className="text-base sm:text-lg font-bold font-mono text-neutral-900 dark:text-white mt-0.5">
-            {totals.cars.toLocaleString()} <span className="text-[10px] font-normal text-neutral-400">車/支</span>
+            {totals.cars.toLocaleString()} <span className="text-[calc(10px*var(--fs))] font-normal text-neutral-400">車/支</span>
           </div>
-          <div className="text-[10px] text-neutral-400 mt-0.5">
+          <div className="text-[calc(10px*var(--fs))] text-neutral-400 mt-0.5">
             共 {totals.rounds} 局
           </div>
         </div>
@@ -346,7 +346,7 @@ export const TotalPnLTab: React.FC = () => {
       {ledgerLoading && <div className="text-xs text-neutral-400">載入流水帳中…</div>}
       {ledgerError && <div className="text-xs text-rose-500">{ledgerError}</div>}
       {!loggedIn && (
-        <div className="text-[11px] text-neutral-400">
+        <div className="text-[calc(11px*var(--fs))] text-neutral-400">
           未登入:以下為示範數字。登入後這裡會彙整你實際記在四個分頁的流水帳。
         </div>
       )}
@@ -359,7 +359,7 @@ export const TotalPnLTab: React.FC = () => {
             <h3 className="text-xs sm:text-sm font-display font-bold text-neutral-900 dark:text-white uppercase tracking-wide flex items-center gap-1.5">
               <CalendarClock className="w-4 h-4 text-neutral-500" /> 各週損益
             </h3>
-            <span className="text-[10px] font-mono text-neutral-400">週一~週日自動歸期(不計模擬版)</span>
+            <span className="text-[calc(10px*var(--fs))] font-mono text-neutral-400">週一~週日自動歸期(不計模擬版)</span>
           </div>
           <div className="lt-wrap border border-black/[0.08] dark:border-white/[0.08] rounded-xl overflow-x-auto">
             <table className="lt w-full">
@@ -381,7 +381,7 @@ export const TotalPnLTab: React.FC = () => {
                   <tr className="cursor-pointer hover:bg-black/[0.02] dark:hover:bg-white/[0.03]" onClick={() => toggleCycWeek(r.key)}>
                     <td className="font-semibold text-xs text-neutral-900 dark:text-white">
                       <span className="text-neutral-400 mr-1">{open ? '▾' : '▸'}</span>{r.name}
-                      <span className="ml-1.5 font-normal text-neutral-400 text-[10px]">{r.eds.length} 版</span>
+                      <span className="ml-1.5 font-normal text-neutral-400 text-[calc(10px*var(--fs))]">{r.eds.length} 版</span>
                     </td>
                     <td className="font-mono text-xs">{r.rounds}</td>
                     <td className="font-mono text-xs">{r.cost.toLocaleString()}</td>
@@ -394,11 +394,11 @@ export const TotalPnLTab: React.FC = () => {
                   {open && r.eds.map(ed => (
                     <tr key={r.key + '_' + ed.ed} className="bg-black/[0.02] dark:bg-white/[0.03]">
                       <td className="text-xs text-neutral-500 dark:text-neutral-400 pl-6">└ {ed.name}</td>
-                      <td className="font-mono text-[11px] text-neutral-500">{ed.rounds}</td>
-                      <td className="font-mono text-[11px] text-neutral-500">{ed.cost.toLocaleString()}</td>
-                      <td className="font-mono text-[11px] text-emerald-600/80 dark:text-emerald-400/80">{ed.payout.toLocaleString()}</td>
-                      <td className={`font-mono text-[11px] font-semibold ${ed.pnl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>{signed(ed.pnl)}</td>
-                      <td className="font-mono text-[11px] text-neutral-500">{ed.cost ? ((ed.pnl / ed.cost) * 100).toFixed(1) : '0.0'}%</td>
+                      <td className="font-mono text-[calc(11px*var(--fs))] text-neutral-500">{ed.rounds}</td>
+                      <td className="font-mono text-[calc(11px*var(--fs))] text-neutral-500">{ed.cost.toLocaleString()}</td>
+                      <td className="font-mono text-[calc(11px*var(--fs))] text-emerald-600/80 dark:text-emerald-400/80">{ed.payout.toLocaleString()}</td>
+                      <td className={`font-mono text-[calc(11px*var(--fs))] font-semibold ${ed.pnl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>{signed(ed.pnl)}</td>
+                      <td className="font-mono text-[calc(11px*var(--fs))] text-neutral-500">{ed.cost ? ((ed.pnl / ed.cost) * 100).toFixed(1) : '0.0'}%</td>
                     </tr>
                   ))}
                   </React.Fragment>
@@ -450,7 +450,7 @@ export const TotalPnLTab: React.FC = () => {
                       {row.pnl >= 0 ? `+${row.pnl.toLocaleString()}` : row.pnl.toLocaleString()}
                     </span>
                   </div>
-                  <div className="grid grid-cols-3 gap-1 text-[10px] text-neutral-500 pt-1 border-t border-black/[0.04] dark:border-white/[0.04]">
+                  <div className="grid grid-cols-3 gap-1 text-[calc(10px*var(--fs))] text-neutral-500 pt-1 border-t border-black/[0.04] dark:border-white/[0.04]">
                     <div>局數: <span className="font-mono text-neutral-800 dark:text-neutral-200">{row.rounds} (中{row.hits})</span></div>
                     <div>成本: <span className="font-mono text-neutral-800 dark:text-neutral-200">{row.cost.toLocaleString()}</span></div>
                     <div>ROI: <span className="font-mono text-neutral-800 dark:text-neutral-200">{row.roi}</span></div>
@@ -510,23 +510,23 @@ export const TotalPnLTab: React.FC = () => {
                     min={dateBounds.min || undefined}
                     max={wrEnd || dateBounds.max || undefined}
                     onChange={e => setWrStart(e.target.value)}
-                    className="flex-1 min-w-0 px-2 py-1 rounded-lg text-[11px] font-mono bg-black/[0.03] dark:bg-white/[0.05] border border-black/10 dark:border-white/10 text-neutral-700 dark:text-neutral-200"
+                    className="flex-1 min-w-0 px-2 py-1 rounded-lg text-[calc(11px*var(--fs))] font-mono bg-black/[0.03] dark:bg-white/[0.05] border border-black/10 dark:border-white/10 text-neutral-700 dark:text-neutral-200"
                   />
-                  <span className="text-[10px] text-neutral-400">~</span>
+                  <span className="text-[calc(10px*var(--fs))] text-neutral-400">~</span>
                   <input
                     type="date"
                     value={wrEnd}
                     min={wrStart || dateBounds.min || undefined}
                     max={dateBounds.max || undefined}
                     onChange={e => setWrEnd(e.target.value)}
-                    className="flex-1 min-w-0 px-2 py-1 rounded-lg text-[11px] font-mono bg-black/[0.03] dark:bg-white/[0.05] border border-black/10 dark:border-white/10 text-neutral-700 dark:text-neutral-200"
+                    className="flex-1 min-w-0 px-2 py-1 rounded-lg text-[calc(11px*var(--fs))] font-mono bg-black/[0.03] dark:bg-white/[0.05] border border-black/10 dark:border-white/10 text-neutral-700 dark:text-neutral-200"
                   />
                 </div>
                 {(wrStart || wrEnd) && (
                   <button
                     type="button"
                     onClick={() => { setWrStart(''); setWrEnd(''); }}
-                    className="text-[10px] text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 underline"
+                    className="text-[calc(10px*var(--fs))] text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 underline"
                   >
                     清除區間(看全部)
                   </button>
@@ -549,7 +549,7 @@ export const TotalPnLTab: React.FC = () => {
                         style={{ width: `${Math.min(100, wr)}%` }}
                       />
                     </div>
-                    <div className="text-[10px] text-neutral-400 font-mono">中 {row.hits} / {row.rounds} 局</div>
+                    <div className="text-[calc(10px*var(--fs))] text-neutral-400 font-mono">中 {row.hits} / {row.rounds} 局</div>
                   </div>
                 );
               })}
@@ -571,7 +571,7 @@ export const TotalPnLTab: React.FC = () => {
               <h3 className="text-xs sm:text-sm font-display font-bold text-neutral-900 dark:text-white uppercase tracking-wide">
                 02 / 帳戶淨值走勢曲線
               </h3>
-              <span className="text-[10px] font-mono text-neutral-400">即時計算</span>
+              <span className="text-[calc(10px*var(--fs))] font-mono text-neutral-400">即時計算</span>
             </div>
 
             <div className="relative h-44 sm:h-48 w-full pt-4 pb-4 px-2 sm:px-3 bg-black/[0.01] dark:bg-white/[0.01] rounded-xl border border-black/[0.06] dark:border-white/[0.06] flex flex-col justify-between overflow-hidden">
@@ -606,26 +606,26 @@ export const TotalPnLTab: React.FC = () => {
                       />
                     ))}
 
-                    <text x={curve.dots[0].cx} y={curve.dots[0].cy - 8} textAnchor="middle" className="text-[10px] font-mono fill-neutral-400">
+                    <text x={curve.dots[0].cx} y={curve.dots[0].cy - 8} textAnchor="middle" className="text-[calc(10px*var(--fs))] font-mono fill-neutral-400">
                       NT$ 0
                     </text>
                     <text
                       x={curve.dots[curve.dots.length - 1].cx}
                       y={curve.dots[curve.dots.length - 1].cy - 8}
                       textAnchor="end"
-                      className={`text-[10px] font-mono font-bold ${curve.last >= 0 ? 'fill-emerald-500' : 'fill-rose-500'}`}
+                      className={`text-[calc(10px*var(--fs))] font-mono font-bold ${curve.last >= 0 ? 'fill-emerald-500' : 'fill-rose-500'}`}
                     >
                       {signed(curve.last)}
                     </text>
                   </>
                 ) : (
-                  <text x="250" y="55" textAnchor="middle" className="text-[10px] font-mono fill-neutral-400">
+                  <text x="250" y="55" textAnchor="middle" className="text-[calc(10px*var(--fs))] font-mono fill-neutral-400">
                     {loggedIn ? '尚無流水紀錄' : '登入後顯示實際淨值走勢'}
                   </text>
                 )}
               </svg>
 
-              <div className="flex justify-between px-2 sm:px-4 text-[10px] font-mono text-neutral-400 pt-1 border-t border-black/[0.06] dark:border-white/[0.06]">
+              <div className="flex justify-between px-2 sm:px-4 text-[calc(10px*var(--fs))] font-mono text-neutral-400 pt-1 border-t border-black/[0.06] dark:border-white/[0.06]">
                 <span>{curve ? `${curve.firstDate} 起始` : '起始'}</span>
                 <span>{curve ? `${shownEntries.length} 筆紀錄` : '—'}</span>
                 <span>{curve ? curve.lastDate : '最新'}</span>
@@ -643,7 +643,7 @@ export const TotalPnLTab: React.FC = () => {
               <h3 className="text-xs sm:text-sm font-display font-bold text-neutral-900 dark:text-white uppercase tracking-wide">
                 03 / 追平回本方案矩陣
               </h3>
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-600 dark:text-rose-400 font-bold">
+              <span className="text-[calc(10px*var(--fs))] px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-600 dark:text-rose-400 font-bold">
                 目標: {signed(Math.max(0, -totals.pnl))}
               </span>
             </div>
@@ -654,7 +654,7 @@ export const TotalPnLTab: React.FC = () => {
                   <ShieldAlert className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
                   <span>最佳追平途徑推薦</span>
                 </div>
-                <p className="text-neutral-500 dark:text-neutral-400 text-[11px] leading-relaxed">
+                <p className="text-neutral-500 dark:text-neutral-400 text-[calc(11px*var(--fs))] leading-relaxed">
                   欲一次填平 <strong>{need.toLocaleString()}</strong> 虧損，建議採用「{bestPlan.game}」下注 {bestPlan.cars} 車 (成本 {bestPlan.cost}，命中可獲 {bestPlan.prize})，以最低成本回本。
                 </p>
               </div>
@@ -680,7 +680,7 @@ export const TotalPnLTab: React.FC = () => {
                     <span className="text-xs font-bold text-neutral-900 dark:text-white">{row.game}</span>
                     <span className="text-xs font-mono font-bold text-neutral-900 dark:text-white">{row.cars} 車</span>
                   </div>
-                  <div className="grid grid-cols-3 gap-1 text-[10px] text-neutral-500 pt-1 border-t border-black/[0.04] dark:border-white/[0.04]">
+                  <div className="grid grid-cols-3 gap-1 text-[calc(10px*var(--fs))] text-neutral-500 pt-1 border-t border-black/[0.04] dark:border-white/[0.04]">
                     <div>成本: <span className="font-mono text-neutral-800 dark:text-neutral-200">{row.cost}</span></div>
                     <div>彩金: <span className="font-mono text-emerald-600 dark:text-emerald-400 font-bold">{row.prize}</span></div>
                     <div>累積: <span className="font-mono text-emerald-600 dark:text-emerald-400 font-bold">{row.afterPnl}</span></div>

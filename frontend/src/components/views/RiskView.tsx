@@ -26,7 +26,7 @@ export const RiskView: React.FC = () => (
       <ShieldAlert className="w-6 h-6 text-amber-500" />
       <div>
         <h2 className="text-lg sm:text-xl font-display font-bold text-neutral-900 dark:text-white">風險與數學期望值提醒</h2>
-        <p className="text-[11px] sm:text-xs text-neutral-400">下注前必讀 · 理性娛樂</p>
+        <p className="text-[calc(11px*var(--fs))] sm:text-xs text-neutral-400">下注前必讀 · 理性娛樂</p>
       </div>
     </div>
 

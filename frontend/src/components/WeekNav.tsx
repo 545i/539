@@ -77,7 +77,7 @@ export const WeekNav: React.FC<{
       type="button"
       onClick={onToggleAll}
       title={allWeeks ? '點此改看單週' : '點此看全部週'}
-      className={`px-2 py-1 rounded-md text-[11px] font-mono font-semibold min-w-[8.5rem] text-center transition-colors ${
+      className={`px-2 py-1 rounded-md text-[calc(11px*var(--fs))] font-mono font-semibold min-w-[8.5rem] text-center transition-colors ${
         allWeeks
           ? 'bg-black text-white dark:bg-white dark:text-black'
           : 'bg-black/[0.04] dark:bg-white/[0.06] text-neutral-800 dark:text-neutral-100 hover:bg-black/10 dark:hover:bg-white/10'
@@ -109,7 +109,7 @@ export const WeekSubtotal: React.FC<{
   const win = records.filter(r => r.payout > 0).length;
   const pnl = ret - cost;
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] font-mono text-neutral-500 dark:text-neutral-400">
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[calc(10px*var(--fs))] font-mono text-neutral-500 dark:text-neutral-400">
       <span className="font-sans font-semibold text-neutral-600 dark:text-neutral-300">{label}</span>
       <span>{records.length} {unit}・過關 {win}</span>
       <span>投入 <span className="text-neutral-800 dark:text-neutral-200 font-bold">{cost.toLocaleString()}</span></span>

@@ -21,7 +21,7 @@ const Sparkline: React.FC<{ bars: number[]; maxMiss: number }> = ({ bars, maxMis
   const scale = Math.max(...bars, maxMiss, 10);
   return (
     <div>
-      <div className="text-[11px] font-semibold text-neutral-600 dark:text-neutral-300 mb-1.5">遺漏走勢(新→舊,末端為當前遺漏)</div>
+      <div className="text-[calc(11px*var(--fs))] font-semibold text-neutral-600 dark:text-neutral-300 mb-1.5">遺漏走勢(新→舊,末端為當前遺漏)</div>
       <div className="flex items-end gap-1 h-16">
         {bars.map((m, i) => {
           const isCurrent = i === bars.length - 1;
@@ -36,7 +36,7 @@ const Sparkline: React.FC<{ bars: number[]; maxMiss: number }> = ({ bars, maxMis
           );
         })}
       </div>
-      <div className="text-[10px] text-neutral-400 mt-1">歷史最大遺漏:{maxMiss} 期</div>
+      <div className="text-[calc(10px*var(--fs))] text-neutral-400 mt-1">歷史最大遺漏:{maxMiss} 期</div>
     </div>
   );
 };
@@ -63,7 +63,7 @@ const TargetDetail: React.FC<{ t: YahongSingleTargetDTO }> = ({ t }) => (
     <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
       {summaryCards(t.summary).map(c => (
         <div key={c.label} className="p-3 rounded-xl bg-black/[0.02] dark:bg-white/[0.03] border border-black/[0.06] dark:border-white/[0.06]">
-          <div className="text-[10px] uppercase tracking-wider text-neutral-400 truncate">{c.label}</div>
+          <div className="text-[calc(10px*var(--fs))] uppercase tracking-wider text-neutral-400 truncate">{c.label}</div>
           <div className="text-base font-mono font-bold text-neutral-900 dark:text-white mt-1 tabular-nums">{c.value}</div>
         </div>
       ))}
@@ -71,7 +71,7 @@ const TargetDetail: React.FC<{ t: YahongSingleTargetDTO }> = ({ t }) => (
 
     {/* 18 宗師(綠燈 / 紅燈) */}
     <div>
-      <div className="text-[11px] font-semibold text-neutral-600 dark:text-neutral-300 mb-2">18 宗師東西方合璧</div>
+      <div className="text-[calc(11px*var(--fs))] font-semibold text-neutral-600 dark:text-neutral-300 mb-2">18 宗師東西方合璧</div>
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
         {t.giants.map(g => (
           <div
@@ -80,7 +80,7 @@ const TargetDetail: React.FC<{ t: YahongSingleTargetDTO }> = ({ t }) => (
               g.green ? 'bg-emerald-500/10 border-emerald-500/25' : 'bg-rose-500/10 border-rose-500/25'
             }`}
           >
-            <div className="text-[10px] text-neutral-500 dark:text-neutral-400 truncate">{g.label}</div>
+            <div className="text-[calc(10px*var(--fs))] text-neutral-500 dark:text-neutral-400 truncate">{g.label}</div>
             <div className={`text-xs font-mono font-bold mt-0.5 tabular-nums ${
               g.green ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-700 dark:text-rose-300'
             }`}>
@@ -103,10 +103,10 @@ const Recent8: React.FC<{ rows: YahongRecentDrawDTO[] }> = ({ rows }) => (
     <div className="space-y-2">
       {rows.map(r => (
         <div key={r.date} className="flex items-center gap-3">
-          <span className="font-mono text-[11px] text-neutral-500 dark:text-neutral-400 w-24 shrink-0">{r.date}</span>
+          <span className="font-mono text-[calc(11px*var(--fs))] text-neutral-500 dark:text-neutral-400 w-24 shrink-0">{r.date}</span>
           <div className="flex flex-wrap gap-1.5">
             {r.nums.map((n, i) => (
-              <span key={i} className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-black/5 dark:bg-white/10 text-neutral-900 dark:text-white font-mono font-bold text-[11px]">
+              <span key={i} className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-black/5 dark:bg-white/10 text-neutral-900 dark:text-white font-mono font-bold text-[calc(11px*var(--fs))]">
                 {pad2(n)}
               </span>
             ))}
@@ -172,7 +172,7 @@ export const SinglePanel: React.FC<{ game: GameKey }> = ({ game }) => {
             </button>
           )}
         </div>
-        <p className="text-[11px] text-neutral-400">輸入一顆號碼查看該號 18 宗師與分級;留空只看全盤分級榜。</p>
+        <p className="text-[calc(11px*var(--fs))] text-neutral-400">輸入一顆號碼查看該號 18 宗師與分級;留空只看全盤分級榜。</p>
       </div>
 
       {loading && <Loading />}
@@ -209,20 +209,20 @@ export const SinglePanel: React.FC<{ game: GameKey }> = ({ game }) => {
                       type="button"
                       onClick={() => { setTarget(r.num); setInput(String(r.num)); }}
                       title={`綜合分 ${r.score.toFixed(1)}`}
-                      className={`inline-flex flex-col items-center px-1.5 py-1 rounded-lg text-[10px] font-mono transition-all hover:scale-105 ${GRADE_META[grade].dot}`}
+                      className={`inline-flex flex-col items-center px-1.5 py-1 rounded-lg text-[calc(10px*var(--fs))] font-mono transition-all hover:scale-105 ${GRADE_META[grade].dot}`}
                     >
                       <span className="font-bold text-xs">{pad2(r.num)}</span>
                       <span className="opacity-80">{r.score.toFixed(1)}</span>
                     </button>
                   ))}
                   {byGrade[grade].length === 0 && (
-                    <span className="text-[10px] text-neutral-400">—</span>
+                    <span className="text-[calc(10px*var(--fs))] text-neutral-400">—</span>
                   )}
                 </div>
               </div>
             ))}
           </div>
-          <p className="text-[10px] text-neutral-400">點任一號碼可回填並查看該號 18 宗師明細。分級為名次制(前 3 / 4~9 / 10~25 / 26+)。</p>
+          <p className="text-[calc(10px*var(--fs))] text-neutral-400">點任一號碼可回填並查看該號 18 宗師明細。分級為名次制(前 3 / 4~9 / 10~25 / 26+)。</p>
         </div>
       )}
     </div>

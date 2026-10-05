@@ -81,12 +81,12 @@ export const FormulaModal: React.FC<Props> = ({
                   <div className="p-3.5 rounded-xl bg-black/[0.02] dark:bg-white/[0.03] border border-black/[0.06] dark:border-white/[0.06]">
                     <div className="font-bold text-neutral-900 dark:text-white">單顆下注 (k ≈ 0.13)</div>
                     <div className="text-neutral-500 mt-1">連敗成長係數: 1.15x</div>
-                    <div className="text-neutral-400 text-[11px]">資本耐受度高，回本快</div>
+                    <div className="text-neutral-400 text-[calc(11px*var(--fs))]">資本耐受度高，回本快</div>
                   </div>
                   <div className="p-3.5 rounded-xl bg-black/[0.02] dark:bg-white/[0.03] border border-black/[0.06] dark:border-white/[0.06]">
                     <div className="font-bold text-neutral-900 dark:text-white">多顆下注 20顆 (k ≈ 0.52)</div>
                     <div className="text-neutral-500 mt-1">連敗成長係數: 2.08x</div>
-                    <div className="text-neutral-400 text-[11px]">中得勤但回本慢</div>
+                    <div className="text-neutral-400 text-[calc(11px*var(--fs))]">中得勤但回本慢</div>
                   </div>
                 </div>
               </div>

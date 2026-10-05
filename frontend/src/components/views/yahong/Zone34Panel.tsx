@@ -22,7 +22,7 @@ export const Zone34Panel: React.FC<{ game: GameKey }> = ({ game }) => {
               <Radar className="w-6 h-6" />
             </div>
             <div>
-              <div className="text-[11px] uppercase tracking-wider text-neutral-400">連續未出同區 3 顆以上</div>
+              <div className="text-[calc(11px*var(--fs))] uppercase tracking-wider text-neutral-400">連續未出同區 3 顆以上</div>
               <div className="text-3xl font-mono font-bold text-neutral-900 dark:text-white tabular-nums">
                 {data.consecutiveMiss} <span className="text-base font-sans font-normal text-neutral-400">期</span>
               </div>
@@ -32,11 +32,11 @@ export const Zone34Panel: React.FC<{ game: GameKey }> = ({ game }) => {
           {/* 四柱最冷號輔助顯示 */}
           {data.columns?.length > 0 && (
             <div className={`${cardClass} space-y-3`}>
-              <div className="text-[11px] font-semibold text-neutral-600 dark:text-neutral-300">四柱最冷號</div>
+              <div className="text-[calc(11px*var(--fs))] font-semibold text-neutral-600 dark:text-neutral-300">四柱最冷號</div>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                 {data.columns.map(c => (
                   <div key={c.label} className="p-3 rounded-xl bg-black/[0.02] dark:bg-white/[0.03] border border-black/[0.06] dark:border-white/[0.06] text-center">
-                    <div className="text-[10px] text-neutral-400 truncate">{c.label}</div>
+                    <div className="text-[calc(10px*var(--fs))] text-neutral-400 truncate">{c.label}</div>
                     <div className="text-2xl font-mono font-bold text-neutral-900 dark:text-white mt-1">{pad2(c.coldest)}</div>
                   </div>
                 ))}
@@ -53,7 +53,7 @@ export const Zone34Panel: React.FC<{ game: GameKey }> = ({ game }) => {
                 <Flame className={`w-4 h-4 ${data.strategyA.active ? 'text-rose-500' : 'text-neutral-400'}`} />
                 <span>策略 A · 量化正收益</span>
               </div>
-              <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full ${
+              <span className={`text-[calc(11px*var(--fs))] font-semibold px-2.5 py-1 rounded-full ${
                 data.strategyA.active ? 'bg-rose-500/20 text-rose-700 dark:text-rose-300' : 'bg-black/5 dark:bg-white/10 text-neutral-500'
               }`}>
                 {data.strategyA.active ? '進場時刻' : '觀望中'}
@@ -64,7 +64,7 @@ export const Zone34Panel: React.FC<{ game: GameKey }> = ({ game }) => {
             </p>
             {data.strategyA.active && data.strategyA.coldest && data.strategyA.coldest.length > 0 && (
               <div className="mt-3">
-                <div className="text-[11px] font-semibold text-rose-700 dark:text-rose-300 mb-1.5">🔥 達標!建議刪除極端死號:</div>
+                <div className="text-[calc(11px*var(--fs))] font-semibold text-rose-700 dark:text-rose-300 mb-1.5">🔥 達標!建議刪除極端死號:</div>
                 <div className="flex flex-wrap gap-2">
                   {data.strategyA.coldest.map(n => (
                     <span key={n} className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-rose-500 text-white font-mono font-bold text-sm">
@@ -85,7 +85,7 @@ export const Zone34Panel: React.FC<{ game: GameKey }> = ({ game }) => {
                 <ShieldCheck className={`w-4 h-4 ${data.strategyB.active ? 'text-purple-500' : 'text-neutral-400'}`} />
                 <span>策略 B · 防呆狙擊手</span>
               </div>
-              <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full ${
+              <span className={`text-[calc(11px*var(--fs))] font-semibold px-2.5 py-1 rounded-full ${
                 data.strategyB.active ? 'bg-purple-500/20 text-purple-700 dark:text-purple-300' : 'bg-black/5 dark:bg-white/10 text-neutral-500'
               }`}>
                 {data.strategyB.active ? '重擊進場' : '觀望中'}

@@ -10,7 +10,7 @@ export const CycleSettings: React.FC = () => (
       <CalendarClock className="w-4 h-4" />
       <span>週期性紀錄(全自動)</span>
     </h3>
-    <div className="text-[12px] text-neutral-600 dark:text-neutral-300 leading-relaxed space-y-2">
+    <div className="text-[calc(12px*var(--fs))] text-neutral-600 dark:text-neutral-300 leading-relaxed space-y-2">
       <p>
         週期已改為<strong className="text-neutral-900 dark:text-white">全自動</strong>:
         以<strong>週一~週日</strong>為一期,系統依每筆下注的<strong>開獎日期</strong>自動歸期。

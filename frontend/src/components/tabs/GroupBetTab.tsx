@@ -228,20 +228,20 @@ export const GroupBetTab: React.FC<Props> = ({ group, onOpenLedger }) => {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-4">
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-[10px] uppercase tracking-[0.25em] text-neutral-400 dark:text-neutral-500 font-semibold">
+              <span className="text-[calc(10px*var(--fs))] uppercase tracking-[0.25em] text-neutral-400 dark:text-neutral-500 font-semibold">
                 Group Betting
               </span>
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-black/5 dark:bg-white/10 text-neutral-600 dark:text-neutral-300">
+              <span className="px-2 py-0.5 rounded-full text-[calc(10px*var(--fs))] font-mono bg-black/5 dark:bg-white/10 text-neutral-600 dark:text-neutral-300">
                 {game.short_name}
               </span>
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
+              <span className="px-2 py-0.5 rounded-full text-[calc(10px*var(--fs))] font-mono bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
                 {edition?.name ?? '第一版'}
               </span>
             </div>
             <div className="text-base sm:text-xl font-display font-bold text-neutral-900 dark:text-white mt-0.5">
               {group.name}下注控制台
             </div>
-            <div className="text-[11px] font-mono text-neutral-500 dark:text-neutral-400 mt-0.5">
+            <div className="text-[calc(11px*var(--fs))] font-mono text-neutral-500 dark:text-neutral-400 mt-0.5">
               建議顆數 <strong className="text-neutral-800 dark:text-neutral-100">{suggestBalls}</strong> 顆
               {lastRecord && <span> ・上次 {lastCount} 顆 {lastCars} 車</span>}
             </div>
@@ -250,7 +250,7 @@ export const GroupBetTab: React.FC<Props> = ({ group, onOpenLedger }) => {
           <div className="flex items-center justify-between md:justify-end gap-4 border-t md:border-t-0 pt-2.5 md:pt-0 border-black/[0.06] dark:border-white/[0.06]">
             <div className="text-left md:text-right">
               <div className="flex items-center gap-1.5 md:justify-end">
-                <span className="text-[10px] uppercase tracking-wider text-neutral-400">
+                <span className="text-[calc(10px*var(--fs))] uppercase tracking-wider text-neutral-400">
                   {group.name}累積損益
                 </span>
                 {/* 滑塊:累積損益 / 建議車數 看「本版」還是「全部版合併」 */}
@@ -258,7 +258,7 @@ export const GroupBetTab: React.FC<Props> = ({ group, onOpenLedger }) => {
                   type="button"
                   onClick={() => setCombineEditions(!combineEditions)}
                   title="切換:本版 / 全部版合併"
-                  className={`px-1.5 py-0.5 rounded-full text-[9px] font-semibold border transition-colors ${
+                  className={`px-1.5 py-0.5 rounded-full text-[calc(9px*var(--fs))] font-semibold border transition-colors ${
                     combineEditions
                       ? 'bg-black text-white dark:bg-white dark:text-black border-black dark:border-white'
                       : 'border-black/15 dark:border-white/20 text-neutral-500'
@@ -271,7 +271,7 @@ export const GroupBetTab: React.FC<Props> = ({ group, onOpenLedger }) => {
                 {cumPnl >= 0 ? `+${cumPnl.toLocaleString()}` : cumPnl.toLocaleString()}
               </div>
             </div>
-            <div className="text-right text-[11px] font-mono text-neutral-400">
+            <div className="text-right text-[calc(11px*var(--fs))] font-mono text-neutral-400">
               {roundCount} 局・中 {winCount} 局
             </div>
           </div>
@@ -281,7 +281,7 @@ export const GroupBetTab: React.FC<Props> = ({ group, onOpenLedger }) => {
         <div className="p-4 sm:p-5 rounded-xl bg-gradient-to-br from-black/[0.04] to-black/[0.01] dark:from-white/[0.07] dark:to-white/[0.02] border border-black/[0.08] dark:border-white/[0.10]">
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div>
-              <div className="text-[10px] uppercase tracking-[0.25em] text-neutral-400 font-semibold">
+              <div className="text-[calc(10px*var(--fs))] uppercase tracking-[0.25em] text-neutral-400 font-semibold">
                 建議車數 · 中 1 顆回本(依建議 {suggestBalls} 顆)
                 {carried.length > 0 && (
                   <span className="ml-1 normal-case tracking-normal text-indigo-500 dark:text-indigo-400">
@@ -320,15 +320,15 @@ export const GroupBetTab: React.FC<Props> = ({ group, onOpenLedger }) => {
           {inLoss && canRecover1Hit && (
             <div className="grid grid-cols-3 gap-2 sm:gap-3 mt-3 pt-3 border-t border-black/[0.06] dark:border-white/[0.08]">
               <div>
-                <div className="text-[10px] text-neutral-400 uppercase tracking-wider">本局成本</div>
+                <div className="text-[calc(10px*var(--fs))] text-neutral-400 uppercase tracking-wider">本局成本</div>
                 <div className="text-sm sm:text-base font-mono font-bold text-neutral-900 dark:text-white">{suggestCost.toLocaleString()}</div>
               </div>
               <div>
-                <div className="text-[10px] text-neutral-400 uppercase tracking-wider">中 1 顆可得</div>
+                <div className="text-[calc(10px*var(--fs))] text-neutral-400 uppercase tracking-wider">中 1 顆可得</div>
                 <div className="text-sm sm:text-base font-mono font-bold text-emerald-600 dark:text-emerald-400">{suggestGain.toLocaleString()}</div>
               </div>
               <div>
-                <div className="text-[10px] text-neutral-400 uppercase tracking-wider">中後累積</div>
+                <div className="text-[calc(10px*var(--fs))] text-neutral-400 uppercase tracking-wider">中後累積</div>
                 <div className={`text-sm sm:text-base font-mono font-bold ${afterCum >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
                   {afterCum >= 0 ? `+${afterCum.toLocaleString()}` : afterCum.toLocaleString()}
                 </div>
@@ -349,7 +349,7 @@ export const GroupBetTab: React.FC<Props> = ({ group, onOpenLedger }) => {
                 01 / {group.name}參數配置
               </span>
               <div className="flex items-center gap-1.5">
-                <span className="text-[11px] font-mono text-neutral-400">期號</span>
+                <span className="text-[calc(11px*var(--fs))] font-mono text-neutral-400">期號</span>
                 <IssuePicker issue={curIssue} date={betDate} draws={draws} extraOption={histReq.data?.next ?? undefined} onSelect={pickIssue} />
               </div>
             </div>
@@ -370,7 +370,7 @@ export const GroupBetTab: React.FC<Props> = ({ group, onOpenLedger }) => {
             {/* Car Stepper */}
             <div className="space-y-2 pt-1">
               <div className="flex items-center justify-between">
-                <label className="text-[10px] uppercase tracking-[0.2em] font-semibold text-neutral-400">
+                <label className="text-[calc(10px*var(--fs))] uppercase tracking-[0.2em] font-semibold text-neutral-400">
                   下注車數 (Cars)
                 </label>
                 <span className="text-xs font-mono font-bold text-neutral-900 dark:text-white">
@@ -420,30 +420,30 @@ export const GroupBetTab: React.FC<Props> = ({ group, onOpenLedger }) => {
 
             {/* Live HUD */}
             <div className="p-3.5 sm:p-4 rounded-xl bg-black/[0.02] dark:bg-white/[0.03] border border-black/[0.06] dark:border-white/[0.06] space-y-2">
-              <div className="text-[10px] uppercase tracking-wider text-neutral-400 font-semibold">
+              <div className="text-[calc(10px*var(--fs))] uppercase tracking-wider text-neutral-400 font-semibold">
                 損益階梯試算 (Live HUD)
               </div>
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <div>
-                  <span className="text-neutral-500 block text-[10px]">總投入成本:</span>
+                  <span className="text-neutral-500 block text-[calc(10px*var(--fs))]">總投入成本:</span>
                   <span className="font-mono font-bold text-sm text-neutral-900 dark:text-white">
                     NT$ {currentCost.toLocaleString()}
                   </span>
                 </div>
                 <div>
-                  <span className="text-neutral-500 block text-[10px]">中 1 顆拿回:</span>
+                  <span className="text-neutral-500 block text-[calc(10px*var(--fs))]">中 1 顆拿回:</span>
                   <span className="font-mono font-bold text-sm text-neutral-900 dark:text-white">
                     NT$ {prize1Hit.toLocaleString()}
                   </span>
                 </div>
                 <div>
-                  <span className="text-neutral-500 block text-[10px]">中 2 顆拿回:</span>
+                  <span className="text-neutral-500 block text-[calc(10px*var(--fs))]">中 2 顆拿回:</span>
                   <span className="font-mono font-bold text-sm text-emerald-600 dark:text-emerald-400">
                     NT$ {prize2Hits.toLocaleString()}
                   </span>
                 </div>
                 <div>
-                  <span className="text-neutral-500 block text-[10px]">中 {activeCount} 顆全中:</span>
+                  <span className="text-neutral-500 block text-[calc(10px*var(--fs))]">中 {activeCount} 顆全中:</span>
                   <span className="font-mono font-bold text-sm text-emerald-600 dark:text-emerald-400">
                     NT$ {prizeAllHits.toLocaleString()}
                   </span>
@@ -490,13 +490,13 @@ export const GroupBetTab: React.FC<Props> = ({ group, onOpenLedger }) => {
         <div className="lg:col-span-7 space-y-4">
           {/* 遊戲篩選:全部 / 各款 —— 上方儀表板與下方核對列表都依此變動 */}
           <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-[10px] uppercase tracking-wider text-neutral-400 font-semibold">遊戲</span>
+            <span className="text-[calc(10px*var(--fs))] uppercase tracking-wider text-neutral-400 font-semibold">遊戲</span>
             {([['all', '全部'], ['lotto539', '今彩539'], ['fantasy5', '天天樂'], ['marksix', '六合彩']] as const).map(([k, label]) => (
               <button
                 key={k}
                 type="button"
                 onClick={() => setGameFilter(k)}
-                className={`px-2.5 py-1 rounded-lg text-[10px] font-semibold transition-all ${
+                className={`px-2.5 py-1 rounded-lg text-[calc(10px*var(--fs))] font-semibold transition-all ${
                   gameFilter === k
                     ? 'bg-black text-white dark:bg-white dark:text-black'
                     : 'border border-black/10 dark:border-white/10 text-neutral-600 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5'
@@ -508,36 +508,36 @@ export const GroupBetTab: React.FC<Props> = ({ group, onOpenLedger }) => {
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 sm:gap-3">
             <div className="p-3.5 sm:p-4 rounded-xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08]">
-              <div className="text-[10px] uppercase tracking-wider text-neutral-400">總投入成本</div>
+              <div className="text-[calc(10px*var(--fs))] uppercase tracking-wider text-neutral-400">總投入成本</div>
               <div className="text-base sm:text-lg font-bold font-mono text-neutral-900 dark:text-white mt-0.5">
                 {totalSpent.toLocaleString()}
               </div>
             </div>
             <div className="p-3.5 sm:p-4 rounded-xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08]">
-              <div className="text-[10px] uppercase tracking-wider text-neutral-400">總回收彩金</div>
+              <div className="text-[calc(10px*var(--fs))] uppercase tracking-wider text-neutral-400">總回收彩金</div>
               <div className="text-base sm:text-lg font-bold font-mono text-emerald-600 dark:text-emerald-400 mt-0.5">
                 {totalReturn.toLocaleString()}
               </div>
             </div>
             <div className="p-3.5 sm:p-4 rounded-xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08]">
-              <div className="text-[10px] uppercase tracking-wider text-neutral-400">累積淨損益</div>
+              <div className="text-[calc(10px*var(--fs))] uppercase tracking-wider text-neutral-400">累積淨損益</div>
               <div className={`text-base sm:text-lg font-bold font-mono mt-0.5 ${cumPnl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
                 {cumPnl >= 0 ? `+${cumPnl.toLocaleString()}` : cumPnl.toLocaleString()}
               </div>
             </div>
             <div className="p-3.5 sm:p-4 rounded-xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08]">
-              <div className="text-[10px] uppercase tracking-wider text-neutral-400">中獎率 / 局數</div>
+              <div className="text-[calc(10px*var(--fs))] uppercase tracking-wider text-neutral-400">中獎率 / 局數</div>
               <div className="text-base sm:text-lg font-bold font-mono text-neutral-900 dark:text-white mt-0.5">
                 {roundCount > 0 ? `${((winCount / roundCount) * 100).toFixed(0)}%` : '0%'}
               </div>
-              <div className="text-[10px] text-neutral-400 font-mono">共 {roundCount} 局</div>
+              <div className="text-[calc(10px*var(--fs))] text-neutral-400 font-mono">共 {roundCount} 局</div>
             </div>
             <div className="p-3.5 sm:p-4 rounded-xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08]">
-              <div className="text-[10px] uppercase tracking-wider text-neutral-400">累計總車數</div>
+              <div className="text-[calc(10px*var(--fs))] uppercase tracking-wider text-neutral-400">累計總車數</div>
               <div className="text-base sm:text-lg font-bold font-mono text-neutral-900 dark:text-white mt-0.5">
-                {totalCars.toLocaleString()} <span className="text-[10px] font-normal text-neutral-400">車</span>
+                {totalCars.toLocaleString()} <span className="text-[calc(10px*var(--fs))] font-normal text-neutral-400">車</span>
               </div>
-              <div className="text-[10px] text-neutral-400 font-mono">共 {roundCount} 局</div>
+              <div className="text-[calc(10px*var(--fs))] text-neutral-400 font-mono">共 {roundCount} 局</div>
             </div>
           </div>
 
@@ -563,7 +563,7 @@ export const GroupBetTab: React.FC<Props> = ({ group, onOpenLedger }) => {
                   onClick={refreshLedger}
                   disabled={ledger.loading}
                   title="補了最新開獎後,重抓流水讓核對明細跟上(後端已自動結算)"
-                  className="text-[11px] font-semibold text-neutral-500 hover:text-neutral-900 dark:hover:text-white disabled:opacity-30 transition-colors flex items-center gap-1 active:scale-95"
+                  className="text-[calc(11px*var(--fs))] font-semibold text-neutral-500 hover:text-neutral-900 dark:hover:text-white disabled:opacity-30 transition-colors flex items-center gap-1 active:scale-95"
                 >
                   <RefreshCw className={`w-3 h-3 ${ledger.loading ? 'animate-spin' : ''}`} />
                   重新整理
@@ -573,13 +573,13 @@ export const GroupBetTab: React.FC<Props> = ({ group, onOpenLedger }) => {
 
             <WeekSubtotal records={flowRecords} label={wk.label} />
             {!wk.allWeeks && flowRecords.length === 0 && (
-              <div className="text-[11px] text-neutral-400">{wk.label} 沒有紀錄。用 ‹ › 切到其他週。</div>
+              <div className="text-[calc(11px*var(--fs))] text-neutral-400">{wk.label} 沒有紀錄。用 ‹ › 切到其他週。</div>
             )}
 
             {ledger.loading && <div className="text-xs text-neutral-400">載入流水帳中…</div>}
             {ledger.error && <div className="text-xs text-rose-500">{ledger.error}</div>}
             {!ledger.loggedIn && (
-              <div className="text-[11px] text-neutral-400">
+              <div className="text-[calc(11px*var(--fs))] text-neutral-400">
                 未登入:紀錄只留在這個瀏覽器分頁,重整就會消失。
               </div>
             )}
@@ -588,7 +588,7 @@ export const GroupBetTab: React.FC<Props> = ({ group, onOpenLedger }) => {
             <button
               type="button"
               onClick={() => onOpenLedger?.(group.mode)}
-              className="w-full flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl border border-dashed border-black/15 dark:border-white/15 text-[12px] font-semibold text-neutral-600 dark:text-neutral-300 hover:bg-black/[0.03] dark:hover:bg-white/[0.04] hover:border-black/25 dark:hover:border-white/25 transition-colors"
+              className="w-full flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl border border-dashed border-black/15 dark:border-white/15 text-[calc(12px*var(--fs))] font-semibold text-neutral-600 dark:text-neutral-300 hover:bg-black/[0.03] dark:hover:bg-white/[0.04] hover:border-black/25 dark:hover:border-white/25 transition-colors"
             >
               查看 / 管理本週逐筆流水(對獎・改期・撤銷)
               <ChevronRight className="w-3.5 h-3.5" />

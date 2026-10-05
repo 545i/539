@@ -52,7 +52,7 @@ export const RECOMMEND_META: Record<string, { ball: string; text: string }> = {
 
 // 每個子分頁頂端的中性說明(統計包裝提醒)
 export const Disclaimer: React.FC = () => (
-  <p className="text-[11px] leading-relaxed text-neutral-400 dark:text-neutral-500 flex items-start gap-1.5">
+  <p className="text-[calc(11px*var(--fs))] leading-relaxed text-neutral-400 dark:text-neutral-500 flex items-start gap-1.5">
     <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
     <span>本策略為統計包裝,樂透為獨立事件,連槓 / Z / 馬可夫等訊號不具預測力,僅供參考。</span>
   </p>
