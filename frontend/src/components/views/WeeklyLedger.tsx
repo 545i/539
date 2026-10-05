@@ -1698,95 +1698,116 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
                             <BillCards bill={buildDayBill(day)} md={dayMd(day.ymd)} />
                           </div>
                         ) : (
-                        <div className="overflow-x-auto">
-                        <table className="w-full text-[calc(11px*var(--fs))] whitespace-nowrap">
+                        <>
+                        {/* 直排版:原本 7 欄橫排寬螢幕放大字後要左右滑。改成 3 欄——
+                            左欄上下疊(下注方式 → 期號/組合 → 成本算式)、右欄盈虧在上、成本/派彩小字在下 */}
+                        <table className="w-full text-[calc(11px*var(--fs))]">
                           <thead className="text-[calc(9px*var(--fs))] uppercase tracking-wider text-neutral-400">
                             <tr>
-                              <th className="px-3 py-1 pl-9 text-left font-semibold">下注方式<span className="ml-1 normal-case tracking-normal font-normal">(點列編輯)</span></th>
-                              <th className="px-3 py-1 text-left font-semibold">期號 / 核對</th>
-                              <th className="px-3 py-1 text-left font-semibold">下注組合</th>
-                              <th className="px-3 py-1 text-right font-semibold">成本</th>
-                              <th className="px-3 py-1 text-right font-semibold">派彩</th>
-                              <th className="px-3 py-1 text-right font-semibold">盈虧</th>
-                              <th className="px-3 py-1 text-right font-semibold">撤銷</th>
+                              <th className="px-3 py-1 pl-9 text-left font-semibold">下注方式 / 期號 / 組合<span className="ml-1 normal-case tracking-normal font-normal">(點列編輯)</span></th>
+                              <th className="px-3 py-1 text-right font-semibold whitespace-nowrap">盈虧 / 成本 · 派彩</th>
+                              <th className="px-2 py-1 text-right font-semibold w-0"></th>
                             </tr>
                           </thead>
                           <tbody className="font-mono">
                             {day.rows.map((v) => (
-                              <React.Fragment key={v.id}>
                               <tr
+                                key={v.id}
                                 className="border-t border-black/[0.05] dark:border-white/[0.05] cursor-pointer hover:bg-black/[0.02] dark:hover:bg-white/[0.03]"
                                 onClick={() => openEditor([v.id])}
                                 title="點一下編輯這筆(號碼 / 車支數 / 成本)"
                               >
-                                <td className="px-3 pt-1.5 pb-0 pl-3 align-top">
-                                  <input
-                                    type="checkbox"
-                                    checked={editSel.has(v.id)}
-                                    onClick={e => e.stopPropagation()}
-                                    onChange={() => toggleEditSel(v.id)}
-                                    aria-label="勾選以批次編輯"
-                                    className="mr-2 align-middle w-3.5 h-3.5 accent-neutral-900 dark:accent-white"
-                                  />
-                                  {v.gameShort && (
-                                    <span className="px-1.5 py-0.5 rounded-full bg-sky-500/10 text-sky-600 dark:text-sky-400 text-[calc(9px*var(--fs))] mr-1 font-sans">{v.gameShort}</span>
+                                <td className="px-3 py-1.5 pl-3 align-top">
+                                  <div className="flex flex-wrap items-center gap-y-1">
+                                    <input
+                                      type="checkbox"
+                                      checked={editSel.has(v.id)}
+                                      onClick={e => e.stopPropagation()}
+                                      onChange={() => toggleEditSel(v.id)}
+                                      aria-label="勾選以批次編輯"
+                                      className="mr-2 w-3.5 h-3.5 accent-neutral-900 dark:accent-white"
+                                    />
+                                    {v.gameShort && (
+                                      <span className="px-1.5 py-0.5 rounded-full bg-sky-500/10 text-sky-600 dark:text-sky-400 text-[calc(9px*var(--fs))] mr-1 font-sans">{v.gameShort}</span>
+                                    )}
+                                    <span className="px-1.5 py-0.5 rounded-full bg-violet-500/10 text-violet-600 dark:text-violet-400 text-[calc(9px*var(--fs))] mr-1 font-sans">{v.editionName}</span>
+                                    {/* 玩法名已含模式名(如「1800碰(1,800 注)」)時不重複顯示模式膠囊 */}
+                                    {!v.playType.startsWith(v.modeLabel) && (
+                                      <span className="px-1.5 py-0.5 rounded-full bg-black/5 dark:bg-white/10 text-[calc(10px*var(--fs))] mr-1.5 font-sans">{v.modeLabel}</span>
+                                    )}
+                                    <span className="font-sans text-neutral-600 dark:text-neutral-400">{v.playType}</span>
+                                    {/* 車 / 支數接在下注方式後面,粗體 */}
+                                    {v.units > 0 && v.detail.length === 0 && (
+                                      <span className="ml-1.5 font-bold text-neutral-900 dark:text-white">
+                                        {v.units.toLocaleString()}<span className="font-sans">{v.unitLabel}</span>
+                                      </span>
+                                    )}
+                                    {v.result && (
+                                      <span className={`ml-1.5 font-sans text-[calc(9px*var(--fs))] px-1.5 py-0.5 rounded-full ${
+                                        v.pending
+                                          ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
+                                          : v.payout > 0
+                                            ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                                            : 'bg-black/5 dark:bg-white/10 text-neutral-500'
+                                      }`}>{v.result}</span>
+                                    )}
+                                  </div>
+                                  <div className="mt-1 pl-6 flex flex-wrap items-start gap-x-4 gap-y-1">
+                                    <div className="font-sans" onClick={e => e.stopPropagation()}>
+                                      <IssuePicker
+                                        issue={v.issue}
+                                        date={day.ymd}
+                                        draws={histByGame[v.game]?.draws ?? []}
+                                        onSelect={(iss) => resettle(v.id, iss)}
+                                        extraOption={histByGame[v.game]?.next ?? undefined}
+                                        showNums={false}
+                                        onRefresh={() => resettle(v.id, v.issue)}
+                                        onManualHit={(k) => resettle(v.id, v.issue, k)}
+                                        // 逐顆車數不同 → 手填改成點選中獎號碼(中 k 顆不唯一)
+                                        manualBalls={new Set(v.detail.map(d => d.cars)).size > 1 ? v.detail.map(d => d.n) : undefined}
+                                        onManualHitBalls={(balls) => resettle(v.id, v.issue, null, balls)}
+                                      />
+                                    </div>
+                                    {v.balls.length > 0 && (
+                                      <div className="flex flex-wrap gap-x-1.5 text-neutral-700 dark:text-neutral-300">
+                                        {v.balls.map(n => (
+                                          <span key={n} className="whitespace-nowrap">
+                                            {String(n).padStart(2, '0')}
+                                            {v.detail.length > 0 && <span className="font-bold text-neutral-900 dark:text-white">×{v.detail.find(d => d.n === n)?.cars ?? ''}</span>}
+                                            {v.deltas[n] ? <sup className="ml-0.5 text-[calc(9px*var(--fs))] font-bold text-amber-600 dark:text-amber-400">+{v.deltas[n]}</sup> : null}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                  {v.units > 0 && (
+                                    <div className="mt-0.5 pl-6 text-[calc(10px*var(--fs))] text-neutral-400 dark:text-neutral-500">
+                                      {(Object.keys(v.deltas).length > 0 || v.detail.length > 0) && v.costExpr
+                                        // 有號碼加價:每車成本不一樣,改顯示上傳時的實際算式(含「15號+2」)
+                                        ? v.costExpr
+                                        : <>{v.units.toLocaleString()} {v.unitLabel} × ${v.perUnit.toLocaleString()}/{v.unitLabel} = ${v.cost.toLocaleString()}</>}
+                                    </div>
                                   )}
-                                  <span className="px-1.5 py-0.5 rounded-full bg-violet-500/10 text-violet-600 dark:text-violet-400 text-[calc(9px*var(--fs))] mr-1 font-sans">{v.editionName}</span>
-                                  <span className="px-1.5 py-0.5 rounded-full bg-black/5 dark:bg-white/10 text-[calc(10px*var(--fs))] mr-1.5 font-sans">{v.modeLabel}</span>
-                                  <span className="font-sans text-neutral-600 dark:text-neutral-400">{v.playType}</span>
-                                  {/* 車 / 支數接在下注方式後面,粗體(原本只藏在下方算式裡) */}
-                                  {v.units > 0 && v.detail.length === 0 && (
-                                    <span className="ml-1.5 font-bold text-neutral-900 dark:text-white">
-                                      {v.units.toLocaleString()}<span className="font-sans">{v.unitLabel}</span>
-                                    </span>
-                                  )}
-                                  {v.result && (
-                                    <span className={`ml-1.5 font-sans text-[calc(9px*var(--fs))] px-1.5 py-0.5 rounded-full ${
-                                      v.pending
-                                        ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
-                                        : v.payout > 0
-                                          ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-                                          : 'bg-black/5 dark:bg-white/10 text-neutral-500'
-                                    }`}>{v.result}</span>
+                                </td>
+                                <td className="px-3 py-1.5 align-top text-right whitespace-nowrap">
+                                  <div className={`font-bold ${v.pending ? 'text-neutral-400' : pnlCls(v.pnl)}`}>
+                                    {v.pending ? '待開獎' : signedMoney(v.pnl)}
+                                  </div>
+                                  <div className="text-[calc(10px*var(--fs))] text-neutral-500 dark:text-neutral-400">
+                                    成本 <span className="font-bold text-neutral-900 dark:text-white">{money(v.cost)}</span>
+                                  </div>
+                                  {!v.pending && (
+                                    <div className="text-[calc(10px*var(--fs))] text-neutral-500 dark:text-neutral-400">
+                                      派彩 <span className="text-emerald-600 dark:text-emerald-400">{money(v.payout)}</span>
+                                    </div>
                                   )}
                                 </td>
-                                <td className="px-3 pt-1.5 pb-0 align-top font-sans" onClick={e => e.stopPropagation()}>
-                                  <IssuePicker
-                                    issue={v.issue}
-                                    date={day.ymd}
-                                    draws={histByGame[v.game]?.draws ?? []}
-                                    onSelect={(iss) => resettle(v.id, iss)}
-                                    extraOption={histByGame[v.game]?.next ?? undefined}
-                                    showNums={false}
-                                    onRefresh={() => resettle(v.id, v.issue)}
-                                    onManualHit={(k) => resettle(v.id, v.issue, k)}
-                                    // 逐顆車數不同 → 手填改成點選中獎號碼(中 k 顆不唯一)
-                                    manualBalls={new Set(v.detail.map(d => d.cars)).size > 1 ? v.detail.map(d => d.n) : undefined}
-                                    onManualHitBalls={(balls) => resettle(v.id, v.issue, null, balls)}
-                                  />
-                                </td>
-                                <td className="px-3 pt-1.5 pb-0 align-top text-neutral-700 dark:text-neutral-300">
-                                  {v.balls.length > 0 ? v.balls.map(n => (
-                                    <span key={n} className="mr-1.5 whitespace-nowrap">
-                                      {String(n).padStart(2, '0')}
-                                      {v.detail.length > 0 && <span className="font-bold text-neutral-900 dark:text-white">×{v.detail.find(d => d.n === n)?.cars ?? ''}</span>}
-                                      {v.deltas[n] ? <sup className="ml-0.5 text-[calc(9px*var(--fs))] font-bold text-amber-600 dark:text-amber-400">+{v.deltas[n]}</sup> : null}
-                                    </span>
-                                  )) : '—'}
-                                </td>
-                                <td className="px-3 pt-1.5 pb-0 align-top text-right font-bold text-neutral-900 dark:text-white">{money(v.cost)}</td>
-                                <td className="px-3 pt-1.5 pb-0 align-top text-right text-emerald-600 dark:text-emerald-400">
-                                  {v.pending ? <span className="text-neutral-400">待開獎</span> : money(v.payout)}
-                                </td>
-                                <td className={`px-3 pt-1.5 pb-0 align-top text-right font-bold ${v.pending ? 'text-neutral-400' : pnlCls(v.pnl)}`}>
-                                  {v.pending ? '—' : signedMoney(v.pnl)}
-                                </td>
-                                <td className="px-3 pt-1.5 pb-0 align-top text-right font-sans" onClick={e => e.stopPropagation()}>
+                                <td className="px-2 py-1.5 align-top text-right font-sans" onClick={e => e.stopPropagation()}>
                                   {confirmDeleteId === v.id ? (
                                     <button
                                       type="button"
                                       onClick={() => { deleteById(v.id); setConfirmDeleteId(null); }}
-                                      className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[calc(10px*var(--fs))] font-semibold bg-rose-600 text-white hover:bg-rose-700 transition-colors"
+                                      className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[calc(10px*var(--fs))] font-semibold bg-rose-600 text-white hover:bg-rose-700 transition-colors whitespace-nowrap"
                                     >
                                       確認?
                                     </button>
@@ -1802,21 +1823,10 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
                                   )}
                                 </td>
                               </tr>
-                              {v.units > 0 && (
-                                <tr className="cursor-pointer" onClick={() => openEditor([v.id])}>
-                                  <td colSpan={7} className="px-3 pt-0 pb-1.5 pl-9 text-[calc(10px*var(--fs))] text-neutral-400 dark:text-neutral-500">
-                                    {(Object.keys(v.deltas).length > 0 || v.detail.length > 0) && v.costExpr
-                                      // 有號碼加價:每車成本不一樣,改顯示上傳時的實際算式(含「15號+2」)
-                                      ? v.costExpr
-                                      : <>{v.units.toLocaleString()} {v.unitLabel} × ${v.perUnit.toLocaleString()}/{v.unitLabel} = ${v.cost.toLocaleString()}</>}
-                                  </td>
-                                </tr>
-                              )}
-                              </React.Fragment>
                             ))}
                           </tbody>
                         </table>
-                        </div>
+                        </>
                         )}
                       </div>
                     )}
