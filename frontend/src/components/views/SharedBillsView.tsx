@@ -63,7 +63,7 @@ const BetLine: React.FC<{ r: BetRow }> = ({ r }) => (
 );
 
 // 每天一列:收合時右側只顯示「你分到的損益」;點開才看當天該版總損益 + 下注明細 / 帳單卡片
-const DayCard: React.FC<{ day: DayGroup; mine: number }> = ({ day, mine }) => {
+const DayCard: React.FC<{ day: DayGroup; mine: number; label?: string }> = ({ day, mine, label = '你分到' }) => {
   const [open, setOpen] = useState(false);
   const [bill, setBill] = useState(false);
   return (
@@ -72,7 +72,7 @@ const DayCard: React.FC<{ day: DayGroup; mine: number }> = ({ day, mine }) => {
         {open ? <ChevronDown className="w-3.5 h-3.5 text-neutral-400" /> : <ChevronRight className="w-3.5 h-3.5 text-neutral-400" />}
         <span className="text-[calc(13px*var(--fs))] font-semibold font-mono text-neutral-800 dark:text-neutral-100">{md(day.ymd)}({weekdayOf(day.ymd)})</span>
         <span className="text-[calc(10px*var(--fs))] text-neutral-400">{day.count} 筆{day.pendingCount > 0 ? ` · ${day.pendingCount} 待開` : ''}</span>
-        <span className="ml-auto text-[calc(10px*var(--fs))] text-neutral-400">你分到</span>
+        <span className="ml-auto text-[calc(10px*var(--fs))] text-neutral-400">{label}</span>
         <span className="font-mono text-[calc(13px*var(--fs))] font-bold text-neutral-900 dark:text-white">{fmtSigned(mine)}</span>
       </button>
       {open && (
@@ -247,6 +247,15 @@ const BoardView: React.FC<{ b: SharedBoardDTO }> = ({ b }) => {
   );
 };
 
+// 某週只留某版的筆,重算各天小計(版主看合夥人明細用)
+const daysOfEd = (w: WeekGroup, ed: number): DayGroup[] => w.days.flatMap(d => {
+  const rows = d.rows.filter(r => r.edition === ed);
+  if (rows.length === 0) return [];
+  const cost = rows.reduce((a, r) => a + r.cost, 0);
+  const payout = rows.reduce((a, r) => a + r.payout, 0);
+  return [{ ...d, rows, cost, payout, pnl: payout - cost, count: rows.length, pendingCount: rows.filter(r => r.pending).length }];
+});
+
 // ── 版主儀表板:我是版主時,跟每位合夥人要收 / 要付多少 ─────────────────────
 // 用我自己的流水(排除模擬版)+ 我設定的佔比,算法與週期帳「本週損益佔比」同一套
 // (成本 / 派彩各自守恆),所以金額跟週期帳、合夥人自己看到的一致。
@@ -270,6 +279,7 @@ const OwnerDashboard: React.FC<{ reloadKey: number; onHasPartners: (v: boolean) 
   const [sharesByEid, setSharesByEid] = useState<Record<number, ShareVersionDTO[]>>({});
   const [selWeek, setSelWeek] = useState<string>('');          // '' = 最新一週;'all' = 全部週
   const [openP, setOpenP] = useState<string | null>(null);
+  const [openCell, setOpenCell] = useState<string | null>(null);   // 展開明細的「合夥人|週|版」
 
   useEffect(() => {
     let alive = true;
@@ -335,11 +345,11 @@ const OwnerDashboard: React.FC<{ reloadKey: number; onHasPartners: (v: boolean) 
   const weekKey = selWeek || perWeek[0]?.w.monday || '';
   const scope = weekKey === 'all' ? perWeek : perWeek.filter(x => x.w.monday === weekKey);
   // 選定範圍內每位合夥人的合計 + 各版明細
-  const partners = new Map<string, { total: Money3; cells: (Cell & { monday: string })[] }>();
+  const partners = new Map<string, { total: Money3; cells: (Cell & { monday: string; w: WeekGroup })[] }>();
   for (const { w, byP } of scope) {
     for (const [name, cells] of byP) {
       const p = partners.get(name) ?? { total: zero3(), cells: [] };
-      for (const c of cells) { p.total = add3(p.total, c); p.cells.push({ ...c, monday: w.monday }); }
+      for (const c of cells) { p.total = add3(p.total, c); p.cells.push({ ...c, monday: w.monday, w }); }
       partners.set(name, p);
     }
   }
@@ -404,14 +414,25 @@ const OwnerDashboard: React.FC<{ reloadKey: number; onHasPartners: (v: boolean) 
               </button>
               {open && (
                 <div className="pl-6 pb-3 space-y-1.5">
-                  {cells.map((c, i) => (
+                  {cells.map((c, i) => {
+                    const ck = `${name}|${c.monday}|${c.ed}`;
+                    const cOpen = openCell === ck;
+                    // 合夥人每天分到:當天精確份額把這格淨額拆回各天(加總 = 這格,不會差 1)
+                    const days = cOpen ? daysOfEd(c.w, c.ed) : [];
+                    const dayShare = cOpen ? apportion(c.net, days.map(d => {
+                      const pct = sharesOn(sharesByEid[c.ed], d.ymd).shares.find(x => x.name === name)?.pct ?? 0;
+                      return d.pnl * pct / 100;
+                    })) : [];
+                    return (
                     <div key={`${c.monday}|${c.ed}|${i}`} className="text-[calc(11px*var(--fs))]">
-                      <div className="flex items-center gap-2">
+                      <button type="button" onClick={() => setOpenCell(cOpen ? null : ck)} className="w-full flex items-center gap-2 text-left py-0.5"
+                        title="展開這週這版每天的下注明細">
+                        {cOpen ? <ChevronDown className="w-3 h-3 text-neutral-400 shrink-0" /> : <ChevronRight className="w-3 h-3 text-neutral-400 shrink-0" />}
                         <span className="font-mono text-neutral-500">{md(c.monday)}~{md(weekAddDays(c.monday, 6))}</span>
                         <span className="font-semibold text-neutral-800 dark:text-neutral-100">{edName(c.ed)}</span>
                         <span className="font-mono text-neutral-500">付 {money(c.cost)} · 分 {money(c.payout)}</span>
                         <span className="ml-auto"><OwnerSettle net={c.net} /></span>
-                      </div>
+                      </button>
                       {c.segs.length > 1 && (
                         <div className="text-[calc(10px*var(--fs))] text-neutral-400 pl-1">
                           {c.segs.map(sg => (
@@ -421,8 +442,15 @@ const OwnerDashboard: React.FC<{ reloadKey: number; onHasPartners: (v: boolean) 
                           ))}
                         </div>
                       )}
+                      {cOpen && (
+                        <div className="pl-5 pt-1 pb-2 divide-y divide-black/[0.05] dark:divide-white/[0.06]">
+                          <div className="text-[calc(10px*var(--fs))] text-neutral-400 font-semibold pb-1">每天下注(點開看明細 / 帳單卡片)</div>
+                          {days.map((d, di) => <DayCard key={d.ymd} day={d} mine={dayShare[di] ?? 0} label={`${name} 分到`} />)}
+                        </div>
+                      )}
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
