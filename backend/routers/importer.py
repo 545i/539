@@ -7,6 +7,10 @@
 
     02x50車                       單顆(single):1 顆號碼、50 車
     09_15_19_20x20車              多顆(multi):4 顆號碼、20 車
+    08_19x50車 35x100車            同一行多段:整行同一組(依行序),各段車數不同 → 逐顆車數
+    08x250車 / 27x200車 / 31x150車 獨立號碼(一行一顆、各自車數):全部併成一筆 2組,
+                                   逐顆車數存 ballDetail;同一張單若另有 2組 下注行也併進去
+                                   (1組 設定成 1 顆時,單顆行照舊依順序歸組)
     02_09_15_19_20_25_28_33       選號(先記著,不成一筆)
     八顆三星1200                   星碰(combo):用上面那組選號,三星、12 支
     八顆四星1200                   星碰(combo):同一組選號,四星、12 支
@@ -67,6 +71,10 @@ _SPLIT_RE = re.compile(r"[\n\r,,;;、]+")
 # 後面是車數;結尾的「車」字寫不寫都認。號碼間 / 與 x 之間多打的底線與空白
 # (03_21_28_x50、03__21x50)一律容忍,交給 _nums 清乾淨。
 _CAR_RE = re.compile(r"^([0-9]{1,2}(?:[_\s]+[0-9]{1,2})*)[_\s]*x\s*([0-9]+)\s*車?$")
+# 同一行好幾段「號碼x車」(08_19x50車 35x100車):整行屬於同一組,各段車數不同 → 逐顆車數
+_CAR_SEG = r"\s*((?:[0-9]{1,2}[_\s]+)*[0-9]{1,2})[_\s]*x\s*([0-9]+)\s*車?\s*"
+_CAR_SEG_RE = re.compile(_CAR_SEG)
+_CAR_MULTI_RE = re.compile(rf"^(?:{_CAR_SEG}){{2,}}$")
 # 一行純號碼(有底線)= 選號,或 1800碰 的柱別行(10_18、20_29);首尾 / 連續底線容忍
 _PICK_RE = re.compile(r"^[_\s]*[0-9]{1,2}(?:[_\s]+[0-9]{1,2})+[_\s]*$")
 # 八顆三星1200 / 三星1200 / 8顆3星1200 —— 第一個 group 是宣告顆數(可省略)
@@ -179,6 +187,9 @@ class _State:
     # 上方出現過的所有號碼行(1組/2組下注號 + 純選號),依先後 —— 星碰向上補足用
     number_lines: list[list[int]] = field(default_factory=list)
     erhe_n: int = 0       # 已出現幾個二合下注行(決定歸到第幾組)
+    # 獨立號碼行(一行一顆 x 車數):收齊後併成一筆 2組 逐顆紀錄
+    indep: list[tuple[int, int, str]] = field(default_factory=list)   # (號, 車, 原文)
+    indep_at: int = -1    # 第一個獨立號碼行出現時 items 的位置(合併後插回這裡)
 
     def fail(self, line_no: int, line: str, message: str) -> None:
         self.errors.append({"line_no": line_no, "line": line, "message": message})
@@ -380,9 +391,18 @@ def parse(text: str, g: GameConfig, odds: dict) -> tuple[list[_Item], list[dict]
             continue
 
         m = _CAR_RE.match(line)
-        if m:
-            balls, cars = _nums(m.group(1)), int(m.group(2))
-            if cars <= 0:
+        segs = ([(mm.group(1), mm.group(2)) for mm in _CAR_SEG_RE.finditer(line)]
+                if not m and _CAR_MULTI_RE.match(line) else
+                [(m.group(1), m.group(2))] if m else [])
+        if segs:
+            # 每段 (號碼們, 車數);同號在同一行重複就車數相加
+            seg_cars: dict[int, int] = {}
+            for bt, cs in segs:
+                for n in _nums(bt):
+                    seg_cars[n] = seg_cars.get(n, 0) + int(cs)
+            balls = list(seg_cars)
+            cars = int(segs[0][1])
+            if any(c <= 0 for c in seg_cars.values()):
                 st.fail(line_no, line, "車數要大於 0")
                 continue
             bad = [n for n in balls if not 1 <= n <= g.num_max]
@@ -390,8 +410,15 @@ def parse(text: str, g: GameConfig, odds: dict) -> tuple[list[_Item], list[dict]
                 st.fail(line_no, line,
                         f"{g.name} 只有 1~{g.num_max} 號,不認得 {bad}")
                 continue
-            # 二合下注行依「出現順序」歸組:第 1 個下注行 → 1組、第 2 個 → 2組。
             st.number_lines.append(balls)
+            # 獨立號碼(一行只有一顆):不佔組序,收起來最後併成一筆 2組(逐顆車數)
+            g1 = group_store.get_group(1)
+            if len(segs) == 1 and len(balls) == 1 and not (g1 and g1["ball_count"] == 1):
+                if st.indep_at < 0:
+                    st.indep_at = len(st.items)
+                st.indep.append((balls[0], cars, line))
+                continue
+            # 二合下注行依「出現順序」歸組:第 1 個下注行 → 1組、第 2 個 → 2組。
             st.erhe_n += 1
             gid = st.erhe_n
             grp = group_store.get_group(gid)
@@ -401,6 +428,18 @@ def parse(text: str, g: GameConfig, odds: dict) -> tuple[list[_Item], list[dict]
             if not grp["enabled"]:
                 st.fail(line_no, line, f"{grp['name']}已停用,無法記入")
                 continue
+            if len(set(seg_cars.values())) > 1:
+                # 同行各段車數不同 → 這組存逐顆車數(ballDetail)
+                try:
+                    it = _per_ball_item(g, odds, grp["mode"],
+                                        [{"n": n, "cars": c, "base": None} for n, c in seg_cars.items()])
+                except ValueError as e:
+                    st.fail(line_no, line, str(e))
+                    continue
+                it.line = line
+                st.items.append(it)
+                continue
+            cars = next(iter(seg_cars.values()))
             cpc = float(odds["cost_per_car"])
             erhe_cost = _erhe_cost(odds, len(balls), cars)
             st.items.append(_Item(
@@ -503,7 +542,44 @@ def parse(text: str, g: GameConfig, odds: dict) -> tuple[list[_Item], list[dict]
 
         st.fail(line_no, line, "看不懂這一行")
 
+    if st.indep:
+        _merge_independent(st, g, odds)
     return st.items, st.errors
+
+
+def _merge_independent(st: _State, g: GameConfig, odds: dict) -> None:
+    """獨立號碼行 → 併成一筆 2組 逐顆紀錄(ballDetail);同單已有 2組 下注行就一起併。
+
+    同號出現多次車數相加。各顆車數都一樣時 _per_ball_item 會收斂成一般 2組 紀錄。
+    """
+    lines = " / ".join(ln for _, _, ln in st.indep)
+    grp = group_store.get_group(2)
+    if grp is None or not grp["enabled"]:
+        st.fail(0, lines, f"{grp['name'] if grp else '2組'}已停用,獨立號碼無法記入")
+        return
+    cars: dict[int, float] = {}
+    at = st.indep_at
+    exist = next((i for i, it in enumerate(st.items) if it.mode == "multi"), None)
+    if exist is not None:
+        old = st.items.pop(exist)
+        if old.ball_detail:
+            for d in old.ball_detail:
+                cars[d["n"]] = cars.get(d["n"], 0) + d["cars"]
+        else:
+            for n in old.balls:
+                cars[n] = cars.get(n, 0) + old.units
+        lines = f"{old.line} / {lines}"
+        at = exist if exist < at else at   # 2組 行在前就插回它的位置(pop 後 at 不受後面影響)
+    for n, c, _ in st.indep:
+        cars[n] = cars.get(n, 0) + c
+    try:
+        item = _per_ball_item(g, odds, "multi",
+                              [{"n": n, "cars": c, "base": None} for n, c in cars.items()])
+    except ValueError as e:
+        st.fail(0, lines, str(e))
+        return
+    item.line = lines
+    st.items.insert(max(0, min(at, len(st.items))), item)
 
 
 def _resolve_cycle_id(user: str, cycle_id: int | None) -> int | None:
@@ -891,6 +967,12 @@ def quick_import(body: QuickImportIn, user: str = Depends(current_user)):
     }
 
 
+class BallDetailIn(BaseModel):
+    n: int
+    cars: float
+    base: float | None = None   # 每注成本(絕對值);None = 版盤口
+
+
 class CommitItemIn(BaseModel):
     mode: str
     selectedBalls: list[int] = Field(default_factory=list)
@@ -904,6 +986,8 @@ class CommitItemIn(BaseModel):
         description="1組(single)每個號碼的每注基礎加價,鍵為號碼字串。其餘下法忽略")
     pillars: list[list[int]] = Field(   # 1800碰自訂分柱 [[柱1],[柱2],[其他]];空 = 標準三柱
         default_factory=list, description="1800碰自訂分柱;其餘下法忽略")
+    ball_detail: list[BallDetailIn] = Field(   # 1組/2組 逐顆車數(獨立號碼);有給就取代 selectedBalls/units
+        default_factory=list, description="二合逐顆車數 + 每注成本;其餘下法忽略")
 
 
 class QuickImportCommitIn(BaseModel):
@@ -939,7 +1023,8 @@ def quick_import_commit(body: QuickImportCommitIn, user: str = Depends(current_u
         try:
             item = _recost(g, odds, it.mode, it.selectedBalls, it.units, it.stars,
                            base=it.base_cost, ball_deltas=it.ball_deltas,
-                           pillars=it.pillars)
+                           pillars=it.pillars,
+                           ball_detail=[d.model_dump() for d in it.ball_detail] or None)
         except ValueError as e:
             errors.append({"line_no": i, "line": "", "message": str(e)})
             continue
@@ -986,10 +1071,6 @@ _EDIT_KEYS = ("playType", "units", "cars", "betsCount", "selectedBalls", "stars"
 _MANUAL_HIT_RE = re.compile(r"中 (\d+)")
 
 
-class BallDetailIn(BaseModel):
-    n: int
-    cars: float
-    base: float | None = None   # 每注成本(絕對值);None = 版盤口
 
 
 class BatchEditItemIn(BaseModel):

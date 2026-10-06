@@ -653,6 +653,7 @@ export interface QuickImportCommitItem {
   base_cost?: number | null; // 逐筆基礎成本覆蓋(每注/每碰);null/省略=吃版盤口
   ball_deltas?: Record<string, number>; // 1組專用:個別號碼的每注基礎加價(號→+N)
   pillars?: number[][]; // 1800碰自訂分柱 [[柱1],[柱2],[其他]];空 = 標準三柱
+  ball_detail?: {n: number; cars: number; base: number | null}[]; // 二合逐顆車數(獨立號碼 / 同行多段)
 }
 
 // 週期帳下注明細編輯器:逐筆改號碼 / 車支數 / 成本(日期 / 期號 / 版不改)

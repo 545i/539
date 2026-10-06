@@ -40,6 +40,7 @@ interface DraftItem {
   base: number; // 每單位基礎成本(二合每注/連碰每碰…);預設帶版盤口,可逐筆改
   deltas: Record<number, number>; // 二合(1組/2組)個別號碼加價 {15: 2}(每注基礎 +N);用號碼按鈕設定
   pillars: number[][]; // 1800碰自訂分柱(後端解析出來,原樣送回);空 = 標準三柱
+  detail: {n: number; cars: number}[]; // 二合逐顆車數(獨立號碼 / 同行多段);空 = 全部同車數
 }
 
 // 與後端 importer._norm 對齊:全形數字 / 全形底線攤平,比對柱別行原文用
@@ -74,6 +75,12 @@ function deltasPayload(d: DraftItem): Record<string, number> {
   const out: Record<string, number> = {};
   for (const n of parseBalls(d.balls)) if (d.deltas[n]) out[String(n)] = d.deltas[n];
   return out;
+}
+
+// 送後端的 ball_detail:二合逐顆車數(每注成本沿用這筆的基礎成本);沒有逐顆就不帶
+function detailPayload(d: DraftItem): {n: number; cars: number; base: number | null}[] | undefined {
+  if ((d.mode !== 'single' && d.mode !== 'multi') || d.detail.length === 0) return undefined;
+  return d.detail.map(x => ({n: x.n, cars: x.cars, base: d.base > 0 ? d.base : null}));
 }
 
 // 號碼加價(取代手打「15:2」):點號碼選取(可多選)→ 按加價按鈕,或直接輸入「每注成本」
@@ -364,6 +371,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
           base_cost: d.base > 0 ? d.base : null,
           ball_deltas: deltasPayload(d),
           pillars: d.pillars,
+          ball_detail: detailPayload(d),
         }));
         const res = await api.quickImportCommit(selGame, items, {issue, edition: selEid, date: selDate, dryRun: true});
         if (cancelled) return;
@@ -439,6 +447,8 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
           base: num(it.record.baseCost),
           deltas: {},
           pillars: (it.record.pillars as number[][] | undefined) ?? [],
+          detail: ((it.record.ballDetail as {n: number; cars: number}[] | undefined) ?? [])
+            .map(x => ({n: Number(x.n), cars: Number(x.cars)})),
         })),
       );
     } catch (e) {
@@ -471,6 +481,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
           base_cost: d.base > 0 ? d.base : null,
           ball_deltas: deltasPayload(d),
           pillars: d.pillars,
+          ball_detail: detailPayload(d),
         })),
         {issue, edition: selEid, date: selDate},
       );
@@ -737,6 +748,7 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
             />
             <div className="mt-2 text-[calc(10px*var(--fs))] text-neutral-400 leading-relaxed space-y-0.5">
               <div>下注行<strong>依出現順序</strong>歸組:第 1 行 → 1組、第 2 行 → 2組。<code>21_24x20車</code> = 20 車(<strong>車字可省略</strong>,<code>21_24x20</code> 也認)</div>
+              <div>逐顆車數:<code>08_19x50車 35x100車</code>(同一行多段 = 同一組、各顆車數不同);一行只有一顆的 <code>35x100車</code> = 獨立號碼,一律併進 2組</div>
               <div>一行選號 + <code>八顆三星1200</code> = 星碰三星(不足八顆會自動往上補足,可在預覽手改)</div>
               <div><code>10_18</code> / <code>20_29</code> / <code>其他400</code> 三行 = 1800碰 4 支</div>
               <div>自訂分柱:<code>20_29(去除24)</code> / <code>30_39</code> / <code>其他100</code> —— 前兩行合計最多 19 顆,去除的號碼併入「其他」</div>
@@ -778,6 +790,23 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
                           ))
                         : '標準三柱 10~18 / 20~29 / 其他'}
                     </div>
+                  ) : d.detail.length > 0 ? (
+                    // 逐顆車數(獨立號碼 / 同行多段):每顆一格,車數各自可改
+                    <div className="space-y-1">
+                      <div className="flex flex-wrap gap-x-3 gap-y-1.5">
+                        {d.detail.map((x, k) => (
+                          <label key={x.n} className="inline-flex items-center gap-1 text-[calc(12px*var(--fs))] font-mono whitespace-nowrap">
+                            <span className="font-bold text-neutral-900 dark:text-white">{String(x.n).padStart(2, '0')}</span>
+                            <span className="text-neutral-400">×</span>
+                            <input type="number" inputMode="decimal" min={0} value={x.cars}
+                              onChange={e => setDraft(i, {detail: d.detail.map((y, j) => (j === k ? {...y, cars: Number(e.target.value)} : y))})}
+                              className={`w-16 ${inputCls} text-right text-[calc(11px*var(--fs))]`} />
+                            <span className="text-neutral-400">車</span>
+                          </label>
+                        ))}
+                      </div>
+                      <span className="text-[calc(10px*var(--fs))] text-neutral-400">{d.detail.length} 顆 · 逐顆車數(合計 {d.detail.reduce((a, x) => a + x.cars, 0)} 車)</span>
+                    </div>
                   ) : (
                     <>
                       <input
@@ -798,7 +827,9 @@ export const QuickImportModal: React.FC<Props> = ({isOpen, onClose, onImported, 
                     </>
                   )
                 );
-                const unitsField = (d: DraftItem, i: number, cls: string) => (
+                const unitsField = (d: DraftItem, i: number, cls: string) => d.detail.length > 0 ? (
+                  <span className="text-[calc(10px*var(--fs))] text-neutral-400 whitespace-nowrap">逐顆</span>
+                ) : (
                   <input type="number" inputMode="decimal" min={1} value={d.units}
                     onChange={e => setDraft(i, {units: Number(e.target.value)})}
                     className={`${cls} ${inputCls} text-right`} />

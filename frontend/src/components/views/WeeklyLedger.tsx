@@ -403,7 +403,8 @@ const Recover9000Card: React.FC<{ dSelf: RecoverData | null; dAll: RecoverData |
 // 攤平模式:一個版一張卡,依「返還率(期望值)加權」把追回金額分散到四種下法(不集中單一)。
 type AllocMethod = { key: string; label: string; unit: string; rtp: number; weight: number; units: number; cost: number; ifHit: number;
   costPerUnit: number; hitOdds: number };  // costPerUnit/hitOdds:滑塊調比例時就地重算 units/cost/ifHit 用
-type AverageData = { name: string; deficit: number; cumPnl: number; totalCost: number; alloc: AllocMethod[]; bestKey: string; hasData: boolean };
+type AverageData = { name: string; deficit: number; cumPnl: number; totalCost: number; alloc: AllocMethod[]; bestKey: string; hasData: boolean;
+  poolPct?: number; poolCumPnl?: number };  // 多版合併時:這版分到的投入比例、合併後總損益
 // 攤平單一下法格(比照 RecoverCard 尺寸,湊成每版 2×2)。
 // 大字 = 建議量(可執行數字);攤平比例改用滑塊,可手動拖動調整(其餘三法由 AverageCard 依比例重算)。
 const AverageMethodCell: React.FC<{ m: AllocMethod; best: boolean; hasDeficit: boolean; onWeight: (v: number) => void }>
@@ -483,6 +484,11 @@ const AverageCard: React.FC<{ d: AverageData }> = ({ d }) => {
     <div className="space-y-1.5">
       <div className="flex items-center gap-2 flex-wrap">
         <span className="inline-block px-2 py-0.5 rounded-md bg-violet-500/10 text-violet-600 dark:text-violet-400 text-[calc(11px*var(--fs))] font-bold">{d.name}</span>
+        {d.poolPct !== undefined && d.deficit > 0 && (
+          <span className="text-[calc(10px*var(--fs))] font-mono text-neutral-500" title="多版合併追回:總投入依各版返還率分配,成本越低分越多">
+            分配 <span className="font-bold text-neutral-900 dark:text-white">{(d.poolPct * 100).toFixed(2)}%</span>
+          </span>
+        )}
         {d.deficit > 0
           ? <span className="text-[calc(10px*var(--fs))] font-mono text-neutral-500">總投入 <span className="font-bold text-neutral-900 dark:text-white">{fmt1(budget)}</span> · 全中可追回 <span className="text-emerald-600 dark:text-emerald-400 font-semibold">{fmt1(d.deficit)}</span></span>
           : <span className="text-[calc(10px*var(--fs))] font-mono text-emerald-600 dark:text-emerald-400 font-semibold">未虧損 {sfmt1(d.cumPnl)},無需攤平</span>}
@@ -501,6 +507,7 @@ const AverageCard: React.FC<{ d: AverageData }> = ({ d }) => {
       </div>
       {d.deficit > 0 && (
         <div className="text-[calc(9px*var(--fs))] text-neutral-400 leading-relaxed">
+          {d.poolPct !== undefined && <>多版合併:各版損益加總成一個赤字,依各版返還率分到各版(成本越低的版分越多)。</>}
           預設比例 = 返還率 ÷ 四法總和(期望值越高注額越大)。拖滑塊可手動調某一法,其餘三法自動依比例分配;
           總投入隨新比例重算,仍保持全中可追回=赤字。命中賠率&gt;1 故命中可追回&gt;成本;但返還率&lt;100%(負期望),長期仍虧。
         </div>
@@ -1109,7 +1116,7 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
       .map(e => e.record as Record<string, unknown>);
 
     const edList = selEd === 'all' ? usedEds.filter(ed => !simEids.has(ed)) : [selEd as number];
-    return edList.map((eid): AverageData => {
+    const perEd = edList.map(eid => {
       const o = oddsOf(eid);
       // 各下法:返還率(理論期望值)、每單位成本、命中一次每單位可得(target-hit 用)
       const twoRtp = o.costPerCar > 0 ? (P_DAN * o.winPayout) / o.costPerCar : 0;
@@ -1125,15 +1132,31 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
       ];
       const rows = avgBase === 'total' ? rowsOf(eid) : rowsOf(eid, avgBase);
       const cumPnl = rows.reduce((s, r) => s + num(r.payout) - num(r.cost), 0);
-      const deficit = cumPnl < 0 ? -cumPnl : 0;
       const sumRtp = base.reduce((s, m) => s + m.rtp, 0);
-      // 注額(成本)按返還率(期望值)比例分配 → 大小注額依期望值;規模抓到「全中可追回=赤字」。
-      // 命中賠率 = 每單位命中可得 ÷ 每單位成本 (>1);故命中可追回 = 注額×命中賠率 > 注額。
-      // 總投入 = 赤字 ÷ Σ(比例×命中賠率) < 赤字(命中賠率>1);期望值仍為負(返還率<100%)。
+      // 這版四法的平均命中賠率(依版內返還率比例) —— 多版合併時用來把總投入換回這版的追回額
       const denom = sumRtp > 0
         ? base.reduce((s, m) => s + (m.rtp / sumRtp) * (m.costPerUnit > 0 ? m.payoutPerHit / m.costPerUnit : 0), 0)
         : 0;
-      const budget = deficit > 0 && denom > 0 ? deficit / denom : 0;      // 總投入
+      return { eid, base, cumPnl, sumRtp, denom, hasData: rows.length > 0 };
+    }).filter(x => x.hasData);
+
+    // 多版(全部版)時三版一起算:赤字 = 各版損益合計,總投入依「各版各下法返還率」比例分到所有版 ——
+    // 成本較低(返還率較高)的版分得較多。單版時就是原本的「該版追自己的赤字」。
+    const pooled = perEd.length > 1;
+    const poolCum = perEd.reduce((s, x) => s + x.cumPnl, 0);
+    const poolDeficit = poolCum < 0 ? -poolCum : 0;
+    const poolRtp = perEd.reduce((s, x) => s + x.sumRtp, 0);
+    const poolDenom = poolRtp > 0 ? perEd.reduce((s, x) => s + (x.sumRtp / poolRtp) * x.denom, 0) : 0;
+    const poolBudget = poolDeficit > 0 && poolDenom > 0 ? poolDeficit / poolDenom : 0;
+
+    return perEd.map(({ eid, base, cumPnl, sumRtp, denom }): AverageData => {
+      const edShare = pooled && poolRtp > 0 ? sumRtp / poolRtp : 1;
+      // 這版要負責追回的額度:單版 = 自己的赤字;合併 = 分到的投入 × 這版平均命中賠率
+      const deficit = pooled ? poolBudget * edShare * denom : (cumPnl < 0 ? -cumPnl : 0);
+      // 注額(成本)按返還率(期望值)比例分配 → 大小注額依期望值;規模抓到「全中可追回=赤字」。
+      // 命中賠率 = 每單位命中可得 ÷ 每單位成本 (>1);故命中可追回 = 注額×命中賠率 > 注額。
+      // 總投入 = 赤字 ÷ Σ(比例×命中賠率) < 赤字(命中賠率>1);期望值仍為負(返還率<100%)。
+      const budget = deficit > 0 && denom > 0 ? deficit / denom : 0;      // 這版總投入
       const alloc: AllocMethod[] = base.map(m => {
         const weight = sumRtp > 0 ? m.rtp / sumRtp : 0;
         const cost = budget * weight;                                     // 注額 ∝ 期望值
@@ -1146,10 +1169,12 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
           costPerUnit: m.costPerUnit, hitOdds,
         };
       }).sort((a, b) => b.cost - a.cost);                                 // 依注額大小排序:大注額(大柱)在前
-      const totalCost = budget;
       const bestKey = base.reduce((b, m) => (m.rtp > b.rtp ? m : b), base[0]).key;  // 返還率(期望值)最高
-      return { name: edName(eid), deficit, cumPnl, totalCost, alloc, bestKey, hasData: rows.length > 0 };
-    }).filter(x => x.hasData);
+      return {
+        name: edName(eid), deficit, cumPnl: pooled ? poolCum : cumPnl, totalCost: budget, alloc, bestKey, hasData: true,
+        ...(pooled ? { poolPct: edShare, poolCumPnl: poolCum } : {}),
+      };
+    });
   }, [entries, simEids, focusMonday, wk.allWeeks, games, selEd, usedEds, excludedIds, oddsByEid, avgBase, reuseSet, oddsGame]);
 
   // 儀表板加總(跨所顯示的版):追平損益需成本 / 全中可追回

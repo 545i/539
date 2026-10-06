@@ -153,3 +153,33 @@ def test_recost_ball_deltas_saved_to_record(env):
     # 沒加價 → 空 dict
     rec0 = importer.to_record(importer._recost(g, odds, "single", [2], 50, 0), g, "2026-10-02", "")
     assert rec0["ballDeltas"] == {}
+
+
+def _detail(item):
+    return [(d["n"], d["cars"]) for d in item.ball_detail]
+
+
+def test_same_line_segments_per_ball_cars(env):
+    """`08_19x50車 35x100車` —— 同一行多段:整行屬於該行的組(2組),逐顆車數存 ballDetail。"""
+    items, errors = _parse(env, "01_20x20車\n08_19x50車 35x100車")
+    assert errors == []
+    assert [it.mode for it in items] == ["single", "multi"]
+    assert items[0].balls == [1, 20] and items[0].units == 20
+    assert _detail(items[1]) == [(8, 50), (19, 50), (35, 100)]
+    assert items[1].cost == pytest.approx(200 * 2755)
+
+
+def test_same_line_segments_same_cars_collapse(env):
+    """同行各段車數都一樣 → 一般 2組 紀錄(不存逐顆)。"""
+    items, errors = _parse(env, "01_20x20\n08_19x50 35_36x50")
+    assert errors == []
+    assert items[1].balls == [8, 19, 35, 36] and items[1].units == 50
+    assert items[1].ball_detail == []
+
+
+def test_independent_single_ball_lines_go_to_group2(env):
+    """一行一顆的獨立號碼不佔組序,全部併進 2組(含同單的 2組 下注行)。"""
+    items, errors = _parse(env, "01_20x20車\n08_19_35x50車\n12x30車\n27x5車")
+    assert errors == []
+    assert [it.mode for it in items] == ["single", "multi"]
+    assert _detail(items[1]) == [(8, 50), (19, 50), (35, 50), (12, 30), (27, 5)]
