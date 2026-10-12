@@ -176,95 +176,86 @@ export default function App() {
         {/* Content View Container */}
         <main className="flex-1 p-4 sm:p-6 lg:p-8 w-full space-y-6">
           {activeNav === 'duo_bet' && (
-            <div className="space-y-6">
-              {/* Page Title & How to use Expander */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between gap-3">
-                  <h2 className="text-xl sm:text-2xl font-display font-bold text-[#141414] dark:text-white tracking-wide uppercase">
-                    紀錄下注矩陣
-                  </h2>
-                  {/* 貼一段下注文字 → 一次記多筆(解析規則見 backend/routers/importer.py) */}
-                  <div className="flex items-center gap-2 shrink-0">
+            <div className="space-y-4">
+              {/* 頂部壓成一列:分頁(左,可橫捲)+ 導引說明 / 上傳歷史 / 快速上傳(右)。
+                  頁名已在 Header,不再重複大標;導引說明展開才佔高度。 */}
+              <div className="border-b border-black/[0.08] dark:border-white/[0.08] pb-2 space-y-2">
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 min-w-0 flex overflow-x-auto gap-1.5 no-scrollbar">
+                    {duoTabList.map(tab => {
+                      const isActive = duoTab === tab.id;
+                      return (
+                        <button
+                          key={tab.id}
+                          id={`tab-${tab.id}`}
+                          type="button"
+                          onClick={() => setDuoTab(tab.id)}
+                          className={`whitespace-nowrap px-3 py-1.5 rounded-full text-xs font-semibold uppercase tracking-wider transition-all duration-150 flex items-center gap-1.5 ${
+                            isActive
+                              ? 'bg-black text-white dark:bg-white dark:text-black shadow-xs'
+                              : 'bg-white dark:bg-[#161616] border border-black/[0.08] dark:border-white/[0.08] text-neutral-700 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5'
+                          }`}
+                        >
+                          <span>{tab.label}</span>
+                          {tab.count !== undefined && (
+                            <span className={`text-[calc(10px*var(--fs))] px-1.5 py-0.2 rounded-full font-mono font-normal ${
+                              isActive
+                                ? 'bg-white/20 dark:bg-black/20 text-current'
+                                : 'bg-black/5 dark:bg-white/10 text-neutral-500'
+                            }`}>
+                              {tab.count}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      type="button"
+                      id="how-to-use-expander-btn"
+                      onClick={() => setIsHowToUseOpen(!isHowToUseOpen)}
+                      title="策略操作導引說明"
+                      className={`w-8 h-8 rounded-full flex items-center justify-center border transition-colors ${
+                        isHowToUseOpen
+                          ? 'bg-black text-white dark:bg-white dark:text-black border-transparent'
+                          : 'bg-white dark:bg-[#161616] border-black/[0.08] dark:border-white/[0.08] text-neutral-500 hover:bg-black/5 dark:hover:bg-white/5'
+                      }`}
+                    >
+                      <Info className="w-4 h-4" />
+                    </button>
                     <button
                       type="button"
                       onClick={() => setActiveNav('upload_history')}
-                      className="py-2 px-3.5 rounded-full text-xs font-semibold uppercase tracking-wider bg-white dark:bg-[#161616] border border-black/[0.08] dark:border-white/[0.08] text-neutral-700 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5 transition-colors flex items-center gap-1.5"
+                      title="上傳歷史"
+                      className="py-1.5 px-3 rounded-full text-xs font-semibold uppercase tracking-wider bg-white dark:bg-[#161616] border border-black/[0.08] dark:border-white/[0.08] text-neutral-700 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5 transition-colors flex items-center gap-1.5 whitespace-nowrap"
                     >
                       <History className="w-3.5 h-3.5" />
-                      <span>上傳歷史</span>
+                      <span className="hidden sm:inline">上傳歷史</span>
                     </button>
+                    {/* 貼一段下注文字 → 一次記多筆(解析規則見 backend/routers/importer.py) */}
                     <button
                       type="button"
                       id="open-quick-import-btn"
                       onClick={() => setIsQuickImportOpen(true)}
-                      className="py-2 px-3.5 rounded-full text-xs font-semibold uppercase tracking-wider bg-white dark:bg-[#161616] border border-black/[0.08] dark:border-white/[0.08] text-neutral-700 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5 transition-colors flex items-center gap-1.5"
+                      title="快速上傳"
+                      className="py-1.5 px-3 rounded-full text-xs font-semibold uppercase tracking-wider bg-white dark:bg-[#161616] border border-black/[0.08] dark:border-white/[0.08] text-neutral-700 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5 transition-colors flex items-center gap-1.5 whitespace-nowrap"
                     >
                       <ClipboardPaste className="w-3.5 h-3.5" />
-                      <span>快速上傳</span>
+                      <span className="hidden sm:inline">快速上傳</span>
                     </button>
                   </div>
                 </div>
 
-                {/* "這頁怎麼用" Expander */}
-                <div className="rounded-2xl border border-black/[0.08] dark:border-white/[0.08] overflow-hidden bg-white dark:bg-[#121212]">
-                  <button
-                    type="button"
-                    id="how-to-use-expander-btn"
-                    onClick={() => setIsHowToUseOpen(!isHowToUseOpen)}
-                    className="w-full px-5 py-3 flex items-center justify-between text-xs sm:text-sm font-semibold text-neutral-700 dark:text-neutral-300 hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors"
-                  >
-                    <div className="flex items-center gap-2">
-                      <Info className="w-4 h-4 text-neutral-500" />
-                      <span className="tracking-wide">策略操作導引說明</span>
-                    </div>
-                    {isHowToUseOpen ? <ChevronDown className="w-4 h-4 text-neutral-400" /> : <ChevronRight className="w-4 h-4 text-neutral-400" />}
-                  </button>
-
-                  {isHowToUseOpen && (
-                    <div className="p-5 border-t border-black/[0.08] dark:border-white/[0.08] text-xs sm:text-sm text-neutral-600 dark:text-neutral-300 space-y-2 leading-relaxed bg-black/[0.01] dark:bg-white/[0.01]">
-                      <ul className="list-disc pl-5 space-y-1.5">
-                        <li>分頁：<strong>1組</strong>、<strong>2組</strong>(可在設定頁改固定顆數 / 停用)、<strong>三柱1800碰</strong>、<strong>連碰</strong>、<strong>總損益</strong>。各頁右上角即時顯示獨立累積損益。</li>
-                        <li>下注、回填、紀錄、清除、建議車數<strong>均依各分頁獨立維護</strong>，互相隔離。</li>
-                        <li><strong>每組獨立計算追平車數</strong>：各組只追自己的虧損,綜合彙整請切換至「總損益」分頁。</li>
-                        <li><strong>三柱1800碰</strong>：全覆蓋組合共 1800 注三合，各柱開出 1 顆即保證過關，過關率達 55.36%。</li>
-                        <li><strong>連碰</strong>：星碰 / 全碰 / 立柱 / 拖膽，注數依照組合理論計算。</li>
-                      </ul>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Mode Tabs Bar */}
-              <div className="border-b border-black/[0.08] dark:border-white/[0.08] pb-3">
-                <div className="flex overflow-x-auto gap-2 no-scrollbar">
-                  {duoTabList.map(tab => {
-                    const isActive = duoTab === tab.id;
-                    return (
-                      <button
-                        key={tab.id}
-                        id={`tab-${tab.id}`}
-                        type="button"
-                        onClick={() => setDuoTab(tab.id)}
-                        className={`whitespace-nowrap px-4 py-2 rounded-full text-xs font-semibold uppercase tracking-wider transition-all duration-150 flex items-center gap-1.5 ${
-                          isActive
-                            ? 'bg-black text-white dark:bg-white dark:text-black shadow-xs'
-                            : 'bg-white dark:bg-[#161616] border border-black/[0.08] dark:border-white/[0.08] text-neutral-700 dark:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/5'
-                        }`}
-                      >
-                        <span>{tab.label}</span>
-                        {tab.count !== undefined && (
-                          <span className={`text-[calc(10px*var(--fs))] px-1.5 py-0.2 rounded-full font-mono font-normal ${
-                            isActive 
-                              ? 'bg-white/20 dark:bg-black/20 text-current' 
-                              : 'bg-black/5 dark:bg-white/10 text-neutral-500'
-                          }`}>
-                            {tab.count}
-                          </span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
+                {isHowToUseOpen && (
+                  <ul className="list-disc pl-5 py-1 space-y-1 text-xs sm:text-sm text-neutral-600 dark:text-neutral-300 leading-relaxed">
+                    <li>分頁：<strong>1組</strong>、<strong>2組</strong>(可在設定頁改固定顆數 / 停用)、<strong>三柱1800碰</strong>、<strong>連碰</strong>、<strong>總損益</strong>。各頁右上角即時顯示獨立累積損益。</li>
+                    <li>下注、回填、紀錄、清除、建議車數<strong>均依各分頁獨立維護</strong>，互相隔離。</li>
+                    <li><strong>每組獨立計算追平車數</strong>：各組只追自己的虧損,綜合彙整請切換至「總損益」分頁。</li>
+                    <li><strong>三柱1800碰</strong>：全覆蓋組合共 1800 注三合，各柱開出 1 顆即保證過關，過關率達 55.36%。</li>
+                    <li><strong>連碰</strong>：星碰 / 全碰 / 立柱 / 拖膽，注數依照組合理論計算。</li>
+                  </ul>
+                )}
               </div>
 
               {/* Tab Contents */}
