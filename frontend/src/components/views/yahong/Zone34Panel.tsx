@@ -1,8 +1,10 @@
 import React from 'react';
-import { Radar, Flame, ShieldCheck } from 'lucide-react';
+import { Radar, Flame, ShieldCheck, Siren, Target } from 'lucide-react';
 import { api, GameKey } from '../../../api/client';
 import { useAsync } from '../../../api/useAsync';
 import { Disclaimer, Loading, ErrorBox, cardClass, pad2 } from './format';
+
+const pct1 = (v: number) => `${(v * 100).toFixed(1)}%`;
 
 export const Zone34Panel: React.FC<{ game: GameKey }> = ({ game }) => {
   const { data, loading, error } = useAsync(() => api.yahongRadar(game), [game]);
@@ -100,6 +102,82 @@ export const Zone34Panel: React.FC<{ game: GameKey }> = ({ game }) => {
               </div>
             )}
           </div>
+
+          {/* 極端偏態雷達(原站主頁):同柱 3 顆以上斷柱預警 */}
+          {data.extreme && data.extreme.totalDraws >= 5 && (
+            <div className={`${cardClass} space-y-3`}>
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-2 font-display font-bold text-sm text-neutral-900 dark:text-white">
+                  <Siren className="w-4 h-4 text-rose-500" />
+                  <span>極端偏態雷達 · 同柱 3 顆以上</span>
+                </div>
+                <span className="text-[calc(11px*var(--fs))] text-neutral-400">
+                  目前連漏 {data.extreme.tripleStreak} 期 · 近 {data.extreme.totalDraws} 期
+                </span>
+              </div>
+              <div className="text-sm font-semibold text-neutral-700 dark:text-neutral-200">
+                大盤爆發機率:<span className="font-mono text-rose-600 dark:text-rose-400">{pct1(data.extreme.tripleNextProb)}</span>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                {data.extreme.columns.map(c => (
+                  <div key={c.label} className={`p-3 rounded-xl border text-center ${
+                    c.danger
+                      ? 'bg-rose-500/10 border-rose-500/30'
+                      : 'bg-black/[0.02] dark:bg-white/[0.03] border-black/[0.06] dark:border-white/[0.06]'
+                  }`}>
+                    <div className="text-[calc(10px*var(--fs))] text-neutral-400 truncate">{c.label}</div>
+                    <div className={`text-xl font-mono font-bold mt-1 ${c.danger ? 'text-rose-600 dark:text-rose-400' : 'text-neutral-900 dark:text-white'}`}>
+                      {pct1(c.prob)}
+                    </div>
+                    <div className="text-[calc(10px*var(--fs))] text-neutral-400 mt-0.5">
+                      連漏 {c.streak} · 實際 {pct1(c.hits / data.extreme.totalDraws)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="text-xs font-semibold text-rose-700 dark:text-rose-300">
+                ⚠️ 最危險區域:{data.extreme.columns.filter(c => c.danger).map(c => c.label).join('、')}
+              </div>
+              <p className="text-[calc(10px*var(--fs))] text-neutral-400">
+                爆發機率為原站公式(基準機率 + 連漏 × 加成),「實際」為視窗內歷史頻率;開獎獨立,連漏不改變下一期機率。
+              </p>
+            </div>
+          )}
+
+          {/* 新系統:6 因子分區評分 → 今晚最佳打擊區(原站同區戰情室) */}
+          {data.quant && (
+            <div className={`${cardClass} space-y-3`}>
+              <div className="flex items-center gap-2 font-display font-bold text-sm text-neutral-900 dark:text-white">
+                <Target className="w-4 h-4 text-amber-500" />
+                <span>今晚最佳打擊區 · 新系統</span>
+              </div>
+              <div className="text-sm font-semibold text-neutral-700 dark:text-neutral-200">
+                {data.quant.labels[data.quant.best]}
+                <span className="ml-2 text-xs font-normal text-neutral-400">
+                  預估強勢爆發率 <span className="font-mono text-amber-600 dark:text-amber-400">{data.quant.pct[data.quant.best]}%</span>
+                </span>
+              </div>
+              <div className="space-y-2">
+                {data.quant.pct.map((p, i) => {
+                  const best = i === data.quant!.best;
+                  return (
+                    <div key={i}>
+                      <div className="flex justify-between text-[calc(11px*var(--fs))] mb-1">
+                        <span className={best ? 'text-amber-600 dark:text-amber-400 font-semibold' : 'text-neutral-500'}>第{i + 1}區</span>
+                        <span className={`font-mono ${best ? 'text-amber-600 dark:text-amber-400 font-semibold' : 'text-neutral-400'}`}>{p}%</span>
+                      </div>
+                      <div className="h-2 rounded-full bg-black/5 dark:bg-white/10 overflow-hidden">
+                        <div className={`h-full rounded-full ${best ? 'bg-amber-500' : 'bg-neutral-400/60'}`} style={{ width: `${p}%` }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="text-[calc(10px*var(--fs))] text-neutral-400">
+                均值回歸、SMA5、EWMA、布林擠壓、馬可夫轉移、泊松加成六項加權後正規化(原站算式照抄)。用法:舊系統(上方連槓/策略 A・B)決定下注量,這裡決定打擊區。
+              </p>
+            </div>
+          )}
         </>
       )}
     </div>

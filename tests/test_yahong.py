@@ -346,3 +346,28 @@ def test_unknown_game_404():
 def test_supported_games_pass_guard():
     yahong_router._guard("lotto539")   # 不應拋
     yahong_router._guard("fantasy5")
+
+
+def test_extreme_radar_streaks_and_probs():
+    from core.yahong.zone34 import extreme_radar
+    # 舊→新:最舊一期第3柱 3 顆,之後兩期都沒有任何柱 >=3
+    draws = [[20, 21, 22, 1, 30], [1, 10, 20, 30, 2], [3, 11, 23, 31, 39]]
+    r = extreme_radar(draws)
+    assert r["tripleStreak"] == 2
+    assert r["tripleNextProb"] == round(0.357 + 2 * 0.015, 4)
+    col3 = r["columns"][2]
+    assert col3["streak"] == 2 and col3["hits"] == 1
+    # 其他柱從未 >=3 → 連漏 = 全部期數
+    assert r["columns"][0]["streak"] == 3
+    assert r["columns"][0]["prob"] == round(0.0702 + 3 * 0.005, 4)
+    assert sum(c["danger"] for c in r["columns"]) >= 1
+
+
+def test_quant_zones_needs_30_and_sums_100():
+    from core.yahong.zone34 import quant_zones
+    base = [[1, 12, 23, 34, 5], [2, 13, 24, 35, 16], [3, 14, 25, 36, 27]]
+    assert quant_zones(base * 9) is None          # 27 期 < 30
+    q = quant_zones(base * 12)
+    assert q is not None
+    assert abs(sum(q["pct"]) - 100) < 0.5
+    assert q["pct"][q["best"]] == max(q["pct"])

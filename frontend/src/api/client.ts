@@ -938,8 +938,28 @@ export interface YahongRadarColumnDTO {
   label: string;
   coldest: number;
 }
+export interface YahongExtremeColumnDTO {
+  label: string;
+  streak: number;   // 該柱目前連漏(未出 >=3 顆)期數
+  hits: number;     // 視窗內該柱 >=3 顆的期數
+  prob: number;     // 原站爆發機率(0~1)
+  danger: boolean;  // 機率最高 = 最危險區域
+}
+export interface YahongExtremeDTO {
+  totalDraws: number;
+  tripleStreak: number;
+  tripleNextProb: number;
+  columns: YahongExtremeColumnDTO[];
+}
+export interface YahongQuantDTO {
+  pct: number[];    // 四區預估強勢爆發率(%)
+  best: number;     // 最佳打擊區 index
+  labels: string[];
+}
 export interface YahongRadarDTO {
   game: GameKey;
+  extreme: YahongExtremeDTO;
+  quant: YahongQuantDTO | null;
   consecutiveMiss: number;
   strategyA: YahongRadarStrategyDTO;
   strategyB: YahongRadarStrategyDTO;
