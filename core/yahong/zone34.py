@@ -173,7 +173,7 @@ def quant_zones(draws_old_to_new: list[list[int]]) -> dict | None:
     return {
         "pct": pct,
         "best": best,
-        "labels": [f"第 {i + 1} 區 ({c['lo']:02d}-{c['hi']:02d})" for i, c in enumerate(_COLUMNS)],
+        "labels": [c["label"] for c in _COLUMNS],
     }
 
 

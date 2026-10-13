@@ -109,14 +109,14 @@ export const Zone34Panel: React.FC<{ game: GameKey }> = ({ game }) => {
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <div className="flex items-center gap-2 font-display font-bold text-sm text-neutral-900 dark:text-white">
                   <Siren className="w-4 h-4 text-rose-500" />
-                  <span>極端偏態雷達 · 同柱 3 顆以上</span>
+                  <span>同柱 3 顆以上 · 斷柱監控</span>
                 </div>
                 <span className="text-[calc(11px*var(--fs))] text-neutral-400">
-                  目前連漏 {data.extreme.tripleStreak} 期 · 近 {data.extreme.totalDraws} 期
+                  已 {data.extreme.tripleStreak} 期沒開 · 統計近 {data.extreme.totalDraws} 期
                 </span>
               </div>
               <div className="text-sm font-semibold text-neutral-700 dark:text-neutral-200">
-                大盤爆發機率:<span className="font-mono text-rose-600 dark:text-rose-400">{pct1(data.extreme.tripleNextProb)}</span>
+                下期開出機率:<span className="font-mono text-rose-600 dark:text-rose-400">{pct1(data.extreme.tripleNextProb)}</span>
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                 {data.extreme.columns.map(c => (
@@ -130,16 +130,16 @@ export const Zone34Panel: React.FC<{ game: GameKey }> = ({ game }) => {
                       {pct1(c.prob)}
                     </div>
                     <div className="text-[calc(10px*var(--fs))] text-neutral-400 mt-0.5">
-                      連漏 {c.streak} · 實際 {pct1(c.hits / data.extreme.totalDraws)}
+                      {c.streak} 期沒開 · 平常 {pct1(c.hits / data.extreme.totalDraws)}
                     </div>
                   </div>
                 ))}
               </div>
               <div className="text-xs font-semibold text-rose-700 dark:text-rose-300">
-                ⚠️ 最危險區域:{data.extreme.columns.filter(c => c.danger).map(c => c.label).join('、')}
+                最可能開:{data.extreme.columns.filter(c => c.danger).map(c => c.label).join('、')}
               </div>
               <p className="text-[calc(10px*var(--fs))] text-neutral-400">
-                爆發機率為原站公式(基準機率 + 連漏 × 加成),「實際」為視窗內歷史頻率;開獎獨立,連漏不改變下一期機率。
+                機率是原站算法:越久沒開加越多。「平常」是過去實際開出的比例,可以對照著看。
               </p>
             </div>
           )}
@@ -149,12 +149,12 @@ export const Zone34Panel: React.FC<{ game: GameKey }> = ({ game }) => {
             <div className={`${cardClass} space-y-3`}>
               <div className="flex items-center gap-2 font-display font-bold text-sm text-neutral-900 dark:text-white">
                 <Target className="w-4 h-4 text-amber-500" />
-                <span>今晚最佳打擊區 · 新系統</span>
+                <span>今晚主攻哪一柱</span>
               </div>
               <div className="text-sm font-semibold text-neutral-700 dark:text-neutral-200">
                 {data.quant.labels[data.quant.best]}
                 <span className="ml-2 text-xs font-normal text-neutral-400">
-                  預估強勢爆發率 <span className="font-mono text-amber-600 dark:text-amber-400">{data.quant.pct[data.quant.best]}%</span>
+                  分數佔比 <span className="font-mono text-amber-600 dark:text-amber-400">{data.quant.pct[data.quant.best]}%</span>
                 </span>
               </div>
               <div className="space-y-2">
@@ -163,7 +163,7 @@ export const Zone34Panel: React.FC<{ game: GameKey }> = ({ game }) => {
                   return (
                     <div key={i}>
                       <div className="flex justify-between text-[calc(11px*var(--fs))] mb-1">
-                        <span className={best ? 'text-amber-600 dark:text-amber-400 font-semibold' : 'text-neutral-500'}>第{i + 1}區</span>
+                        <span className={best ? 'text-amber-600 dark:text-amber-400 font-semibold' : 'text-neutral-500'}>第{i + 1}柱</span>
                         <span className={`font-mono ${best ? 'text-amber-600 dark:text-amber-400 font-semibold' : 'text-neutral-400'}`}>{p}%</span>
                       </div>
                       <div className="h-2 rounded-full bg-black/5 dark:bg-white/10 overflow-hidden">
@@ -174,7 +174,7 @@ export const Zone34Panel: React.FC<{ game: GameKey }> = ({ game }) => {
                 })}
               </div>
               <p className="text-[calc(10px*var(--fs))] text-neutral-400">
-                均值回歸、SMA5、EWMA、布林擠壓、馬可夫轉移、泊松加成六項加權後正規化(原站算式照抄)。用法:舊系統(上方連槓/策略 A・B)決定下注量,這裡決定打擊區。
+                看近 50 期各柱的開出量、最近 5 期走勢、上期開完後通常接哪柱等,合起來打分數。上面的策略 A/B 看要不要下、下多少,這裡看下哪一柱。
               </p>
             </div>
           )}
