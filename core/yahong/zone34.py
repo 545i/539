@@ -192,7 +192,7 @@ def radar_response(game: str, draws_old_to_new: list[list[int]]) -> dict:
         },
         "strategyB": {
             "active": r["strategy_b"], "threshold": THR_B,
-            "note": "保本防呆,四區 1200 碰全包",
+            "note": "四區 1200 碰全包",
         },
         "columns": [
             {"label": _COLUMNS[i]["label"], "coldest": coldest[i]}

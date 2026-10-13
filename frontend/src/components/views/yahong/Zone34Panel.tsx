@@ -13,6 +13,12 @@ export const Zone34Panel: React.FC<{ game: GameKey }> = ({ game }) => {
     <div className="space-y-5 animate-in fade-in duration-200">
       <Disclaimer />
 
+      <ol className="list-decimal pl-5 space-y-1 text-xs text-neutral-500 dark:text-neutral-400">
+        <li>先看「決策矩陣」和下方防禦/攻擊策略,決定這期要不要下、下多少。</li>
+        <li>再看「今晚主攻哪一柱」,分數最高的那柱。</li>
+        <li>打法 A:主攻柱一顆都不刪,改刪其他柱的冷號;打法 B:主攻柱自己互碰或拖牌包牌。</li>
+      </ol>
+
       {loading && <Loading />}
       {error && <ErrorBox msg={error} />}
 
@@ -53,7 +59,7 @@ export const Zone34Panel: React.FC<{ game: GameKey }> = ({ game }) => {
             <div className="flex items-center justify-between flex-wrap gap-2">
               <div className="flex items-center gap-2 font-display font-bold text-sm text-neutral-900 dark:text-white">
                 <Flame className={`w-4 h-4 ${data.strategyA.active ? 'text-rose-500' : 'text-neutral-400'}`} />
-                <span>策略 A · 量化正收益</span>
+                <span>防禦策略 · 降成本</span>
               </div>
               <span className={`text-[calc(11px*var(--fs))] font-semibold px-2.5 py-1 rounded-full ${
                 data.strategyA.active ? 'bg-rose-500/20 text-rose-700 dark:text-rose-300' : 'bg-black/5 dark:bg-white/10 text-neutral-500'
@@ -85,7 +91,7 @@ export const Zone34Panel: React.FC<{ game: GameKey }> = ({ game }) => {
             <div className="flex items-center justify-between flex-wrap gap-2">
               <div className="flex items-center gap-2 font-display font-bold text-sm text-neutral-900 dark:text-white">
                 <ShieldCheck className={`w-4 h-4 ${data.strategyB.active ? 'text-purple-500' : 'text-neutral-400'}`} />
-                <span>策略 B · 防呆狙擊手</span>
+                <span>攻擊策略 · 包牌</span>
               </div>
               <span className={`text-[calc(11px*var(--fs))] font-semibold px-2.5 py-1 rounded-full ${
                 data.strategyB.active ? 'bg-purple-500/20 text-purple-700 dark:text-purple-300' : 'bg-black/5 dark:bg-white/10 text-neutral-500'
@@ -98,7 +104,7 @@ export const Zone34Panel: React.FC<{ game: GameKey }> = ({ game }) => {
             </p>
             {data.strategyB.active && (
               <div className="mt-3 text-xs font-semibold text-purple-700 dark:text-purple-300">
-                🎯 狙擊時機已到!今晚不刪牌直接滿注進場,等待爆發,睡覺免煩惱!
+                已連 7 期沒開,這期不刪牌,四區全包。
               </div>
             )}
           </div>
@@ -174,7 +180,7 @@ export const Zone34Panel: React.FC<{ game: GameKey }> = ({ game }) => {
                 })}
               </div>
               <p className="text-[calc(10px*var(--fs))] text-neutral-400">
-                看近 50 期各柱的開出量、最近 5 期走勢、上期開完後通常接哪柱等,合起來打分數。上面的策略 A/B 看要不要下、下多少,這裡看下哪一柱。
+                看近 50 期各柱的開出量、最近 5 期走勢、上期開完後通常接哪柱等,合起來打分數。防禦/攻擊策略看要不要下、下多少,這裡看下哪一柱。
               </p>
             </div>
           )}
