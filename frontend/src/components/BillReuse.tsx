@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useMemo, useRef, useState 
 import { createPortal } from 'react-dom';
 import { ClipboardList, X, ChevronDown, ChevronRight, RotateCcw } from 'lucide-react';
 import { useAllLedger } from '../api/useLedger';
-import { useEditions } from '../api/useEditions';
+import { useEditions, sortEdIds } from '../api/useEditions';
 import { api, LedgerMode } from '../api/client';
 import { BetRecord } from '../types';
 import { MODE_LABEL } from './uploadHistory';
@@ -176,7 +176,7 @@ export const BillReuseButton: React.FC<BillPickerProps> = ({
   );
   const edOf = (r: BetRecord) => Number(r.edition) || 1;
   const edName = (eid: number) => editions.find(e => e.eid === eid)?.name ?? `版${eid}`;
-  const edOptions = useMemo(() => Array.from(new Set(all.map(edOf))).sort((a, b) => a - b), [all]);
+  const edOptions = useMemo(() => sortEdIds(Array.from(new Set(all.map(edOf))), editions), [all, editions]);
   const gameOptions = useMemo(() => Array.from(new Set(all.map(r => r.game).filter(Boolean))), [all]);
   const passFilters = (r: BetRecord) =>
     (modeFilter === 'all' || r.mode === modeFilter) &&

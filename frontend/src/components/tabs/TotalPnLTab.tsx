@@ -13,7 +13,7 @@ import { TOTAL_STRATEGY_PERFORMANCE } from '../../data/lotteryData';
 import { GameKey, LedgerMode } from '../../api/client';
 import { useGame } from '../../api/useGame';
 import { useAllLedger } from '../../api/useLedger';
-import { useEditions } from '../../api/useEditions';
+import { useEditions, sortEdIds } from '../../api/useEditions';
 import { weekAddDays, weekMonday } from '../../weeks';
 
 // 追平方案的「哪一款 × 哪種下法 × 幾車」沿用 v2 原本的 client-side 設定,
@@ -74,11 +74,11 @@ export const TotalPnLTab: React.FC = () => {
       : entries.filter(e => edOf(e) === selEd)),       // 選特定版(含模擬版)照顯示
     [entries, selEd, simEids],
   );
-  // 頁面出現過的版(依 eid 排序),給切換鈕用
+  // 頁面出現過的版(照版清單順序,阿姨在前),給切換鈕用
   const usedEds = useMemo(() => {
     const s = new Set<number>(entries.map(edOf));
-    return Array.from(s).sort((a, b) => a - b);
-  }, [entries]);
+    return sortEdIds(Array.from(s), editions);
+  }, [entries, editions]);
 
 
   // 各週損益(全自動週期):依開獎日期把每筆歸到「週一~週日」那一週,彙總

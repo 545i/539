@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AlertTriangle, Trash2 } from 'lucide-react';
 import { useAllLedger, useLedgerActions } from '../../api/useLedger';
-import { useEditions } from '../../api/useEditions';
+import { useEditions, sortEdIds } from '../../api/useEditions';
 import { useAuth } from '../../api/useAuth';
 import { useGame } from '../../api/useGame';
 import { useHistoriesByGame } from '../../api/useHistories';
@@ -768,8 +768,8 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
   const usedEds = useMemo(() => {
     const s = new Set<number>();
     for (const e of entries) s.add(num((e.record as Record<string, unknown>).edition) || 1);
-    return Array.from(s).sort((a, b) => a - b);
-  }, [entries]);
+    return sortEdIds(Array.from(s), editions);
+  }, [entries, editions]);
   const edName = (ed: number) => editions.find(x => x.eid === ed)?.name ?? `版${ed}`;
   const openEditor = (ids: string[]) => {
     const want = new Set(ids);
@@ -830,7 +830,7 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
   const weekSplit = (w: WeekGroup) => {
     const eds = Array.from(w.moneyByEd.entries())
       .filter(([ed]) => !simEids.has(ed))
-      .sort((a, b) => a[0] - b[0])
+      .sort((a, b) => usedEds.indexOf(a[0]) - usedEds.indexOf(b[0]) || a[0] - b[0])
       .map(([ed, days]) => ({ ed, name: edName(ed), ...splitCostPayout(days, sharesByEid[ed]) }));
     const total = new Map<string, { cost: number; payout: number; net: number }>();
     for (const e of eds) for (const r of e.rows) {

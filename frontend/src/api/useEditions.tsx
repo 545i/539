@@ -15,6 +15,19 @@ interface EditionsCtx {
 }
 
 const Ctx = createContext<EditionsCtx | null>(null);
+
+// 版的顯示順序:阿姨排最前,其餘照 eid
+const FIRST_EDITION = '阿姨';
+const edRank = (e: EditionDTO) => (e.name === FIRST_EDITION ? 0 : 1);
+
+// 依版清單順序排一串版號(清單裡沒有的版排最後、照 eid)
+export function sortEdIds(ids: number[], editions: EditionDTO[]): number[] {
+  const pos = (id: number) => {
+    const i = editions.findIndex(e => e.eid === id);
+    return i < 0 ? editions.length : i;
+  };
+  return [...ids].sort((a, b) => pos(a) - pos(b) || a - b);
+}
 const STORE_KEY = 'lotto539_edition';
 const COMBINE_KEY = 'lotto539_edition_combine';
 
@@ -33,7 +46,7 @@ export function EditionsProvider({children}: {children: React.ReactNode}) {
     api
       .getEditions()
       .then(rows => {
-        setEditions(rows);
+        setEditions([...rows].sort((a, b) => edRank(a) - edRank(b) || a.eid - b.eid));
         // 選中的版被刪了就退回第一版
         setEidState(prev => (rows.some(e => e.eid === prev) ? prev : 1));
       })
