@@ -16,7 +16,7 @@ export const GameSwitcher: React.FC = () => {
           type="button"
           onClick={() => setGameKey(g.key)}
           title={g.name}
-          className={`px-2.5 sm:px-3 py-1 rounded-lg text-[calc(11px*var(--fs))] sm:text-xs font-semibold transition-all whitespace-nowrap ${
+          className={`px-2 min-[400px]:px-2.5 sm:px-3 py-1 rounded-lg text-[calc(11px*var(--fs))] sm:text-xs font-semibold transition-all whitespace-nowrap ${
             gameKey === g.key
               ? 'bg-black text-white dark:bg-white dark:text-black shadow-xs'
               : 'text-neutral-600 dark:text-neutral-400 hover:text-black dark:hover:text-white'
@@ -48,8 +48,8 @@ export const Header: React.FC<Props> = ({
   showGameSwitcher = true
 }) => {
   return (
-    <header className="sticky top-0 z-30 h-16 bg-[#FFFFFF]/90 dark:bg-[#0A0A0A]/90 backdrop-blur-md border-b border-black/[0.08] dark:border-white/[0.08] px-4 sm:px-8 flex items-center justify-between transition-colors duration-200">
-      <div className="flex items-center gap-3">
+    <header className="sticky top-0 z-30 h-16 bg-[#FFFFFF]/90 dark:bg-[#0A0A0A]/90 backdrop-blur-md border-b border-black/[0.08] dark:border-white/[0.08] px-3 min-[400px]:px-4 sm:px-8 flex items-center justify-between gap-2 transition-colors duration-200">
+      <div className="flex items-center gap-2 min-[400px]:gap-3 min-w-0">
         <button
           type="button"
           id="mobile-menu-btn"
@@ -59,17 +59,18 @@ export const Header: React.FC<Props> = ({
         >
           <Menu className="w-5 h-5" />
         </button>
-        <div>
-          <div className="text-[calc(9px*var(--fs))] uppercase tracking-[0.25em] text-neutral-400 dark:text-neutral-500 font-semibold">
+        <div className="min-w-0">
+          {/* 摺疊機闔上(<420px)收起副標,把寬度讓給遊戲切換 */}
+          <div className="max-[420px]:hidden text-[calc(9px*var(--fs))] uppercase tracking-[0.25em] text-neutral-400 dark:text-neutral-500 font-semibold">
             Dualis Analytics
           </div>
-          <h2 className="text-base sm:text-lg font-display font-bold text-[#141414] dark:text-white tracking-wide">
+          <h2 className="text-base sm:text-lg font-display font-bold text-[#141414] dark:text-white tracking-wide truncate">
             {title}
           </h2>
         </div>
       </div>
 
-      <div className="flex items-center gap-2 sm:gap-3">
+      <div className="flex items-center gap-1.5 min-[400px]:gap-2 sm:gap-3 shrink-0">
         {showGameSwitcher && <GameSwitcher />}
         <button
           type="button"
@@ -86,7 +87,7 @@ export const Header: React.FC<Props> = ({
           id="header-theme-toggle-btn"
           onClick={onToggleTheme}
           aria-label="切換主題模式"
-          className="w-9 h-9 rounded-full border border-black/10 dark:border-white/10 flex items-center justify-center bg-black/[0.02] dark:bg-white/[0.04] text-neutral-800 dark:text-neutral-200 hover:bg-black/5 dark:hover:bg-white/5 transition-transform active:scale-95"
+          className="max-[400px]:hidden w-9 h-9 rounded-full border border-black/10 dark:border-white/10 flex items-center justify-center bg-black/[0.02] dark:bg-white/[0.04] text-neutral-800 dark:text-neutral-200 hover:bg-black/5 dark:hover:bg-white/5 transition-transform active:scale-95"
         >
           {theme === 'dark' ? (
             <Sun className="w-4 h-4 text-neutral-200" />

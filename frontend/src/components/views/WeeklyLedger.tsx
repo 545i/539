@@ -941,13 +941,12 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
     return () => mq.removeEventListener('change', on);
   }, []);
 
-  // 左右雙欄的比例:中間可拖動的滑塊調整左欄寬度(%),記在 localStorage 下次沿用。
+  // 左右雙欄的比例:中間可拖動的滑塊調整左欄寬度(%)。每次進入雙欄(摺疊機展開)都回到正中間
+  // 50/50,讓分隔線對齊摺痕;拖動只在這次有效、不記憶。雙擊滑塊也回中間。
   const splitRef = React.useRef<HTMLDivElement>(null);
   const draggingRef = React.useRef(false);
-  const [leftPct, setLeftPct] = useState<number>(() => {
-    const v = Number(localStorage.getItem('lottery_ledger_split') || '');
-    return Number.isFinite(v) && v >= 22 && v <= 72 ? v : 34;
-  });
+  const [leftPct, setLeftPct] = useState<number>(50);
+  React.useEffect(() => { if (isWide) setLeftPct(50); }, [isWide]);
   React.useEffect(() => {
     const onMove = (e: PointerEvent) => {
       if (!draggingRef.current || !splitRef.current) return;
@@ -960,12 +959,11 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
       draggingRef.current = false;
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
-      try { localStorage.setItem('lottery_ledger_split', String(Math.round(leftPct))); } catch { /* ignore */ }
     };
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
     return () => { window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); };
-  }, [leftPct]);
+  }, []);
   const startDrag = (e: React.PointerEvent) => {
     e.preventDefault();
     draggingRef.current = true;
@@ -1431,7 +1429,8 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
         {isWide && (
           <div
             onPointerDown={startDrag}
-            title="拖動調整左右比例"
+            onDoubleClick={() => setLeftPct(50)}
+            title="拖動調整左右比例,雙擊回到中間"
             className="group w-4 shrink-0 self-start sticky top-[4.5rem] h-[calc(100vh-5.5rem)] flex items-center justify-center cursor-col-resize touch-none"
           >
             <div className="w-[3px] h-20 rounded-full bg-black/15 dark:bg-white/20 group-hover:bg-indigo-500 dark:group-hover:bg-indigo-400 transition-colors" />
@@ -1541,10 +1540,11 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
             <button
               type="button"
               onClick={() => toggle(openWeeks, w.monday, setOpenWeeks)}
-              className="w-full flex items-center gap-2 px-3 py-2.5 text-left hover:bg-black/[0.02] dark:hover:bg-white/[0.03] transition-colors"
+              className="w-full flex flex-wrap items-center gap-x-2 gap-y-1 px-3 py-2.5 text-left hover:bg-black/[0.02] dark:hover:bg-white/[0.03] transition-colors"
             >
               <span className="text-[calc(11px*var(--fs))] w-3 shrink-0 text-center text-neutral-400">{wOpen ? '▾' : '▸'}</span>
-              <div className="min-w-0 flex-1">
+              {/* 日期不斷行;欄寬不夠時成本/派彩/盈虧整組換到下一行 */}
+              <div className="flex-1 whitespace-nowrap">
                 <div className="text-[calc(12px*var(--fs))] font-semibold text-neutral-800 dark:text-neutral-100 font-mono">
                   {weekLabel(w)}
                   <span className="ml-1.5 font-sans font-normal text-neutral-400 text-[calc(10px*var(--fs))]">{w.count} 筆</span>
@@ -1555,7 +1555,7 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
                   )}
                 </div>
               </div>
-              <div className="flex items-center gap-3 text-[calc(10px*var(--fs))] font-mono shrink-0">
+              <div className="flex items-center gap-3 text-[calc(10px*var(--fs))] font-mono shrink-0 ml-auto">
                 <span className="text-neutral-500">成本 <span className="font-bold text-neutral-800 dark:text-neutral-200">{money(w.cost)}</span></span>
                 <span className="text-neutral-500">派彩 <span className="font-bold text-emerald-600 dark:text-emerald-400">{money(w.payout)}</span></span>
                 <span className="text-neutral-500">盈虧 <span className={`font-bold ${pnlCls(w.pnl)}`}>{signedMoney(w.pnl)}</span></span>
