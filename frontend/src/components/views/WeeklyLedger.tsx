@@ -502,7 +502,7 @@ const AverageCard: React.FC<{ d: AverageData }> = ({ d }) => {
           </button>
         )}
       </div>
-      <div className="grid grid-cols-2 gap-2 items-start">
+      <div className="grid grid-cols-1 @md:grid-cols-2 gap-2 items-start">
         {cells.map(m => <AverageMethodCell key={m.key} m={m} best={m.key === d.bestKey} hasDeficit={d.deficit > 0} onWeight={v => setWeight(m.key, v)} />)}
       </div>
       {d.deficit > 0 && (
@@ -928,13 +928,14 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
   // 建議車數的盤口基準:預設用 539/天天樂(共用),可切成六合彩(六合彩成本/派彩不同)。
   const [oddsGame, setOddsGame] = useState<'lotto539' | 'marksix'>('lotto539');
 
-  // 螢幕寬度(摺疊機展開/闔上):≥640px 走左右雙欄,否則垂直單欄。斷點壓到 640 是因為
-  // 折疊機展開的 CSS 寬度約 690px,原本 768 要縮到 90% 才觸發,改 640 正常寬就進雙欄。
+  // 左右雙欄條件:橫放且 ≥640px(摺疊機橫放約 690px 也能進雙欄),或 ≥1180px 的大螢幕。
+  // 直立的大螢幕(摺疊機展開直拿、平板直立)寬度只有 700~1000,雙欄左欄會被擠成細條,走單欄。
+  const WIDE_MQ = '(min-width: 640px) and (orientation: landscape), (min-width: 1180px)';
   const [isWide, setIsWide] = useState<boolean>(
-    () => typeof window !== 'undefined' && window.matchMedia('(min-width: 640px)').matches,
+    () => typeof window !== 'undefined' && window.matchMedia(WIDE_MQ).matches,
   );
   React.useEffect(() => {
-    const mq = window.matchMedia('(min-width: 640px)');
+    const mq = window.matchMedia(WIDE_MQ);
     const on = () => setIsWide(mq.matches);
     mq.addEventListener('change', on);
     return () => mq.removeEventListener('change', on);
@@ -1259,7 +1260,7 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
       <div ref={splitRef} className={`flex ${isWide ? 'flex-row items-start gap-0' : 'flex-col gap-4'}`}>
         {/* 左欄:建議(寬度可拖動) */}
         <div
-          className={`space-y-4 ${isWide ? 'shrink-0 self-start sticky top-[4.5rem] max-h-[calc(100vh-5.5rem)] overflow-y-auto pr-1' : 'w-full'}`}
+          className={`@container space-y-4 ${isWide ? 'shrink-0 self-start sticky top-[4.5rem] max-h-[calc(100vh-5.5rem)] overflow-y-auto pr-1' : 'w-full'}`}
           style={isWide ? { width: `calc(${leftPct}% - 8px)` } : undefined}
         >
 
@@ -1350,8 +1351,8 @@ export const WeeklyLedger: React.FC<{ initialMode?: LedgerMode | null }> = ({ in
           {recoverMode === 'flow' && recoverRows.map(g => (
             <div key={g.eid} className="space-y-1.5">
               <div className="inline-block px-2 py-0.5 rounded-md bg-violet-500/10 text-violet-600 dark:text-violet-400 text-[calc(11px*var(--fs))] font-bold">{g.name}</div>
-              {/* 每版 2×2:上排 1組/2組,下排 1800碰/9000碰 */}
-              <div className="grid grid-cols-2 gap-2 items-start">
+              {/* 每版 2×2:上排 1組/2組,下排 1800碰/9000碰;左欄太窄(<28rem)改一排一張 */}
+              <div className="grid grid-cols-1 @md:grid-cols-2 gap-2 items-start">
                 <RecoverCard title={`${g.name} · 1組`} d={g.single} onClick={() => setRecoverModal({ eid: g.eid, mode: 'single', label: `${g.name} 1組` })} />
                 <RecoverCard title={`${g.name} · 2組`} d={g.multi} onClick={() => setRecoverModal({ eid: g.eid, mode: 'multi', label: `${g.name} 2組` })} />
                 <Recover1800Card
