@@ -11,8 +11,9 @@ const RANGE_DAY_OPTS = [14, 30, 90] as const;        // 依日期
 const MEDALS = ['🥇', '🥈', '🥉'];
 // 策略累計戰績用的短名稱(隨機不列;均衡在這裡叫「單雙預測」)
 const RANK_LABEL: Record<string, string> = {
-  hot: '熱號', frequency: '歷史', cold: '冷號', balanced: '單雙預測',
+  hot: '熱號', frequency: '歷史', cold: '冷號', balanced: '單雙預測', floating: '浮動',
 };
+const RULE_LABEL: Record<string, string> = { follow: '跟第一名', fade: '反跟最後一名' };
 
 // 號球依十位分色,跟統計分析頁一致(01~09 / 10~19 / … / 40~49)
 const BAND_BALL = [
@@ -182,6 +183,12 @@ export const PredictionView: React.FC = () => {
 
   // 逐期明細裡的策略順序與名稱,跟排行/出號一致
   const strategies = useMemo(() => review.data?.strategies ?? [], [review.data]);
+
+  // 浮動策略本期那一組:取 /predict 同範圍下該策略的號碼(與下方本期預測一致)
+  const floatingSet = useMemo(() => {
+    const key = review.data?.floating_next?.strategy;
+    return pred.data?.strategies.find(s => s.key === key)?.sets[0] ?? null;
+  }, [review.data, pred.data]);
 
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
@@ -357,6 +364,30 @@ export const PredictionView: React.FC = () => {
         )}
       </div>
 
+      {/* ── 1-0. 浮動策略:每期自動挑一個策略,只出 1 組 ── */}
+      {floatingSet && review.data?.floating_next && (
+        <div className="p-5 rounded-2xl border-2 border-emerald-500/40 bg-gradient-to-br from-emerald-500/[0.08] to-transparent space-y-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            <Sparkles className="w-4 h-4 text-emerald-500" />
+            <h3 className="text-sm font-display font-bold uppercase tracking-wide text-neutral-900 dark:text-white">
+              浮動策略 · 本期主推一組
+            </h3>
+            <span className="text-[calc(10px*var(--fs))] px-1.5 py-0.5 rounded-full font-semibold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300">
+              {RULE_LABEL[review.data.floating_next.rule]} → {RANK_LABEL[review.data.floating_next.strategy]}
+            </span>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            {floatingSet.map(n => <Ball key={n} n={n} />)}
+          </div>
+          <p className="text-[calc(11px*var(--fs))] leading-relaxed text-neutral-500 dark:text-neutral-400">
+            每期自動校正:先看前 {review.data.floating_k} 期熱號 / 冷號 / 歷史誰第一、誰最後;
+            再比最近 {review.data.floating_m} 期「跟第一名」和「反跟最後一名(差的可能變好)」哪條規則實際中得多,
+            這期就用那條。實際戰績見下方「策略累計戰績」的「浮動」列。
+            歷史回測略高於隨機,但仍在運氣範圍內,不保證會中。
+          </p>
+        </div>
+      )}
+
       {/* ── 1a. 我們的組合(熱2+冷2+歷史2+單雙2)高亮參考組合 ── */}
       {pred.data?.our_combo?.length ? (
         <div className="p-5 rounded-2xl border-2 border-amber-500/40 bg-gradient-to-br from-amber-500/[0.09] to-transparent dark:from-amber-500/[0.07] shadow-sm space-y-3">
@@ -504,7 +535,11 @@ export const PredictionView: React.FC = () => {
                             `第 ${i + 1} 名`
                           )}
                         </td>
-                        <td className="py-2 text-neutral-800 dark:text-neutral-200 font-semibold">
+                        <td className={`py-2 font-semibold ${
+                          r.strategy === 'floating'
+                            ? 'text-emerald-700 dark:text-emerald-300'
+                            : 'text-neutral-800 dark:text-neutral-200'
+                        }`}>
                           {RANK_LABEL[r.strategy]}
                         </td>
                         <td className="py-2 text-right font-mono text-neutral-500">
@@ -623,6 +658,21 @@ export const PredictionView: React.FC = () => {
 
                 {expanded && (
                   <div className="px-3.5 pb-3.5 pt-1 space-y-2 border-t border-black/[0.06] dark:border-white/[0.06]">
+                    {row.floating && (
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="w-24 sm:w-auto sm:min-w-[calc(10.5rem*var(--fs))] sm:whitespace-nowrap shrink-0 text-[calc(11px*var(--fs))] font-semibold text-emerald-700 dark:text-emerald-300">
+                          浮動({RULE_LABEL[row.floating.rule]}→{RANK_LABEL[row.floating.strategy]})
+                        </span>
+                        <div className="flex gap-1.5 flex-wrap">
+                          {row.floating.numbers.map(n => (
+                            <Ball key={n} n={n} size="sm" tone={row.floating!.matched.includes(n) ? 'hit' : 'miss'} />
+                          ))}
+                        </div>
+                        <span className="text-[calc(10px*var(--fs))] font-mono text-neutral-400">
+                          中 {row.floating.hits} 顆
+                        </span>
+                      </div>
+                    )}
                     {picks.map(({ s, p }) => {
                       if (!p) return null;
                       const hit = new Set(p.matched);

@@ -473,6 +473,14 @@ export interface PredictReviewRowDTO {
     odd: number; lean: string;
     oe_win: boolean | null; // 只有均衡是 true/false;其餘策略為 null(不壓單雙)
   }>;
+  // 浮動策略這期跟了誰(follow=跟前期第一名、fade=反跟最後一名);暖機不足為 null
+  floating?: PredictFloatingPickDTO | null;
+}
+
+export type FloatingRule = 'follow' | 'fade';
+export interface PredictFloatingPickDTO {
+  strategy: string; rule: FloatingRule;
+  numbers: number[]; matched: number[]; hits: number;
 }
 
 export interface PredictRankDTO {
@@ -496,6 +504,9 @@ export interface PredictReviewDTO {
   strategies: {key: string; label: string; desc: string}[];
   rows: PredictReviewRowDTO[];
   ranking: PredictRankDTO[];
+  floating_k: number; // 浮動策略看前幾期排名
+  floating_m: number; // 浮動策略看前幾期規則成績來決定跟第一 / 反跟最後
+  floating_next: {strategy: string; rule: FloatingRule} | null; // 下一期要用的
   notice: string;
 }
 

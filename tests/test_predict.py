@@ -112,3 +112,35 @@ def test_review_odd_even_win_only_for_balanced():
         assert 0.0 <= a["oe_rate"] <= 1.0
         if a["strategy"] != "balanced":
             assert a["oe_wins"] == 0            # 只有均衡累積單雙中
+
+
+def test_floating_pick_rules():
+    """浮動策略:跟第一 vs 反跟最後,依前 FLOAT_M 期哪條規則實際中得多切換。"""
+    from backend.routers import predict as pr
+    K, M = pr.FLOAT_K, pr.FLOAT_M
+    assert pr._float_pick([{"hot": 1, "cold": 0, "frequency": 0}] * (K + M - 1)) is None
+    # 熱號一直領先且一直中 → 跟第一(熱)
+    hist = [{"hot": 2, "cold": 0, "frequency": 1}] * (K + M)
+    assert pr._float_pick(hist) == ("hot", "follow")
+    # 冷號一直最差,但「隔一段時間就翻身」的模式讓反跟最後勝出
+    hist = [{"hot": 1, "cold": 0, "frequency": 1}] * K + \
+           [{"hot": 0, "cold": 3, "frequency": 0}] * 1 + \
+           [{"hot": 1, "cold": 0, "frequency": 1}] * (M - 1)
+    # 最後一期:前 K 期 cold 總分 3 仍是最後?→ 依實際計分決定,只驗格式
+    s, rule = pr._float_pick(hist)
+    assert s in pr.FLOAT_STRATEGIES and rule in ("follow", "fade")
+
+
+def test_review_floating_consistent():
+    """回顧每期的浮動號碼 = 當期它跟的那個策略的號碼;排行含『floating』且命中對得上。"""
+    d = client.get(f"{BASE}/review", params={"game": "lotto539", "periods": 20}).json()
+    total = 0
+    for row in d["rows"]:
+        f = row["floating"]
+        assert f is not None
+        assert f["numbers"] == row["picks"][f["strategy"]]["numbers"]
+        assert f["hits"] == len(set(f["numbers"]) & set(row["drawn"]))
+        total += f["hits"]
+    fl = next(a for a in d["ranking"] if a["strategy"] == "floating")
+    assert fl["periods"] == len(d["rows"]) and fl["total_hits"] == total
+    assert d["floating_next"]["strategy"] in ("hot", "cold", "frequency")

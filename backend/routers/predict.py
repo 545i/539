@@ -241,6 +241,42 @@ def analysis_route(game: str = Query(...),
     }
 
 
+# 浮動策略(自我校正):每期在兩條規則間自動切換,只出 1 組 ——
+#   跟第一:前 FLOAT_K 期平均命中最高的排名策略(順勢)
+#   反跟最後:前 FLOAT_K 期最差的那個(均值回歸:差的可能變好)
+# 再看「最近 FLOAT_M 期這兩條規則各自實際中幾顆」,誰好這期就用誰。
+# K=M=50 是 2026-11-09 用 539 歷史 706 期回測、約 30 種規則中最好的(前半 0.674 /
+# 後半 0.689,隨機 0.641)。但 30 選 1 本身就會因運氣偏高(預期上限 ~0.69),
+# 尚不能算證實有效 —— 所以回顧表把「浮動」當一個策略記實際戰績,往後持續驗證。
+FLOAT_K = 50
+FLOAT_M = 50
+FLOAT_KEY = "floating"
+FLOAT_STRATEGIES = ("hot", "cold", "frequency")   # 平手時依此順序
+
+
+def _rank_pick(win: list[dict[str, int]], best: bool) -> str:
+    """win 這段期間的第一名(best=True)或最後一名。比總命中→單期最佳→策略順序。"""
+    def score(s: str):
+        vals = [h.get(s, 0) for h in win]
+        return (sum(vals), max(vals), -FLOAT_STRATEGIES.index(s))
+    return (max if best else min)(FLOAT_STRATEGIES, key=score)
+
+
+def _float_pick(hit_hist: list[dict[str, int]]) -> tuple[str, str] | None:
+    """依 hit_hist(由舊到新,每期各排名策略命中數)決定下一期要用的策略。
+    回 (策略 key, 規則 'follow'|'fade');資料不足 FLOAT_K+FLOAT_M 期回 None。"""
+    t = len(hit_hist)
+    if t < FLOAT_K + FLOAT_M:
+        return None
+    follow_score = fade_score = 0
+    for j in range(t - FLOAT_M, t):
+        win = hit_hist[j - FLOAT_K:j]
+        follow_score += hit_hist[j].get(_rank_pick(win, True), 0)
+        fade_score += hit_hist[j].get(_rank_pick(win, False), 0)
+    rule = "follow" if follow_score >= fade_score else "fade"
+    return _rank_pick(hit_hist[-FLOAT_K:], rule == "follow"), rule
+
+
 @router.get("/review")
 def review(game: str = Query(...), periods: int = Query(20, ge=1, le=100),
            mode: str = Query("periods", pattern="^(periods|days)$"),
@@ -254,12 +290,15 @@ def review(game: str = Query(...), periods: int = Query(20, ge=1, le=100),
     g = get_game(game)
     df = load_df(game)
     cols = detect_num_cols(df) or [f"n{i}" for i in range(1, g.pick + 1)]
-    tail = df.tail(periods)
+    # 多算 FLOAT_K+FLOAT_M 期暖機:浮動策略要看前面的命中紀錄才能決定
+    tail = df.tail(periods + FLOAT_K + FLOAT_M)
+    out_from = max(0, len(tail) - periods)
 
     rows = []
     evaluated = []
     oe_tally: dict[str, dict] = {}      # 各策略單雙命中統計 {strategy:{wins,periods}}
-    for _, r in tail.iterrows():
+    hit_hist: list[dict[str, int]] = []  # 每期各排名策略命中數(含暖機期),給浮動策略用
+    for pos, (_, r) in enumerate(tail.iterrows()):
         ts = pd.to_datetime(r["date"], errors="coerce")
         date = None if pd.isna(ts) else ts.date()
         issue = None
@@ -274,6 +313,21 @@ def review(game: str = Query(...), periods: int = Query(20, ge=1, le=100),
         preds = predictor.generate_for(df, g.key, key, target_date=date, mode=mode, n=n)
         if not preds:
             continue                    # 最早幾期前面沒資料可算,跳過
+        drawn_set = set(drawn)
+        hits_now = {s: len(set(preds[s]) & drawn_set)
+                    for s in FLOAT_STRATEGIES if s in preds}
+        fp = _float_pick(hit_hist)
+        hit_hist.append(hits_now)
+        if pos < out_from:
+            continue                    # 暖機期:只累積命中,不列入回顧
+        floating = None
+        if fp and fp[0] in preds:
+            fnums = preds[fp[0]]
+            fmatched = sorted(set(fnums) & drawn_set)
+            floating = {"strategy": fp[0], "rule": fp[1], "numbers": fnums,
+                        "matched": fmatched, "hits": len(fmatched)}
+            evaluated.append({"strategy": FLOAT_KEY, "pending": False,
+                              "hits": len(fmatched)})
         picks = {}
         for s, nums in preds.items():
             matched = sorted(set(nums) & set(drawn))
@@ -301,6 +355,7 @@ def review(game: str = Query(...), periods: int = Query(20, ge=1, le=100),
             # 這期單雙結果 = 均衡有沒有中(只有均衡壓單雙);None = 均衡沒出號
             "oe_win": (bal["oe_win"] if bal else None),
             "picks": picks,
+            "floating": floating,
         })
 
     rows.reverse()                      # 新的期排前面
@@ -324,5 +379,10 @@ def review(game: str = Query(...), periods: int = Query(20, ge=1, le=100),
         "strategies": [_strategy_meta(s, g) for s in picker.STRATEGIES],
         "rows": rows,
         "ranking": ranking,
+        # 浮動策略:下一期(尚未開獎)要用的策略與規則
+        "floating_k": FLOAT_K,
+        "floating_m": FLOAT_M,
+        "floating_next": (lambda fp: {"strategy": fp[0], "rule": fp[1]} if fp else None)(
+            _float_pick(hit_hist)),
         "notice": NOTICE,
     }
