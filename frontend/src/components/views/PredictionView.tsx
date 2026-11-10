@@ -21,6 +21,13 @@ const RULE_LABEL: Record<string, string> = { follow: '跟第一名', fade: '反�
 
 const pad2 = (n: number) => n.toString().padStart(2, '0');
 
+// 一組號碼的單雙偏向(與後端 _oe_lean 同規則):奇數多→單多、偶數多→雙多、一樣→平
+const oeLean = (nums: number[]) => {
+  const odd = nums.filter(n => n % 2 === 1).length;
+  const even = nums.length - odd;
+  return odd > even ? '單多' : even > odd ? '雙多' : '平';
+};
+
 type BallTone = 'main' | 'hit' | 'miss';
 const TONE: Record<BallTone, string> = {
   main: 'bg-neutral-900 text-white dark:bg-white dark:text-black',
@@ -128,6 +135,9 @@ export const PredictionView: React.FC = () => {
   );
   const rec = review.data?.ranking.find(r => r.strategy === 'floating') ?? null;
   const floatRows = (review.data?.rows ?? []).filter(r => r.floating);
+  // 單雙預測(均衡策略):本期押單多 / 雙多,紀錄看中幾期
+  const oeSet = pred.data?.strategies.find(s => s.key === 'balanced')?.sets[0] ?? null;
+  const oeRec = review.data?.ranking.find(r => r.strategy === 'balanced') ?? null;
 
   return (
     <div className="space-y-10 animate-in fade-in duration-200 max-w-3xl">
@@ -164,6 +174,15 @@ export const PredictionView: React.FC = () => {
               本期採用 <b>{RULE_LABEL[fn.rule]}</b>,押 <b>{SRC_LABEL[fn.strategy]}</b>
               <span className="text-neutral-400 text-xs ml-1.5">({SRC_DESC[fn.strategy]})</span>
             </div>
+          </div>
+        )}
+        {oeSet && (
+          <div className="pt-3 border-t border-black/[0.06] dark:border-white/[0.06] flex items-baseline gap-3 flex-wrap">
+            <span className="text-xs text-neutral-500 dark:text-neutral-400">單雙預測</span>
+            <span className="text-2xl font-bold text-neutral-900 dark:text-white">{oeLean(oeSet)}</span>
+            <span className="text-[calc(11px*var(--fs))] text-neutral-400">
+              押這期開出的 5 顆奇數較多(單多)或偶數較多(雙多),機率約五五波
+            </span>
           </div>
         )}
       </section>
@@ -253,6 +272,15 @@ export const PredictionView: React.FC = () => {
             </div>
           </div>
         )}
+        {oeRec && (
+          <div className="flex items-baseline gap-3 flex-wrap text-xs">
+            <span className="text-neutral-500 dark:text-neutral-400">單雙預測</span>
+            <span className="font-mono text-base font-bold text-neutral-900 dark:text-white">
+              中 {oeRec.oe_wins} / {oeRec.periods} 期
+            </span>
+            <span className="text-neutral-400">({(oeRec.oe_rate * 100).toFixed(0)}%,隨機約 50%)</span>
+          </div>
+        )}
         {rec && (
           <p className="text-[calc(11px*var(--fs))] text-neutral-400">
             每期都只用「該期之前」的資料重算浮動選號,不偷看答案。期數少時高低多半是運氣。
@@ -268,6 +296,14 @@ export const PredictionView: React.FC = () => {
                 <div className="flex items-center gap-2 flex-wrap text-xs">
                   <span className="font-semibold text-neutral-800 dark:text-neutral-200">{row.label}</span>
                   <span className="text-neutral-400">{RULE_LABEL[f.rule]} → {SRC_LABEL[f.strategy]}</span>
+                  {row.picks.balanced && (
+                    <span className="text-neutral-400">
+                      · 單雙押{row.picks.balanced.lean}/開{row.draw_lean}
+                      <b className={row.oe_win ? 'text-emerald-600 ml-1' : 'text-neutral-400 ml-1'}>
+                        {row.oe_win ? '中' : '未中'}
+                      </b>
+                    </span>
+                  )}
                   <span className={`ml-auto font-mono font-bold ${f.hits > 0 ? 'text-emerald-600' : 'text-neutral-400'}`}>
                     中 {f.hits} 顆
                   </span>
