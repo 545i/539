@@ -1,174 +1,111 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Sparkles, Info, ChevronRight, Trophy, ListOrdered, FlaskConical } from 'lucide-react';
-import { api, ComboSource, PredictAnalysisDTO, PredictReviewDTO, PredictStrategyDTO } from '../../api/client';
+import { api, PredictAnalysisDTO, PredictReviewDTO } from '../../api/client';
 import { useAsync } from '../../api/useAsync';
 import { useGame } from '../../api/useGame';
 
-const SET_OPTIONS = [1, 3, 5] as const;
+// 預測頁只呈現「浮動策略」:先給本期建議 → 再列算式 → 紀錄。
+// 熱號 / 冷號 / 歷史只當浮動的內部輸入,不單獨顯示(2026-11-10 使用者要求)。
+// 冷熱範圍固定最近 50 期 —— 浮動策略的回測與參數都是在這個範圍下選的。
+const FLOAT_RANGE_N = 50;
 const REVIEW_OPTIONS = [10, 20, 50] as const;
-const RANGE_PERIOD_OPTS = [30, 50, 100] as const;   // 依期數
-const RANGE_DAY_OPTS = [14, 30, 90] as const;        // 依日期
-const MEDALS = ['🥇', '🥈', '🥉'];
-// 策略累計戰績用的短名稱(隨機不列;均衡在這裡叫「單雙預測」)
-const RANK_LABEL: Record<string, string> = {
-  hot: '熱號', frequency: '歷史', cold: '冷號', balanced: '單雙預測', floating: '浮動',
+const RANGE_PERIOD_OPTS = [30, 50, 100] as const;   // 統計檢定:依期數
+const RANGE_DAY_OPTS = [14, 30, 90] as const;        // 統計檢定:依日期
+
+const SRC_LABEL: Record<string, string> = { hot: '熱號', cold: '冷號', frequency: '歷史' };
+const SRC_DESC: Record<string, string> = {
+  hot: `最近 ${FLOAT_RANGE_N} 期出現次數最多的 5 顆`,
+  cold: `最近 ${FLOAT_RANGE_N} 期出現次數最少的 5 顆`,
+  frequency: '全部歷史出現次數最多的 5 顆',
 };
 const RULE_LABEL: Record<string, string> = { follow: '跟第一名', fade: '反跟最後一名' };
 
-// 號球依十位分色,跟統計分析頁一致(01~09 / 10~19 / … / 40~49)
-const BAND_BALL = [
-  'bg-neutral-900 text-white dark:bg-white dark:text-black',
-  'bg-blue-600 text-white',
-  'bg-amber-600 text-white',
-  'bg-emerald-600 text-white',
-  'bg-fuchsia-600 text-white',
-];
-
-// 「我們的組合」每顆的來源桶 → 標籤 + 球色 + 小徽章色
-const COMBO_SOURCE: Record<ComboSource, { label: string; ball: string; chip: string }> = {
-  hot: { label: '熱', ball: 'bg-rose-600 text-white', chip: 'bg-rose-500/15 text-rose-600 dark:text-rose-300' },
-  cold: { label: '冷', ball: 'bg-blue-600 text-white', chip: 'bg-blue-500/15 text-blue-600 dark:text-blue-300' },
-  history: { label: '歷史', ball: 'bg-amber-600 text-white', chip: 'bg-amber-500/15 text-amber-700 dark:text-amber-300' },
-  parity: { label: '單雙', ball: 'bg-violet-600 text-white', chip: 'bg-violet-500/15 text-violet-600 dark:text-violet-300' },
-};
-
 const pad2 = (n: number) => n.toString().padStart(2, '0');
-const bandBall = (n: number) =>
-  BAND_BALL[n <= 9 ? 0 : Math.floor(n / 10)] ?? BAND_BALL[BAND_BALL.length - 1];
 
-// band = 本期預測(沒有中不中的問題,照十位分色);
-// hit / miss = 回顧區,綠底實心代表押中,灰底代表沒中 —— 跟舊版的【NN】綠標同一個視覺。
-type BallTone = 'band' | 'hit' | 'miss';
-
-const TONE: Record<Exclude<BallTone, 'band'>, string> = {
+type BallTone = 'main' | 'hit' | 'miss';
+const TONE: Record<BallTone, string> = {
+  main: 'bg-neutral-900 text-white dark:bg-white dark:text-black',
   hit: 'bg-emerald-600 text-white',
-  miss:
-    'bg-black/[0.04] dark:bg-white/[0.06] text-neutral-500 dark:text-neutral-400 ' +
-    'border border-black/[0.06] dark:border-white/[0.08]',
+  miss: 'bg-black/[0.05] dark:bg-white/[0.07] text-neutral-500 dark:text-neutral-400',
 };
 
-const Ball: React.FC<{ n: number; tone?: BallTone; size?: 'sm' | 'md' }> = ({
-  n,
-  tone = 'band',
-  size = 'md',
+const Ball: React.FC<{ n: number; tone?: BallTone; size?: 'sm' | 'md' | 'lg' }> = ({
+  n, tone = 'main', size = 'md',
 }) => (
   <span
     className={`inline-flex items-center justify-center rounded-full font-mono font-bold ${
-      size === 'sm' ? 'w-6 h-6 text-[calc(10px*var(--fs))]' : 'w-8 h-8 text-xs'
-    } ${tone === 'band' ? bandBall(n) : TONE[tone]}`}
+      size === 'sm' ? 'w-6 h-6 text-[calc(10px*var(--fs))]'
+        : size === 'lg' ? 'w-11 h-11 text-base' : 'w-8 h-8 text-xs'
+    } ${TONE[tone]}`}
   >
     {pad2(n)}
   </span>
 );
 
-// 一組號碼的單雙偏向(與後端 _oe_lean 同規則):奇數多→單多、偶數多→雙多、一樣→平
-const oeLean = (nums: number[]) => {
-  const odd = nums.filter(n => n % 2 === 1).length;
-  const even = nums.length - odd;
-  return odd > even ? '單多' : even > odd ? '雙多' : '平';
-};
-
-/** 本期預測:一個策略一列 —— 號球排開,底下附白話說明。均衡不列號碼,只顯示單多 / 雙多。 */
-const StrategyRow: React.FC<{ s: PredictStrategyDTO }> = ({ s }) => (
-  <div className="py-3.5 first:pt-0 last:pb-0 border-b last:border-b-0 border-black/[0.06] dark:border-white/[0.06]">
-    <div className="flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-4">
-      <div className="sm:w-32 shrink-0">
-        <div className="text-xs font-display font-bold text-neutral-900 dark:text-white tracking-wide">
-          {s.label}
-        </div>
-        <div className="flex items-center gap-1.5 mt-0.5">
-          <span className="text-[calc(10px*var(--fs))] font-mono uppercase tracking-[0.18em] text-neutral-400">
-            {s.key}
-          </span>
-          <span className={`text-[calc(9px*var(--fs))] px-1.5 py-0.5 rounded-full font-semibold ${
-            s.ranked
-              ? 'bg-blue-500/15 text-blue-600 dark:text-blue-300'
-              : 'bg-neutral-500/15 text-neutral-500 dark:text-neutral-400'
-          }`}>
-            {s.ranked ? '排名' : '抽樣'}
-          </span>
-        </div>
-      </div>
-      <div className="min-w-0 flex-1 space-y-2">
-        {s.error ? (
-          <div className="text-xs text-rose-500">這個策略算不出來:{s.error}</div>
-        ) : (
-          s.sets.map((nums, i) => (
-            <div key={i} className="flex items-center gap-2 flex-wrap">
-              {s.sets.length > 1 && (
-                <span className="w-7 shrink-0 text-[calc(10px*var(--fs))] font-mono text-neutral-400">
-                  #{i + 1}
-                </span>
-              )}
-              {s.key === 'balanced' ? (
-                <span className="text-base font-bold text-neutral-900 dark:text-white">{oeLean(nums)}</span>
-              ) : (
-                nums.map(n => <Ball key={n} n={n} />)
-              )}
-            </div>
-          ))
-        )}
-        <p className="text-[calc(11px*var(--fs))] leading-relaxed text-neutral-500 dark:text-neutral-400">
-          {s.desc}
-        </p>
-      </div>
+/** 底線 tab(扁平切換) */
+function Tabs<T extends string | number>({ value, options, label, onChange }: {
+  value: T; options: readonly T[]; label: (v: T) => string; onChange: (v: T) => void;
+}) {
+  return (
+    <div className="flex gap-4">
+      {options.map(o => (
+        <button
+          key={String(o)}
+          type="button"
+          onClick={() => onChange(o)}
+          className={`pb-1 text-xs font-semibold border-b-2 transition-colors ${
+            value === o
+              ? 'border-neutral-900 dark:border-white text-neutral-900 dark:text-white'
+              : 'border-transparent text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200'
+          }`}
+        >
+          {label(o)}
+        </button>
+      ))}
     </div>
+  );
+}
+
+const SectionTitle: React.FC<{ children: React.ReactNode; right?: React.ReactNode }> = ({ children, right }) => (
+  <div className="flex items-end justify-between flex-wrap gap-3 pb-2 border-b border-black/[0.08] dark:border-white/[0.08]">
+    <h3 className="text-sm font-bold text-neutral-900 dark:text-white tracking-wide">{children}</h3>
+    {right}
   </div>
 );
 
-// 統計檢定用的小卡片 + 結論徽章(綠=符合隨機、琥珀=偏離,只是樣本波動不代表可預測)
-const StatCard: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
-  <div className="rounded-xl border border-black/[0.06] dark:border-white/[0.08] bg-black/[0.015] dark:bg-white/[0.02] p-3.5 space-y-1.5">
-    <div className="text-[calc(11px*var(--fs))] font-display font-bold uppercase tracking-wide text-neutral-700 dark:text-neutral-200">
-      {title}
-    </div>
+const StatItem: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
+  <div className="py-3 space-y-1.5">
+    <div className="text-xs font-semibold text-neutral-700 dark:text-neutral-200">{title}</div>
     {children}
   </div>
 );
 
 const Verdict: React.FC<{ ok: boolean; text: string }> = ({ ok, text }) => (
-  <span
-    className={`inline-block px-2 py-0.5 rounded-full text-[calc(10px*var(--fs))] font-semibold ${
-      ok
-        ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
-        : 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
-    }`}
-  >
-    {text}
-  </span>
+  <p className={`text-[calc(11px*var(--fs))] ${ok ? 'text-neutral-500' : 'text-neutral-900 dark:text-white font-semibold'}`}>
+    {ok ? '✓ ' : '! '}{text}
+  </p>
 );
 
 export const PredictionView: React.FC = () => {
   const { gameKey, game } = useGame();
-  const [sets, setSets] = useState<number>(1);
   const [reviewN, setReviewN] = useState<number>(20);
-  const [open, setOpen] = useState<string | null>(null);
-  // 統計檢定的計算範圍:依期數(最近 n 期)或依日期(最近 n 天)。切回同一範圍結果固定。
+  // 統計檢定(附錄)自己的範圍,不影響浮動
   const [rangeMode, setRangeMode] = useState<'periods' | 'days'>('periods');
   const [rangeN, setRangeN] = useState<number>(50);
-  const ana = useAsync<PredictAnalysisDTO | null>(
-    () => api.predictAnalysis(gameKey, rangeMode, rangeN),
-    [gameKey, rangeMode, rangeN],
-  );
+  const [showStats, setShowStats] = useState(false);
 
-  // 本期預測固定用「期號推導的確定性種子」(後端在 seed 省略時採用),同一期永遠同一組。
-  // 不再提供「重新抽一組」—— 預測結果不該隨手動抽組變動(切回同一期要答案一致)。
-  const pred = useAsync(() => api.predict(gameKey, sets, rangeMode, rangeN),
-    [gameKey, sets, rangeMode, rangeN]);
-  // 回顧帶跟預測相同的範圍(rangeMode/rangeN),冷熱視窗一致 → 開獎前後號碼相同
+  const pred = useAsync(() => api.predict(gameKey, 1, 'periods', FLOAT_RANGE_N), [gameKey]);
   const review = useAsync<PredictReviewDTO | null>(
-    () => api.predictReview(gameKey, reviewN, rangeMode, rangeN),
-    [gameKey, reviewN, rangeMode, rangeN],
+    () => api.predictReview(gameKey, reviewN, 'periods', FLOAT_RANGE_N),
+    [gameKey, reviewN],
+  );
+  const ana = useAsync<PredictAnalysisDTO | null>(
+    () => (showStats ? api.predictAnalysis(gameKey, rangeMode, rangeN) : Promise.resolve(null)),
+    [gameKey, rangeMode, rangeN, showStats],
   );
 
-  // 開獎數據更新 → 自動產生新預測:predict 的 seed 綁「下一期期號」,新一期進來
-  // 期號一變,重抓就會拿到新號碼。這裡定時(每 3 分鐘)+ 回到視窗時重抓;
-  // 只有「用預設 seed(沒手動抽)」時才自動刷新,免得蓋掉使用者剛按的那組。
+  // 新一期開獎進來 → 期號變、重抓即換號。每 3 分鐘 + 回到視窗時重抓。
   useEffect(() => {
-    const tick = () => {
-      pred.reload();
-      review.reload();
-    };
+    const tick = () => { pred.reload(); review.reload(); };
     const timer = window.setInterval(tick, 3 * 60 * 1000);
     window.addEventListener('focus', tick);
     return () => {
@@ -180,551 +117,260 @@ export const PredictionView: React.FC = () => {
   const numMax = pred.data?.num_max ?? game?.num_max ?? 39;
   const pick = pred.data?.pick ?? game?.pick ?? 5;
   const gameName = pred.data?.game_name ?? game?.short_name ?? '本遊戲';
+  const fn = review.data?.floating_next ?? null;
+  const fk = review.data?.floating_k ?? 50;
+  const fm = review.data?.floating_m ?? 50;
 
-  // 逐期明細裡的策略順序與名稱,跟排行/出號一致
-  const strategies = useMemo(() => review.data?.strategies ?? [], [review.data]);
-
-  // 浮動策略本期那一組:取 /predict 同範圍下該策略的號碼(與下方本期預測一致)
-  const floatingSet = useMemo(() => {
-    const key = review.data?.floating_next?.strategy;
-    return pred.data?.strategies.find(s => s.key === key)?.sets[0] ?? null;
-  }, [review.data, pred.data]);
+  // 本期浮動那一組 = /predict 同範圍下被選中策略的號碼
+  const floatingSet = useMemo(
+    () => pred.data?.strategies.find(s => s.key === fn?.strategy)?.sets[0] ?? null,
+    [pred.data, fn],
+  );
+  const rec = review.data?.ranking.find(r => r.strategy === 'floating') ?? null;
+  const floatRows = (review.data?.rows ?? []).filter(r => r.floating);
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-200">
-      {/* Title */}
-      <div className="p-6 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08]">
-        <div className="flex items-center gap-3">
-          <div className="p-2.5 rounded-full bg-black/5 dark:bg-white/5 text-neutral-900 dark:text-white">
-            <Sparkles className="w-5 h-5" />
-          </div>
-          <div>
-            <h2 className="text-lg font-display font-bold text-neutral-900 dark:text-white uppercase tracking-wide">
-              五策略參考選號 / 預測比對
-            </h2>
-            <p className="text-xs text-neutral-500 dark:text-neutral-400">
-              {gameName}(01~{pad2(numMax)},每期 {pick} 顆)
-              {pred.data ? ` · 依 ${pred.data.periods.toLocaleString()} 期歷史出號` : ''}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* 期望值提醒 */}
-      <div className="p-4 rounded-2xl border border-amber-500/30 bg-amber-500/[0.06] flex items-start gap-2.5">
-        <Info className="w-4 h-4 mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
-        <p className="text-[calc(11px*var(--fs))] sm:text-xs leading-relaxed text-neutral-700 dark:text-neutral-300">
-          {pred.data?.notice ??
-            '五種策略的期望中獎率完全相同,下面的排行只是把運氣視覺化,不代表哪個策略比較會中。理性娛樂、量力而為。'}
+    <div className="space-y-10 animate-in fade-in duration-200 max-w-3xl">
+      {/* ── 標題 ── */}
+      <div>
+        <h2 className="text-lg font-bold text-neutral-900 dark:text-white tracking-wide">浮動策略預測</h2>
+        <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
+          {gameName}(01~{pad2(numMax)},每期 {pick} 顆)
+          {pred.data ? ` · 依 ${pred.data.periods.toLocaleString()} 期歷史` : ''}
         </p>
       </div>
 
-      {/* ── 1. 統計檢定(依選定範圍;同範圍結果固定)──── */}
-      <div className="p-5 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] space-y-4">
-        <div className="flex items-start justify-between flex-wrap gap-3">
-          <div>
-            <h3 className="text-sm font-display font-bold text-neutral-900 dark:text-white uppercase tracking-wide flex items-center gap-2">
-              <FlaskConical className="w-4 h-4" />
-              統計檢定
-            </h3>
-            <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
-              對選定範圍的開獎做隨機性檢定
-              {ana.data ? `(範圍內共 ${ana.data.periods} 期)` : ''}
-            </p>
-          </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <div className="inline-flex p-1 rounded-xl bg-black/[0.03] dark:bg-white/[0.04] border border-black/[0.06] dark:border-white/[0.06] gap-1">
-              {(['periods', 'days'] as const).map(m => (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => { setRangeMode(m); setRangeN(m === 'periods' ? 50 : 30); }}
-                  className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${
-                    rangeMode === m
-                      ? 'bg-black text-white dark:bg-white dark:text-black shadow-xs'
-                      : 'text-neutral-600 dark:text-neutral-400 hover:text-black dark:hover:text-white'
-                  }`}
-                >
-                  {m === 'periods' ? '依期數' : '依日期'}
-                </button>
-              ))}
+      {/* ── 1. 本期浮動建議 ── */}
+      <section className="space-y-4">
+        <SectionTitle>本期建議</SectionTitle>
+        {(pred.loading || review.loading) && !floatingSet && (
+          <div className="text-xs text-neutral-400">計算中…</div>
+        )}
+        {(pred.error || review.error) && (
+          <div className="text-xs text-rose-500">{pred.error || review.error}</div>
+        )}
+        {review.data && !fn && (
+          <div className="text-xs text-neutral-400">歷史期數不足 {fk + fm} 期,浮動策略還算不出來。</div>
+        )}
+        {floatingSet && fn && (
+          <div className="space-y-3">
+            <div className="text-xs text-neutral-500 dark:text-neutral-400">
+              目標期 <span className="font-semibold text-neutral-800 dark:text-neutral-200">{pred.data?.target.label ?? '—'}</span>
             </div>
-            <div className="inline-flex p-1 rounded-xl bg-black/[0.03] dark:bg-white/[0.04] border border-black/[0.06] dark:border-white/[0.06] gap-1">
-              {(rangeMode === 'periods' ? RANGE_PERIOD_OPTS : RANGE_DAY_OPTS).map(nOpt => (
-                <button
-                  key={nOpt}
-                  type="button"
-                  onClick={() => setRangeN(nOpt)}
-                  className={`px-3 py-1 rounded-lg text-xs font-mono font-semibold transition-all ${
-                    rangeN === nOpt
-                      ? 'bg-black text-white dark:bg-white dark:text-black shadow-xs'
-                      : 'text-neutral-600 dark:text-neutral-400 hover:text-black dark:hover:text-white'
-                  }`}
-                >
-                  {nOpt}{rangeMode === 'periods' ? ' 期' : ' 天'}
-                </button>
-              ))}
+            <div className="flex items-center gap-2.5 flex-wrap">
+              {floatingSet.map(n => <Ball key={n} n={n} size="lg" />)}
+            </div>
+            <div className="text-sm text-neutral-800 dark:text-neutral-200">
+              本期採用 <b>{RULE_LABEL[fn.rule]}</b>,押 <b>{SRC_LABEL[fn.strategy]}</b>
+              <span className="text-neutral-400 text-xs ml-1.5">({SRC_DESC[fn.strategy]})</span>
             </div>
           </div>
-        </div>
+        )}
+      </section>
 
-        {ana.loading && <div className="text-xs text-neutral-400">計算中…</div>}
-        {ana.error && <div className="text-xs text-rose-500">{ana.error}</div>}
-
-        {ana.data && ana.data.periods > 0 && (
-          <>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {/* 敘述性統計 */}
-              <StatCard title="敘述性統計">
-                {ana.data.descriptive.sum && (
-                  <p className="text-[calc(11px*var(--fs))] text-neutral-600 dark:text-neutral-300">
-                    和值 平均 <b>{ana.data.descriptive.sum.mean}</b> · 中位 {ana.data.descriptive.sum.median} ·
-                    標準差 {ana.data.descriptive.sum.std}({ana.data.descriptive.sum.min}~{ana.data.descriptive.sum.max})
-                  </p>
-                )}
-                <p className="text-[calc(11px*var(--fs))] text-neutral-600 dark:text-neutral-300">
-                  每期平均 奇數 {ana.data.descriptive.odd_avg} 個、大數 {ana.data.descriptive.big_avg} 個;
-                  每號期望出現 {ana.data.descriptive.expected_per_num} 次
-                </p>
-                <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
-                  <span className="text-[calc(10px*var(--fs))] text-neutral-400">熱</span>
-                  {ana.data.descriptive.hot.map(h => <Ball key={h.num} n={h.num} size="sm" />)}
-                </div>
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <span className="text-[calc(10px*var(--fs))] text-neutral-400">冷</span>
-                  {ana.data.descriptive.cold.map(h => <Ball key={h.num} n={h.num} size="sm" />)}
-                </div>
-              </StatCard>
-
-              {/* 均勻度檢定 */}
-              <StatCard title="均勻度檢定(χ² vs 均勻)">
-                <p className="text-[calc(11px*var(--fs))] font-mono text-neutral-600 dark:text-neutral-300">
-                  χ² = {ana.data.uniformity.chi2}(自由度 {ana.data.uniformity.dof}) · p = {ana.data.uniformity.p}
-                </p>
-                <Verdict ok={ana.data.uniformity.uniform} text={ana.data.uniformity.verdict} />
-              </StatCard>
-
-              {/* 獨立性檢定 */}
-              <StatCard title="獨立性檢定(前後期 χ²)">
-                <p className="text-[calc(11px*var(--fs))] font-mono text-neutral-600 dark:text-neutral-300">
-                  χ² = {ana.data.independence.chi2}(自由度 {ana.data.independence.dof}) · p = {ana.data.independence.p}
-                </p>
-                <Verdict ok={ana.data.independence.independent} text={ana.data.independence.verdict} />
-              </StatCard>
-
-              {/* 皮爾森相關 */}
-              <StatCard title="皮爾森相關(相鄰兩期特徵)">
-                {ana.data.pearson.features.map(f => (
-                  <div key={f.feature} className="flex items-center justify-between text-[calc(11px*var(--fs))] text-neutral-600 dark:text-neutral-300">
-                    <span>{f.feature}</span>
-                    <span className="font-mono">
-                      r = {f.r} <span className="text-neutral-400">({f.note})</span>
-                    </span>
+      {/* ── 2. 算式 ── */}
+      {fn && (
+        <section className="space-y-3">
+          <SectionTitle>算式</SectionTitle>
+          <ol className="divide-y divide-black/[0.06] dark:divide-white/[0.06] text-xs text-neutral-600 dark:text-neutral-300">
+            <li className="py-3 space-y-2">
+              <div className="font-semibold text-neutral-800 dark:text-neutral-100">
+                ① 前 {fk} 期,三種選法各自中了幾顆
+              </div>
+              <div className="grid grid-cols-3 gap-2 max-w-sm">
+                {Object.keys(SRC_LABEL).map(k => (
+                  <div key={k}>
+                    <div className="text-neutral-400">{SRC_LABEL[k]}</div>
+                    <div className="font-mono text-base font-bold text-neutral-900 dark:text-white">
+                      {fn.scores[k] ?? 0}<span className="text-xs font-normal text-neutral-400"> 顆</span>
+                    </div>
                   </div>
                 ))}
-              </StatCard>
-
-              {/* 貢獻性分析 */}
-              <StatCard title="貢獻性分析(各號對均勻度 χ² 的貢獻)">
-                <div className="space-y-1">
-                  {ana.data.contribution.rows.slice(0, 6).map(r => (
-                    <div key={r.num} className="flex items-center gap-2 text-[calc(11px*var(--fs))]">
-                      <Ball n={r.num} size="sm" />
-                      <span className="font-mono text-neutral-500">
-                        實{r.observed}/期{r.expected}
-                      </span>
-                      <span className={r.dir === '熱' ? 'text-rose-500' : r.dir === '冷' ? 'text-blue-500' : 'text-neutral-400'}>
-                        {r.dir}
-                      </span>
-                      <span className="ml-auto font-mono text-neutral-600 dark:text-neutral-300">{r.pct}%</span>
+              </div>
+              <div>
+                第一名 <b>{SRC_LABEL[fn.leader]}</b>、最後一名 <b>{SRC_LABEL[fn.loser]}</b>
+              </div>
+            </li>
+            <li className="py-3 space-y-2">
+              <div className="font-semibold text-neutral-800 dark:text-neutral-100">
+                ② 最近 {fm} 期,兩條規則實際中了幾顆
+              </div>
+              <div className="grid grid-cols-2 gap-2 max-w-sm">
+                {(['follow', 'fade'] as const).map(r => (
+                  <div key={r}>
+                    <div className="text-neutral-400">{RULE_LABEL[r]}<span className="text-[calc(10px*var(--fs))]">{r === 'fade' ? ' 反轉' : ' 順勢'}</span></div>
+                    <div className={`font-mono text-base font-bold ${fn.rule === r ? 'text-neutral-900 dark:text-white' : 'text-neutral-400'}`}>
+                      {r === 'follow' ? fn.follow_score : fn.fade_score}
+                      <span className="text-xs font-normal text-neutral-400"> 顆</span>
                     </div>
-                  ))}
-                </div>
-              </StatCard>
-
-              {/* 變異數模擬 */}
-              <StatCard title="變異數模擬(蒙地卡羅 vs 公平隨機)">
-                <p className="text-[calc(11px*var(--fs))] font-mono text-neutral-600 dark:text-neutral-300">
-                  觀測變異 {ana.data.variance_sim.observed_var} · 隨機常態 {ana.data.variance_sim.sim_lo}~{ana.data.variance_sim.sim_hi}
-                </p>
-                <p className="text-[calc(11px*var(--fs))] text-neutral-600 dark:text-neutral-300">
-                  落在模擬分佈第 <b>{ana.data.variance_sim.percentile}</b> 百分位
-                </p>
-                <Verdict
-                  ok={ana.data.variance_sim.percentile >= 2.5 && ana.data.variance_sim.percentile <= 97.5}
-                  text={ana.data.variance_sim.verdict}
-                />
-              </StatCard>
-            </div>
-            <p className="text-[calc(11px*var(--fs))] text-neutral-400 dark:text-neutral-500">{ana.data.notice}</p>
-          </>
-        )}
-        {ana.data && ana.data.periods === 0 && (
-          <div className="text-xs text-neutral-400">這個範圍內沒有開獎資料,換個範圍試試。</div>
-        )}
-      </div>
-
-      {/* ── 1-0. 浮動策略:每期自動挑一個策略,只出 1 組 ── */}
-      {floatingSet && review.data?.floating_next && (
-        <div className="p-5 rounded-2xl border-2 border-emerald-500/40 bg-gradient-to-br from-emerald-500/[0.08] to-transparent space-y-3">
-          <div className="flex items-center gap-2 flex-wrap">
-            <Sparkles className="w-4 h-4 text-emerald-500" />
-            <h3 className="text-sm font-display font-bold uppercase tracking-wide text-neutral-900 dark:text-white">
-              浮動策略 · 本期主推一組
-            </h3>
-            <span className="text-[calc(10px*var(--fs))] px-1.5 py-0.5 rounded-full font-semibold bg-emerald-500/15 text-emerald-700 dark:text-emerald-300">
-              {RULE_LABEL[review.data.floating_next.rule]} → {RANK_LABEL[review.data.floating_next.strategy]}
-            </span>
-          </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            {floatingSet.map(n => <Ball key={n} n={n} />)}
-          </div>
-          <p className="text-[calc(11px*var(--fs))] leading-relaxed text-neutral-500 dark:text-neutral-400">
-            每期自動校正:先看前 {review.data.floating_k} 期熱號 / 冷號 / 歷史誰第一、誰最後;
-            再比最近 {review.data.floating_m} 期「跟第一名」和「反跟最後一名(差的可能變好)」哪條規則實際中得多,
-            這期就用那條。實際戰績見下方「策略累計戰績」的「浮動」列。
-            歷史回測略高於隨機,但仍在運氣範圍內,不保證會中。
+                  </div>
+                ))}
+              </div>
+              <div>
+                {fn.follow_score >= fn.fade_score ? '跟第一名' : '反跟最後一名'}較多(平手算跟第一名)→ 本期用 <b>{RULE_LABEL[fn.rule]}</b>
+              </div>
+            </li>
+            <li className="py-3">
+              <span className="font-semibold text-neutral-800 dark:text-neutral-100">③ 結果:</span>
+              {RULE_LABEL[fn.rule]} = <b>{SRC_LABEL[fn.strategy]}</b> → {SRC_DESC[fn.strategy]},就是上面那一組。
+            </li>
+          </ol>
+          <p className="text-[calc(11px*var(--fs))] leading-relaxed text-neutral-400">
+            參數(看 {fk} 期排名、{fm} 期規則成績)是用 539 過去 706 期回測、約 30 種規則中表現最好的:
+            每期平均 0.68 顆,隨便選是 0.64 顆。從 30 種挑最好的本來就會因運氣偏高,
+            所以真正準不準要看下面上線後的紀錄。每期開獎獨立,不保證會中,請量力而為。
           </p>
-        </div>
+        </section>
       )}
 
-      {/* ── 1a. 我們的組合(熱2+冷2+歷史2+單雙2)高亮參考組合 ── */}
-      {pred.data?.our_combo?.length ? (
-        <div className="p-5 rounded-2xl border-2 border-amber-500/40 bg-gradient-to-br from-amber-500/[0.09] to-transparent dark:from-amber-500/[0.07] shadow-sm space-y-3">
-          <div className="flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-amber-500" />
-            <h3 className="text-sm font-display font-bold uppercase tracking-wide text-neutral-900 dark:text-white">
-              我們的組合(熱2+冷2+歷史2+單雙2)
-            </h3>
+      {/* ── 3. 紀錄 ── */}
+      <section className="space-y-3">
+        <SectionTitle
+          right={<Tabs<number> value={reviewN} options={REVIEW_OPTIONS} label={n => `近 ${n} 期`} onChange={setReviewN} />}
+        >
+          紀錄
+        </SectionTitle>
+
+        {rec && review.data && (
+          <div className="flex flex-wrap gap-x-8 gap-y-2 py-1">
+            <div>
+              <div className="text-[calc(10px*var(--fs))] text-neutral-400">平均每期</div>
+              <div className="font-mono text-xl font-bold text-neutral-900 dark:text-white">{rec.avg.toFixed(2)} 顆</div>
+            </div>
+            <div>
+              <div className="text-[calc(10px*var(--fs))] text-neutral-400">隨便選的期望</div>
+              <div className="font-mono text-xl font-bold text-neutral-400">{review.data.expected_avg.toFixed(2)} 顆</div>
+            </div>
+            <div>
+              <div className="text-[calc(10px*var(--fs))] text-neutral-400">總命中 / 期數</div>
+              <div className="font-mono text-xl font-bold text-neutral-900 dark:text-white">
+                {rec.total_hits}<span className="text-sm text-neutral-400"> / {rec.periods}</span>
+              </div>
+            </div>
+            <div>
+              <div className="text-[calc(10px*var(--fs))] text-neutral-400">單期最佳</div>
+              <div className="font-mono text-xl font-bold text-neutral-900 dark:text-white">{rec.best} 顆</div>
+            </div>
           </div>
-          <div className="flex items-end gap-3 flex-wrap">
-            {pred.data.our_combo.map(c => {
-              const cfg = COMBO_SOURCE[c.source];
-              return (
-                <div key={c.num} className="flex flex-col items-center gap-1">
-                  <span
-                    className={`inline-flex items-center justify-center rounded-full font-mono font-bold w-10 h-10 text-sm ring-2 ring-amber-400/60 ${cfg.ball}`}
-                  >
-                    {pad2(c.num)}
-                  </span>
-                  <span className={`text-[calc(9px*var(--fs))] px-1.5 py-0.5 rounded-full font-semibold ${cfg.chip}`}>
-                    {cfg.label}
+        )}
+        {rec && (
+          <p className="text-[calc(11px*var(--fs))] text-neutral-400">
+            每期都只用「該期之前」的資料重算浮動選號,不偷看答案。期數少時高低多半是運氣。
+          </p>
+        )}
+
+        <div className="divide-y divide-black/[0.06] dark:divide-white/[0.06]">
+          {floatRows.map(row => {
+            const f = row.floating!;
+            const hit = new Set(f.matched);
+            return (
+              <div key={(row.issue ?? '') + '|' + (row.date ?? '')} className="py-2.5 space-y-1.5">
+                <div className="flex items-center gap-2 flex-wrap text-xs">
+                  <span className="font-semibold text-neutral-800 dark:text-neutral-200">{row.label}</span>
+                  <span className="text-neutral-400">{RULE_LABEL[f.rule]} → {SRC_LABEL[f.strategy]}</span>
+                  <span className={`ml-auto font-mono font-bold ${f.hits > 0 ? 'text-emerald-600' : 'text-neutral-400'}`}>
+                    中 {f.hits} 顆
                   </span>
                 </div>
-              );
-            })}
-          </div>
-          <p className="text-[calc(11px*var(--fs))] leading-relaxed text-neutral-500 dark:text-neutral-400">
-            這是把熱2、冷2、歷史2、單雙(1奇1偶)各取幾顆併成的參考組合。
-          </p>
-        </div>
-      ) : null}
-
-      {/* ── 1b. 本期預測(承接統計檢定,依同一範圍輸出五策略)── */}
-      <div className="p-5 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] space-y-4">
-        <div className="flex items-start justify-between flex-wrap gap-3">
-          <div>
-            <h3 className="text-sm font-display font-bold text-neutral-900 dark:text-white uppercase tracking-wide">
-              本期預測(依上方範圍)
-            </h3>
-            <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
-              目標期:
-              <span className="font-semibold text-neutral-800 dark:text-neutral-200">
-                {pred.data?.target.label ?? '—'}
-              </span>
-              <span className="ml-2 text-neutral-400">
-                熱/冷/頻率=排名(對齊統計檢定);均衡=抽樣後看單多 / 雙多
-              </span>
-            </p>
-          </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-[calc(10px*var(--fs))] text-neutral-400">組數(只影響均衡)</span>
-            <div className="inline-flex p-1 rounded-xl bg-black/[0.03] dark:bg-white/[0.04] border border-black/[0.06] dark:border-white/[0.06] gap-1">
-              {SET_OPTIONS.map(n => (
-                <button
-                  key={n}
-                  type="button"
-                  onClick={() => setSets(n)}
-                  className={`px-3 py-1 rounded-lg text-xs font-mono font-semibold transition-all ${
-                    sets === n
-                      ? 'bg-black text-white dark:bg-white dark:text-black shadow-xs'
-                      : 'text-neutral-600 dark:text-neutral-400 hover:text-black dark:hover:text-white'
-                  }`}
-                >
-                  {n} 組
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {pred.loading && <div className="text-xs text-neutral-400">出號中…</div>}
-        {pred.error && <div className="text-xs text-rose-500">{pred.error}</div>}
-
-        <div>
-          {/* 隨機列不顯示(只留熱 / 冷 / 歷史頻率 / 均衡) */}
-          {(pred.data?.strategies ?? []).filter(s => s.key !== 'random').map(s => (
-            <StrategyRow key={s.key} s={s} />
-          ))}
-        </div>
-
-        {pred.data && (
-          <p className="text-[calc(11px*var(--fs))] text-neutral-400 dark:text-neutral-500">
-            熱/冷/頻率為選定範圍內的確定性排名 —— 與統計檢定完全一致;均衡依期號推導的
-            固定種子抽樣後只看單多 / 雙多(seed {pred.data.seed})。同一範圍、同一期永遠同一組,切走再切回都不變。
-          </p>
-        )}
-      </div>
-
-      {/* ── 2. 策略累計戰績 ───────────────────────────── */}
-      <div className="p-5 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] space-y-3">
-        <div className="flex items-center justify-between flex-wrap gap-3">
-          <h3 className="text-sm font-display font-bold text-neutral-900 dark:text-white uppercase tracking-wide flex items-center gap-2">
-            <Trophy className="w-4 h-4 text-neutral-400" />
-            策略累計戰績(只計已開獎的期)
-          </h3>
-          <div className="inline-flex p-1 rounded-xl bg-black/[0.03] dark:bg-white/[0.04] border border-black/[0.06] dark:border-white/[0.06] gap-1">
-            {REVIEW_OPTIONS.map(n => (
-              <button
-                key={n}
-                type="button"
-                onClick={() => setReviewN(n)}
-                className={`px-3 py-1 rounded-lg text-xs font-mono font-semibold transition-all ${
-                  reviewN === n
-                    ? 'bg-black text-white dark:bg-white dark:text-black shadow-xs'
-                    : 'text-neutral-600 dark:text-neutral-400 hover:text-black dark:hover:text-white'
-                }`}
-              >
-                近 {n} 期
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {review.loading && <div className="text-xs text-neutral-400">回測中…</div>}
-        {review.error && <div className="text-xs text-rose-500">{review.error}</div>}
-
-        {review.data && (
-          <>
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="text-[calc(10px*var(--fs))] uppercase tracking-wider text-neutral-400">
-                    <th className="text-left font-semibold py-1.5 w-16">名次</th>
-                    <th className="text-left font-semibold py-1.5">策略</th>
-                    <th className="text-right font-semibold py-1.5">期數</th>
-                    <th className="text-right font-semibold py-1.5">總命中</th>
-                    <th className="text-right font-semibold py-1.5">平均每期</th>
-                    <th className="text-right font-semibold py-1.5">單期最佳</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {/* 熱號 / 歷史 / 冷號:依平均命中排名次;隨機不列 */}
-                  {review.data.ranking
-                    .filter(r => r.strategy in RANK_LABEL && r.strategy !== 'balanced')
-                    .sort((a, b) => b.avg - a.avg)
-                    .map((r, i) => (
-                      <tr
-                        key={r.strategy}
-                        className="border-t border-black/[0.05] dark:border-white/[0.05]"
-                      >
-                        <td className="py-2 text-neutral-500">
-                          {i < MEDALS.length ? (
-                            <span className="text-base leading-none">{MEDALS[i]}</span>
-                          ) : (
-                            `第 ${i + 1} 名`
-                          )}
-                        </td>
-                        <td className={`py-2 font-semibold ${
-                          r.strategy === 'floating'
-                            ? 'text-emerald-700 dark:text-emerald-300'
-                            : 'text-neutral-800 dark:text-neutral-200'
-                        }`}>
-                          {RANK_LABEL[r.strategy]}
-                        </td>
-                        <td className="py-2 text-right font-mono text-neutral-500">
-                          {r.periods}
-                        </td>
-                        <td className="py-2 text-right font-mono text-neutral-500">
-                          {r.total_hits} 顆
-                        </td>
-                        <td className="py-2 text-right font-mono font-bold text-neutral-900 dark:text-white">
-                          {r.avg.toFixed(2)} 顆
-                        </td>
-                        <td className="py-2 text-right font-mono text-neutral-500">
-                          {r.best} 顆
-                        </td>
-                      </tr>
-                    ))}
-                  {/* 單雙預測(均衡):不比號碼,只看單多 / 雙多中幾期 */}
-                  {review.data.ranking.filter(r => r.strategy === 'balanced').map(r => (
-                    <tr key={r.strategy} className="border-t border-black/[0.05] dark:border-white/[0.05]">
-                      <td className="py-2 text-neutral-400">—</td>
-                      <td className="py-2 text-neutral-800 dark:text-neutral-200 font-semibold">
-                        {RANK_LABEL[r.strategy]}
-                      </td>
-                      <td className="py-2 text-right font-mono text-neutral-500">
-                        {r.periods}
-                      </td>
-                      <td colSpan={3} className="py-2 text-right font-mono">
-                        <span className="font-bold text-neutral-900 dark:text-white">
-                          中 {r.oe_wins}/{r.periods} 期
-                        </span>
-                        <span className="text-neutral-400 ml-1">
-                          ({(r.oe_rate * 100).toFixed(0)}%)
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <p className="text-[calc(11px*var(--fs))] text-neutral-400">
-              參考基準:每期開 {review.data.pick} 顆、{review.data.num_max} 選{' '}
-              {review.data.pick},隨便選 {review.data.pick} 顆的期望命中是{' '}
-              {review.data.expected_avg.toFixed(2)} 顆;單雙預測約 50%。期數這麼少,誰在前面純屬偶然。
-            </p>
-          </>
-        )}
-      </div>
-
-      {/* ── 3. 逐期明細 ───────────────────────────────── */}
-      <div className="p-5 rounded-2xl bg-white dark:bg-[#121212] border border-black/[0.08] dark:border-white/[0.08] space-y-3">
-        <h3 className="text-sm font-display font-bold text-neutral-900 dark:text-white uppercase tracking-wide flex items-center gap-2">
-          <ListOrdered className="w-4 h-4 text-neutral-400" />
-          逐期明細
-        </h3>
-        <p className="text-[calc(11px*var(--fs))] text-neutral-400">
-          點開某一期,看熱號 / 冷號 / 歷史頻率押了哪些號碼(綠底=押中的號)。
-          <b>均衡只押單多 / 雙多</b>(不列號碼),與當期開獎一致就算「中」。每期只用
-          「該期之前」的資料重新出號,不偷看答案。
-        </p>
-
-        {review.data?.rows.length === 0 && (
-          <div className="text-xs text-neutral-400">這段期間沒有可回顧的資料。</div>
-        )}
-
-        <div className="space-y-2">
-          {(review.data?.rows ?? []).map(row => {
-            const id = (row.issue ?? '') + '|' + (row.date ?? '');
-            // 回顧不顯示隨機;均衡只看單多 / 雙多(不比號碼)→ 亮號與「最佳」只算熱/冷/歷史
-            const picks = strategies.filter(s => s.key !== 'random').map(s => ({ s, p: row.picks[s.key] }));
-            const numPicks = picks.filter(({ s }) => s.key !== 'balanced');
-            const hitAny = new Set<number>();
-            numPicks.forEach(({ p }) => p?.matched.forEach(n => hitAny.add(n)));
-            const best = numPicks.reduce((m, { p }) => Math.max(m, p?.hits ?? 0), 0);
-            const expanded = open === id;
-            return (
-              <div
-                key={id}
-                className="rounded-xl bg-black/[0.02] dark:bg-white/[0.03] border border-black/[0.06] dark:border-white/[0.06] overflow-hidden"
-              >
-                <button
-                  type="button"
-                  onClick={() => setOpen(expanded ? null : id)}
-                  className="w-full px-3.5 py-3 flex items-center gap-3 flex-wrap text-left hover:bg-black/[0.03] dark:hover:bg-white/[0.04] transition-colors"
-                >
-                  <ChevronRight
-                    className={`w-3.5 h-3.5 shrink-0 text-neutral-400 transition-transform ${
-                      expanded ? 'rotate-90' : ''
-                    }`}
-                  />
-                  <span className="text-xs font-semibold text-neutral-800 dark:text-neutral-200 whitespace-nowrap">
-                    {row.label}
-                  </span>
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    {row.drawn.map(n => (
-                      <Ball key={n} n={n} size="sm" tone={hitAny.has(n) ? 'hit' : 'miss'} />
-                    ))}
+                <div className="flex items-center gap-x-4 gap-y-1.5 flex-wrap">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[calc(10px*var(--fs))] text-neutral-400 w-6">押</span>
+                    {f.numbers.map(n => <Ball key={n} n={n} size="sm" tone={hit.has(n) ? 'hit' : 'miss'} />)}
                   </div>
-                  <div className="ml-auto flex items-center gap-2 shrink-0">
-                    <span className="text-[calc(10px*var(--fs))] px-1.5 py-0.5 rounded-full font-semibold whitespace-nowrap bg-black/[0.04] dark:bg-white/[0.06] text-neutral-600 dark:text-neutral-300">
-                      開獎 {row.draw_lean}
-                    </span>
-                    {row.oe_win !== null && (
-                      <span className={`text-[calc(10px*var(--fs))] px-1.5 py-0.5 rounded-full font-semibold whitespace-nowrap ${
-                        row.oe_win
-                          ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
-                          : 'bg-neutral-500/15 text-neutral-500'
-                      }`}>
-                        均衡單雙 {row.oe_win ? '中' : '未中'}
-                      </span>
-                    )}
-                    <span className="text-[calc(10px*var(--fs))] font-mono uppercase tracking-wider text-neutral-400 whitespace-nowrap">
-                      最佳 {best} 顆
-                    </span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[calc(10px*var(--fs))] text-neutral-400 w-6">開</span>
+                    {row.drawn.map(n => <Ball key={n} n={n} size="sm" tone={hit.has(n) ? 'hit' : 'miss'} />)}
                   </div>
-                </button>
-
-                {expanded && (
-                  <div className="px-3.5 pb-3.5 pt-1 space-y-2 border-t border-black/[0.06] dark:border-white/[0.06]">
-                    {row.floating && (
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="w-24 sm:w-auto sm:min-w-[calc(10.5rem*var(--fs))] sm:whitespace-nowrap shrink-0 text-[calc(11px*var(--fs))] font-semibold text-emerald-700 dark:text-emerald-300">
-                          浮動({RULE_LABEL[row.floating.rule]}→{RANK_LABEL[row.floating.strategy]})
-                        </span>
-                        <div className="flex gap-1.5 flex-wrap">
-                          {row.floating.numbers.map(n => (
-                            <Ball key={n} n={n} size="sm" tone={row.floating!.matched.includes(n) ? 'hit' : 'miss'} />
-                          ))}
-                        </div>
-                        <span className="text-[calc(10px*var(--fs))] font-mono text-neutral-400">
-                          中 {row.floating.hits} 顆
-                        </span>
-                      </div>
-                    )}
-                    {picks.map(({ s, p }) => {
-                      if (!p) return null;
-                      const hit = new Set(p.matched);
-                      return (
-                        <div key={s.key} className="flex items-center gap-2 flex-wrap">
-                          <span className="w-24 sm:w-auto sm:min-w-[calc(10.5rem*var(--fs))] sm:whitespace-nowrap shrink-0 text-[calc(11px*var(--fs))] font-semibold text-neutral-600 dark:text-neutral-300">
-                            {s.label}
-                          </span>
-                          {s.key === 'balanced' ? (
-                            <span className="text-xs font-bold text-neutral-900 dark:text-white whitespace-nowrap">{p.lean}</span>
-                          ) : (
-                          <div className="flex gap-1.5 flex-wrap">
-                            {p.numbers.map(n => (
-                              <Ball
-                                key={n}
-                                n={n}
-                                size="sm"
-                                tone={hit.has(n) ? 'hit' : 'miss'}
-                              />
-                            ))}
-                          </div>
-                          )}
-                          <div className="ml-auto flex items-center gap-2 shrink-0">
-                            {p.oe_win !== null && (
-                              <>
-                                <span className={`text-[calc(10px*var(--fs))] px-1.5 py-0.5 rounded-full font-semibold whitespace-nowrap ${
-                                  p.oe_win
-                                    ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
-                                    : 'bg-neutral-500/15 text-neutral-500'
-                                }`}>
-                                  {p.oe_win ? '中' : '未中'}
-                                </span>
-                              </>
-                            )}
-                            {s.key !== 'balanced' && (
-                            <span className={`text-[calc(10px*var(--fs))] font-mono whitespace-nowrap ${
-                              p.hits > 0 ? 'text-neutral-500' : 'text-neutral-400'
-                            }`}>
-                              {p.hits} 顆
-                            </span>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
+                </div>
               </div>
             );
           })}
+          {review.data && floatRows.length === 0 && (
+            <div className="py-3 text-xs text-neutral-400">這段期間沒有可回顧的資料。</div>
+          )}
         </div>
-      </div>
+      </section>
+
+      {/* ── 附錄:統計檢定(預設收起)── */}
+      <section className="space-y-3">
+        <button
+          type="button"
+          onClick={() => setShowStats(v => !v)}
+          className="text-xs text-neutral-500 hover:text-neutral-900 dark:hover:text-white hover:underline"
+        >
+          {showStats ? '收起' : '展開'}附錄:開獎隨機性檢定
+        </button>
+        {showStats && (
+          <div className="space-y-2">
+            <div className="flex items-center gap-6 flex-wrap">
+              <Tabs
+                value={rangeMode}
+                options={['periods', 'days'] as const}
+                label={m => (m === 'periods' ? '依期數' : '依日期')}
+                onChange={m => { setRangeMode(m); setRangeN(m === 'periods' ? 50 : 30); }}
+              />
+              <Tabs<number>
+                value={rangeN}
+                options={rangeMode === 'periods' ? RANGE_PERIOD_OPTS : RANGE_DAY_OPTS}
+                label={n => `${n} ${rangeMode === 'periods' ? '期' : '天'}`}
+                onChange={setRangeN}
+              />
+            </div>
+            {ana.loading && <div className="text-xs text-neutral-400">計算中…</div>}
+            {ana.error && <div className="text-xs text-rose-500">{ana.error}</div>}
+            {ana.data && ana.data.periods === 0 && (
+              <div className="text-xs text-neutral-400">這個範圍內沒有開獎資料,換個範圍試試。</div>
+            )}
+            {ana.data && ana.data.periods > 0 && (
+              <div className="divide-y divide-black/[0.06] dark:divide-white/[0.06]">
+                <StatItem title={`敘述性統計(範圍內 ${ana.data.periods} 期)`}>
+                  {ana.data.descriptive.sum && (
+                    <p className="text-[calc(11px*var(--fs))] text-neutral-600 dark:text-neutral-300">
+                      和值 平均 <b>{ana.data.descriptive.sum.mean}</b> · 中位 {ana.data.descriptive.sum.median} ·
+                      標準差 {ana.data.descriptive.sum.std}({ana.data.descriptive.sum.min}~{ana.data.descriptive.sum.max})
+                    </p>
+                  )}
+                  <p className="text-[calc(11px*var(--fs))] text-neutral-600 dark:text-neutral-300">
+                    每期平均 奇數 {ana.data.descriptive.odd_avg} 個、大數 {ana.data.descriptive.big_avg} 個;
+                    每號期望出現 {ana.data.descriptive.expected_per_num} 次
+                  </p>
+                </StatItem>
+                <StatItem title="均勻度檢定(χ² vs 均勻)">
+                  <p className="text-[calc(11px*var(--fs))] font-mono text-neutral-600 dark:text-neutral-300">
+                    χ² = {ana.data.uniformity.chi2}(自由度 {ana.data.uniformity.dof}) · p = {ana.data.uniformity.p}
+                  </p>
+                  <Verdict ok={ana.data.uniformity.uniform} text={ana.data.uniformity.verdict} />
+                </StatItem>
+                <StatItem title="獨立性檢定(前後期 χ²)">
+                  <p className="text-[calc(11px*var(--fs))] font-mono text-neutral-600 dark:text-neutral-300">
+                    χ² = {ana.data.independence.chi2}(自由度 {ana.data.independence.dof}) · p = {ana.data.independence.p}
+                  </p>
+                  <Verdict ok={ana.data.independence.independent} text={ana.data.independence.verdict} />
+                </StatItem>
+                <StatItem title="皮爾森相關(相鄰兩期特徵)">
+                  {ana.data.pearson.features.map(f => (
+                    <div key={f.feature} className="flex items-center justify-between text-[calc(11px*var(--fs))] text-neutral-600 dark:text-neutral-300">
+                      <span>{f.feature}</span>
+                      <span className="font-mono">r = {f.r} <span className="text-neutral-400">({f.note})</span></span>
+                    </div>
+                  ))}
+                </StatItem>
+                <StatItem title="變異數模擬(蒙地卡羅 vs 公平隨機)">
+                  <p className="text-[calc(11px*var(--fs))] font-mono text-neutral-600 dark:text-neutral-300">
+                    觀測變異 {ana.data.variance_sim.observed_var} · 隨機常態 {ana.data.variance_sim.sim_lo}~{ana.data.variance_sim.sim_hi}
+                    · 第 {ana.data.variance_sim.percentile} 百分位
+                  </p>
+                  <Verdict
+                    ok={ana.data.variance_sim.percentile >= 2.5 && ana.data.variance_sim.percentile <= 97.5}
+                    text={ana.data.variance_sim.verdict}
+                  />
+                </StatItem>
+                <p className="pt-2 text-[calc(11px*var(--fs))] text-neutral-400">{ana.data.notice}</p>
+              </div>
+            )}
+          </div>
+        )}
+      </section>
     </div>
   );
 };

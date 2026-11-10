@@ -478,6 +478,12 @@ export interface PredictReviewRowDTO {
 }
 
 export type FloatingRule = 'follow' | 'fade';
+export interface PredictFloatingNextDTO {
+  strategy: string; rule: FloatingRule;
+  scores: Record<string, number>; // 前 floating_k 期各策略總命中
+  leader: string; loser: string;
+  follow_score: number; fade_score: number; // 近 floating_m 期兩條規則實際命中
+}
 export interface PredictFloatingPickDTO {
   strategy: string; rule: FloatingRule;
   numbers: number[]; matched: number[]; hits: number;
@@ -506,7 +512,7 @@ export interface PredictReviewDTO {
   ranking: PredictRankDTO[];
   floating_k: number; // 浮動策略看前幾期排名
   floating_m: number; // 浮動策略看前幾期規則成績來決定跟第一 / 反跟最後
-  floating_next: {strategy: string; rule: FloatingRule} | null; // 下一期要用的
+  floating_next: PredictFloatingNextDTO | null; // 下一期要用的 + 算式明細
   notice: string;
 }
 

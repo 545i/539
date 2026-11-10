@@ -125,7 +125,7 @@ export default function App() {
       case 'duo_bet': return '紀錄下注';
       case 'calculator': return '連碰計算機';
       case 'analysis': return '統計分析';
-      case 'prediction': return '五策略預測';
+      case 'prediction': return '浮動策略預測';
       case 'yahong': return '雅宏策略';
       case 'export': return '匯出中心';
       case 'risk': return '風險與數學期望值';

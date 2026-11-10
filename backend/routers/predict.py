@@ -262,9 +262,9 @@ def _rank_pick(win: list[dict[str, int]], best: bool) -> str:
     return (max if best else min)(FLOAT_STRATEGIES, key=score)
 
 
-def _float_pick(hit_hist: list[dict[str, int]]) -> tuple[str, str] | None:
-    """依 hit_hist(由舊到新,每期各排名策略命中數)決定下一期要用的策略。
-    回 (策略 key, 規則 'follow'|'fade');資料不足 FLOAT_K+FLOAT_M 期回 None。"""
+def _float_detail(hit_hist: list[dict[str, int]]) -> dict | None:
+    """浮動策略下一期的決策與算式明細(給前端「算式」區顯示)。
+    資料不足 FLOAT_K+FLOAT_M 期回 None。"""
     t = len(hit_hist)
     if t < FLOAT_K + FLOAT_M:
         return None
@@ -274,7 +274,24 @@ def _float_pick(hit_hist: list[dict[str, int]]) -> tuple[str, str] | None:
         follow_score += hit_hist[j].get(_rank_pick(win, True), 0)
         fade_score += hit_hist[j].get(_rank_pick(win, False), 0)
     rule = "follow" if follow_score >= fade_score else "fade"
-    return _rank_pick(hit_hist[-FLOAT_K:], rule == "follow"), rule
+    win = hit_hist[-FLOAT_K:]
+    leader, loser = _rank_pick(win, True), _rank_pick(win, False)
+    return {
+        "strategy": leader if rule == "follow" else loser,
+        "rule": rule,
+        "scores": {s: sum(h.get(s, 0) for h in win) for s in FLOAT_STRATEGIES},
+        "leader": leader,
+        "loser": loser,
+        "follow_score": follow_score,
+        "fade_score": fade_score,
+    }
+
+
+def _float_pick(hit_hist: list[dict[str, int]]) -> tuple[str, str] | None:
+    """依 hit_hist(由舊到新,每期各排名策略命中數)決定下一期要用的策略。
+    回 (策略 key, 規則 'follow'|'fade');資料不足 FLOAT_K+FLOAT_M 期回 None。"""
+    d = _float_detail(hit_hist)
+    return (d["strategy"], d["rule"]) if d else None
 
 
 @router.get("/review")
@@ -382,7 +399,6 @@ def review(game: str = Query(...), periods: int = Query(20, ge=1, le=100),
         # 浮動策略:下一期(尚未開獎)要用的策略與規則
         "floating_k": FLOAT_K,
         "floating_m": FLOAT_M,
-        "floating_next": (lambda fp: {"strategy": fp[0], "rule": fp[1]} if fp else None)(
-            _float_pick(hit_hist)),
+        "floating_next": _float_detail(hit_hist),
         "notice": NOTICE,
     }
